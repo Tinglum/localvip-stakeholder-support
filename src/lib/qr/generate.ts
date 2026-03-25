@@ -2,26 +2,107 @@ import QRCode from 'qrcode'
 
 // ─── Types ──────────────────────────────────────────────────
 
+export type DotStyle = 'square' | 'rounded' | 'dots' | 'classy' | 'classy-rounded' | 'extra-rounded'
+export type CornerStyle = 'square' | 'rounded' | 'dots' | 'extra-rounded'
+
 export interface QRGenerateOptions {
   data: string
   size?: number
   foregroundColor?: string
   backgroundColor?: string
   errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
+  dotStyle?: DotStyle
+  cornerStyle?: CornerStyle
+  cornerDotStyle?: 'square' | 'dot'
 }
 
 export interface QRFrameOptions extends QRGenerateOptions {
   frameText?: string
   frameColor?: string
   logoUrl?: string
+  logoFile?: File | null
+  gradientType?: 'none' | 'linear' | 'radial'
+  gradientColors?: [string, string]
+}
+
+export type QRDestinationType = 'url' | 'email' | 'phone' | 'sms' | 'wifi' | 'vcard' | 'file'
+
+export interface QRDestination {
+  type: QRDestinationType
+  // URL
+  url?: string
+  // Email
+  emailTo?: string
+  emailSubject?: string
+  emailBody?: string
+  // Phone / SMS
+  phone?: string
+  smsBody?: string
+  // WiFi
+  wifiSsid?: string
+  wifiPassword?: string
+  wifiEncryption?: 'WPA' | 'WEP' | 'nopass'
+  wifiHidden?: boolean
+  // vCard
+  vcardName?: string
+  vcardPhone?: string
+  vcardEmail?: string
+  vcardOrg?: string
+  vcardTitle?: string
+  vcardUrl?: string
+  // File (generates a URL to uploaded file)
+  fileUrl?: string
+}
+
+/**
+ * Convert a QRDestination to a string that can be encoded in a QR code.
+ */
+export function destinationToString(dest: QRDestination): string {
+  switch (dest.type) {
+    case 'url':
+      return dest.url || 'https://localvip.com'
+    case 'email': {
+      const parts = [`mailto:${dest.emailTo || ''}`]
+      const params: string[] = []
+      if (dest.emailSubject) params.push(`subject=${encodeURIComponent(dest.emailSubject)}`)
+      if (dest.emailBody) params.push(`body=${encodeURIComponent(dest.emailBody)}`)
+      if (params.length) parts.push(`?${params.join('&')}`)
+      return parts.join('')
+    }
+    case 'phone':
+      return `tel:${dest.phone || ''}`
+    case 'sms': {
+      const sms = `sms:${dest.phone || ''}`
+      return dest.smsBody ? `${sms}?body=${encodeURIComponent(dest.smsBody)}` : sms
+    }
+    case 'wifi': {
+      const enc = dest.wifiEncryption || 'WPA'
+      const hidden = dest.wifiHidden ? 'H:true' : ''
+      return `WIFI:T:${enc};S:${dest.wifiSsid || ''};P:${dest.wifiPassword || ''};${hidden};`
+    }
+    case 'vcard': {
+      const lines = [
+        'BEGIN:VCARD',
+        'VERSION:3.0',
+        `FN:${dest.vcardName || ''}`,
+      ]
+      if (dest.vcardPhone) lines.push(`TEL:${dest.vcardPhone}`)
+      if (dest.vcardEmail) lines.push(`EMAIL:${dest.vcardEmail}`)
+      if (dest.vcardOrg) lines.push(`ORG:${dest.vcardOrg}`)
+      if (dest.vcardTitle) lines.push(`TITLE:${dest.vcardTitle}`)
+      if (dest.vcardUrl) lines.push(`URL:${dest.vcardUrl}`)
+      lines.push('END:VCARD')
+      return lines.join('\n')
+    }
+    case 'file':
+      return dest.fileUrl || 'https://localvip.com'
+    default:
+      return 'https://localvip.com'
+  }
 }
 
 // ─── Data URL Generation ────────────────────────────────────
 
-/**
- * Generate a QR code as a PNG data URL.
- * Returns a base64-encoded data:image/png string.
- */
 export async function generateQRDataURL(options: QRGenerateOptions): Promise<string> {
   const {
     data,
@@ -46,10 +127,6 @@ export async function generateQRDataURL(options: QRGenerateOptions): Promise<str
 
 // ─── SVG Generation ─────────────────────────────────────────
 
-/**
- * Generate a QR code as an SVG string.
- * Returns a raw <svg> element string.
- */
 export function generateQRSVG(options: QRGenerateOptions): string {
   const {
     data,
@@ -59,11 +136,8 @@ export function generateQRSVG(options: QRGenerateOptions): string {
     errorCorrectionLevel = 'H',
   } = options
 
-  // QRCode.toString with type 'svg' is synchronous when used with callback,
-  // but we use the sync version via the segments API
   let svgString = ''
 
-  // Use the synchronous toString approach
   QRCode.toString(
     data,
     {
@@ -85,33 +159,38 @@ export function generateQRSVG(options: QRGenerateOptions): string {
   return svgString
 }
 
-// ─── Framed QR Code with Logo and CTA ───────────────────────
+// ─── Styled QR Code with Canvas ─────────────────────────────
 
 /**
- * Generate a QR code with optional frame text (CTA) and logo overlay.
- * Uses an offscreen canvas to composite the QR code, logo, and frame.
- * Returns a data:image/png string.
- *
- * For server-side usage this requires a canvas polyfill (e.g. `canvas` npm package).
- * For client-side usage this works natively in the browser.
+ * Generate a styled QR code using canvas.
+ * Supports dot styles, corner styles, logo overlay, frame text, gradients.
  */
-export async function generateQRWithFrame(options: QRFrameOptions): Promise<string> {
+export async function generateStyledQR(options: QRFrameOptions): Promise<string> {
   const {
     data,
     size = 512,
     foregroundColor = '#000000',
     backgroundColor = '#ffffff',
     errorCorrectionLevel = 'H',
+    dotStyle = 'square',
+    cornerStyle = 'square',
     frameText,
-    frameColor = '#000000',
+    frameColor,
     logoUrl,
+    logoFile,
+    gradientType = 'none',
+    gradientColors = ['#000000', '#333333'],
   } = options
 
-  // We work in the browser — use HTMLCanvasElement
   if (typeof document === 'undefined') {
-    // Fallback: return plain QR data URL on the server
     return generateQRDataURL(options)
   }
+
+  // Generate QR matrix
+  const qrData = QRCode.create(data, { errorCorrectionLevel })
+  const modules = qrData.modules
+  const moduleCount = modules.size
+  const moduleData = modules.data
 
   const frameHeight = frameText ? 56 : 0
   const totalHeight = size + frameHeight
@@ -122,34 +201,209 @@ export async function generateQRWithFrame(options: QRFrameOptions): Promise<stri
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas context not available')
 
-  // Fill background for the entire canvas
+  // Fill background
   ctx.fillStyle = backgroundColor
   ctx.fillRect(0, 0, size, totalHeight)
 
-  // Generate the base QR code as a data URL
-  const qrDataUrl = await QRCode.toDataURL(data, {
-    width: size,
-    margin: 2,
-    color: {
-      dark: foregroundColor,
-      light: backgroundColor,
-    },
-    errorCorrectionLevel,
-  })
+  // Apply gradient background if selected
+  if (gradientType !== 'none') {
+    let gradient: CanvasGradient
+    if (gradientType === 'linear') {
+      gradient = ctx.createLinearGradient(0, 0, size, size)
+    } else {
+      gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+    }
+    gradient.addColorStop(0, gradientColors[0])
+    gradient.addColorStop(1, gradientColors[1])
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, size, size)
+  }
 
-  // Draw the QR code onto the canvas
-  const qrImage = await loadImage(qrDataUrl)
-  ctx.drawImage(qrImage, 0, 0, size, size)
+  // Calculate module size
+  const margin = 2
+  const qrSize = size - margin * 2 * (size / moduleCount)
+  const moduleSize = qrSize / moduleCount
+  const offset = (size - moduleCount * moduleSize) / 2
 
-  // Overlay logo in the center if provided
-  if (logoUrl) {
+  // Helper: check if module is part of a finder pattern (corner eye)
+  function isFinderPattern(row: number, col: number): boolean {
+    // Top-left
+    if (row < 7 && col < 7) return true
+    // Top-right
+    if (row < 7 && col >= moduleCount - 7) return true
+    // Bottom-left
+    if (row >= moduleCount - 7 && col < 7) return true
+    return false
+  }
+
+  // Helper: check if module is the outer ring of a finder pattern
+  function isFinderOuter(row: number, col: number): boolean {
+    const corners = [
+      { r: 0, c: 0 },
+      { r: 0, c: moduleCount - 7 },
+      { r: moduleCount - 7, c: 0 },
+    ]
+    for (const corner of corners) {
+      const lr = row - corner.r
+      const lc = col - corner.c
+      if (lr >= 0 && lr < 7 && lc >= 0 && lc < 7) {
+        // Outer ring: first or last row/col of the 7x7
+        if (lr === 0 || lr === 6 || lc === 0 || lc === 6) return true
+        // Inner filled: 3x3 center
+        if (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4) return true
+      }
+    }
+    return false
+  }
+
+  // Get fill style for dots (supports gradient)
+  function getDotFill(): string | CanvasGradient {
+    if (gradientType !== 'none') {
+      return foregroundColor // Use solid for dots over gradient bg
+    }
+    return foregroundColor
+  }
+
+  // Draw data modules (non-finder)
+  const fill = getDotFill()
+  ctx.fillStyle = fill
+
+  for (let row = 0; row < moduleCount; row++) {
+    for (let col = 0; col < moduleCount; col++) {
+      if (!moduleData[row * moduleCount + col]) continue
+      if (isFinderPattern(row, col)) continue
+
+      const x = offset + col * moduleSize
+      const y = offset + row * moduleSize
+      const s = moduleSize * 0.9
+      const gap = moduleSize * 0.05
+
+      ctx.fillStyle = foregroundColor
+
+      switch (dotStyle) {
+        case 'rounded':
+          ctx.beginPath()
+          ctx.roundRect(x + gap, y + gap, s, s, s * 0.3)
+          ctx.fill()
+          break
+        case 'dots':
+          ctx.beginPath()
+          ctx.arc(x + moduleSize / 2, y + moduleSize / 2, s / 2, 0, Math.PI * 2)
+          ctx.fill()
+          break
+        case 'classy':
+          ctx.beginPath()
+          ctx.roundRect(x + gap, y + gap, s, s, [s * 0.5, 0, s * 0.5, 0])
+          ctx.fill()
+          break
+        case 'classy-rounded':
+          ctx.beginPath()
+          ctx.roundRect(x + gap, y + gap, s, s, [s * 0.5, s * 0.1, s * 0.5, s * 0.1])
+          ctx.fill()
+          break
+        case 'extra-rounded':
+          ctx.beginPath()
+          ctx.roundRect(x + gap, y + gap, s, s, s * 0.5)
+          ctx.fill()
+          break
+        case 'square':
+        default:
+          ctx.fillRect(x + gap, y + gap, s, s)
+          break
+      }
+    }
+  }
+
+  // Draw finder patterns (corner eyes) with selected corner style
+  const cornerPositions = [
+    { r: 0, c: 0 },
+    { r: 0, c: moduleCount - 7 },
+    { r: moduleCount - 7, c: 0 },
+  ]
+
+  for (const corner of cornerPositions) {
+    const cx = offset + corner.c * moduleSize
+    const cy = offset + corner.r * moduleSize
+    const outerSize = 7 * moduleSize
+    const innerSize = 5 * moduleSize
+    const coreSize = 3 * moduleSize
+    const innerOffset = moduleSize
+    const coreOffset = 2 * moduleSize
+
+    ctx.fillStyle = foregroundColor
+
+    switch (cornerStyle) {
+      case 'rounded': {
+        // Outer rounded rect
+        ctx.beginPath()
+        ctx.roundRect(cx, cy, outerSize, outerSize, outerSize * 0.15)
+        ctx.fill()
+        // Inner cutout
+        ctx.fillStyle = backgroundColor
+        ctx.beginPath()
+        ctx.roundRect(cx + innerOffset, cy + innerOffset, innerSize, innerSize, innerSize * 0.1)
+        ctx.fill()
+        // Core
+        ctx.fillStyle = foregroundColor
+        ctx.beginPath()
+        ctx.roundRect(cx + coreOffset, cy + coreOffset, coreSize, coreSize, coreSize * 0.15)
+        ctx.fill()
+        break
+      }
+      case 'dots': {
+        // Outer circle
+        ctx.beginPath()
+        ctx.arc(cx + outerSize / 2, cy + outerSize / 2, outerSize / 2, 0, Math.PI * 2)
+        ctx.fill()
+        // Inner cutout circle
+        ctx.fillStyle = backgroundColor
+        ctx.beginPath()
+        ctx.arc(cx + outerSize / 2, cy + outerSize / 2, innerSize / 2, 0, Math.PI * 2)
+        ctx.fill()
+        // Core circle
+        ctx.fillStyle = foregroundColor
+        ctx.beginPath()
+        ctx.arc(cx + outerSize / 2, cy + outerSize / 2, coreSize / 2, 0, Math.PI * 2)
+        ctx.fill()
+        break
+      }
+      case 'extra-rounded': {
+        ctx.beginPath()
+        ctx.roundRect(cx, cy, outerSize, outerSize, outerSize * 0.35)
+        ctx.fill()
+        ctx.fillStyle = backgroundColor
+        ctx.beginPath()
+        ctx.roundRect(cx + innerOffset, cy + innerOffset, innerSize, innerSize, innerSize * 0.3)
+        ctx.fill()
+        ctx.fillStyle = foregroundColor
+        ctx.beginPath()
+        ctx.roundRect(cx + coreOffset, cy + coreOffset, coreSize, coreSize, coreSize * 0.35)
+        ctx.fill()
+        break
+      }
+      case 'square':
+      default: {
+        // Standard square finder
+        ctx.fillRect(cx, cy, outerSize, outerSize)
+        ctx.fillStyle = backgroundColor
+        ctx.fillRect(cx + innerOffset, cy + innerOffset, innerSize, innerSize)
+        ctx.fillStyle = foregroundColor
+        ctx.fillRect(cx + coreOffset, cy + coreOffset, coreSize, coreSize)
+        break
+      }
+    }
+  }
+
+  // Overlay logo in the center
+  const logoSrc = logoFile ? URL.createObjectURL(logoFile) : logoUrl
+  if (logoSrc) {
     try {
-      const logo = await loadImage(logoUrl)
-      const logoSize = Math.floor(size * 0.22) // ~22% of QR size for H-level correction
+      const logo = await loadImage(logoSrc)
+      const logoSize = Math.floor(size * 0.22)
       const logoX = Math.floor((size - logoSize) / 2)
       const logoY = Math.floor((size - logoSize) / 2)
 
-      // White background circle behind logo for contrast
+      // White background behind logo
       const padding = 6
       ctx.fillStyle = backgroundColor
       ctx.beginPath()
@@ -162,10 +416,10 @@ export async function generateQRWithFrame(options: QRFrameOptions): Promise<stri
       )
       ctx.fill()
 
-      // Draw logo
       ctx.drawImage(logo, logoX, logoY, logoSize, logoSize)
+
+      if (logoFile) URL.revokeObjectURL(logoSrc)
     } catch {
-      // Logo failed to load — continue without it
       console.warn('QR logo failed to load, generating without logo')
     }
   }
@@ -176,12 +430,11 @@ export async function generateQRWithFrame(options: QRFrameOptions): Promise<stri
     ctx.fillStyle = foregroundColor
     ctx.fillRect(0, frameY, size, frameHeight)
 
-    ctx.fillStyle = frameColor === foregroundColor ? backgroundColor : frameColor
+    ctx.fillStyle = (frameColor && frameColor !== foregroundColor) ? frameColor : backgroundColor
     ctx.font = `bold ${Math.max(14, Math.floor(size / 24))}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
 
-    // Truncate frame text if too long
     const maxWidth = size - 32
     let displayText = frameText
     let metrics = ctx.measureText(displayText)
@@ -194,6 +447,12 @@ export async function generateQRWithFrame(options: QRFrameOptions): Promise<stri
   }
 
   return canvas.toDataURL('image/png')
+}
+
+// ─── Legacy function (backward compat) ──────────────────────
+
+export async function generateQRWithFrame(options: QRFrameOptions): Promise<string> {
+  return generateStyledQR(options)
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -210,9 +469,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 // ─── Download Helpers ───────────────────────────────────────
 
-/**
- * Trigger a browser download of a data URL.
- */
 export function downloadDataURL(dataUrl: string, filename: string): void {
   const link = document.createElement('a')
   link.download = filename
@@ -222,9 +478,6 @@ export function downloadDataURL(dataUrl: string, filename: string): void {
   document.body.removeChild(link)
 }
 
-/**
- * Trigger a browser download of an SVG string.
- */
 export function downloadSVG(svgString: string, filename: string): void {
   const blob = new Blob([svgString], { type: 'image/svg+xml' })
   const url = URL.createObjectURL(blob)

@@ -1,11 +1,13 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { Bell, LogOut, User, ChevronDown, Search } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { ROLES, BRANDS } from '@/lib/constants'
+import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types/database'
 
 interface TopbarProps {
@@ -14,6 +16,15 @@ interface TopbarProps {
 }
 
 export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
+  const router = useRouter()
+  const supabase = React.useMemo(() => createClient(), [])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
+
   return (
     <header
       className={cn(
@@ -72,7 +83,10 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
               <User className="h-4 w-4" /> Profile
             </DropdownMenu.Item>
             <DropdownMenu.Separator className="my-1 h-px bg-surface-100" />
-            <DropdownMenu.Item className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-danger-500 outline-none cursor-pointer hover:bg-danger-50">
+            <DropdownMenu.Item
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-danger-500 outline-none cursor-pointer hover:bg-danger-50"
+              onClick={handleSignOut}
+            >
               <LogOut className="h-4 w-4" /> Sign out
             </DropdownMenu.Item>
           </DropdownMenu.Content>

@@ -5,11 +5,21 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BRANDS } from '@/lib/constants'
-import { DEMO_PROFILES } from '@/lib/auth/demo-profiles'
-import { ROLES } from '@/lib/constants'
+import { createClient } from '@/lib/supabase/client'
+
+const DEMO_ACCOUNTS = [
+  { email: 'kenneth@localvip.com', name: 'Kenneth', role: 'Super Admin' },
+  { email: 'rick@localvip.com', name: 'Rick', role: 'Internal Admin' },
+  { email: 'principal@mlkschool.edu', name: 'Dr. Sarah Johnson', role: 'School Leader' },
+  { email: 'director@communitystrong.org', name: 'Marcus Williams', role: 'Cause Leader' },
+  { email: 'alex@partner.com', name: 'Alex Rivera', role: 'Onboarding Partner' },
+  { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'Influencer' },
+  { email: 'volunteer@example.com', name: 'Casey Adams', role: 'Volunteer' },
+]
 
 export default function LoginPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [loading, setLoading] = React.useState(false)
@@ -20,22 +30,40 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    // TODO: Replace with Supabase auth
-    // For now, demo mode
-    const profile = Object.values(DEMO_PROFILES).find(p => p.email === email)
-    if (profile) {
-      localStorage.setItem('demo_profile', JSON.stringify(profile))
-      router.push('/dashboard')
-    } else {
-      setError('Invalid credentials. Try a demo account below.')
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (authError) {
+      setError(authError.message)
+      setLoading(false)
+      return
     }
-    setLoading(false)
+
+    router.push('/dashboard')
+    router.refresh()
   }
 
-  const loginAsDemo = (key: string) => {
-    const profile = DEMO_PROFILES[key]
-    localStorage.setItem('demo_profile', JSON.stringify(profile))
+  const loginAsDemo = async (demoEmail: string) => {
+    setLoading(true)
+    setError('')
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: demoEmail,
+      password: 'demo1234',
+    })
+
+    if (authError) {
+      setError(authError.message === 'Invalid login credentials'
+        ? 'Demo accounts not seeded yet. Run: npm run db:seed'
+        : authError.message)
+      setLoading(false)
+      return
+    }
+
     router.push('/dashboard')
+    router.refresh()
   }
 
   return (
@@ -112,14 +140,16 @@ export default function LoginPage() {
           <div className="mt-8 border-t border-surface-200 pt-6">
             <p className="mb-3 text-xs font-medium text-surface-400 uppercase tracking-wider">Demo Accounts</p>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(DEMO_PROFILES).map(([key, profile]) => (
+              {DEMO_ACCOUNTS.map((account) => (
                 <button
-                  key={key}
-                  onClick={() => loginAsDemo(key)}
-                  className="flex flex-col items-start rounded-lg border border-surface-200 p-2.5 text-left text-xs hover:bg-surface-50 transition-colors"
+                  key={account.email}
+                  type="button"
+                  onClick={() => loginAsDemo(account.email)}
+                  disabled={loading}
+                  className="flex flex-col items-start rounded-lg border border-surface-200 p-2.5 text-left text-xs hover:bg-surface-50 transition-colors disabled:opacity-50"
                 >
-                  <span className="font-medium text-surface-800">{profile.full_name.split(' (')[0]}</span>
-                  <span className="text-surface-400">{ROLES[profile.role].label}</span>
+                  <span className="font-medium text-surface-800">{account.name}</span>
+                  <span className="text-surface-400">{account.role}</span>
                 </button>
               ))}
             </div>
