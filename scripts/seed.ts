@@ -1,0 +1,156 @@
+/**
+ * Seed script for LocalVIP Stakeholder Support System.
+ *
+ * Creates demo data in Supabase for testing and development.
+ *
+ * Usage:
+ *   npx tsx scripts/seed.ts
+ *
+ * Prerequisites:
+ *   - NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env.local
+ *   - Database migrations must be applied first (supabase db push)
+ *
+ * Demo accounts (all passwords: "demo1234"):
+ *   - kenneth@localvip.com (Super Admin)
+ *   - rick@localvip.com (Internal Admin)
+ *   - principal@mlkschool.edu (School Leader)
+ *   - director@communitystrong.org (Cause Leader)
+ *   - alex@partner.com (Business Onboarding Partner)
+ *   - jordan@influencer.com (Influencer)
+ *   - volunteer@example.com (Volunteer)
+ */
+
+import { createClient } from '@supabase/supabase-js'
+import * as dotenv from 'dotenv'
+import * as path from 'path'
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!supabaseUrl || !serviceRoleKey) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local')
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, serviceRoleKey, {
+  auth: { autoRefreshToken: false, persistSession: false }
+})
+
+const DEMO_PASSWORD = 'demo1234'
+
+async function seed() {
+  console.log('Seeding LocalVIP Stakeholder Support System...\n')
+
+  // 1. Create cities
+  console.log('Creating cities...')
+  const { data: cities } = await supabase.from('cities').upsert([
+    { id: '00000000-0000-0000-0000-200000000001', name: 'Atlanta', state: 'GA', country: 'US', status: 'active' },
+    { id: '00000000-0000-0000-0000-200000000002', name: 'Charlotte', state: 'NC', country: 'US', status: 'active' },
+    { id: '00000000-0000-0000-0000-200000000003', name: 'Nashville', state: 'TN', country: 'US', status: 'active' },
+    { id: '00000000-0000-0000-0000-200000000004', name: 'Birmingham', state: 'AL', country: 'US', status: 'active' },
+  ], { onConflict: 'id' }).select()
+  console.log(`  Created ${cities?.length || 0} cities`)
+
+  // 2. Create organizations
+  console.log('Creating organizations...')
+  const { data: orgs } = await supabase.from('organizations').upsert([
+    { id: '00000000-0000-0000-0000-100000000001', name: 'MLK Elementary School', type: 'school', brand: 'hato', city_id: '00000000-0000-0000-0000-200000000001', status: 'active' },
+    { id: '00000000-0000-0000-0000-100000000002', name: 'Community Strong Foundation', type: 'nonprofit', brand: 'localvip', city_id: '00000000-0000-0000-0000-200000000001', status: 'active' },
+    { id: '00000000-0000-0000-0000-100000000003', name: 'Grace Community Church', type: 'church', brand: 'localvip', city_id: '00000000-0000-0000-0000-200000000001', status: 'active' },
+  ], { onConflict: 'id' }).select()
+  console.log(`  Created ${orgs?.length || 0} organizations`)
+
+  // 3. Create demo auth users and profiles
+  console.log('Creating demo users...')
+  const demoUsers = [
+    { email: 'kenneth@localvip.com', name: 'Kenneth', role: 'super_admin', brand: 'localvip', referral_code: 'kenneth-admin' },
+    { email: 'rick@localvip.com', name: 'Rick', role: 'internal_admin', brand: 'localvip', referral_code: 'rick-admin' },
+    { email: 'principal@mlkschool.edu', name: 'Dr. Sarah Johnson', role: 'school_leader', brand: 'hato', referral_code: 'sarah-mlk', org_id: '00000000-0000-0000-0000-100000000001' },
+    { email: 'director@communitystrong.org', name: 'Marcus Williams', role: 'cause_leader', brand: 'localvip', referral_code: 'marcus-cs', org_id: '00000000-0000-0000-0000-100000000002' },
+    { email: 'alex@partner.com', name: 'Alex Rivera', role: 'business_onboarding', brand: 'localvip', referral_code: 'alex-biz' },
+    { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'influencer', brand: 'localvip', referral_code: 'jordan-inf' },
+    { email: 'volunteer@example.com', name: 'Casey Adams', role: 'volunteer', brand: 'localvip', referral_code: 'casey-vol' },
+  ]
+
+  for (const user of demoUsers) {
+    // Create auth user (idempotent via email)
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email: user.email,
+      password: DEMO_PASSWORD,
+      email_confirm: true,
+      user_metadata: { full_name: user.name, role: user.role },
+    })
+
+    if (authError && !authError.message.includes('already been registered')) {
+      console.error(`  Error creating ${user.email}:`, authError.message)
+      continue
+    }
+
+    const userId = authUser?.user?.id
+    if (userId) {
+      await supabase.from('profiles').upsert({
+        id: userId,
+        email: user.email,
+        full_name: user.name,
+        role: user.role,
+        brand_context: user.brand,
+        organization_id: (user as any).org_id || null,
+        city_id: '00000000-0000-0000-0000-200000000001',
+        referral_code: user.referral_code,
+        status: 'active',
+      }, { onConflict: 'id' })
+      console.log(`  Created user: ${user.email} (${user.role})`)
+    }
+  }
+
+  // 4. Create campaigns
+  console.log('Creating campaigns...')
+  await supabase.from('campaigns').upsert([
+    { id: '00000000-0000-0000-0000-300000000001', name: 'Atlanta Spring 2026 Launch', brand: 'localvip', city_id: '00000000-0000-0000-0000-200000000001', start_date: '2026-02-01', end_date: '2026-05-31', status: 'active', description: 'Major push to onboard businesses in Midtown, Buckhead, and Decatur.' },
+    { id: '00000000-0000-0000-0000-300000000002', name: 'HATO Back to School', brand: 'hato', city_id: '00000000-0000-0000-0000-200000000001', start_date: '2026-03-01', end_date: '2026-08-15', status: 'active', description: 'Partner with schools for the fall semester HATO program.' },
+    { id: '00000000-0000-0000-0000-300000000003', name: 'Charlotte Pilot', brand: 'localvip', city_id: '00000000-0000-0000-0000-200000000002', start_date: '2026-03-15', end_date: '2026-06-30', status: 'active', description: 'Test market expansion in Charlotte.' },
+  ], { onConflict: 'id' })
+  console.log('  Created 3 campaigns')
+
+  // 5. Create sample businesses
+  console.log('Creating businesses...')
+  await supabase.from('businesses').upsert([
+    { name: 'Main Street Bakery', email: 'hello@mainstreetbakery.com', phone: '(404) 555-0101', website: 'mainstreetbakery.com', city_id: '00000000-0000-0000-0000-200000000001', category: 'Restaurant / Bakery', brand: 'localvip', stage: 'interested', source: 'Walk-in', status: 'active', address: '142 Main St, Atlanta, GA 30301' },
+    { name: 'River Cafe', email: 'info@rivercafe.co', phone: '(404) 555-0303', website: 'rivercafe.co', city_id: '00000000-0000-0000-0000-200000000001', category: 'Restaurant / Cafe', brand: 'localvip', stage: 'onboarded', source: 'Campaign', status: 'active', address: '55 River Walk Dr, Atlanta, GA 30339' },
+    { name: 'Sunrise Yoga Studio', email: 'namaste@sunriseyoga.com', phone: '(678) 555-0404', website: 'sunriseyoga.com', city_id: '00000000-0000-0000-0000-200000000001', category: 'Health & Wellness', brand: 'localvip', stage: 'live', source: 'Cold Outreach', status: 'active', address: '210 Church St, Marietta, GA 30060' },
+    { name: 'Peachtree Auto Repair', email: 'service@peachtreeauto.com', phone: '(404) 555-0202', website: 'peachtreeauto.com', city_id: '00000000-0000-0000-0000-200000000001', category: 'Automotive', brand: 'localvip', stage: 'in_progress', source: 'Referral', status: 'active', address: '890 Peachtree Rd, Atlanta, GA 30308' },
+    { name: 'Buckhead Dental Arts', email: 'front@buckheaddental.com', phone: '(404) 555-0606', website: 'buckheaddental.com', city_id: '00000000-0000-0000-0000-200000000001', category: 'Healthcare / Dental', brand: 'localvip', stage: 'contacted', source: 'Referral', status: 'active', address: '3200 Lenox Rd, Atlanta, GA 30326' },
+  ], { onConflict: 'id' })
+  console.log('  Created 5 businesses')
+
+  // 6. Create sample causes
+  console.log('Creating causes...')
+  await supabase.from('causes').upsert([
+    { name: 'MLK Elementary School', type: 'school', organization_id: '00000000-0000-0000-0000-100000000001', city_id: '00000000-0000-0000-0000-200000000001', brand: 'hato', stage: 'in_progress', source: 'Direct', status: 'active' },
+    { name: 'Community Strong Foundation', type: 'nonprofit', organization_id: '00000000-0000-0000-0000-100000000002', city_id: '00000000-0000-0000-0000-200000000001', brand: 'localvip', stage: 'onboarded', source: 'Direct', status: 'active' },
+    { name: 'Grace Community Church', type: 'church', organization_id: '00000000-0000-0000-0000-100000000003', city_id: '00000000-0000-0000-0000-200000000001', brand: 'localvip', stage: 'interested', source: 'Referral', status: 'active' },
+  ], { onConflict: 'id' })
+  console.log('  Created 3 causes')
+
+  // 7. Create tags
+  console.log('Creating tags...')
+  await supabase.from('tags').upsert([
+    { name: 'priority', category: 'internal' },
+    { name: 'featured', category: 'internal' },
+    { name: 'restaurant', category: 'business' },
+    { name: 'retail', category: 'business' },
+    { name: 'service', category: 'business' },
+    { name: 'k12', category: 'cause' },
+    { name: 'nonprofit', category: 'cause' },
+    { name: 'church', category: 'cause' },
+  ], { onConflict: 'id' })
+  console.log('  Created 8 tags')
+
+  console.log('\nSeed complete!')
+  console.log('\nDemo accounts (password: demo1234):')
+  demoUsers.forEach(u => console.log(`  ${u.email} — ${u.role}`))
+}
+
+seed().catch(console.error)

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(npx --version)",
+      "Bash(git --version)",
+      "Bash(git init:*)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --no-turbopack)",
+      "Bash(npx create-next-app@latest localvip-temp --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --no-turbopack)",
+      "Bash(npm install:*)",
+      "Bash(wc -l C:/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/page.tsx C:/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/[id]/page.tsx C:/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/causes/page.tsx C:/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/qr/generator/page.tsx C:/Users/kenne/Downloads/OnboardingLocalvip/src/lib/qr/generate.ts C:/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/layout.tsx C:/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/qr/layout.tsx)",
+      "Bash(npx next:*)",
+      "Bash(gh auth:*)",
+      "Bash(netlify --version)",
+      "Bash(supabase --version)",
+      "Bash(npx netlify:*)",
+      "Bash(netlify status:*)",
+      "Bash(gh repo:*)"
+    ]
+  }
+}
