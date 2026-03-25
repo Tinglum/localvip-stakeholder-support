@@ -181,6 +181,12 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Stakeholder', href: '/onboarding/stakeholder', icon: 'UserPlus', minLevel: 90 },
     ],
   },
+  {
+    label: 'Business Portal', href: '/portal', icon: 'Briefcase', minLevel: 0,
+    children: [
+      { label: 'My Business', href: '/portal/business', icon: 'Store', minLevel: 0 },
+    ],
+  },
   { label: 'Analytics', href: '/analytics', icon: 'TrendingUp', minLevel: 20 },
   {
     label: 'Admin', href: '/admin', icon: 'Settings', minLevel: 90,

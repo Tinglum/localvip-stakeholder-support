@@ -8,7 +8,7 @@ import {
   MapPin, Send, CheckSquare, QrCode, Plus, FolderOpen, BarChart3,
   FileText, Library, FileDown, Megaphone, Rocket, UserPlus,
   TrendingUp, Settings, Shield, ScrollText, ChevronDown,
-  PanelLeftClose, PanelLeft,
+  PanelLeftClose, PanelLeft, Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NAV_ITEMS, type NavItem, BRANDS, ROLES, ROLE_THEMES } from '@/lib/constants'
@@ -18,7 +18,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Building2, Store, Heart, Users, UserCheck,
   MapPin, Send, CheckSquare, QrCode, Plus, FolderOpen, BarChart3,
   FileText, Library, FileDown, Megaphone, Rocket, UserPlus,
-  TrendingUp, Settings, Shield, ScrollText,
+  TrendingUp, Settings, Shield, ScrollText, Briefcase,
 }
 
 interface SidebarProps {
