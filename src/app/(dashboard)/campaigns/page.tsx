@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { Megaphone, Plus, BarChart3, Users, QrCode, Store, Calendar } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Megaphone, Plus, BarChart3, Users, QrCode, Store, Calendar, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,13 +20,16 @@ import { BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { useCampaigns, useCampaignInsert, useCities } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
+import Link from 'next/link'
 
 export default function CampaignsPage() {
+  const router = useRouter()
   const { profile } = useAuth()
   const { data: campaigns, loading, refetch } = useCampaigns()
   const { data: cities } = useCities()
   const { insert, loading: inserting } = useCampaignInsert()
   const [addOpen, setAddOpen] = React.useState(false)
+  const [expandedId, setExpandedId] = React.useState<string | null>(null)
 
   // Form state
   const [name, setName] = React.useState('')
@@ -57,6 +61,10 @@ export default function CampaignsPage() {
     }
   }
 
+  function toggleExpand(id: string) {
+    setExpandedId(prev => prev === id ? null : id)
+  }
+
   return (
     <div>
       <PageHeader
@@ -80,8 +88,13 @@ export default function CampaignsPage() {
         <div className="space-y-4">
           {campaigns.map(campaign => {
             const city = cities.find(c => c.id === campaign.city_id)
+            const isExpanded = expandedId === campaign.id
             return (
-              <Card key={campaign.id} className="group transition-shadow hover:shadow-card-hover">
+              <Card
+                key={campaign.id}
+                className="group transition-shadow hover:shadow-card-hover cursor-pointer"
+                onClick={() => toggleExpand(campaign.id)}
+              >
                 <CardContent className="p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex-1">
@@ -110,7 +123,58 @@ export default function CampaignsPage() {
                         {city && <span>City: {city.name}, {city.state}</span>}
                       </div>
                     </div>
+                    <div className="flex items-center gap-2">
+                      {isExpanded ? (
+                        <ChevronUp className="h-5 w-5 text-surface-400" />
+                      ) : (
+                        <ChevronDown className="h-5 w-5 text-surface-400" />
+                      )}
+                    </div>
                   </div>
+
+                  {/* Expanded detail section */}
+                  {isExpanded && (
+                    <div className="mt-4 border-t border-surface-100 pt-4" onClick={e => e.stopPropagation()}>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <span className="text-xs font-medium text-surface-400 uppercase tracking-wider">Brand</span>
+                          <p className="mt-1 text-sm text-surface-700">{BRANDS[campaign.brand].label}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-surface-400 uppercase tracking-wider">Status</span>
+                          <p className="mt-1 text-sm text-surface-700 capitalize">{campaign.status}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-surface-400 uppercase tracking-wider">Start Date</span>
+                          <p className="mt-1 text-sm text-surface-700">{campaign.start_date ? formatDate(campaign.start_date) : '—'}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-surface-400 uppercase tracking-wider">End Date</span>
+                          <p className="mt-1 text-sm text-surface-700">{campaign.end_date ? formatDate(campaign.end_date) : '—'}</p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <span className="text-xs font-medium text-surface-400 uppercase tracking-wider">City</span>
+                          <p className="mt-1 text-sm text-surface-700">{city ? `${city.name}, ${city.state}` : '—'}</p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <span className="text-xs font-medium text-surface-400 uppercase tracking-wider">Description</span>
+                          <p className="mt-1 text-sm text-surface-700">{campaign.description || '—'}</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Link href={`/crm/businesses?campaign=${campaign.id}`} onClick={e => e.stopPropagation()}>
+                          <Button variant="outline" size="sm">
+                            <Store className="h-3.5 w-3.5" /> View Businesses
+                          </Button>
+                        </Link>
+                        <Link href={`/crm/outreach?campaign=${campaign.id}`} onClick={e => e.stopPropagation()}>
+                          <Button variant="outline" size="sm">
+                            <BarChart3 className="h-3.5 w-3.5" /> View Outreach
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )

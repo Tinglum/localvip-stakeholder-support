@@ -1,77 +1,21 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import {
-  Heart, ArrowRight, Clock, User, Calendar, Plus,
+  Heart, ArrowRight, Clock, User, Calendar, Plus, Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ProgressSteps } from '@/components/ui/progress-steps'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ONBOARDING_STAGES, BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
+import { useCauses, useCauseUpdate } from '@/lib/supabase/hooks'
+import type { Cause, OnboardingStage } from '@/lib/types/database'
 
-const DEMO_CAUSE_FLOWS = [
-  {
-    id: '1',
-    cause_name: 'MLK Elementary School',
-    type: 'school',
-    brand: 'hato' as const,
-    owner: 'Dr. Sarah Johnson',
-    stage: 'in_progress' as const,
-    started_at: '2024-02-01',
-    steps: [
-      { title: 'Register cause', completed: true },
-      { title: 'Verify nonprofit status', completed: true },
-      { title: 'Assign cause code', completed: true },
-      { title: 'Link supporting businesses', completed: false, current: true },
-      { title: 'Launch campaign', completed: false },
-      { title: 'Active & receiving', completed: false },
-    ],
-    next_action: 'Connect 3 more businesses to HATO school campaign',
-    next_action_date: '2024-03-30',
-  },
-  {
-    id: '2',
-    cause_name: 'Community Strong Foundation',
-    type: 'nonprofit',
-    brand: 'localvip' as const,
-    owner: 'Marcus Williams',
-    stage: 'onboarded' as const,
-    started_at: '2024-01-10',
-    steps: [
-      { title: 'Register cause', completed: true },
-      { title: 'Verify nonprofit status', completed: true },
-      { title: 'Assign cause code', completed: true },
-      { title: 'Link supporting businesses', completed: true },
-      { title: 'Launch campaign', completed: true },
-      { title: 'Active & receiving', completed: false, current: true },
-    ],
-    next_action: 'Review first month donation report',
-    next_action_date: '2024-03-25',
-  },
-  {
-    id: '3',
-    cause_name: 'Grace Community Church',
-    type: 'church',
-    brand: 'localvip' as const,
-    owner: 'Rick (Admin)',
-    stage: 'interested' as const,
-    started_at: '2024-03-12',
-    steps: [
-      { title: 'Register cause', completed: true },
-      { title: 'Verify nonprofit status', completed: false, current: true },
-      { title: 'Assign cause code', completed: false },
-      { title: 'Link supporting businesses', completed: false },
-      { title: 'Launch campaign', completed: false },
-      { title: 'Active & receiving', completed: false },
-    ],
-    next_action: 'Request EIN and 501(c)(3) documentation',
-    next_action_date: '2024-03-27',
-  },
-]
+const STAGE_ORDER: OnboardingStage[] = ['lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live']
 
 function getStageBadgeVariant(stage: string) {
   switch (stage) {
@@ -79,78 +23,243 @@ function getStageBadgeVariant(stage: string) {
     case 'contacted': case 'interested': return 'info' as const
     case 'in_progress': return 'warning' as const
     case 'onboarded': case 'live': return 'success' as const
+    case 'paused': return 'warning' as const
+    case 'declined': return 'danger' as const
     default: return 'default' as const
   }
 }
 
+// ─── Stage change menu ────────────────────────────────────────
+
+function StageChanger({
+  cause,
+  onStageChanged,
+}: {
+  cause: Cause
+  onStageChanged: () => void
+}) {
+  const { update, loading } = useCauseUpdate()
+  const [open, setOpen] = React.useState(false)
+
+  async function handleStageChange(newStage: OnboardingStage) {
+    await update(cause.id, { stage: newStage })
+    setOpen(false)
+    onStageChanged()
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        disabled={loading}
+        className="flex items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-0 px-2.5 py-1 text-xs font-medium text-surface-600 hover:bg-surface-50 transition-colors disabled:opacity-50"
+      >
+        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+        Move Stage
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-lg">
+            {STAGE_ORDER.map(stage => (
+              <button
+                key={stage}
+                onClick={() => handleStageChange(stage)}
+                disabled={stage === cause.stage}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors ${
+                  stage === cause.stage
+                    ? 'bg-surface-50 text-surface-400 cursor-default'
+                    : 'hover:bg-surface-50 text-surface-700'
+                }`}
+              >
+                <Badge variant={getStageBadgeVariant(stage)} dot className="pointer-events-none">
+                  {ONBOARDING_STAGES[stage]?.label}
+                </Badge>
+                {stage === cause.stage && <span className="ml-auto text-surface-400">(current)</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Main page ────────────────────────────────────────────────
+
 export default function CauseOnboardingPage() {
+  const { data: causes, loading, error, refetch } = useCauses()
+  const [view, setView] = React.useState<'pipeline' | 'list'>('pipeline')
+
+  // Group by stage
+  const grouped = React.useMemo(() => {
+    const map: Record<string, Cause[]> = {}
+    for (const stage of STAGE_ORDER) map[stage] = []
+    for (const cause of causes) {
+      const key = STAGE_ORDER.includes(cause.stage) ? cause.stage : 'lead'
+      map[key] = map[key] || []
+      map[key].push(cause)
+    }
+    return map
+  }, [causes])
+
+  // Pipeline counts
+  const stageCounts = React.useMemo(() => {
+    return STAGE_ORDER.reduce((acc, stage) => {
+      acc[stage] = grouped[stage]?.length || 0
+      return acc
+    }, {} as Record<string, number>)
+  }, [grouped])
+
   return (
     <div>
       <PageHeader
         title="Cause Onboarding"
         description="Onboard schools, nonprofits, and community organizations. Track every step."
         actions={
-          <Button>
-            <Plus className="h-4 w-4" /> Start Onboarding
-          </Button>
+          <div className="flex gap-2">
+            <div className="flex rounded-lg border border-surface-200 overflow-hidden">
+              <button
+                onClick={() => setView('pipeline')}
+                className={`px-3 py-1.5 text-xs font-medium ${view === 'pipeline' ? 'bg-surface-100 text-surface-700' : 'text-surface-400'}`}
+              >
+                Pipeline
+              </button>
+              <button
+                onClick={() => setView('list')}
+                className={`px-3 py-1.5 text-xs font-medium ${view === 'list' ? 'bg-surface-100 text-surface-700' : 'text-surface-400'}`}
+              >
+                List
+              </button>
+            </div>
+            <Button>
+              <Plus className="h-4 w-4" /> Add Cause
+            </Button>
+          </div>
         }
       />
 
-      {DEMO_CAUSE_FLOWS.length === 0 ? (
+      {/* Pipeline stage summary */}
+      <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {STAGE_ORDER.map(stage => (
+          <div
+            key={stage}
+            className="flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-0 px-3 py-2"
+          >
+            <Badge variant={getStageBadgeVariant(stage)} dot>
+              {ONBOARDING_STAGES[stage]?.label || stage}
+            </Badge>
+            <span className="text-sm font-semibold text-surface-700">{stageCounts[stage] || 0}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading ? (
+        <div className="space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="py-4 space-y-3">
+                <div className="h-5 w-1/3 rounded bg-surface-100" />
+                <div className="h-3 w-1/2 rounded bg-surface-50" />
+                <div className="h-3 w-1/4 rounded bg-surface-50" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : causes.length === 0 ? (
         <EmptyState
           icon={<Heart className="h-8 w-8" />}
-          title="No cause onboarding flows yet"
-          description="Start onboarding your first cause to track it here."
-          action={{ label: 'Start Onboarding', onClick: () => {} }}
+          title="No causes yet"
+          description="Add your first cause to start tracking the onboarding pipeline."
+          action={{ label: 'Add Cause', onClick: () => {} }}
         />
-      ) : (
-        <div className="space-y-4">
-          {DEMO_CAUSE_FLOWS.map(flow => (
-            <Card key={flow.id} className="transition-shadow hover:shadow-card-hover">
-              <CardContent className="py-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-base font-semibold text-surface-900">{flow.cause_name}</h3>
-                      <Badge variant={getStageBadgeVariant(flow.stage)} dot>
-                        {ONBOARDING_STAGES[flow.stage]?.label}
-                      </Badge>
-                      <Badge variant={flow.brand === 'hato' ? 'hato' : 'info'}>
-                        {BRANDS[flow.brand].label}
-                      </Badge>
-                      <Badge variant="outline">{flow.type}</Badge>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-4 text-xs text-surface-500">
-                      <span className="flex items-center gap-1">
-                        <User className="h-3.5 w-3.5" /> {flow.owner}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5" /> Started {formatDate(flow.started_at)}
-                      </span>
-                    </div>
-                    <div className="mt-4">
-                      <ProgressSteps steps={flow.steps.map(s => ({
-                        label: s.title,
-                        completed: s.completed,
-                        current: s.current,
-                      }))} />
-                    </div>
-                  </div>
-                  <div className="lg:w-72 lg:pl-4 lg:border-l lg:border-surface-100">
-                    <div className="rounded-lg bg-surface-50 p-3">
-                      <p className="text-xs font-medium text-surface-400 uppercase tracking-wider mb-1">Next Action</p>
-                      <p className="text-sm text-surface-700 font-medium">{flow.next_action}</p>
-                      <div className="mt-2 flex items-center justify-between">
-                        <span className="flex items-center gap-1 text-xs text-surface-400">
-                          <Clock className="h-3 w-3" /> Due {formatDate(flow.next_action_date)}
-                        </span>
-                        <Button variant="default" size="sm">
-                          Take Action <ArrowRight className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+      ) : view === 'pipeline' ? (
+        /* Pipeline view: grouped by stage */
+        <div className="space-y-8">
+          {STAGE_ORDER.map(stage => {
+            const items = grouped[stage]
+            if (!items || items.length === 0) return null
+            return (
+              <div key={stage}>
+                <div className="mb-3 flex items-center gap-2">
+                  <Badge variant={getStageBadgeVariant(stage)} dot>
+                    {ONBOARDING_STAGES[stage]?.label}
+                  </Badge>
+                  <span className="text-xs text-surface-400">({items.length})</span>
                 </div>
+                <div className="space-y-3">
+                  {items.map(cause => (
+                    <Card key={cause.id} className="transition-shadow hover:shadow-card-hover">
+                      <CardContent className="py-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-1">
+                              <h3 className="text-base font-semibold text-surface-900">{cause.name}</h3>
+                              <Badge variant={getStageBadgeVariant(cause.stage)} dot>
+                                {ONBOARDING_STAGES[cause.stage]?.label}
+                              </Badge>
+                              <Badge variant={cause.brand === 'hato' ? 'hato' : 'info'}>
+                                {BRANDS[cause.brand]?.label ?? cause.brand}
+                              </Badge>
+                              <Badge variant="outline">{cause.type}</Badge>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-surface-500">
+                              {cause.email && <span>{cause.email}</span>}
+                              {cause.phone && <span>{cause.phone}</span>}
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3.5 w-3.5" /> Added {formatDate(cause.created_at)}
+                              </span>
+                            </div>
+                            {cause.address && (
+                              <p className="mt-1 text-xs text-surface-400">{cause.address}</p>
+                            )}
+                          </div>
+                          <StageChanger cause={cause} onStageChanged={refetch} />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        /* List view: flat */
+        <div className="space-y-3">
+          {causes.map(cause => (
+            <Card key={cause.id} className="transition-shadow hover:shadow-card-hover">
+              <CardContent className="flex items-center gap-4 py-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-100 text-surface-400">
+                  <Heart className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-surface-800 truncate">{cause.name}</h3>
+                    <Badge variant={getStageBadgeVariant(cause.stage)} dot className="shrink-0">
+                      {ONBOARDING_STAGES[cause.stage]?.label}
+                    </Badge>
+                    <Badge variant={cause.brand === 'hato' ? 'hato' : 'info'} className="shrink-0">
+                      {BRANDS[cause.brand]?.label ?? cause.brand}
+                    </Badge>
+                    <Badge variant="outline" className="shrink-0">{cause.type}</Badge>
+                  </div>
+                  <p className="text-xs text-surface-500 truncate">
+                    {[cause.email, cause.phone].filter(Boolean).join(' | ')}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-4 text-xs text-surface-400">
+                  <span>{formatDate(cause.created_at)}</span>
+                </div>
+                <StageChanger cause={cause} onStageChanged={refetch} />
               </CardContent>
             </Card>
           ))}

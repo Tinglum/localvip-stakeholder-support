@@ -3,8 +3,8 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
-  QrCode, Download, Copy, Link as LinkIcon, Grid, List,
-  BarChart3, ExternalLink, Edit, ArrowRight, Plus,
+  QrCode, Download, Copy, Grid, List,
+  BarChart3, Edit, Plus, Trash2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,51 +12,89 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
+import { useQrCodes, useQrCodeDelete } from '@/lib/supabase/hooks'
 import { BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { generateQRDataURL } from '@/lib/qr/generate'
 
-interface QrCodeItem {
-  id: string
-  name: string
-  short_code: string
-  destination_url: string
-  brand: 'localvip' | 'hato'
-  scan_count: number
-  foreground_color: string
-  background_color: string
-  campaign: string | null
-  created_at: string
-}
-
-const DEMO_QR_CODES: QrCodeItem[] = [
-  { id: 'qr-001', name: 'My LocalVIP Referral', short_code: 'alex-ref1', destination_url: 'https://localvip.com/ref/alex-biz', brand: 'localvip', scan_count: 234, foreground_color: '#2563eb', background_color: '#ffffff', campaign: 'Spring 2026', created_at: '2026-02-01' },
-  { id: 'qr-002', name: 'Atlanta Business Card QR', short_code: 'atl-bcard', destination_url: 'https://localvip.com/business', brand: 'localvip', scan_count: 156, foreground_color: '#000000', background_color: '#ffffff', campaign: 'Atlanta Expansion', created_at: '2026-02-15' },
-  { id: 'qr-003', name: 'HATO School Flyer', short_code: 'hato-fly1', destination_url: 'https://helpateacherout.com', brand: 'hato', scan_count: 89, foreground_color: '#b0450c', background_color: '#ffffff', campaign: 'Back to School', created_at: '2026-03-01' },
-  { id: 'qr-004', name: 'Main Street Campaign', short_code: 'main-st', destination_url: 'https://localvip.com/c/main-street', brand: 'localvip', scan_count: 445, foreground_color: '#1e40af', background_color: '#ffffff', campaign: 'Spring 2026', created_at: '2026-01-20' },
-  { id: 'qr-005', name: 'Volunteer Table Tent', short_code: 'vol-tent', destination_url: 'https://localvip.com/volunteer', brand: 'localvip', scan_count: 67, foreground_color: '#15803d', background_color: '#ffffff', campaign: null, created_at: '2026-03-10' },
-  { id: 'qr-006', name: 'HATO Donation Poster', short_code: 'hato-don', destination_url: 'https://helpateacherout.com/donate', brand: 'hato', scan_count: 312, foreground_color: '#ec8012', background_color: '#ffffff', campaign: 'Holiday Giving', created_at: '2025-11-15' },
-]
-
 export default function MyQrCodesPage() {
   const { profile } = useAuth()
+  const { data: qrCodes, loading, error, refetch } = useQrCodes({ created_by: profile.id })
+  const { remove } = useQrCodeDelete()
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [qrPreviews, setQrPreviews] = React.useState<Record<string, string>>({})
+  const [deleting, setDeleting] = React.useState<string | null>(null)
 
+  // Generate preview images when qrCodes change
   React.useEffect(() => {
-    DEMO_QR_CODES.forEach(async (qr) => {
-      const dataUrl = await generateQRDataURL({
-        data: qr.destination_url,
-        size: 200,
-        foregroundColor: qr.foreground_color,
-        backgroundColor: qr.background_color,
-      })
-      setQrPreviews(prev => ({ ...prev, [qr.id]: dataUrl }))
+    qrCodes.forEach(async (qr) => {
+      if (qrPreviews[qr.id]) return // already generated
+      try {
+        const dataUrl = await generateQRDataURL({
+          data: qr.destination_url,
+          size: 200,
+          foregroundColor: qr.foreground_color,
+          backgroundColor: qr.background_color,
+        })
+        setQrPreviews(prev => ({ ...prev, [qr.id]: dataUrl }))
+      } catch {
+        // silently skip preview generation errors
+      }
     })
-  }, [])
+  }, [qrCodes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Are you sure you want to delete this QR code? This cannot be undone.')) return
+    setDeleting(id)
+    const success = await remove(id)
+    setDeleting(null)
+    if (success) {
+      refetch()
+    }
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <PageHeader
+          title="My QR Codes"
+          description="Your personalized, trackable QR codes. Download them for print or share the link."
+          actions={
+            <Link href="/qr/generator"><Button><Plus className="h-4 w-4" /> Generate New</Button></Link>
+          }
+        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map(i => (
+            <Card key={i}>
+              <div className="flex items-center justify-center border-b border-surface-100 bg-surface-50 p-6">
+                <div className="h-32 w-32 animate-pulse rounded bg-surface-200" />
+              </div>
+              <CardContent className="p-4 space-y-2">
+                <div className="h-4 w-24 animate-pulse rounded bg-surface-200" />
+                <div className="h-3 w-full animate-pulse rounded bg-surface-100" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div>
+        <PageHeader title="My QR Codes" description="Your personalized, trackable QR codes." />
+        <Card>
+          <CardContent className="py-8 text-center text-danger-600">
+            Failed to load QR codes: {error}
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -75,7 +113,7 @@ export default function MyQrCodesPage() {
         }
       />
 
-      {DEMO_QR_CODES.length === 0 ? (
+      {qrCodes.length === 0 ? (
         <EmptyState
           icon={<QrCode className="h-8 w-8" />}
           title="You haven't created any QR codes yet"
@@ -84,7 +122,7 @@ export default function MyQrCodesPage() {
         />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {DEMO_QR_CODES.map(qr => (
+          {qrCodes.map(qr => (
             <Card key={qr.id} className="group transition-shadow hover:shadow-card-hover">
               <div className="flex items-center justify-center border-b border-surface-100 bg-surface-50 p-6">
                 {qrPreviews[qr.id] ? (
@@ -95,8 +133,8 @@ export default function MyQrCodesPage() {
               </div>
               <CardContent className="p-4">
                 <div className="mb-2 flex items-center gap-2">
-                  <Badge variant={qr.brand === 'hato' ? 'hato' : 'info'}>{BRANDS[qr.brand].label}</Badge>
-                  {qr.campaign && <Badge variant="outline">{qr.campaign}</Badge>}
+                  <Badge variant={qr.brand === 'hato' ? 'hato' : 'info'}>{BRANDS[qr.brand]?.label ?? qr.brand}</Badge>
+                  <Badge variant="outline">{qr.status}</Badge>
                 </div>
                 <h3 className="text-sm font-semibold text-surface-800">{qr.name}</h3>
                 <p className="mt-0.5 text-xs text-surface-400 truncate">{qr.destination_url}</p>
@@ -109,13 +147,29 @@ export default function MyQrCodesPage() {
                   <span className="text-xs text-surface-400">{formatDate(qr.created_at)}</span>
                 </div>
                 <div className="mt-3 flex gap-1">
-                  <Button variant="ghost" size="icon-sm" title="Copy link" onClick={() => copyToClipboard(qr.destination_url)}>
+                  <Button variant="ghost" size="icon-sm" title="Copy link" onClick={() => copyToClipboard(qr.redirect_url || qr.destination_url)}>
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="ghost" size="icon-sm" title="Edit URL">
-                    <Edit className="h-3.5 w-3.5" />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Delete"
+                    onClick={() => handleDelete(qr.id)}
+                    disabled={deleting === qr.id}
+                    className="text-danger-500 hover:text-danger-700"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="outline" size="sm" className="ml-auto">
+                  <Button variant="outline" size="sm" className="ml-auto" onClick={() => {
+                    if (qrPreviews[qr.id]) {
+                      const link = document.createElement('a')
+                      link.download = `${qr.name || 'qr-code'}.png`
+                      link.href = qrPreviews[qr.id]
+                      document.body.appendChild(link)
+                      link.click()
+                      document.body.removeChild(link)
+                    }
+                  }}>
                     <Download className="h-3.5 w-3.5" /> Download
                   </Button>
                 </div>
@@ -125,7 +179,7 @@ export default function MyQrCodesPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {DEMO_QR_CODES.map(qr => (
+          {qrCodes.map(qr => (
             <Card key={qr.id} className="transition-shadow hover:shadow-card-hover">
               <CardContent className="flex items-center gap-4 py-3">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-50 border border-surface-100">
@@ -138,7 +192,7 @@ export default function MyQrCodesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-surface-800">{qr.name}</span>
-                    <Badge variant={qr.brand === 'hato' ? 'hato' : 'info'}>{BRANDS[qr.brand].label}</Badge>
+                    <Badge variant={qr.brand === 'hato' ? 'hato' : 'info'}>{BRANDS[qr.brand]?.label ?? qr.brand}</Badge>
                   </div>
                   <p className="text-xs text-surface-400 truncate">{qr.destination_url}</p>
                 </div>
@@ -147,8 +201,27 @@ export default function MyQrCodesPage() {
                   <span>{formatDate(qr.created_at)}</span>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon-sm" onClick={() => copyToClipboard(qr.destination_url)}><Copy className="h-3.5 w-3.5" /></Button>
-                  <Button variant="outline" size="sm"><Download className="h-3.5 w-3.5" /> Download</Button>
+                  <Button variant="ghost" size="icon-sm" onClick={() => copyToClipboard(qr.redirect_url || qr.destination_url)}><Copy className="h-3.5 w-3.5" /></Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Delete"
+                    onClick={() => handleDelete(qr.id)}
+                    disabled={deleting === qr.id}
+                    className="text-danger-500 hover:text-danger-700"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    if (qrPreviews[qr.id]) {
+                      const link = document.createElement('a')
+                      link.download = `${qr.name || 'qr-code'}.png`
+                      link.href = qrPreviews[qr.id]
+                      document.body.appendChild(link)
+                      link.click()
+                      document.body.removeChild(link)
+                    }
+                  }}><Download className="h-3.5 w-3.5" /> Download</Button>
                 </div>
               </CardContent>
             </Card>

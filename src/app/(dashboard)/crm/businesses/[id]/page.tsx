@@ -7,6 +7,7 @@ import {
   ArrowLeft, Phone, Mail, Globe, MapPin, Calendar, Clock,
   AlertTriangle, MessageSquare, CheckSquare, StickyNote, QrCode,
   FileText, Send, Plus, ExternalLink, MoreHorizontal, User,
+  Edit2, Check, X, ChevronDown, Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -15,7 +16,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ProgressSteps } from '@/components/ui/progress-steps'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate, formatDateTime } from '@/lib/utils'
-import type { OnboardingStage } from '@/lib/types/database'
+import { useAuth } from '@/lib/auth/context'
+import {
+  useRecord,
+  useOutreach, useOutreachInsert,
+  useTasks, useTaskInsert, useTaskUpdate,
+  useNotes, useNoteInsert,
+  useBusinessUpdate,
+} from '@/lib/supabase/hooks'
+import type { Business, OutreachActivity, Task, Note, OnboardingStage, OutreachType, TaskPriority, TaskStatus } from '@/lib/types/database'
 
 // ─── Stage badge variant ────────────────────────────────────
 
@@ -30,81 +39,6 @@ const STAGE_VARIANT: Record<OnboardingStage, 'default' | 'info' | 'warning' | 's
   declined: 'danger',
 }
 
-// ─── Demo detail data ───────────────────────────────────────
-
-interface BusinessDetail {
-  id: string
-  name: string
-  email: string | null
-  phone: string | null
-  website: string | null
-  address: string
-  city: string
-  category: string
-  stage: OnboardingStage
-  owner: string
-  owner_email: string
-  source: string
-  status: string
-  duplicate_of: string | null
-  duplicate_name: string | null
-  created_at: string
-  updated_at: string
-  first_contact: string | null
-  onboarded_at: string | null
-}
-
-const DEMO_DETAIL: Record<string, BusinessDetail> = {
-  'biz-001': {
-    id: 'biz-001', name: 'Main Street Bakery', email: 'hello@mainstreetbakery.com',
-    phone: '(404) 555-0101', website: 'mainstreetbakery.com',
-    address: '142 Main St, Atlanta, GA 30301', city: 'Atlanta',
-    category: 'Restaurant / Bakery', stage: 'interested', owner: 'Alex Rivera',
-    owner_email: 'alex@partner.com', source: 'Walk-in', status: 'active',
-    duplicate_of: 'biz-009', duplicate_name: 'Main St. Bakery & Cafe',
-    created_at: '2026-02-10T00:00:00Z', updated_at: '2026-03-22T10:30:00Z',
-    first_contact: '2026-02-14T00:00:00Z', onboarded_at: null,
-  },
-  'biz-002': {
-    id: 'biz-002', name: 'Peachtree Auto Repair', email: 'service@peachtreeauto.com',
-    phone: '(404) 555-0202', website: 'peachtreeauto.com',
-    address: '890 Peachtree Rd, Atlanta, GA 30308', city: 'Atlanta',
-    category: 'Automotive', stage: 'in_progress', owner: 'Alex Rivera',
-    owner_email: 'alex@partner.com', source: 'Referral', status: 'active',
-    duplicate_of: null, duplicate_name: null,
-    created_at: '2026-01-22T00:00:00Z', updated_at: '2026-03-21T14:00:00Z',
-    first_contact: '2026-01-25T00:00:00Z', onboarded_at: null,
-  },
-  'biz-003': {
-    id: 'biz-003', name: 'River Cafe', email: 'info@rivercafe.co',
-    phone: '(404) 555-0303', website: 'rivercafe.co',
-    address: '55 River Walk Dr, Atlanta, GA 30339', city: 'Atlanta',
-    category: 'Restaurant / Cafe', stage: 'onboarded', owner: 'Jordan Taylor',
-    owner_email: 'jordan@influencer.com', source: 'Campaign - Spring 2026', status: 'active',
-    duplicate_of: null, duplicate_name: null,
-    created_at: '2026-01-05T00:00:00Z', updated_at: '2026-03-20T09:15:00Z',
-    first_contact: '2026-01-08T00:00:00Z', onboarded_at: '2026-03-15T00:00:00Z',
-  },
-}
-
-const DEMO_ACTIVITY = [
-  { id: 'act-1', type: 'call' as const, summary: 'Follow-up call — owner confirmed interest in LocalVIP partnership. Wants to see sample QR materials.', performed_by: 'Alex Rivera', date: '2026-03-22T10:30:00Z', outcome: 'Interested' },
-  { id: 'act-2', type: 'email' as const, summary: 'Sent introductory email with one-pager PDF and pricing overview.', performed_by: 'Alex Rivera', date: '2026-03-18T09:00:00Z', outcome: 'Delivered' },
-  { id: 'act-3', type: 'in_person' as const, summary: 'Walked in to introduce LocalVIP. Spoke with manager on duty. Left flyer.', performed_by: 'Alex Rivera', date: '2026-02-14T14:00:00Z', outcome: 'Contacted' },
-  { id: 'act-4', type: 'email' as const, summary: 'Added as lead from walk-in outreach in downtown Atlanta territory.', performed_by: 'System', date: '2026-02-10T00:00:00Z', outcome: 'Lead Created' },
-]
-
-const DEMO_TASKS = [
-  { id: 'task-1', title: 'Send QR code sample pack', priority: 'high' as const, status: 'pending' as const, due: '2026-03-25', assignee: 'Alex Rivera' },
-  { id: 'task-2', title: 'Schedule onboarding walkthrough', priority: 'medium' as const, status: 'pending' as const, due: '2026-03-28', assignee: 'Alex Rivera' },
-  { id: 'task-3', title: 'Verify business license info', priority: 'low' as const, status: 'completed' as const, due: '2026-03-15', assignee: 'Casey Adams' },
-]
-
-const DEMO_NOTES = [
-  { id: 'note-1', content: 'Owner (Maria) prefers morning calls before 10 AM. Husband co-owns but is not involved in marketing decisions.', author: 'Alex Rivera', date: '2026-03-22T10:45:00Z' },
-  { id: 'note-2', content: 'Bakery does strong weekend foot traffic. Would be a great candidate for in-store QR standee display.', author: 'Casey Adams', date: '2026-02-14T14:30:00Z' },
-]
-
 // ─── Type icon helper ───────────────────────────────────────
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -114,21 +48,81 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   text: <MessageSquare className="h-4 w-4" />,
   social_media: <Globe className="h-4 w-4" />,
   referral: <User className="h-4 w-4" />,
+  other: <MoreHorizontal className="h-4 w-4" />,
 }
 
 const PRIORITY_VARIANT: Record<string, 'danger' | 'warning' | 'info' | 'default'> = {
   urgent: 'danger', high: 'warning', medium: 'info', low: 'default',
 }
 
+const OUTREACH_TYPES: { value: OutreachType; label: string }[] = [
+  { value: 'call', label: 'Call' },
+  { value: 'email', label: 'Email' },
+  { value: 'text', label: 'Text' },
+  { value: 'in_person', label: 'In Person' },
+  { value: 'social_media', label: 'Social Media' },
+  { value: 'referral', label: 'Referral' },
+  { value: 'other', label: 'Other' },
+]
+
+const STAGE_OPTIONS: OnboardingStage[] = [
+  'lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live', 'paused', 'declined',
+]
+
 // ─── Component ──────────────────────────────────────────────
 
 export default function BusinessDetailPage() {
   const params = useParams()
   const id = params.id as string
+  const { profile } = useAuth()
   const [activeTab, setActiveTab] = React.useState<'overview' | 'activity' | 'tasks' | 'notes' | 'qr' | 'materials'>('overview')
 
-  // Resolve demo data (fallback to first entry for unknown IDs)
-  const biz = DEMO_DETAIL[id] || DEMO_DETAIL['biz-001']
+  // ── Data hooks ──
+  const { data: biz, loading: bizLoading } = useRecord<Business>('businesses', id)
+  const { data: outreach, loading: outreachLoading, refetch: refetchOutreach } = useOutreach({ entity_id: id })
+  const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ entity_id: id })
+  const { data: notes, loading: notesLoading, refetch: refetchNotes } = useNotes({ entity_id: id })
+
+  // ── Mutation hooks ──
+  const { update: updateBusiness, loading: updateLoading } = useBusinessUpdate()
+  const { insert: insertOutreach, loading: insertingOutreach } = useOutreachInsert()
+  const { insert: insertTask, loading: insertingTask } = useTaskInsert()
+  const { insert: insertNote, loading: insertingNote } = useNoteInsert()
+  const { update: updateTask } = useTaskUpdate()
+
+  // ── Stage change handler ──
+  const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
+
+  const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
+    if (!biz) return
+    await updateBusiness(biz.id, { stage: newStage })
+    setStageDropdownOpen(false)
+    // Force a page reload to reflect change since useRecord doesn't have refetch
+    window.location.reload()
+  }, [biz, updateBusiness])
+
+  // ── Loading state ──
+  if (bizLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
+        <span className="ml-2 text-sm text-surface-500">Loading business...</span>
+      </div>
+    )
+  }
+
+  if (!biz) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertTriangle className="mb-3 h-10 w-10 text-warning-500" />
+        <p className="text-sm font-medium text-surface-700">Business not found</p>
+        <p className="mt-1 text-xs text-surface-400">The business record could not be loaded.</p>
+        <Link href="/crm/businesses" className="mt-4">
+          <Button variant="outline" size="sm"><ArrowLeft className="h-3.5 w-3.5" /> Back to Businesses</Button>
+        </Link>
+      </div>
+    )
+  }
 
   const stageOrder = ONBOARDING_STAGES[biz.stage].order
   const onboardingSteps = [
@@ -158,12 +152,19 @@ export default function BusinessDetailPage() {
           <div className="flex-1">
             <p className="text-sm font-medium text-warning-800">Potential duplicate detected</p>
             <p className="text-xs text-warning-600">
-              This record may be a duplicate of <span className="font-medium">{biz.duplicate_name}</span>. Review and merge if needed.
+              This record may be a duplicate. Review and merge if needed.
             </p>
           </div>
           <Button variant="outline" size="sm">Review</Button>
         </div>
       )}
+
+      {/* Onboarding Progress */}
+      <Card>
+        <CardContent className="py-4">
+          <ProgressSteps steps={onboardingSteps} />
+        </CardContent>
+      </Card>
 
       {/* Page Header */}
       <PageHeader
@@ -174,12 +175,41 @@ export default function BusinessDetailPage() {
           { label: biz.name },
         ]}
         actions={
-          <div className="flex items-center gap-2">
-            <Badge variant={STAGE_VARIANT[biz.stage]} dot className="text-sm">
-              {ONBOARDING_STAGES[biz.stage].label}
-            </Badge>
+          <div className="flex items-center gap-3">
+            {/* Stage Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setStageDropdownOpen(!stageDropdownOpen)}
+                className="flex items-center gap-1.5"
+                disabled={updateLoading}
+              >
+                <Badge variant={STAGE_VARIANT[biz.stage]} dot className="text-sm">
+                  {updateLoading ? 'Updating...' : ONBOARDING_STAGES[biz.stage].label}
+                </Badge>
+                <ChevronDown className="h-3.5 w-3.5 text-surface-400" />
+              </button>
+              {stageDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setStageDropdownOpen(false)} />
+                  <div className="absolute right-0 z-40 mt-1 w-44 rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-lg">
+                    {STAGE_OPTIONS.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => handleStageChange(s)}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-50 ${
+                          biz.stage === s ? 'font-medium text-brand-700 bg-brand-50' : 'text-surface-700'
+                        }`}
+                      >
+                        {ONBOARDING_STAGES[s].label}
+                        {biz.stage === s && <Check className="ml-auto h-3.5 w-3.5" />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <span className="text-xs text-surface-400">owned by</span>
-            <span className="text-sm font-medium text-surface-700">{biz.owner}</span>
+            <span className="text-sm font-medium text-surface-700">{biz.owner_id ?? 'Unassigned'}</span>
           </div>
         }
       />
@@ -221,132 +251,44 @@ export default function BusinessDetailPage() {
 
       {/* Tab Content */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Contact Info */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Contact Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <InfoRow icon={<Mail className="h-4 w-4" />} label="Email" value={biz.email} link={biz.email ? `mailto:${biz.email}` : undefined} />
-                <InfoRow icon={<Phone className="h-4 w-4" />} label="Phone" value={biz.phone} link={biz.phone ? `tel:${biz.phone}` : undefined} />
-                <InfoRow icon={<Globe className="h-4 w-4" />} label="Website" value={biz.website} link={biz.website ? `https://${biz.website}` : undefined} />
-                <InfoRow icon={<MapPin className="h-4 w-4" />} label="Address" value={biz.address} />
-                <InfoRow icon={<User className="h-4 w-4" />} label="Category" value={biz.category} />
-                <InfoRow icon={<Send className="h-4 w-4" />} label="Source" value={biz.source} />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Key Dates */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Key Dates</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <DateRow label="Created" value={biz.created_at} />
-              <DateRow label="First Contact" value={biz.first_contact} />
-              <DateRow label="Onboarded" value={biz.onboarded_at} />
-              <DateRow label="Last Updated" value={biz.updated_at} />
-            </CardContent>
-          </Card>
-
-          {/* Onboarding Progress */}
-          <Card className="lg:col-span-3">
-            <CardHeader>
-              <CardTitle>Onboarding Progress</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ProgressSteps steps={onboardingSteps} />
-            </CardContent>
-          </Card>
-        </div>
+        <OverviewTab biz={biz} updateBusiness={updateBusiness} updateLoading={updateLoading} />
       )}
 
       {activeTab === 'activity' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-surface-800">Outreach Timeline</h3>
-            <Button size="sm"><Plus className="h-3.5 w-3.5" /> Log Activity</Button>
-          </div>
-          <div className="relative space-y-0">
-            {DEMO_ACTIVITY.map((act, idx) => (
-              <div key={act.id} className="relative flex gap-4 pb-6">
-                {/* Timeline line */}
-                {idx < DEMO_ACTIVITY.length - 1 && (
-                  <div className="absolute left-[15px] top-8 h-full w-px bg-surface-200" />
-                )}
-                {/* Icon */}
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-100 text-surface-500">
-                  {TYPE_ICONS[act.type] || <Clock className="h-4 w-4" />}
-                </div>
-                {/* Content */}
-                <div className="flex-1 rounded-lg border border-surface-200 bg-surface-0 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-surface-500">{act.performed_by}</span>
-                    <span className="text-xs text-surface-400">{formatDateTime(act.date)}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-surface-700">{act.summary}</p>
-                  <div className="mt-2">
-                    <Badge variant="default">{act.outcome}</Badge>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ActivityTab
+          biz={biz}
+          outreach={outreach}
+          loading={outreachLoading}
+          onInsert={insertOutreach}
+          inserting={insertingOutreach}
+          refetch={refetchOutreach}
+          userId={profile.id}
+        />
       )}
 
       {activeTab === 'tasks' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-surface-800">Tasks for {biz.name}</h3>
-            <Button size="sm"><Plus className="h-3.5 w-3.5" /> Add Task</Button>
-          </div>
-          <div className="space-y-2">
-            {DEMO_TASKS.map((task) => (
-              <Card key={task.id}>
-                <CardContent className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    <CheckSquare className={`h-4 w-4 ${task.status === 'completed' ? 'text-success-500' : 'text-surface-400'}`} />
-                    <div>
-                      <p className={`text-sm font-medium ${task.status === 'completed' ? 'text-surface-400 line-through' : 'text-surface-800'}`}>
-                        {task.title}
-                      </p>
-                      <p className="text-xs text-surface-400">{task.assignee} &middot; Due {formatDate(task.due)}</p>
-                    </div>
-                  </div>
-                  <Badge variant={PRIORITY_VARIANT[task.priority]}>
-                    {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                  </Badge>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+        <TasksTab
+          biz={biz}
+          tasks={tasks}
+          loading={tasksLoading}
+          onInsert={insertTask}
+          inserting={insertingTask}
+          onUpdate={updateTask}
+          refetch={refetchTasks}
+          userId={profile.id}
+        />
       )}
 
       {activeTab === 'notes' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-surface-800">Notes</h3>
-            <Button size="sm"><Plus className="h-3.5 w-3.5" /> Add Note</Button>
-          </div>
-          <div className="space-y-3">
-            {DEMO_NOTES.map((note) => (
-              <Card key={note.id}>
-                <CardContent className="py-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-surface-600">{note.author}</span>
-                    <span className="text-xs text-surface-400">{formatDateTime(note.date)}</span>
-                  </div>
-                  <p className="text-sm text-surface-700">{note.content}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+        <NotesTab
+          biz={biz}
+          notes={notes}
+          loading={notesLoading}
+          onInsert={insertNote}
+          inserting={insertingNote}
+          refetch={refetchNotes}
+          userId={profile.id}
+        />
       )}
 
       {activeTab === 'qr' && (
@@ -391,29 +333,537 @@ export default function BusinessDetailPage() {
   )
 }
 
-// ─── Sub-components ─────────────────────────────────────────
+// ─── Overview Tab ───────────────────────────────────────────
 
-function InfoRow({ icon, label, value, link }: { icon: React.ReactNode; label: string; value: string | null; link?: string }) {
+function OverviewTab({
+  biz,
+  updateBusiness,
+  updateLoading,
+}: {
+  biz: Business
+  updateBusiness: (id: string, changes: Partial<Business>) => Promise<Business | null>
+  updateLoading: boolean
+}) {
+  const [editingField, setEditingField] = React.useState<string | null>(null)
+  const [editValue, setEditValue] = React.useState('')
+
+  const startEdit = (field: string, value: string | null) => {
+    setEditingField(field)
+    setEditValue(value ?? '')
+  }
+
+  const cancelEdit = () => {
+    setEditingField(null)
+    setEditValue('')
+  }
+
+  const saveEdit = async (field: string) => {
+    await updateBusiness(biz.id, { [field]: editValue || null } as Partial<Business>)
+    setEditingField(null)
+    setEditValue('')
+    window.location.reload()
+  }
+
+  const editableFields: { field: keyof Business; icon: React.ReactNode; label: string; link?: (v: string) => string }[] = [
+    { field: 'email', icon: <Mail className="h-4 w-4" />, label: 'Email', link: (v) => `mailto:${v}` },
+    { field: 'phone', icon: <Phone className="h-4 w-4" />, label: 'Phone', link: (v) => `tel:${v}` },
+    { field: 'website', icon: <Globe className="h-4 w-4" />, label: 'Website', link: (v) => v.startsWith('http') ? v : `https://${v}` },
+    { field: 'address', icon: <MapPin className="h-4 w-4" />, label: 'Address' },
+    { field: 'category', icon: <User className="h-4 w-4" />, label: 'Category' },
+    { field: 'source', icon: <Send className="h-4 w-4" />, label: 'Source' },
+  ]
+
   return (
-    <div className="flex items-start gap-3">
-      <span className="mt-0.5 text-surface-400">{icon}</span>
-      <div>
-        <p className="text-xs text-surface-400">{label}</p>
-        {value ? (
-          link ? (
-            <a href={link} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:underline">
-              {value}
-            </a>
-          ) : (
-            <p className="text-sm text-surface-700">{value}</p>
-          )
-        ) : (
-          <p className="text-sm italic text-surface-400">Not provided</p>
-        )}
-      </div>
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* Contact Info */}
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle>Contact Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {editableFields.map(({ field, icon, label, link }) => {
+              const value = biz[field] as string | null
+              const isEditing = editingField === field
+
+              return (
+                <div key={field} className="flex items-start gap-3 group">
+                  <span className="mt-0.5 text-surface-400">{icon}</span>
+                  <div className="flex-1">
+                    <p className="text-xs text-surface-400">{label}</p>
+                    {isEditing ? (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <input
+                          type="text"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="flex-1 rounded border border-surface-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit(field)
+                            if (e.key === 'Escape') cancelEdit()
+                          }}
+                        />
+                        <button
+                          onClick={() => saveEdit(field)}
+                          disabled={updateLoading}
+                          className="rounded p-1 text-success-600 hover:bg-success-50"
+                        >
+                          {updateLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                        </button>
+                        <button onClick={cancelEdit} className="rounded p-1 text-surface-400 hover:bg-surface-100">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        {value ? (
+                          link ? (
+                            <a href={link(value)} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:underline">
+                              {value}
+                            </a>
+                          ) : (
+                            <p className="text-sm text-surface-700">{value}</p>
+                          )
+                        ) : (
+                          <p className="text-sm italic text-surface-400">Not provided</p>
+                        )}
+                        <button
+                          onClick={() => startEdit(field, value)}
+                          className="ml-1 rounded p-0.5 text-surface-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-surface-500"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Key Dates */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Key Dates</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <DateRow label="Created" value={biz.created_at} />
+          <DateRow label="Last Updated" value={biz.updated_at} />
+        </CardContent>
+      </Card>
     </div>
   )
 }
+
+// ─── Activity Tab ───────────────────────────────────────────
+
+function ActivityTab({
+  biz,
+  outreach,
+  loading,
+  onInsert,
+  inserting,
+  refetch,
+  userId,
+}: {
+  biz: Business
+  outreach: OutreachActivity[]
+  loading: boolean
+  onInsert: (record: Partial<OutreachActivity>) => Promise<OutreachActivity | null>
+  inserting: boolean
+  refetch: () => void
+  userId: string
+}) {
+  const [showForm, setShowForm] = React.useState(false)
+  const [formType, setFormType] = React.useState<OutreachType>('call')
+  const [formSubject, setFormSubject] = React.useState('')
+  const [formBody, setFormBody] = React.useState('')
+  const [formOutcome, setFormOutcome] = React.useState('')
+
+  const handleSubmit = async () => {
+    if (!formBody.trim()) return
+    await onInsert({
+      type: formType,
+      subject: formSubject || null,
+      body: formBody,
+      entity_type: 'business',
+      entity_id: biz.id,
+      performed_by: userId,
+      outcome: formOutcome || null,
+    })
+    setFormType('call')
+    setFormSubject('')
+    setFormBody('')
+    setFormOutcome('')
+    setShowForm(false)
+    refetch()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-surface-800">Outreach Timeline</h3>
+        <Button size="sm" onClick={() => setShowForm(!showForm)}>
+          <Plus className="h-3.5 w-3.5" /> Log Activity
+        </Button>
+      </div>
+
+      {/* New Activity Form */}
+      {showForm && (
+        <Card>
+          <CardContent className="space-y-3 py-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-surface-500">Type</label>
+                <select
+                  value={formType}
+                  onChange={(e) => setFormType(e.target.value as OutreachType)}
+                  className="w-full rounded border border-surface-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+                >
+                  {OUTREACH_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-surface-500">Outcome</label>
+                <input
+                  type="text"
+                  value={formOutcome}
+                  onChange={(e) => setFormOutcome(e.target.value)}
+                  placeholder="e.g. Interested, Left voicemail"
+                  className="w-full rounded border border-surface-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-surface-500">Subject</label>
+              <input
+                type="text"
+                value={formSubject}
+                onChange={(e) => setFormSubject(e.target.value)}
+                placeholder="Brief subject line"
+                className="w-full rounded border border-surface-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-surface-500">Notes / Details</label>
+              <textarea
+                value={formBody}
+                onChange={(e) => setFormBody(e.target.value)}
+                rows={3}
+                placeholder="Describe what happened..."
+                className="w-full rounded border border-surface-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button size="sm" onClick={handleSubmit} disabled={inserting || !formBody.trim()}>
+                {inserting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                Save Activity
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Timeline */}
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
+        </div>
+      ) : outreach.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center py-8 text-center">
+            <Send className="mb-3 h-10 w-10 text-surface-300" />
+            <p className="text-sm font-medium text-surface-700">No outreach activity yet</p>
+            <p className="mt-1 text-xs text-surface-400">Log your first activity to start tracking this relationship.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="relative space-y-0">
+          {outreach.map((act, idx) => (
+            <div key={act.id} className="relative flex gap-4 pb-6">
+              {idx < outreach.length - 1 && (
+                <div className="absolute left-[15px] top-8 h-full w-px bg-surface-200" />
+              )}
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-100 text-surface-500">
+                {TYPE_ICONS[act.type] || <Clock className="h-4 w-4" />}
+              </div>
+              <div className="flex-1 rounded-lg border border-surface-200 bg-surface-0 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-surface-500">{act.type.replace('_', ' ')}</span>
+                  <span className="text-xs text-surface-400">{formatDateTime(act.created_at)}</span>
+                </div>
+                {act.subject && (
+                  <p className="mt-0.5 text-sm font-medium text-surface-800">{act.subject}</p>
+                )}
+                {act.body && (
+                  <p className="mt-1 text-sm text-surface-700">{act.body}</p>
+                )}
+                {act.outcome && (
+                  <div className="mt-2">
+                    <Badge variant="default">{act.outcome}</Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Tasks Tab ──────────────────────────────────────────────
+
+function TasksTab({
+  biz,
+  tasks,
+  loading,
+  onInsert,
+  inserting,
+  onUpdate,
+  refetch,
+  userId,
+}: {
+  biz: Business
+  tasks: Task[]
+  loading: boolean
+  onInsert: (record: Partial<Task>) => Promise<Task | null>
+  inserting: boolean
+  onUpdate: (id: string, changes: Partial<Task>) => Promise<Task | null>
+  refetch: () => void
+  userId: string
+}) {
+  const [showForm, setShowForm] = React.useState(false)
+  const [title, setTitle] = React.useState('')
+  const [priority, setPriority] = React.useState<TaskPriority>('medium')
+  const [dueDate, setDueDate] = React.useState('')
+
+  const handleSubmit = async () => {
+    if (!title.trim()) return
+    await onInsert({
+      title,
+      priority,
+      status: 'pending',
+      entity_type: 'business',
+      entity_id: biz.id,
+      created_by: userId,
+      assigned_to: userId,
+      due_date: dueDate || null,
+    })
+    setTitle('')
+    setPriority('medium')
+    setDueDate('')
+    setShowForm(false)
+    refetch()
+  }
+
+  const toggleComplete = async (task: Task) => {
+    const newStatus: TaskStatus = task.status === 'completed' ? 'pending' : 'completed'
+    await onUpdate(task.id, {
+      status: newStatus,
+      completed_at: newStatus === 'completed' ? new Date().toISOString() : null,
+    })
+    refetch()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-surface-800">Tasks for {biz.name}</h3>
+        <Button size="sm" onClick={() => setShowForm(!showForm)}>
+          <Plus className="h-3.5 w-3.5" /> Add Task
+        </Button>
+      </div>
+
+      {/* New Task Form */}
+      {showForm && (
+        <Card>
+          <CardContent className="space-y-3 py-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-surface-500">Task Title</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="What needs to be done?"
+                className="w-full rounded border border-surface-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-surface-500">Priority</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                  className="w-full rounded border border-surface-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-surface-500">Due Date</label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full rounded border border-surface-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button size="sm" onClick={handleSubmit} disabled={inserting || !title.trim()}>
+                {inserting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                Add Task
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Task List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
+        </div>
+      ) : tasks.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center py-8 text-center">
+            <CheckSquare className="mb-3 h-10 w-10 text-surface-300" />
+            <p className="text-sm font-medium text-surface-700">No tasks yet</p>
+            <p className="mt-1 text-xs text-surface-400">Create a task to track what needs to be done for this business.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {tasks.map((task) => (
+            <Card key={task.id}>
+              <CardContent className="flex items-center justify-between py-3">
+                <div className="flex items-center gap-3">
+                  <button onClick={() => toggleComplete(task)}>
+                    <CheckSquare className={`h-4 w-4 ${task.status === 'completed' ? 'text-success-500' : 'text-surface-400'}`} />
+                  </button>
+                  <div>
+                    <p className={`text-sm font-medium ${task.status === 'completed' ? 'text-surface-400 line-through' : 'text-surface-800'}`}>
+                      {task.title}
+                    </p>
+                    <p className="text-xs text-surface-400">
+                      {task.due_date ? `Due ${formatDate(task.due_date)}` : 'No due date'}
+                    </p>
+                  </div>
+                </div>
+                <Badge variant={PRIORITY_VARIANT[task.priority]}>
+                  {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                </Badge>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Notes Tab ──────────────────────────────────────────────
+
+function NotesTab({
+  biz,
+  notes,
+  loading,
+  onInsert,
+  inserting,
+  refetch,
+  userId,
+}: {
+  biz: Business
+  notes: Note[]
+  loading: boolean
+  onInsert: (record: Partial<Note>) => Promise<Note | null>
+  inserting: boolean
+  refetch: () => void
+  userId: string
+}) {
+  const [newNote, setNewNote] = React.useState('')
+
+  const handleSubmit = async () => {
+    if (!newNote.trim()) return
+    await onInsert({
+      content: newNote,
+      entity_type: 'business',
+      entity_id: biz.id,
+      created_by: userId,
+      is_internal: false,
+    })
+    setNewNote('')
+    refetch()
+  }
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-surface-800">Notes</h3>
+
+      {/* Add Note Form */}
+      <Card>
+        <CardContent className="py-4">
+          <textarea
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            rows={3}
+            placeholder="Write a note..."
+            className="w-full rounded border border-surface-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <div className="mt-2 flex justify-end">
+            <Button size="sm" onClick={handleSubmit} disabled={inserting || !newNote.trim()}>
+              {inserting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Add Note
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Notes List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
+        </div>
+      ) : notes.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center py-8 text-center">
+            <StickyNote className="mb-3 h-10 w-10 text-surface-300" />
+            <p className="text-sm font-medium text-surface-700">No notes yet</p>
+            <p className="mt-1 text-xs text-surface-400">Add a note to capture important information about this business.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {notes.map((note) => (
+            <Card key={note.id}>
+              <CardContent className="py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-surface-600">{note.created_by}</span>
+                  <span className="text-xs text-surface-400">{formatDateTime(note.created_at)}</span>
+                </div>
+                <p className="text-sm text-surface-700">{note.content}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Sub-components ─────────────────────────────────────────
 
 function DateRow({ label, value }: { label: string; value: string | null }) {
   return (

@@ -14,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDate } from '@/lib/utils'
-import { useTasks, useTaskInsert, useTaskUpdate } from '@/lib/supabase/hooks'
+import { useTasks, useTaskInsert, useTaskUpdate, useProfiles, useBusinesses, useCauses, useContacts } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
 import type { Task, TaskPriority, TaskStatus } from '@/lib/types/database'
 
@@ -24,6 +24,50 @@ const PRIORITY_VARIANT: Record<TaskPriority, 'default' | 'info' | 'warning' | 'd
 
 const STATUS_VARIANT: Record<TaskStatus, 'default' | 'info' | 'success' | 'warning'> = {
   pending: 'default', in_progress: 'info', completed: 'success', cancelled: 'warning',
+}
+
+function SearchableSelect({ options, value, onChange, placeholder }: {
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+}) {
+  const [search, setSearch] = React.useState('')
+  const [open, setOpen] = React.useState(false)
+  const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+  const selected = options.find(o => o.value === value)
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={open ? search : (selected?.label || '')}
+        onChange={e => { setSearch(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+      />
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-lg">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-surface-400">No results</p>
+            ) : filtered.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(o.value); setSearch(''); setOpen(false) }}
+                className="flex w-full items-center px-3 py-1.5 text-sm text-left hover:bg-surface-50 text-surface-700"
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 export default function TasksPage() {
@@ -38,6 +82,9 @@ export default function TasksPage() {
   const [priority, setPriority] = React.useState<TaskPriority>('medium')
   const [status, setStatus] = React.useState<TaskStatus>('pending')
   const [dueDate, setDueDate] = React.useState('')
+  const [assignedTo, setAssignedTo] = React.useState('')
+  const [entityType, setEntityType] = React.useState<'business' | 'cause' | 'contact' | ''>('')
+  const [entityId, setEntityId] = React.useState('')
 
   const { data: tasks, loading, error, refetch } = useTasks(
     Object.keys(filters).length > 0 ? filters : undefined
@@ -45,12 +92,49 @@ export default function TasksPage() {
   const { insert } = useTaskInsert()
   const { update } = useTaskUpdate()
 
+  // Lookup data
+  const { data: profiles } = useProfiles()
+  const { data: businesses } = useBusinesses()
+  const { data: causes } = useCauses()
+  const { data: contacts } = useContacts()
+
+  // Build lookup maps
+  const profileMap = React.useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const p of profiles) map[p.id] = p.full_name
+    return map
+  }, [profiles])
+
+  const entityMap = React.useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const b of businesses) map[b.id] = b.name
+    for (const c of causes) map[c.id] = c.name
+    for (const ct of contacts) map[ct.id] = `${ct.first_name} ${ct.last_name}`
+    return map
+  }, [businesses, causes, contacts])
+
+  // Dropdown options
+  const profileOptions = React.useMemo(
+    () => profiles.map(p => ({ value: p.id, label: p.full_name })),
+    [profiles]
+  )
+
+  const entityOptions = React.useMemo(() => {
+    if (entityType === 'business') return businesses.map(b => ({ value: b.id, label: b.name }))
+    if (entityType === 'cause') return causes.map(c => ({ value: c.id, label: c.name }))
+    if (entityType === 'contact') return contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))
+    return []
+  }, [entityType, businesses, causes, contacts])
+
   const resetForm = () => {
     setTitle('')
     setDescription('')
     setPriority('medium')
     setStatus('pending')
     setDueDate('')
+    setAssignedTo('')
+    setEntityType('')
+    setEntityId('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,8 +147,10 @@ export default function TasksPage() {
       priority,
       status,
       due_date: dueDate || null,
-      assigned_to: profile.id,
+      assigned_to: assignedTo || profile.id,
       created_by: profile.id,
+      entity_type: entityType || null,
+      entity_id: entityId || null,
     })
 
     setSubmitting(false)
@@ -96,6 +182,26 @@ export default function TasksPage() {
           {t.title}
         </button>
       ),
+    },
+    {
+      key: 'assigned_to', header: 'Assigned To', width: '140px',
+      render: (t) => t.assigned_to
+        ? <span className="text-sm text-surface-600">{profileMap[t.assigned_to] || 'Unknown'}</span>
+        : <span className="text-surface-300">&mdash;</span>,
+    },
+    {
+      key: 'entity_type', header: 'Linked Entity', width: '160px',
+      render: (t) => {
+        if (!t.entity_type || !t.entity_id) return <span className="text-surface-300">&mdash;</span>
+        return (
+          <span className="flex items-center gap-1.5">
+            <Badge variant={t.entity_type === 'business' ? 'info' : t.entity_type === 'cause' ? 'warning' : 'default'} className="text-[10px]">
+              {t.entity_type}
+            </Badge>
+            <span className="text-sm text-surface-600 truncate">{entityMap[t.entity_id] || 'Unknown'}</span>
+          </span>
+        )
+      },
     },
     { key: 'priority', header: 'Priority', width: '100px', render: (t) => <Badge variant={PRIORITY_VARIANT[t.priority]} dot>{t.priority}</Badge> },
     { key: 'status', header: 'Status', width: '120px', render: (t) => <Badge variant={STATUS_VARIANT[t.status]}>{t.status.replace('_', ' ')}</Badge> },
@@ -170,6 +276,15 @@ export default function TasksPage() {
               <label className="mb-1 block text-sm font-medium text-surface-700">Description</label>
               <Textarea placeholder="Add context or details..." value={description} onChange={e => setDescription(e.target.value)} />
             </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-surface-700">Assign To</label>
+              <SearchableSelect
+                options={profileOptions}
+                value={assignedTo}
+                onChange={setAssignedTo}
+                placeholder="Search team members..."
+              />
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-surface-700">Priority</label>
@@ -198,6 +313,33 @@ export default function TasksPage() {
               <div>
                 <label className="mb-1 block text-sm font-medium text-surface-700">Due Date</label>
                 <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-surface-700">Link to Entity</label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <select
+                    className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                    value={entityType}
+                    onChange={e => { setEntityType(e.target.value as typeof entityType); setEntityId('') }}
+                  >
+                    <option value="">None</option>
+                    <option value="business">Business</option>
+                    <option value="cause">Cause</option>
+                    <option value="contact">Contact</option>
+                  </select>
+                </div>
+                <div>
+                  {entityType && (
+                    <SearchableSelect
+                      options={entityOptions}
+                      value={entityId}
+                      onChange={setEntityId}
+                      placeholder={`Search ${entityType}s...`}
+                    />
+                  )}
+                </div>
               </div>
             </div>
             <DialogFooter>

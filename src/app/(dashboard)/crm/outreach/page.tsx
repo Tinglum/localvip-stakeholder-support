@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDateTime } from '@/lib/utils'
-import { useOutreach, useOutreachInsert } from '@/lib/supabase/hooks'
+import { useOutreach, useOutreachInsert, useProfiles, useBusinesses, useCauses, useContacts } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
 import type { OutreachActivity, OutreachType } from '@/lib/types/database'
 
@@ -29,6 +29,50 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   social_media: <ExternalLink className="h-3.5 w-3.5" />,
   referral: <Users className="h-3.5 w-3.5" />,
   other: <Send className="h-3.5 w-3.5" />,
+}
+
+function SearchableSelect({ options, value, onChange, placeholder }: {
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+}) {
+  const [search, setSearch] = React.useState('')
+  const [open, setOpen] = React.useState(false)
+  const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+  const selected = options.find(o => o.value === value)
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={open ? search : (selected?.label || '')}
+        onChange={e => { setSearch(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+      />
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-lg">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-surface-400">No results</p>
+            ) : filtered.map(o => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(o.value); setSearch(''); setOpen(false) }}
+                className="flex w-full items-center px-3 py-1.5 text-sm text-left hover:bg-surface-50 text-surface-700"
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 export default function OutreachPage() {
@@ -47,6 +91,35 @@ export default function OutreachPage() {
 
   const { data: activities, loading, error, refetch } = useOutreach()
   const { insert } = useOutreachInsert()
+
+  // Lookup data
+  const { data: profiles } = useProfiles()
+  const { data: businesses } = useBusinesses()
+  const { data: causes } = useCauses()
+  const { data: contacts } = useContacts()
+
+  // Build lookup maps
+  const profileMap = React.useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const p of profiles) map[p.id] = p.full_name
+    return map
+  }, [profiles])
+
+  const entityMap = React.useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const b of businesses) map[b.id] = b.name
+    for (const c of causes) map[c.id] = c.name
+    for (const ct of contacts) map[ct.id] = `${ct.first_name} ${ct.last_name}`
+    return map
+  }, [businesses, causes, contacts])
+
+  // Dropdown options based on entity type
+  const entityOptions = React.useMemo(() => {
+    if (entityType === 'business') return businesses.map(b => ({ value: b.id, label: b.name }))
+    if (entityType === 'cause') return causes.map(c => ({ value: c.id, label: c.name }))
+    if (entityType === 'contact') return contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))
+    return []
+  }, [entityType, businesses, causes, contacts])
 
   const resetForm = () => {
     setType('')
@@ -104,11 +177,20 @@ export default function OutreachPage() {
         : <span className="text-surface-300">&mdash;</span>,
     },
     {
-      key: 'entity_type', header: 'Entity Type', width: '110px',
+      key: 'entity_type', header: 'Entity', width: '200px',
       render: (o) => (
-        <Badge variant={o.entity_type === 'business' ? 'info' : o.entity_type === 'cause' ? 'hato' : 'default'} className="text-[10px]">
-          {o.entity_type}
-        </Badge>
+        <span className="flex items-center gap-1.5">
+          <Badge variant={o.entity_type === 'business' ? 'info' : o.entity_type === 'cause' ? 'hato' : 'default'} className="text-[10px]">
+            {o.entity_type}
+          </Badge>
+          <span className="text-sm text-surface-600 truncate">{entityMap[o.entity_id] || 'Unknown'}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'performed_by', header: 'Performed By', width: '140px',
+      render: (o) => (
+        <span className="text-sm text-surface-600">{profileMap[o.performed_by] || 'Unknown'}</span>
       ),
     },
     {
@@ -190,27 +272,41 @@ export default function OutreachPage() {
                 </select>
               </div>
               <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700">Performed By</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={profile?.full_name || ''}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-50 px-3 text-sm text-surface-500 cursor-not-allowed"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-surface-700">Subject</label>
+              <Input placeholder="Brief subject line" value={subject} onChange={e => setSubject(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
                 <label className="mb-1 block text-sm font-medium text-surface-700">Entity Type *</label>
                 <select
                   className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
                   required
                   value={entityType}
-                  onChange={e => setEntityType(e.target.value as 'business' | 'cause' | 'contact')}
+                  onChange={e => { setEntityType(e.target.value as 'business' | 'cause' | 'contact'); setEntityId('') }}
                 >
                   <option value="business">Business</option>
                   <option value="cause">Cause</option>
                   <option value="contact">Contact</option>
                 </select>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Subject</label>
-                <Input placeholder="Brief subject line" value={subject} onChange={e => setSubject(e.target.value)} />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Entity ID *</label>
-                <Input required placeholder="Entity UUID" value={entityId} onChange={e => setEntityId(e.target.value)} />
+                <label className="mb-1 block text-sm font-medium text-surface-700">Entity *</label>
+                <SearchableSelect
+                  options={entityOptions}
+                  value={entityId}
+                  onChange={setEntityId}
+                  placeholder={`Search ${entityType}s...`}
+                />
               </div>
             </div>
             <div>

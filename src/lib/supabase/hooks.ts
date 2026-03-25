@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { createClient } from './client'
-import type { Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note } from '@/lib/types/database'
+import type { Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material } from '@/lib/types/database'
 
 // ─── Generic fetch hook ─────────────────────────────────────
 
@@ -194,6 +194,15 @@ export function useProfiles() {
 export function useQrCodes(filters?: Record<string, string>) {
   return useSupabaseQuery<QrCode>('qr_codes', { filters })
 }
+export function useQrCodeInsert() { return useSupabaseInsert<QrCode>('qr_codes') }
+export function useQrCodeDelete() { return useSupabaseDelete('qr_codes') }
+
+export function useMaterials(filters?: Record<string, string>) {
+  return useSupabaseQuery<Material>('materials', { filters })
+}
+export function useMaterialInsert() { return useSupabaseInsert<Material>('materials') }
+
+export function useCauseUpdate() { return useSupabaseUpdate<Cause>('causes') }
 
 export function useNotes(filters?: Record<string, string>) {
   return useSupabaseQuery<Note>('notes', { filters })

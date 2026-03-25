@@ -27,6 +27,77 @@ export function hasMinLevel(role: UserRole, minLevel: number): boolean {
   return ROLES[role].level >= minLevel
 }
 
+// ─── Role theme colors ──────────────────────────────────────
+export const ROLE_THEMES: Record<UserRole, { primary: string; accent: string; bg: string; sidebar: string; label: string }> = {
+  super_admin:        { primary: '#dc2626', accent: '#ef4444', bg: 'bg-red-50',     sidebar: 'border-red-500',    label: 'Super Admin' },
+  internal_admin:     { primary: '#ea580c', accent: '#f97316', bg: 'bg-orange-50',  sidebar: 'border-orange-500', label: 'Internal Admin' },
+  school_leader:      { primary: '#0891b2', accent: '#06b6d4', bg: 'bg-cyan-50',    sidebar: 'border-cyan-500',   label: 'School Leader' },
+  cause_leader:       { primary: '#7c3aed', accent: '#8b5cf6', bg: 'bg-violet-50',  sidebar: 'border-violet-500', label: 'Cause Leader' },
+  business_onboarding:{ primary: '#2563eb', accent: '#3b82f6', bg: 'bg-blue-50',    sidebar: 'border-blue-500',   label: 'Onboarding Partner' },
+  influencer:         { primary: '#db2777', accent: '#ec4899', bg: 'bg-pink-50',    sidebar: 'border-pink-500',   label: 'Influencer' },
+  affiliate:          { primary: '#059669', accent: '#10b981', bg: 'bg-emerald-50', sidebar: 'border-emerald-500',label: 'Affiliate' },
+  volunteer:          { primary: '#ca8a04', accent: '#eab308', bg: 'bg-yellow-50',  sidebar: 'border-yellow-500', label: 'Volunteer' },
+  intern:             { primary: '#6366f1', accent: '#818cf8', bg: 'bg-indigo-50',  sidebar: 'border-indigo-500', label: 'Intern' },
+}
+
+// ─── Role-specific tools/links ──────────────────────────────
+export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: string; description: string }[]> = {
+  super_admin: [
+    { label: 'User Management', href: '/admin/users', icon: 'Users', description: 'Manage all team members' },
+    { label: 'System Analytics', href: '/analytics', icon: 'TrendingUp', description: 'Platform-wide metrics' },
+    { label: 'Audit Log', href: '/admin/audit', icon: 'ScrollText', description: 'Review all actions' },
+    { label: 'All Campaigns', href: '/campaigns', icon: 'Megaphone', description: 'Manage campaigns' },
+  ],
+  internal_admin: [
+    { label: 'User Management', href: '/admin/users', icon: 'Users', description: 'Manage team members' },
+    { label: 'Analytics', href: '/analytics', icon: 'TrendingUp', description: 'Platform metrics' },
+    { label: 'Campaigns', href: '/campaigns', icon: 'Megaphone', description: 'Manage campaigns' },
+    { label: 'CRM Overview', href: '/crm/businesses', icon: 'Store', description: 'All businesses' },
+  ],
+  school_leader: [
+    { label: 'My Schools', href: '/crm/causes', icon: 'Heart', description: 'Schools I manage' },
+    { label: 'Business Contacts', href: '/crm/businesses', icon: 'Store', description: 'Local businesses' },
+    { label: 'Generate QR Code', href: '/qr/generator', icon: 'QrCode', description: 'Create QR codes' },
+    { label: 'My Materials', href: '/materials/mine', icon: 'FileDown', description: 'HATO materials' },
+  ],
+  cause_leader: [
+    { label: 'My Causes', href: '/crm/causes', icon: 'Heart', description: 'Causes I lead' },
+    { label: 'Business Pipeline', href: '/onboarding/business', icon: 'Store', description: 'Onboarding pipeline' },
+    { label: 'QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'My QR codes' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Download materials' },
+  ],
+  business_onboarding: [
+    { label: 'My Businesses', href: '/onboarding/business', icon: 'Store', description: 'Businesses I onboard' },
+    { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record activities' },
+    { label: 'QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'My QR codes' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Onboarding materials' },
+  ],
+  influencer: [
+    { label: 'My QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'Share & track' },
+    { label: 'Generate QR', href: '/qr/generator', icon: 'Plus', description: 'Create new QR' },
+    { label: 'My Stats', href: '/analytics', icon: 'BarChart3', description: 'Track your impact' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Promo materials' },
+  ],
+  affiliate: [
+    { label: 'My QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'Share & track' },
+    { label: 'My Stats', href: '/analytics', icon: 'BarChart3', description: 'Referral metrics' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Marketing materials' },
+    { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record activities' },
+  ],
+  volunteer: [
+    { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record visits & calls' },
+    { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', description: 'Action items' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Scripts & flyers' },
+    { label: 'My QR Code', href: '/qr/mine', icon: 'QrCode', description: 'Your personal QR' },
+  ],
+  intern: [
+    { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', description: 'Assigned tasks' },
+    { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record activities' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Training materials' },
+    { label: 'My Stats', href: '/analytics', icon: 'BarChart3', description: 'Track progress' },
+  ],
+}
+
 // ─── Brand definitions ───────────────────────────────────────
 
 export const BRANDS: Record<Brand, { label: string; color: string; accent: string }> = {

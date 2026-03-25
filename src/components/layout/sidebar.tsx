@@ -11,9 +11,8 @@ import {
   PanelLeftClose, PanelLeft,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { NAV_ITEMS, type NavItem, BRANDS } from '@/lib/constants'
+import { NAV_ITEMS, type NavItem, BRANDS, ROLES, ROLE_THEMES } from '@/lib/constants'
 import type { UserRole, Brand } from '@/lib/types/database'
-import { ROLES } from '@/lib/constants'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Building2, Store, Heart, Users, UserCheck,
@@ -39,7 +38,8 @@ export function Sidebar({ role, brand, collapsed, onToggle }: SidebarProps) {
     <aside
       className={cn(
         'fixed left-0 top-0 z-40 flex h-full flex-col border-r border-surface-200 bg-surface-0 transition-all duration-200 no-print',
-        collapsed ? 'w-16' : 'w-60'
+        collapsed ? 'w-16' : 'w-60',
+        `border-t-4 ${ROLE_THEMES[role]?.sidebar || ''}`
       )}
     >
       {/* Logo */}
@@ -58,6 +58,13 @@ export function Sidebar({ role, brand, collapsed, onToggle }: SidebarProps) {
           </div>
         )}
       </div>
+
+      {/* Role badge */}
+      {!collapsed && (
+        <div className={cn('mx-3 mb-2 rounded-md px-2.5 py-1 text-xs font-medium text-center', ROLE_THEMES[role]?.bg)} style={{ color: ROLE_THEMES[role]?.primary }}>
+          {ROLE_THEMES[role]?.label || role}
+        </div>
+      )}
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 scrollbar-thin">
