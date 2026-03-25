@@ -60,7 +60,10 @@
       "Bash(node -e \"let d='''''''';process.stdin.on\\(''''data'''',c=>d+=c\\);process.stdin.on\\(''''end'''',\\(\\)=>{const j=JSON.parse\\(d\\);j.slice\\(0,5\\).forEach\\(\\(x,i\\)=>console.log\\(''''#''''+\\(i+1\\),x.state,x.created_at,x.context,x.title||''''no-title'''',x.error_message||''''OK''''\\)\\)}\\)\")",
       "Bash(node -e \"let d='''''''';process.stdin.on\\(''''data'''',c=>d+=c\\);process.stdin.on\\(''''end'''',\\(\\)=>{const p=JSON.parse\\(d\\);console.log\\(''''scripts:'''',JSON.stringify\\(p.scripts\\)\\);console.log\\(''''next:'''',p.dependencies.next\\);console.log\\(''''netlify plugin:'''',p.devDependencies[''''@netlify/plugin-nextjs'''']||''''none''''\\)}\\)\")",
       "Bash(node -e \"let d='''''''';process.stdin.on\\(''''data'''',c=>d+=c\\);process.stdin.on\\(''''end'''',\\(\\)=>{const j=JSON.parse\\(d\\);const d0=j[0];console.log\\(''''id:'''',d0.id\\);console.log\\(''''state:'''',d0.state\\);console.log\\(''''framework:'''',d0.framework\\);console.log\\(''''published_at:'''',d0.published_at\\);console.log\\(''''deploy_url:'''',d0.deploy_url\\);console.log\\(''''log_access_attributes:'''',JSON.stringify\\(d0.log_access_attributes\\)\\)}\\)\")",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(node -e \"let d='''''''';process.stdin.on\\(''''data'''',c=>d+=c\\);process.stdin.on\\(''''end'''',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\(j[0].state, j[0].created_at, j[0].error_message||''''OK''''\\)}\\)\")",
+      "Bash(wc -l \"C:\\\\Users\\\\kenne\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-kenne-Downloads-OnboardingLocalvip\\\\1bc24205-5ee3-40f0-abaa-1f41328b189b\\\\tasks\"\"*.output 2>/dev/null || echo \"No output files yet \")",
+      "Bash(wc -l src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/causes/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/contacts/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/tasks/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/outreach/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/cities/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/stakeholders/page.tsx src/app/\\\\\\(dashboard\\\\\\)/dashboard/page.tsx)"
     ]
   }
 }

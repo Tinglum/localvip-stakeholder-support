@@ -3,8 +3,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Store, Plus, AlertTriangle, Phone, Mail, Globe,
-  MapPin, Calendar, MoreHorizontal,
+  Store, Plus, AlertTriangle, MapPin,
 } from 'lucide-react'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
@@ -18,7 +17,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
-import type { OnboardingStage, EntityStatus } from '@/lib/types/database'
+import { useBusinesses, useBusinessInsert, useCities } from '@/lib/supabase/hooks'
+import { useAuth } from '@/lib/auth/context'
+import type { Business, City, OnboardingStage } from '@/lib/types/database'
 
 // ─── Stage badge color map ──────────────────────────────────
 
@@ -33,125 +34,22 @@ const STAGE_BADGE_VARIANT: Record<OnboardingStage, 'default' | 'info' | 'warning
   declined: 'danger',
 }
 
-// ─── Demo data ──────────────────────────────────────────────
+// ─── Source options ──────────────────────────────────────────
 
-interface BusinessRow {
-  id: string
-  name: string
-  email: string | null
-  phone: string | null
-  website: string | null
-  city: string
-  stage: OnboardingStage
-  owner: string
-  source: string
-  last_activity: string
-  status: EntityStatus
-  duplicate_of: string | null
-  category: string
-  address: string
-  created_at: string
-}
-
-const DEMO_BUSINESSES: BusinessRow[] = [
-  {
-    id: 'biz-001', name: 'Main Street Bakery', email: 'hello@mainstreetbakery.com',
-    phone: '(404) 555-0101', website: 'mainstreetbakery.com', city: 'Atlanta',
-    stage: 'interested', owner: 'Alex Rivera', source: 'Walk-in',
-    last_activity: '2026-03-22T10:30:00Z', status: 'active', duplicate_of: 'biz-009',
-    category: 'Restaurant / Bakery', address: '142 Main St, Atlanta, GA 30301',
-    created_at: '2026-02-10T00:00:00Z',
-  },
-  {
-    id: 'biz-002', name: 'Peachtree Auto Repair', email: 'service@peachtreeauto.com',
-    phone: '(404) 555-0202', website: 'peachtreeauto.com', city: 'Atlanta',
-    stage: 'in_progress', owner: 'Alex Rivera', source: 'Referral',
-    last_activity: '2026-03-21T14:00:00Z', status: 'active', duplicate_of: null,
-    category: 'Automotive', address: '890 Peachtree Rd, Atlanta, GA 30308',
-    created_at: '2026-01-22T00:00:00Z',
-  },
-  {
-    id: 'biz-003', name: 'River Cafe', email: 'info@rivercafe.co',
-    phone: '(404) 555-0303', website: 'rivercafe.co', city: 'Atlanta',
-    stage: 'onboarded', owner: 'Jordan Taylor', source: 'Campaign - Spring 2026',
-    last_activity: '2026-03-20T09:15:00Z', status: 'active', duplicate_of: null,
-    category: 'Restaurant / Cafe', address: '55 River Walk Dr, Atlanta, GA 30339',
-    created_at: '2026-01-05T00:00:00Z',
-  },
-  {
-    id: 'biz-004', name: 'Sunrise Yoga Studio', email: 'namaste@sunriseyoga.com',
-    phone: '(678) 555-0404', website: 'sunriseyoga.com', city: 'Marietta',
-    stage: 'live', owner: 'Casey Adams', source: 'Cold Outreach',
-    last_activity: '2026-03-18T16:45:00Z', status: 'active', duplicate_of: null,
-    category: 'Health & Wellness', address: '210 Church St, Marietta, GA 30060',
-    created_at: '2025-11-12T00:00:00Z',
-  },
-  {
-    id: 'biz-005', name: 'Southern Paws Pet Grooming', email: 'bark@southernpaws.com',
-    phone: '(770) 555-0505', website: null, city: 'Decatur',
-    stage: 'lead', owner: 'Unassigned', source: 'Website Form',
-    last_activity: '2026-03-23T08:00:00Z', status: 'active', duplicate_of: null,
-    category: 'Pet Services', address: '77 College Ave, Decatur, GA 30030',
-    created_at: '2026-03-22T00:00:00Z',
-  },
-  {
-    id: 'biz-006', name: 'Buckhead Dental Arts', email: 'front@buckheaddental.com',
-    phone: '(404) 555-0606', website: 'buckheaddental.com', city: 'Atlanta',
-    stage: 'contacted', owner: 'Alex Rivera', source: 'Referral',
-    last_activity: '2026-03-19T11:30:00Z', status: 'active', duplicate_of: null,
-    category: 'Healthcare / Dental', address: '3200 Lenox Rd, Atlanta, GA 30326',
-    created_at: '2026-03-01T00:00:00Z',
-  },
-  {
-    id: 'biz-007', name: 'Midtown Print Shop', email: 'orders@midtownprint.com',
-    phone: '(404) 555-0707', website: 'midtownprint.com', city: 'Atlanta',
-    stage: 'declined', owner: 'Jordan Taylor', source: 'Walk-in',
-    last_activity: '2026-03-10T15:00:00Z', status: 'inactive', duplicate_of: null,
-    category: 'Print & Design', address: '520 10th St NW, Atlanta, GA 30318',
-    created_at: '2026-02-14T00:00:00Z',
-  },
-  {
-    id: 'biz-008', name: 'Roswell Family Pharmacy', email: 'rx@roswellfamily.com',
-    phone: '(770) 555-0808', website: 'roswellfamilyrx.com', city: 'Roswell',
-    stage: 'in_progress', owner: 'Casey Adams', source: 'Cold Outreach',
-    last_activity: '2026-03-21T10:00:00Z', status: 'active', duplicate_of: null,
-    category: 'Healthcare / Pharmacy', address: '1025 Alpharetta St, Roswell, GA 30075',
-    created_at: '2026-02-20T00:00:00Z',
-  },
-  {
-    id: 'biz-009', name: 'Main St. Bakery & Cafe', email: 'contact@mainstreetbakery.com',
-    phone: '(404) 555-0101', website: 'mainstreetbakery.com', city: 'Atlanta',
-    stage: 'lead', owner: 'Unassigned', source: 'Website Form',
-    last_activity: '2026-03-15T12:00:00Z', status: 'active', duplicate_of: 'biz-001',
-    category: 'Restaurant / Bakery', address: '142 Main St, Atlanta, GA 30301',
-    created_at: '2026-03-14T00:00:00Z',
-  },
-  {
-    id: 'biz-010', name: 'EastSide Barbershop', email: null,
-    phone: '(404) 555-1010', website: null, city: 'Atlanta',
-    stage: 'contacted', owner: 'Jordan Taylor', source: 'Walk-in',
-    last_activity: '2026-03-17T14:30:00Z', status: 'active', duplicate_of: null,
-    category: 'Personal Care', address: '308 Flat Shoals Ave, Atlanta, GA 30316',
-    created_at: '2026-03-05T00:00:00Z',
-  },
+const SOURCE_OPTIONS = [
+  { value: 'Walk-in', label: 'Walk-in' },
+  { value: 'Referral', label: 'Referral' },
+  { value: 'Cold Outreach', label: 'Cold Outreach' },
+  { value: 'Website Form', label: 'Website Form' },
+  { value: 'Campaign', label: 'Campaign' },
+  { value: 'Social Media', label: 'Social Media' },
+  { value: 'Other', label: 'Other' },
 ]
 
 // ─── Filter options ─────────────────────────────────────────
 
 const STAGE_OPTIONS = Object.entries(ONBOARDING_STAGES).map(([value, def]) => ({
   value, label: def.label,
-}))
-
-const CITY_OPTIONS = [...new Set(DEMO_BUSINESSES.map(b => b.city))].map(c => ({
-  value: c, label: c,
-}))
-
-const SOURCE_OPTIONS = [...new Set(DEMO_BUSINESSES.map(b => b.source))].map(s => ({
-  value: s, label: s,
-}))
-
-const OWNER_OPTIONS = [...new Set(DEMO_BUSINESSES.map(b => b.owner))].map(o => ({
-  value: o, label: o,
 }))
 
 // ─── Relative time helper ───────────────────────────────────
@@ -169,26 +67,114 @@ function relativeTime(dateStr: string): string {
   return formatDate(dateStr)
 }
 
+// ─── Business row type with resolved city name ──────────────
+
+interface BusinessRow extends Business {
+  city_name: string
+}
+
 // ─── Component ──────────────────────────────────────────────
 
 export default function BusinessesPage() {
   const router = useRouter()
+  const { profile } = useAuth()
   const [addOpen, setAddOpen] = React.useState(false)
   const [filters, setFilters] = React.useState<Record<string, string>>({})
-  const [businesses] = React.useState<BusinessRow[]>(DEMO_BUSINESSES)
+
+  // Form state
+  const [formName, setFormName] = React.useState('')
+  const [formEmail, setFormEmail] = React.useState('')
+  const [formPhone, setFormPhone] = React.useState('')
+  const [formWebsite, setFormWebsite] = React.useState('')
+  const [formCategory, setFormCategory] = React.useState('')
+  const [formSource, setFormSource] = React.useState('')
+  const [formCityId, setFormCityId] = React.useState('')
+  const [formBrand, setFormBrand] = React.useState<'localvip' | 'hato'>('localvip')
+  const [formStage, setFormStage] = React.useState<OnboardingStage>('lead')
+
+  // Data hooks
+  const { data: businesses, loading, refetch } = useBusinesses()
+  const { data: cities } = useCities()
+  const { insert, loading: inserting, error: insertError } = useBusinessInsert()
+
+  // Build a city lookup map
+  const cityMap = React.useMemo(() => {
+    const map: Record<string, City> = {}
+    for (const city of cities) {
+      map[city.id] = city
+    }
+    return map
+  }, [cities])
+
+  // City filter options derived from real cities
+  const cityFilterOptions = React.useMemo(() =>
+    cities.map(c => ({ value: c.id, label: c.name })),
+    [cities]
+  )
+
+  // Source filter options derived from actual data
+  const sourceFilterOptions = React.useMemo(() => {
+    const sources = [...new Set(businesses.map(b => b.source).filter(Boolean))] as string[]
+    return sources.map(s => ({ value: s, label: s }))
+  }, [businesses])
+
+  // Enrich businesses with city_name
+  const enrichedBusinesses: BusinessRow[] = React.useMemo(() =>
+    businesses.map(b => ({
+      ...b,
+      city_name: b.city_id ? (cityMap[b.city_id]?.name ?? '—') : '—',
+    })),
+    [businesses, cityMap]
+  )
 
   // Apply external filters (DataTable handles search internally)
   const filtered = React.useMemo(() => {
-    let result = businesses
+    let result = enrichedBusinesses
     if (filters.stage) result = result.filter(b => b.stage === filters.stage)
-    if (filters.city) result = result.filter(b => b.city === filters.city)
+    if (filters.city_id) result = result.filter(b => b.city_id === filters.city_id)
     if (filters.source) result = result.filter(b => b.source === filters.source)
-    if (filters.owner) result = result.filter(b => b.owner === filters.owner)
     return result
-  }, [businesses, filters])
+  }, [enrichedBusinesses, filters])
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }))
+  }
+
+  const resetForm = () => {
+    setFormName('')
+    setFormEmail('')
+    setFormPhone('')
+    setFormWebsite('')
+    setFormCategory('')
+    setFormSource('')
+    setFormCityId('')
+    setFormBrand('localvip')
+    setFormStage('lead')
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    const record: Partial<Business> = {
+      name: formName,
+      email: formEmail || null,
+      phone: formPhone || null,
+      website: formWebsite || null,
+      category: formCategory || null,
+      source: formSource || null,
+      city_id: formCityId || null,
+      brand: formBrand,
+      stage: formStage,
+      owner_id: profile.id,
+      status: 'active',
+    }
+
+    const result = await insert(record)
+    if (result) {
+      setAddOpen(false)
+      resetForm()
+      refetch()
+    }
   }
 
   const columns: Column<BusinessRow>[] = [
@@ -208,13 +194,13 @@ export default function BusinessesPage() {
       ),
     },
     {
-      key: 'city',
+      key: 'city_name',
       header: 'City',
       sortable: true,
       render: (biz) => (
         <span className="flex items-center gap-1 text-surface-600">
           <MapPin className="h-3.5 w-3.5 text-surface-400" />
-          {biz.city}
+          {biz.city_name}
         </span>
       ),
     },
@@ -229,27 +215,28 @@ export default function BusinessesPage() {
       ),
     },
     {
-      key: 'owner',
-      header: 'Owner',
+      key: 'category',
+      header: 'Category',
       sortable: true,
       render: (biz) => (
-        <span className={biz.owner === 'Unassigned' ? 'text-surface-400 italic' : 'text-surface-700'}>
-          {biz.owner}
-        </span>
+        <span className="text-surface-600">{biz.category ?? '—'}</span>
       ),
     },
     {
       key: 'source',
       header: 'Source',
       sortable: true,
+      render: (biz) => (
+        <span className="text-surface-600">{biz.source ?? '—'}</span>
+      ),
     },
     {
-      key: 'last_activity',
-      header: 'Last Activity',
+      key: 'updated_at',
+      header: 'Last Updated',
       sortable: true,
       render: (biz) => (
         <span className="text-surface-500 text-xs">
-          {relativeTime(biz.last_activity)}
+          {relativeTime(biz.updated_at)}
         </span>
       ),
     },
@@ -282,12 +269,12 @@ export default function BusinessesPage() {
         keyField="id"
         searchable
         searchPlaceholder="Search by name, email, or phone..."
+        loading={loading}
         onRowClick={(biz) => router.push(`/crm/businesses/${biz.id}`)}
         filters={[
           { key: 'stage', label: 'All Stages', options: STAGE_OPTIONS },
-          { key: 'city', label: 'All Cities', options: CITY_OPTIONS },
-          { key: 'source', label: 'All Sources', options: SOURCE_OPTIONS },
-          { key: 'owner', label: 'All Owners', options: OWNER_OPTIONS },
+          { key: 'city_id', label: 'All Cities', options: cityFilterOptions },
+          { key: 'source', label: 'All Sources', options: sourceFilterOptions },
         ]}
         activeFilters={filters}
         onFilterChange={handleFilterChange}
@@ -310,47 +297,127 @@ export default function BusinessesPage() {
               Enter the basics to create a new business lead. You can add more details later.
             </DialogDescription>
           </DialogHeader>
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              setAddOpen(false)
-            }}
-          >
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Business Name *</label>
-              <Input placeholder="e.g. Sunrise Coffee Shop" required />
+              <Input
+                placeholder="e.g. Sunrise Coffee Shop"
+                required
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">City</label>
-                <Input placeholder="e.g. Atlanta" />
+                <select
+                  value={formCityId}
+                  onChange={(e) => setFormCityId(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="">Select a city...</option>
+                  {cities.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}, {c.state}</option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Category</label>
-                <Input placeholder="e.g. Restaurant" />
+                <Input
+                  placeholder="e.g. Restaurant"
+                  value={formCategory}
+                  onChange={(e) => setFormCategory(e.target.value)}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Email</label>
-                <Input type="email" placeholder="owner@business.com" />
+                <Input
+                  type="email"
+                  placeholder="owner@business.com"
+                  value={formEmail}
+                  onChange={(e) => setFormEmail(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Phone</label>
-                <Input type="tel" placeholder="(404) 555-0000" />
+                <Input
+                  type="tel"
+                  placeholder="(404) 555-0000"
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                />
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-surface-700">Source</label>
-              <Input placeholder="e.g. Walk-in, Referral, Website" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-surface-700">Website</label>
+                <Input
+                  placeholder="www.example.com"
+                  value={formWebsite}
+                  onChange={(e) => setFormWebsite(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-surface-700">Brand</label>
+                <select
+                  value={formBrand}
+                  onChange={(e) => setFormBrand(e.target.value as 'localvip' | 'hato')}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="localvip">LocalVIP</option>
+                  <option value="hato">Help A Teacher Out</option>
+                </select>
+              </div>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-surface-700">Source</label>
+                <select
+                  value={formSource}
+                  onChange={(e) => setFormSource(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="">Select a source...</option>
+                  {SOURCE_OPTIONS.map(s => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-surface-700">Stage</label>
+                <select
+                  value={formStage}
+                  onChange={(e) => setFormStage(e.target.value as OnboardingStage)}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  {STAGE_OPTIONS.map(s => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {insertError && (
+              <p className="text-sm text-danger-600">{insertError}</p>
+            )}
+
             <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => setAddOpen(false)}>
+              <Button variant="outline" type="button" onClick={() => { setAddOpen(false); resetForm() }}>
                 Cancel
               </Button>
-              <Button type="submit">
-                <Plus className="h-4 w-4" /> Create Lead
+              <Button type="submit" disabled={inserting}>
+                {inserting ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" /> Create Lead
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </form>

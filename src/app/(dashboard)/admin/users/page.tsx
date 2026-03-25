@@ -13,138 +13,194 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import { ROLES, BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
-import type { UserRole, Brand } from '@/lib/types/database'
+import { useProfiles } from '@/lib/supabase/hooks'
+import { useAuth } from '@/lib/auth/context'
+import type { Profile } from '@/lib/types/database'
 
-interface UserRow {
-  id: string
-  name: string
-  email: string
-  role: UserRole
-  brand: Brand
-  city: string
-  status: string
-  created_at: string
-  last_active: string
+const ROLE_BADGE_VARIANT: Record<string, 'default' | 'info' | 'success' | 'warning' | 'danger'> = {
+  super_admin: 'danger',
+  internal_admin: 'warning',
+  school_leader: 'info',
+  cause_leader: 'info',
+  business_onboarding: 'success',
+  influencer: 'default',
+  affiliate: 'default',
+  volunteer: 'default',
+  intern: 'default',
 }
 
-const DEMO_USERS: UserRow[] = [
-  { id: 'u-001', name: 'Kenneth', email: 'kenneth@localvip.com', role: 'super_admin', brand: 'localvip', city: 'Atlanta', status: 'active', created_at: '2024-01-01', last_active: '2026-03-25' },
-  { id: 'u-002', name: 'Rick', email: 'rick@localvip.com', role: 'internal_admin', brand: 'localvip', city: 'Atlanta', status: 'active', created_at: '2024-01-01', last_active: '2026-03-25' },
-  { id: 'u-003', name: 'Dr. Sarah Johnson', email: 'principal@mlkschool.edu', role: 'school_leader', brand: 'hato', city: 'Atlanta', status: 'active', created_at: '2024-01-15', last_active: '2026-03-24' },
-  { id: 'u-004', name: 'Marcus Williams', email: 'director@communitystrong.org', role: 'cause_leader', brand: 'localvip', city: 'Atlanta', status: 'active', created_at: '2024-02-01', last_active: '2026-03-23' },
-  { id: 'u-005', name: 'Alex Rivera', email: 'alex@partner.com', role: 'business_onboarding', brand: 'localvip', city: 'Atlanta', status: 'active', created_at: '2024-02-15', last_active: '2026-03-25' },
-  { id: 'u-006', name: 'Jordan Taylor', email: 'jordan@influencer.com', role: 'influencer', brand: 'localvip', city: 'Atlanta', status: 'active', created_at: '2024-03-01', last_active: '2026-03-24' },
-  { id: 'u-007', name: 'Casey Adams', email: 'volunteer@example.com', role: 'volunteer', brand: 'localvip', city: 'Atlanta', status: 'active', created_at: '2024-03-15', last_active: '2026-03-22' },
-  { id: 'u-008', name: 'Pat Kim', email: 'pat@intern.com', role: 'intern', brand: 'localvip', city: 'Charlotte', status: 'active', created_at: '2026-01-10', last_active: '2026-03-25' },
-  { id: 'u-009', name: 'Sam Foster', email: 'sam@affiliate.com', role: 'affiliate', brand: 'localvip', city: 'Nashville', status: 'active', created_at: '2026-02-01', last_active: '2026-03-20' },
-  { id: 'u-010', name: 'Taylor Reed', email: 'taylor@volunteer.com', role: 'volunteer', brand: 'hato', city: 'Birmingham', status: 'pending', created_at: '2026-03-20', last_active: '—' },
-]
-
 export default function AdminUsersPage() {
+  const { isAdmin } = useAuth()
+  const { data: users, loading } = useProfiles()
   const [inviteOpen, setInviteOpen] = React.useState(false)
-  const [filters, setFilters] = React.useState<Record<string, string>>({})
 
-  const filtered = React.useMemo(() => {
-    let result = DEMO_USERS
-    if (filters.role) result = result.filter(u => u.role === filters.role)
-    if (filters.status) result = result.filter(u => u.status === filters.status)
-    return result
-  }, [filters])
-
-  const columns: Column<UserRow>[] = [
+  const columns: Column<Profile>[] = [
     {
-      key: 'name', header: 'User', sortable: true,
-      render: (u) => (
+      key: 'full_name',
+      header: 'User',
+      sortable: true,
+      render: (row) => (
         <div className="flex items-center gap-3">
-          <Avatar name={u.name} size="sm" />
+          <Avatar name={row.full_name} src={row.avatar_url} size="sm" />
           <div>
-            <p className="font-medium text-surface-800">{u.name}</p>
-            <p className="text-xs text-surface-400">{u.email}</p>
+            <p className="font-medium text-surface-800">{row.full_name}</p>
+            <p className="text-xs text-surface-400">{row.email}</p>
           </div>
         </div>
       ),
     },
-    { key: 'role', header: 'Role', sortable: true, render: (u) => <Badge variant="info"><Shield className="h-3 w-3 mr-0.5" />{ROLES[u.role].label}</Badge> },
-    { key: 'brand', header: 'Brand', render: (u) => <Badge variant={u.brand === 'hato' ? 'hato' : 'info'}>{BRANDS[u.brand].label}</Badge> },
-    { key: 'city', header: 'City', sortable: true },
-    { key: 'last_active', header: 'Last Active', render: (u) => <span className="text-xs text-surface-500">{u.last_active === '—' ? '—' : formatDate(u.last_active)}</span> },
     {
-      key: 'status', header: 'Status',
-      render: (u) => (
-        <Badge variant={u.status === 'active' ? 'success' : u.status === 'pending' ? 'warning' : 'default'} dot>
-          {u.status}
+      key: 'role',
+      header: 'Role',
+      sortable: true,
+      render: (row) => (
+        <Badge variant={ROLE_BADGE_VARIANT[row.role] || 'default'}>
+          <Shield className="h-3 w-3" /> {ROLES[row.role]?.label || row.role}
         </Badge>
       ),
     },
+    {
+      key: 'brand_context',
+      header: 'Brand',
+      render: (row) => (
+        <div className="flex items-center gap-1.5">
+          <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: BRANDS[row.brand_context]?.color }} />
+          <span className="text-sm text-surface-600">{BRANDS[row.brand_context]?.label || row.brand_context}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <Badge variant={row.status === 'active' ? 'success' : 'default'} dot>
+          {row.status}
+        </Badge>
+      ),
+    },
+    {
+      key: 'created_at',
+      header: 'Joined',
+      sortable: true,
+      render: (row) => (
+        <span className="flex items-center gap-1 text-sm text-surface-500">
+          <Calendar className="h-3.5 w-3.5" /> {formatDate(row.created_at)}
+        </span>
+      ),
+    },
   ]
+
+  // Role summary counts
+  const roleCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const u of users) {
+      counts[u.role] = (counts[u.role] || 0) + 1
+    }
+    return counts
+  }, [users])
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Users & Roles"
-        description="Manage system access. Invite stakeholders, assign roles, and control permissions."
-        actions={<Button onClick={() => setInviteOpen(true)}><Plus className="h-4 w-4" /> Invite User</Button>}
+        description="Manage team members, assign roles, and control access across both brands."
+        actions={
+          isAdmin ? (
+            <Button onClick={() => setInviteOpen(true)}>
+              <Plus className="h-4 w-4" /> Invite User
+            </Button>
+          ) : undefined
+        }
       />
 
       {/* Role summary */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        {Object.entries(ROLES).slice(0, 5).map(([role, def]) => {
-          const count = DEMO_USERS.filter(u => u.role === role).length
-          return (
-            <div key={role} className="flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-0 px-3 py-2">
-              <span className="text-xs text-surface-500">{def.label}</span>
-              <span className="ml-auto text-sm font-bold text-surface-700">{count}</span>
+      {!loading && users.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(roleCounts).map(([role, count]) => (
+            <div key={role} className="flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5">
+              <span className="text-xs font-medium text-surface-600">{ROLES[role as keyof typeof ROLES]?.label || role}</span>
+              <span className="rounded-full bg-surface-200 px-2 py-0.5 text-xs font-bold text-surface-700">{count}</span>
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      )}
 
-      <DataTable
+      <DataTable<Profile>
+        data={users}
         columns={columns}
-        data={filtered}
         keyField="id"
-        searchPlaceholder="Search by name, email, or role..."
-        filters={[
-          { key: 'role', label: 'All Roles', options: Object.entries(ROLES).map(([v, d]) => ({ value: v, label: d.label })) },
-          { key: 'status', label: 'All Statuses', options: [{ value: 'active', label: 'Active' }, { value: 'pending', label: 'Pending' }, { value: 'inactive', label: 'Inactive' }] },
-        ]}
-        activeFilters={filters}
-        onFilterChange={(k, v) => setFilters(p => ({ ...p, [k]: v }))}
-        emptyState={<EmptyState icon={<Users className="h-8 w-8" />} title="No users yet" description="Invite your first team member." />}
+        searchable
+        loading={loading}
+        emptyState={
+          <EmptyState
+            icon={<Users className="h-8 w-8" />}
+            title="No users found"
+            description="Invite team members to get started."
+            action={isAdmin ? { label: 'Invite User', onClick: () => setInviteOpen(true) } : undefined}
+          />
+        }
       />
 
+      {/* Invite User Dialog */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Invite User</DialogTitle>
-            <DialogDescription>Send an invitation email. They will create an account and land on their role-based dashboard.</DialogDescription>
+            <DialogDescription>
+              Send an invitation to join the platform. They will receive an email to set up their account.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); setInviteOpen(false) }} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="mb-1 block text-sm font-medium text-surface-700">Full Name *</label><Input required placeholder="Full name" /></div>
-              <div><label className="mb-1 block text-sm font-medium text-surface-700">Email *</label><Input required type="email" placeholder="email@example.com" /></div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              // TODO: Implement Supabase admin invite (requires server-side action)
+              alert('User invitation requires a server-side API route. This will be implemented with Supabase Edge Functions.')
+              setInviteOpen(false)
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-surface-700">Email *</label>
+              <Input type="email" placeholder="user@example.com" required />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-surface-700">Full Name *</label>
+              <Input placeholder="Full name" required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Role *</label>
-                <select className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm" required>
-                  <option value="">Select role</option>
-                  {Object.entries(ROLES).map(([v, d]) => <option key={v} value={v}>{d.label}</option>)}
-                </select>
+                <label className="mb-1.5 block text-sm font-medium text-surface-700">Role</label>
+                <Select defaultValue="volunteer">
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ROLES).map(([key, r]) => (
+                      <SelectItem key={key} value={key}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Brand</label>
-                <select className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm">
-                  <option value="localvip">LocalVIP</option>
-                  <option value="hato">HATO</option>
-                </select>
+                <label className="mb-1.5 block text-sm font-medium text-surface-700">Brand</label>
+                <Select defaultValue="localvip">
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(BRANDS).map(([key, b]) => (
+                      <SelectItem key={key} value={key}>{b.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => setInviteOpen(false)}>Cancel</Button>
-              <Button type="submit"><Mail className="h-4 w-4" /> Send Invite</Button>
+              <Button type="button" variant="ghost" onClick={() => setInviteOpen(false)}>Cancel</Button>
+              <Button type="submit">
+                <Mail className="h-4 w-4" /> Send Invite
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

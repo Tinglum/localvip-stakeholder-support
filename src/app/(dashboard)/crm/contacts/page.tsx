@@ -13,37 +13,99 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import { useContacts, useContactInsert, useBusinesses, useCauses } from '@/lib/supabase/hooks'
+import { useAuth } from '@/lib/auth/context'
+import type { Contact } from '@/lib/types/database'
 
-interface ContactRow {
-  id: string
-  first_name: string
-  last_name: string
-  email: string | null
-  phone: string | null
-  title: string | null
-  organization: string | null
-  org_type: 'business' | 'cause' | null
-  owner: string
-  status: string
+const SOURCE_OPTIONS = [
+  'referral',
+  'walk-in',
+  'website',
+  'social_media',
+  'event',
+  'cold_outreach',
+  'other',
+] as const
+
+const INITIAL_FORM = {
+  first_name: '',
+  last_name: '',
+  email: '',
+  phone: '',
+  title: '',
+  source: '',
 }
-
-const DEMO_CONTACTS: ContactRow[] = [
-  { id: 'c-001', first_name: 'Maria', last_name: 'Rodriguez', email: 'maria@mainstreetbakery.com', phone: '(404) 555-0101', title: 'Owner', organization: 'Main Street Bakery', org_type: 'business', owner: 'Alex Rivera', status: 'active' },
-  { id: 'c-002', first_name: 'James', last_name: 'Chen', email: 'james@rivercafe.co', phone: '(404) 555-0303', title: 'General Manager', organization: 'River Cafe', org_type: 'business', owner: 'Jordan Taylor', status: 'active' },
-  { id: 'c-003', first_name: 'Principal', last_name: 'Davis', email: 'pdavis@mlkelementary.edu', phone: '(404) 555-1001', title: 'Principal', organization: 'MLK Elementary School', org_type: 'cause', owner: 'Dr. Sarah Johnson', status: 'active' },
-  { id: 'c-004', first_name: 'Tom', last_name: 'Nguyen', email: 'tom@peachtreeauto.com', phone: '(404) 555-0202', title: 'Owner', organization: 'Peachtree Auto Repair', org_type: 'business', owner: 'Alex Rivera', status: 'active' },
-  { id: 'c-005', first_name: 'Lisa', last_name: 'Park', email: 'lisa@sunriseyoga.com', phone: '(678) 555-0404', title: 'Studio Owner', organization: 'Sunrise Yoga Studio', org_type: 'business', owner: 'Casey Adams', status: 'active' },
-  { id: 'c-006', first_name: 'Rev.', last_name: 'Thompson', email: 'pastor@gracecommunity.org', phone: '(404) 555-2001', title: 'Lead Pastor', organization: 'Grace Community Church', org_type: 'cause', owner: 'Rick (Admin)', status: 'active' },
-  { id: 'c-007', first_name: 'Sandra', last_name: 'Williams', email: 'sandra@communitystrong.org', phone: '(404) 555-3001', title: 'Executive Director', organization: 'Community Strong Foundation', org_type: 'cause', owner: 'Marcus Williams', status: 'active' },
-  { id: 'c-008', first_name: 'Derek', last_name: 'Brown', email: null, phone: '(404) 555-1010', title: 'Owner', organization: 'EastSide Barbershop', org_type: 'business', owner: 'Jordan Taylor', status: 'active' },
-  { id: 'c-009', first_name: 'Karen', last_name: 'Mitchell', email: 'karen@buckheaddental.com', phone: '(404) 555-0606', title: 'Office Manager', organization: 'Buckhead Dental Arts', org_type: 'business', owner: 'Alex Rivera', status: 'active' },
-]
 
 export default function ContactsPage() {
   const router = useRouter()
-  const [addOpen, setAddOpen] = React.useState(false)
+  const { profile } = useAuth()
+  const [statusFilter, setStatusFilter] = React.useState<string>('')
 
-  const columns: Column<ContactRow>[] = [
+  // Build filters object — only include non-empty values
+  const filters = React.useMemo(() => {
+    const f: Record<string, string> = {}
+    if (statusFilter) f.status = statusFilter
+    return f
+  }, [statusFilter])
+
+  const { data: contacts, loading, error, refetch } = useContacts(filters)
+  const { data: businesses } = useBusinesses()
+  const { data: causes } = useCauses()
+  const { insert, loading: inserting } = useContactInsert()
+
+  const [addOpen, setAddOpen] = React.useState(false)
+  const [form, setForm] = React.useState(INITIAL_FORM)
+  const [formError, setFormError] = React.useState<string | null>(null)
+
+  // Look up organization name for a contact
+  const orgLookup = React.useCallback(
+    (c: Contact): { name: string; type: 'business' | 'cause' } | null => {
+      if (c.business_id) {
+        const biz = businesses.find((b) => b.id === c.business_id)
+        if (biz) return { name: biz.name, type: 'business' }
+      }
+      if (c.cause_id) {
+        const cause = causes.find((ca) => ca.id === c.cause_id)
+        if (cause) return { name: cause.name, type: 'cause' }
+      }
+      return null
+    },
+    [businesses, causes],
+  )
+
+  const handleFieldChange = (field: keyof typeof INITIAL_FORM, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormError(null)
+
+    const record: Partial<Contact> = {
+      first_name: form.first_name.trim(),
+      last_name: form.last_name.trim(),
+      email: form.email.trim() || null,
+      phone: form.phone.trim() || null,
+      title: form.title.trim() || null,
+      source: form.source || null,
+      owner_id: profile.id,
+      status: 'active',
+    }
+
+    const result = await insert(record)
+    if (result) {
+      setAddOpen(false)
+      setForm(INITIAL_FORM)
+      refetch()
+    } else {
+      setFormError('Failed to create contact. Please try again.')
+    }
+  }
+
+  const columns: Column<Contact>[] = [
     {
       key: 'name', header: 'Name', sortable: true,
       render: (c) => (
@@ -69,14 +131,24 @@ export default function ContactsPage() {
     { key: 'title', header: 'Title', render: (c) => <span className="text-surface-600">{c.title || '—'}</span> },
     {
       key: 'organization', header: 'Organization', sortable: true,
-      render: (c) => c.organization ? (
-        <span className="flex items-center gap-1.5 text-surface-700">
-          {c.org_type === 'business' ? <Building2 className="h-3.5 w-3.5 text-surface-400" /> : <Heart className="h-3.5 w-3.5 text-hato-500" />}
-          {c.organization}
-        </span>
-      ) : <span className="text-surface-300">—</span>,
+      render: (c) => {
+        const org = orgLookup(c)
+        return org ? (
+          <span className="flex items-center gap-1.5 text-surface-700">
+            {org.type === 'business'
+              ? <Building2 className="h-3.5 w-3.5 text-surface-400" />
+              : <Heart className="h-3.5 w-3.5 text-hato-500" />}
+            {org.name}
+          </span>
+        ) : <span className="text-surface-300">—</span>
+      },
     },
-    { key: 'owner', header: 'Owner', sortable: true },
+    {
+      key: 'source', header: 'Source',
+      render: (c) => c.source
+        ? <Badge variant="default">{c.source}</Badge>
+        : <span className="text-surface-300">—</span>,
+    },
     {
       key: 'status', header: 'Status',
       render: (c) => <Badge variant={c.status === 'active' ? 'success' : 'default'} dot>{c.status}</Badge>,
@@ -90,34 +162,100 @@ export default function ContactsPage() {
         description="People connected to businesses and causes. The humans behind the relationships."
         actions={<Button onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" /> Add Contact</Button>}
       />
+
+      {/* Filters */}
+      <div className="flex items-center gap-3">
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="archived">Archived</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       <DataTable
         columns={columns}
-        data={DEMO_CONTACTS}
+        data={contacts}
         keyField="id"
+        loading={loading}
         searchPlaceholder="Search by name, email, or organization..."
         emptyState={
-          <EmptyState icon={<Users className="h-8 w-8" />} title="No contacts yet" description="Add contacts to track your relationships." action={{ label: 'Add Contact', onClick: () => setAddOpen(true) }} />
+          <EmptyState
+            icon={<Users className="h-8 w-8" />}
+            title="No contacts yet"
+            description="Add contacts to track your relationships."
+            action={{ label: 'Add Contact', onClick: () => setAddOpen(true) }}
+          />
         }
       />
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+
+      {/* Add Contact Dialog */}
+      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setForm(INITIAL_FORM); setFormError(null) } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Contact</DialogTitle>
             <DialogDescription>Create a new contact record.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); setAddOpen(false) }} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="mb-1 block text-sm font-medium text-surface-700">First Name *</label><Input required placeholder="First name" /></div>
-              <div><label className="mb-1 block text-sm font-medium text-surface-700">Last Name *</label><Input required placeholder="Last name" /></div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700">First Name *</label>
+                <Input required placeholder="First name" value={form.first_name} onChange={(e) => handleFieldChange('first_name', e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700">Last Name *</label>
+                <Input required placeholder="Last name" value={form.last_name} onChange={(e) => handleFieldChange('last_name', e.target.value)} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="mb-1 block text-sm font-medium text-surface-700">Email</label><Input type="email" placeholder="email@example.com" /></div>
-              <div><label className="mb-1 block text-sm font-medium text-surface-700">Phone</label><Input type="tel" placeholder="(404) 555-0000" /></div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700">Email</label>
+                <Input type="email" placeholder="email@example.com" value={form.email} onChange={(e) => handleFieldChange('email', e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-surface-700">Phone</label>
+                <Input type="tel" placeholder="(404) 555-0000" value={form.phone} onChange={(e) => handleFieldChange('phone', e.target.value)} />
+              </div>
             </div>
-            <div><label className="mb-1 block text-sm font-medium text-surface-700">Title</label><Input placeholder="e.g. Owner, Manager" /></div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-surface-700">Title</label>
+              <Input placeholder="e.g. Owner, Manager" value={form.title} onChange={(e) => handleFieldChange('title', e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-surface-700">Source</label>
+              <Select value={form.source} onValueChange={(v) => handleFieldChange('source', v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a source..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOURCE_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {formError && (
+              <p className="text-sm text-red-600">{formError}</p>
+            )}
             <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit"><Plus className="h-4 w-4" /> Create Contact</Button>
+              <Button variant="outline" type="button" onClick={() => { setAddOpen(false); setForm(INITIAL_FORM); setFormError(null) }}>Cancel</Button>
+              <Button type="submit" disabled={inserting}>
+                {inserting ? 'Creating...' : <><Plus className="h-4 w-4" /> Create Contact</>}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

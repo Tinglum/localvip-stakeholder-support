@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Heart, Plus, AlertTriangle, MapPin, School, Church, Building2, Users,
+  Loader2,
 } from 'lucide-react'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
@@ -16,8 +17,9 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ONBOARDING_STAGES, BRANDS } from '@/lib/constants'
-import { formatDate } from '@/lib/utils'
-import type { OnboardingStage, EntityStatus, Brand } from '@/lib/types/database'
+import { useCauses, useCauseInsert, useCities } from '@/lib/supabase/hooks'
+import { useAuth } from '@/lib/auth/context'
+import type { Cause, OnboardingStage, Brand } from '@/lib/types/database'
 
 // ─── Stage badge variant ────────────────────────────────────
 
@@ -36,32 +38,6 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   other: <Heart className="h-3.5 w-3.5" />,
 }
 
-// ─── Demo data ──────────────────────────────────────────────
-
-interface CauseRow {
-  id: string
-  name: string
-  type: string
-  city: string
-  stage: OnboardingStage
-  owner: string
-  brand: Brand
-  status: EntityStatus
-  duplicate_of: string | null
-  last_activity: string
-}
-
-const DEMO_CAUSES: CauseRow[] = [
-  { id: 'cau-001', name: 'MLK Jr. Elementary', type: 'school', city: 'Atlanta', stage: 'live', owner: 'Dr. Sarah Johnson', brand: 'hato', status: 'active', duplicate_of: null, last_activity: '2026-03-20T10:00:00Z' },
-  { id: 'cau-002', name: 'CommunityStrong Foundation', type: 'nonprofit', city: 'Atlanta', stage: 'onboarded', owner: 'Marcus Williams', brand: 'localvip', status: 'active', duplicate_of: null, last_activity: '2026-03-19T14:30:00Z' },
-  { id: 'cau-003', name: 'Grace Community Church', type: 'church', city: 'Marietta', stage: 'interested', owner: 'Casey Adams', brand: 'localvip', status: 'active', duplicate_of: null, last_activity: '2026-03-18T09:15:00Z' },
-  { id: 'cau-004', name: 'Westside Academy', type: 'school', city: 'Atlanta', stage: 'in_progress', owner: 'Dr. Sarah Johnson', brand: 'hato', status: 'active', duplicate_of: null, last_activity: '2026-03-21T11:00:00Z' },
-  { id: 'cau-005', name: 'Decatur Youth Alliance', type: 'nonprofit', city: 'Decatur', stage: 'contacted', owner: 'Jordan Taylor', brand: 'localvip', status: 'active', duplicate_of: null, last_activity: '2026-03-17T16:00:00Z' },
-  { id: 'cau-006', name: 'Oak Hill Elementary', type: 'school', city: 'Roswell', stage: 'lead', owner: 'Unassigned', brand: 'hato', status: 'active', duplicate_of: 'cau-007', last_activity: '2026-03-15T08:00:00Z' },
-  { id: 'cau-007', name: 'Oakhill Elementary School', type: 'school', city: 'Roswell', stage: 'contacted', owner: 'Alex Rivera', brand: 'hato', status: 'active', duplicate_of: 'cau-006', last_activity: '2026-03-16T10:00:00Z' },
-  { id: 'cau-008', name: 'Eastside Community Center', type: 'community', city: 'Atlanta', stage: 'interested', owner: 'Marcus Williams', brand: 'localvip', status: 'active', duplicate_of: null, last_activity: '2026-03-22T13:00:00Z' },
-]
-
 // ─── Filter options ─────────────────────────────────────────
 
 const STAGE_OPTIONS = Object.entries(ONBOARDING_STAGES).map(([value, def]) => ({ value, label: def.label }))
@@ -70,26 +46,110 @@ const TYPE_OPTIONS = [
   { value: 'church', label: 'Church' }, { value: 'community', label: 'Community' },
   { value: 'other', label: 'Other' },
 ]
-const CITY_OPTIONS = [...new Set(DEMO_CAUSES.map(c => c.city))].map(c => ({ value: c, label: c }))
-const OWNER_OPTIONS = [...new Set(DEMO_CAUSES.map(c => c.owner))].map(o => ({ value: o, label: o }))
+const BRAND_OPTIONS = Object.entries(BRANDS).map(([value, def]) => ({ value, label: def.label }))
+
+// ─── Initial form state ─────────────────────────────────────
+
+interface CauseForm {
+  name: string
+  type: Cause['type']
+  email: string
+  phone: string
+  website: string
+  city_id: string
+  brand: Brand
+  source: string
+  stage: OnboardingStage
+}
+
+const INITIAL_FORM: CauseForm = {
+  name: '',
+  type: 'school',
+  email: '',
+  phone: '',
+  website: '',
+  city_id: '',
+  brand: 'localvip',
+  source: '',
+  stage: 'lead',
+}
 
 // ─── Component ──────────────────────────────────────────────
 
 export default function CausesPage() {
   const router = useRouter()
+  const { profile } = useAuth()
   const [addOpen, setAddOpen] = React.useState(false)
   const [filters, setFilters] = React.useState<Record<string, string>>({})
+  const [form, setForm] = React.useState<CauseForm>(INITIAL_FORM)
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
 
-  const filtered = React.useMemo(() => {
-    let result = DEMO_CAUSES as CauseRow[]
-    if (filters.stage) result = result.filter(c => c.stage === filters.stage)
-    if (filters.type) result = result.filter(c => c.type === filters.type)
-    if (filters.city) result = result.filter(c => c.city === filters.city)
-    if (filters.owner) result = result.filter(c => c.owner === filters.owner)
-    return result
+  // Build Supabase-compatible filters (only non-empty values)
+  const supabaseFilters = React.useMemo(() => {
+    const sf: Record<string, string> = {}
+    if (filters.stage) sf.stage = filters.stage
+    if (filters.type) sf.type = filters.type
+    if (filters.brand) sf.brand = filters.brand
+    return sf
   }, [filters])
 
-  const columns: Column<CauseRow>[] = [
+  const { data: causes, loading, error, refetch } = useCauses(supabaseFilters)
+  const { insert, loading: inserting } = useCauseInsert()
+  const { data: cities } = useCities()
+
+  // Build city lookup for display
+  const cityMap = React.useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of cities) m.set(c.id, c.name)
+    return m
+  }, [cities])
+
+  // City filter options derived from real data
+  const cityFilterOptions = React.useMemo(
+    () => cities.map(c => ({ value: c.id, label: c.name })),
+    [cities],
+  )
+
+  // Client-side city filter (city_id isn't a simple eq filter in the hook)
+  const filtered = React.useMemo(() => {
+    if (!filters.city) return causes
+    return causes.filter(c => c.city_id === filters.city)
+  }, [causes, filters.city])
+
+  const handleFormChange = (field: keyof CauseForm, value: string) => {
+    setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitError(null)
+
+    const record: Partial<Cause> = {
+      name: form.name.trim(),
+      type: form.type,
+      brand: form.brand,
+      stage: form.stage,
+      status: 'active',
+      owner_id: profile.id,
+      email: form.email.trim() || null,
+      phone: form.phone.trim() || null,
+      website: form.website.trim() || null,
+      city_id: form.city_id || null,
+      source: form.source.trim() || null,
+    }
+
+    const result = await insert(record)
+
+    if (result) {
+      setAddOpen(false)
+      setForm(INITIAL_FORM)
+      refetch()
+    } else {
+      setSubmitError('Failed to create cause. Please try again.')
+    }
+  }
+
+  const columns: Column<Cause>[] = [
     {
       key: 'name', header: 'Name', sortable: true,
       render: (c) => (
@@ -109,10 +169,10 @@ export default function CausesPage() {
       ),
     },
     {
-      key: 'city', header: 'City', sortable: true,
+      key: 'city_id' as keyof Cause, header: 'City', sortable: true,
       render: (c) => (
         <span className="flex items-center gap-1 text-surface-600">
-          <MapPin className="h-3.5 w-3.5 text-surface-400" /> {c.city}
+          <MapPin className="h-3.5 w-3.5 text-surface-400" /> {c.city_id ? cityMap.get(c.city_id) || '—' : '—'}
         </span>
       ),
     },
@@ -120,12 +180,6 @@ export default function CausesPage() {
       key: 'stage', header: 'Stage', sortable: true,
       render: (c) => (
         <Badge variant={STAGE_VARIANT[c.stage]} dot>{ONBOARDING_STAGES[c.stage].label}</Badge>
-      ),
-    },
-    {
-      key: 'owner', header: 'Owner', sortable: true,
-      render: (c) => (
-        <span className={c.owner === 'Unassigned' ? 'italic text-surface-400' : 'text-surface-700'}>{c.owner}</span>
       ),
     },
     {
@@ -143,6 +197,26 @@ export default function CausesPage() {
       ),
     },
   ]
+
+  // ─── Loading state ──────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
+        <span className="ml-2 text-sm text-surface-500">Loading causes...</span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <AlertTriangle className="h-5 w-5 text-danger-500" />
+        <span className="ml-2 text-sm text-danger-600">Error loading causes: {error}</span>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -166,8 +240,8 @@ export default function CausesPage() {
         filters={[
           { key: 'stage', label: 'All Stages', options: STAGE_OPTIONS },
           { key: 'type', label: 'All Types', options: TYPE_OPTIONS },
-          { key: 'city', label: 'All Cities', options: CITY_OPTIONS },
-          { key: 'owner', label: 'All Owners', options: OWNER_OPTIONS },
+          { key: 'brand', label: 'All Brands', options: BRAND_OPTIONS },
+          { key: 'city', label: 'All Cities', options: cityFilterOptions },
         ]}
         activeFilters={filters}
         onFilterChange={(k, v) => setFilters(prev => ({ ...prev, [k]: v }))}
@@ -182,21 +256,30 @@ export default function CausesPage() {
       />
 
       {/* Add Cause Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setForm(INITIAL_FORM); setSubmitError(null) } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add a New Cause</DialogTitle>
             <DialogDescription>Register a school, nonprofit, church, or community organization.</DialogDescription>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setAddOpen(false) }}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Organization Name *</label>
-              <Input placeholder="e.g. Riverside Elementary" required />
+              <Input
+                placeholder="e.g. Riverside Elementary"
+                required
+                value={form.name}
+                onChange={(e) => handleFormChange('name', e.target.value)}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Type</label>
-                <select className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm">
+                <select
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                  value={form.type}
+                  onChange={(e) => handleFormChange('type', e.target.value)}
+                >
                   <option value="school">School</option>
                   <option value="nonprofit">Nonprofit</option>
                   <option value="church">Church</option>
@@ -206,22 +289,92 @@ export default function CausesPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">City</label>
-                <Input placeholder="e.g. Atlanta" />
+                <select
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                  value={form.city_id}
+                  onChange={(e) => handleFormChange('city_id', e.target.value)}
+                >
+                  <option value="">Select a city...</option>
+                  {cities.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Email</label>
-                <Input type="email" placeholder="contact@school.edu" />
+                <Input
+                  type="email"
+                  placeholder="contact@school.edu"
+                  value={form.email}
+                  onChange={(e) => handleFormChange('email', e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Phone</label>
-                <Input type="tel" placeholder="(404) 555-0000" />
+                <Input
+                  type="tel"
+                  placeholder="(404) 555-0000"
+                  value={form.phone}
+                  onChange={(e) => handleFormChange('phone', e.target.value)}
+                />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-surface-700">Website</label>
+                <Input
+                  type="url"
+                  placeholder="https://example.org"
+                  value={form.website}
+                  onChange={(e) => handleFormChange('website', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-surface-700">Source</label>
+                <Input
+                  placeholder="e.g. Referral, Website, Event"
+                  value={form.source}
+                  onChange={(e) => handleFormChange('source', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-surface-700">Brand</label>
+                <select
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                  value={form.brand}
+                  onChange={(e) => handleFormChange('brand', e.target.value)}
+                >
+                  {Object.entries(BRANDS).map(([value, def]) => (
+                    <option key={value} value={value}>{def.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-surface-700">Stage</label>
+                <select
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                  value={form.stage}
+                  onChange={(e) => handleFormChange('stage', e.target.value)}
+                >
+                  {Object.entries(ONBOARDING_STAGES).map(([value, def]) => (
+                    <option key={value} value={value}>{def.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {submitError && (
+              <p className="text-sm text-danger-600">{submitError}</p>
+            )}
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit"><Plus className="h-4 w-4" /> Create Cause</Button>
+              <Button type="submit" disabled={inserting}>
+                {inserting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {inserting ? 'Creating...' : 'Create Cause'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
