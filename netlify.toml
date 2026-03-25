@@ -5,5 +5,6 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Plugin runs on Netlify's Linux servers but fails locally on Windows
 [[plugins]]
   package = "@netlify/plugin-nextjs"
