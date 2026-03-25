@@ -37,27 +37,12 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // Refresh session cookies (keeps Supabase auth alive)
+  await supabase.auth.getUser()
 
-  // Protected routes — redirect to login if not authenticated
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||
-    request.nextUrl.pathname.startsWith('/signup') ||
-    request.nextUrl.pathname.startsWith('/forgot-password')
-
-  const isPublicRoute = request.nextUrl.pathname === '/' ||
-    request.nextUrl.pathname.startsWith('/r/') // QR redirect routes
-
-  if (!user && !isAuthRoute && !isPublicRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  if (user && isAuthRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
+  // NOTE: Route protection is handled client-side in the dashboard layout
+  // to support both demo mode (localStorage) and Supabase auth.
+  // The middleware only refreshes the session cookie here.
 
   return response
 }
