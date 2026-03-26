@@ -403,9 +403,11 @@ export async function generateStyledQR(options: QRFrameOptions): Promise<string>
       const logoX = Math.floor((size - logoSize) / 2)
       const logoY = Math.floor((size - logoSize) / 2)
 
+      const logoBackgroundFill = backgroundColor === 'transparent' ? '#ffffff' : backgroundColor
+
       // White background behind logo
       const padding = 6
-      ctx.fillStyle = backgroundColor
+      ctx.fillStyle = logoBackgroundFill
       ctx.beginPath()
       ctx.roundRect(
         logoX - padding,
@@ -416,7 +418,7 @@ export async function generateStyledQR(options: QRFrameOptions): Promise<string>
       )
       ctx.fill()
 
-      ctx.drawImage(logo, logoX, logoY, logoSize, logoSize)
+      drawImageContained(ctx, logo, logoX, logoY, logoSize, logoSize)
 
       if (logoFile) URL.revokeObjectURL(logoSrc)
     } catch {
@@ -465,6 +467,26 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = (e) => reject(e)
     img.src = src
   })
+}
+
+function drawImageContained(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  padding = 0,
+) {
+  const safeWidth = Math.max(1, width - padding * 2)
+  const safeHeight = Math.max(1, height - padding * 2)
+  const scale = Math.min(safeWidth / image.naturalWidth, safeHeight / image.naturalHeight)
+  const drawWidth = image.naturalWidth * scale
+  const drawHeight = image.naturalHeight * scale
+  const drawX = x + (width - drawWidth) / 2
+  const drawY = y + (height - drawHeight) / 2
+
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight)
 }
 
 // ─── Download Helpers ───────────────────────────────────────

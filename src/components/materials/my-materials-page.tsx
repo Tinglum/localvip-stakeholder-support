@@ -19,6 +19,7 @@ import {
   QrCode,
   Search,
   Sparkles,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react'
@@ -29,7 +30,9 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
+import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { useAuth } from '@/lib/auth/context'
+import { deleteMaterial } from '@/lib/materials/delete-material'
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { useMaterialAssignments, useMaterialInsert, useMaterials } from '@/lib/supabase/hooks'
@@ -323,12 +326,16 @@ function UploadMaterialDialog({
 }
 
 export default function MyMaterialsPage() {
-  const { profile } = useAuth()
+  const { profile, isAdmin } = useAuth()
   const { data: allMaterials, loading: materialsLoading, error, refetch } = useMaterials()
   const { data: assignments, loading: assignmentsLoading } = useMaterialAssignments({ stakeholder_id: profile.id })
   const [uploadOpen, setUploadOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
+  const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
+  const [deletingId, setDeletingId] = React.useState<string | null>(null)
+  const [actionMessage, setActionMessage] = React.useState<string | null>(null)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
 
   const materials = React.useMemo(() => {
     const assignedIds = new Set(assignments.map(assignment => assignment.material_id))
@@ -351,6 +358,27 @@ export default function MyMaterialsPage() {
   const previewableCount = materials.filter(material =>
     isMaterialPreviewable(material.mime_type) || material.file_url?.toLowerCase().includes('.pdf')
   ).length
+
+  async function handleDelete(material: Material) {
+    if (!(isAdmin || material.created_by === profile.id)) return
+    if (!confirm('Delete this material? Any linked business or outreach references will be cleared when possible.')) return
+
+    setDeletingId(material.id)
+    setActionMessage(null)
+    setDeleteError(null)
+
+    const result = await deleteMaterial(material, { manageReferences: isAdmin })
+
+    setDeletingId(null)
+
+    if (!result.success) {
+      setDeleteError(result.error || 'Failed to delete material.')
+      return
+    }
+
+    setActionMessage('Material deleted.')
+    refetch()
+  }
 
   return (
     <div className="space-y-6">
@@ -375,6 +403,14 @@ export default function MyMaterialsPage() {
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onSuccess={refetch}
+      />
+
+      <MaterialPreviewDialog
+        material={previewMaterial}
+        open={!!previewMaterial}
+        onOpenChange={(open) => {
+          if (!open) setPreviewMaterial(null)
+        }}
       />
 
       <Card className="overflow-hidden border-surface-200">
@@ -441,6 +477,18 @@ export default function MyMaterialsPage() {
         </div>
       )}
 
+      {deleteError && (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          {deleteError}
+        </div>
+      )}
+
+      {actionMessage && (
+        <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
+          {actionMessage}
+        </div>
+      )}
+
       {loading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
@@ -466,6 +514,7 @@ export default function MyMaterialsPage() {
           {filtered.map(material => {
             const assigned = material.created_by !== profile.id
             const previewSource = material.file_url || material.thumbnail_url
+            const canDelete = isAdmin || material.created_by === profile.id
 
             return (
               <Card key={material.id} className="group overflow-hidden transition-shadow hover:shadow-card-hover">
@@ -506,11 +555,13 @@ export default function MyMaterialsPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    {material.file_url && (
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={material.file_url} target="_blank" rel="noopener noreferrer">
-                          <Eye className="h-3.5 w-3.5" /> Preview
-                        </a>
+                    {(material.file_url || material.thumbnail_url) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewMaterial(material)}
+                      >
+                        <Eye className="h-3.5 w-3.5" /> Preview
                       </Button>
                     )}
                     {material.file_url && (
@@ -518,6 +569,18 @@ export default function MyMaterialsPage() {
                         <a href={material.file_url} download>
                           <Download className="h-3.5 w-3.5" /> Download
                         </a>
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Delete"
+                        onClick={() => handleDelete(material)}
+                        disabled={deletingId === material.id}
+                        className="text-danger-500 hover:text-danger-700"
+                      >
+                        {deletingId === material.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                       </Button>
                     )}
                   </div>
@@ -531,6 +594,7 @@ export default function MyMaterialsPage() {
           {filtered.map(material => {
             const assigned = material.created_by !== profile.id
             const previewSource = material.file_url || material.thumbnail_url
+            const canDelete = isAdmin || material.created_by === profile.id
 
             return (
               <Card key={material.id} className="transition-shadow hover:shadow-card-hover">
@@ -567,11 +631,14 @@ export default function MyMaterialsPage() {
                   </div>
 
                   <div className="flex shrink-0 gap-2">
-                    {material.file_url && (
-                      <Button variant="ghost" size="icon-sm" asChild>
-                        <a href={material.file_url} target="_blank" rel="noopener noreferrer">
-                          <Eye className="h-4 w-4" />
-                        </a>
+                    {(material.file_url || material.thumbnail_url) && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Preview"
+                        onClick={() => setPreviewMaterial(material)}
+                      >
+                        <Eye className="h-4 w-4" />
                       </Button>
                     )}
                     {material.file_url && (
@@ -579,6 +646,18 @@ export default function MyMaterialsPage() {
                         <a href={material.file_url} download>
                           <Download className="h-3.5 w-3.5" /> Download
                         </a>
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Delete"
+                        onClick={() => handleDelete(material)}
+                        disabled={deletingId === material.id}
+                        className="text-danger-500 hover:text-danger-700"
+                      >
+                        {deletingId === material.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                       </Button>
                     )}
                   </div>

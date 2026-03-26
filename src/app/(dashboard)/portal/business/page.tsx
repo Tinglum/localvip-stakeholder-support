@@ -4,7 +4,7 @@ import * as React from 'react'
 import {
   Store, Upload, Image as ImageIcon, Calendar, Gift, Clock, Save,
   Check, X, Loader2, MapPin, Globe, Mail, Phone,
-  Sparkles, Eye, ChevronDown, Trash2, Star, Info,
+  Sparkles, Eye, Trash2, Star, Info,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -49,6 +49,7 @@ const OFFER_CATEGORIES = [
 
 interface BusinessPortalData {
   logo_url?: string
+  cover_photo_url?: string
   offer_title?: string
   offer_description?: string
   offer_category?: string
@@ -99,7 +100,9 @@ export default function BusinessPortalPage() {
   })
   const [logoFile, setLogoFile] = React.useState<File | null>(null)
   const [logoPreview, setLogoPreview] = React.useState<string | null>(null)
-  const [uploadingLogo, setUploadingLogo] = React.useState(false)
+  const [coverPhotoFile, setCoverPhotoFile] = React.useState<File | null>(null)
+  const [coverPhotoPreview, setCoverPhotoPreview] = React.useState<string | null>(null)
+  const [uploadingBranding, setUploadingBranding] = React.useState(false)
   const [saveSuccess, setSaveSuccess] = React.useState(false)
   const [activeSection, setActiveSection] = React.useState<'info' | 'branding' | 'offer' | 'schedule' | 'preview'>('info')
 
@@ -116,6 +119,7 @@ export default function BusinessPortalPage() {
         address: biz.address || '',
       })
       setLogoPreview(pd.logo_url || null)
+      setCoverPhotoPreview(pd.cover_photo_url || null)
     }
   }, [biz])
 
@@ -123,33 +127,58 @@ export default function BusinessPortalPage() {
   const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    safeRevokeObjectUrl(logoPreview)
     setLogoFile(file)
     setLogoPreview(URL.createObjectURL(file))
   }
 
+  const handleCoverPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    safeRevokeObjectUrl(coverPhotoPreview)
+    setCoverPhotoFile(file)
+    setCoverPhotoPreview(URL.createObjectURL(file))
+  }
+
   const removeLogo = () => {
+    safeRevokeObjectUrl(logoPreview)
     setLogoFile(null)
     setLogoPreview(null)
     setPortal(p => ({ ...p, logo_url: undefined }))
   }
 
-  // Upload logo to Supabase Storage
-  const uploadLogo = async (): Promise<string | null> => {
-    if (!logoFile || !biz) return portal.logo_url || null
+  const removeCoverPhoto = () => {
+    safeRevokeObjectUrl(coverPhotoPreview)
+    setCoverPhotoFile(null)
+    setCoverPhotoPreview(null)
+    setPortal(p => ({ ...p, cover_photo_url: undefined }))
+  }
 
-    setUploadingLogo(true)
+  async function uploadBrandAsset({
+    file,
+    folder,
+    fileName,
+    fallbackUrl,
+  }: {
+    file: File | null
+    folder: string
+    fileName: string
+    fallbackUrl?: string
+  }): Promise<string | null> {
+    if (!file || !biz) return fallbackUrl || null
+
     try {
-      const fileExt = logoFile.name.split('.').pop()
-      const filePath = `business-logos/${biz.id}/logo.${fileExt}`
+      const fileExt = file.name.split('.').pop() || 'png'
+      const filePath = `${folder}/${biz.id}/${fileName}.${fileExt}`
 
       const { error: uploadError } = await supabase.storage
         .from('public-assets')
-        .upload(filePath, logoFile, { upsert: true })
+        .upload(filePath, file, { upsert: true })
 
       if (uploadError) {
-        console.error('Logo upload error:', uploadError)
+        console.error('Brand asset upload error:', uploadError)
         // If bucket doesn't exist, save base64 instead
-        return await fileToDataUrl(logoFile)
+        return await fileToDataUrl(file)
       }
 
       const { data: urlData } = supabase.storage
@@ -159,9 +188,7 @@ export default function BusinessPortalPage() {
       return urlData.publicUrl
     } catch {
       // Fallback: convert to data URL and store in metadata
-      return await fileToDataUrl(logoFile)
-    } finally {
-      setUploadingLogo(false)
+      return await fileToDataUrl(file)
     }
   }
 
@@ -176,34 +203,58 @@ export default function BusinessPortalPage() {
     })
   }
 
+  React.useEffect(() => {
+    return () => {
+      safeRevokeObjectUrl(logoPreview)
+      safeRevokeObjectUrl(coverPhotoPreview)
+    }
+  }, [logoPreview, coverPhotoPreview])
+
   // Save everything
   const handleSave = async () => {
     if (!biz) return
 
-    let logoUrl = portal.logo_url
-    if (logoFile) {
-      logoUrl = await uploadLogo() || undefined
-    }
+    setUploadingBranding(true)
 
-    const updatedMetadata: BusinessPortalData = {
-      ...portal,
-      logo_url: logoUrl,
-    }
+    try {
+      const logoUrl = await uploadBrandAsset({
+        file: logoFile,
+        folder: 'business-logos',
+        fileName: 'logo',
+        fallbackUrl: portal.logo_url,
+      }) || undefined
 
-    const result = await update(biz.id, {
-      name: basicInfo.name || biz.name,
-      email: basicInfo.email || null,
-      phone: basicInfo.phone || null,
-      website: basicInfo.website || null,
-      address: basicInfo.address || null,
-      metadata: updatedMetadata as Record<string, unknown>,
-    })
+      const coverPhotoUrl = await uploadBrandAsset({
+        file: coverPhotoFile,
+        folder: 'business-covers',
+        fileName: 'cover-photo',
+        fallbackUrl: portal.cover_photo_url,
+      }) || undefined
 
-    if (result) {
-      setSaveSuccess(true)
-      setLogoFile(null)
-      refetch()
-      setTimeout(() => setSaveSuccess(false), 3000)
+      const updatedMetadata: BusinessPortalData = {
+        ...portal,
+        logo_url: logoUrl,
+        cover_photo_url: coverPhotoUrl,
+      }
+
+      const result = await update(biz.id, {
+        name: basicInfo.name || biz.name,
+        email: basicInfo.email || null,
+        phone: basicInfo.phone || null,
+        website: basicInfo.website || null,
+        address: basicInfo.address || null,
+        metadata: updatedMetadata as Record<string, unknown>,
+      })
+
+      if (result) {
+        setSaveSuccess(true)
+        setLogoFile(null)
+        setCoverPhotoFile(null)
+        refetch()
+        setTimeout(() => setSaveSuccess(false), 3000)
+      }
+    } finally {
+      setUploadingBranding(false)
     }
   }
 
@@ -246,11 +297,23 @@ export default function BusinessPortalPage() {
     { key: 'preview' as const, label: 'Preview', icon: <Eye className="h-4 w-4" /> },
   ]
 
+  const resolvedLogo = logoPreview || portal.logo_url || null
+  const resolvedCoverPhoto = coverPhotoPreview || portal.cover_photo_url || null
+  const previewTitle = basicInfo.name || 'Your Business Name'
+  const previewCategory = biz.category || 'Local Business'
+  const previewDescription =
+    portal.description ||
+    portal.offer_description ||
+    portal.tagline ||
+    'Add a short description so customers quickly understand why they should visit your business.'
+  const previewOfferValue = portal.offer_value || 'LocalVIP Offer'
+  const selectedDaysCount = (portal.selected_days || []).length
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Business Portal"
-        description="Manage your LocalVIP profile. Upload your logo, set your offer, and choose your days."
+        description="Manage your LocalVIP profile. Upload your logo and cover photo, set your offer, and choose your days."
         actions={
           <div className="flex items-center gap-3">
             {saveSuccess && (
@@ -258,8 +321,8 @@ export default function BusinessPortalPage() {
                 <Check className="h-4 w-4" /> Saved!
               </span>
             )}
-            <Button onClick={handleSave} disabled={saving || uploadingLogo}>
-              {saving || uploadingLogo ? (
+            <Button onClick={handleSave} disabled={saving || uploadingBranding}>
+              {saving || uploadingBranding ? (
                 <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
               ) : (
                 <><Save className="h-4 w-4" /> Save Changes</>
@@ -288,8 +351,17 @@ export default function BusinessPortalPage() {
       {/* Onboarding Status Banner */}
       <Card className="border-l-4 border-l-brand-500">
         <CardContent className="flex items-center gap-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50">
-            <Store className="h-5 w-5 text-brand-600" />
+          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-surface-200 bg-white shadow-sm">
+            {logoPreview ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoPreview} alt={`${biz.name} logo`} className="h-full w-full object-contain p-1.5" />
+              </>
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-brand-50">
+                <Store className="h-5 w-5 text-brand-600" />
+              </div>
+            )}
           </div>
           <div className="flex-1">
             <p className="text-sm font-semibold text-surface-800">{biz.name}</p>
@@ -453,19 +525,19 @@ export default function BusinessPortalPage() {
       {activeSection === 'branding' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle>Business Logo</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
+            <CardHeader><CardTitle>Brand Assets</CardTitle></CardHeader>
+            <CardContent className="space-y-6">
               <p className="text-sm text-surface-500">
-                Upload your business logo. It will appear on your LocalVIP listing, QR codes, and marketing materials.
+                Add the two images that shape your LocalVIP presence: a cover photo for the hero area and a logo for the smaller circular badge.
               </p>
 
               {/* Logo Preview */}
               <div className="flex items-center gap-6">
                 <div className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-surface-300 bg-surface-50">
-                  {logoPreview ? (
+                  {resolvedLogo ? (
                     <>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={logoPreview} alt="Business logo" className="h-full w-full object-contain p-2" />
+                      <img src={resolvedLogo} alt="Business logo" className="h-full w-full object-contain p-3" />
                       <button
                         onClick={removeLogo}
                         className="absolute right-1 top-1 rounded-full bg-surface-800/70 p-1 text-white hover:bg-red-600 transition-colors"
@@ -476,18 +548,24 @@ export default function BusinessPortalPage() {
                   ) : (
                     <div className="text-center">
                       <ImageIcon className="mx-auto h-8 w-8 text-surface-300" />
-                      <p className="mt-1 text-xs text-surface-400">No logo</p>
+                      <p className="mt-2 text-xs text-surface-400">No logo yet</p>
                     </div>
                   )}
                 </div>
 
-                <div className="flex-1">
+                <div className="flex-1 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-surface-800">Business Logo</p>
+                    <p className="mt-1 text-sm text-surface-500">
+                      This is the small circular image customers see on the business card, plus the logo used on QR codes and materials.
+                    </p>
+                  </div>
                   <label
                     htmlFor="logo-upload"
                     className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-surface-300 bg-surface-0 px-4 py-2 text-sm font-medium text-surface-700 transition-colors hover:bg-surface-50"
                   >
                     <Upload className="h-4 w-4" />
-                    {logoPreview ? 'Change Logo' : 'Upload Logo'}
+                    {resolvedLogo ? 'Change Logo' : 'Upload Logo'}
                   </label>
                   <input
                     id="logo-upload"
@@ -496,21 +574,86 @@ export default function BusinessPortalPage() {
                     onChange={handleLogoSelect}
                     className="hidden"
                   />
-                  <p className="mt-2 text-xs text-surface-400">
+                  {resolvedLogo && (
+                    <Button type="button" variant="ghost" size="sm" onClick={removeLogo}>
+                      <Trash2 className="h-4 w-4" /> Remove
+                    </Button>
+                  )}
+                  <p className="text-xs text-surface-400">
                     PNG, JPG, or SVG. Recommended: 512×512px or larger.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-surface-800">Cover Photo</p>
+                    <p className="mt-1 text-sm text-surface-500">
+                      This becomes the large image at the top of the customer-facing business page.
+                    </p>
+                  </div>
+
+                  <div className="relative aspect-[16/9] overflow-hidden rounded-[1.5rem] border-2 border-dashed border-surface-300 bg-white shadow-sm">
+                    {resolvedCoverPhoto ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={resolvedCoverPhoto} alt="Business cover" className="h-full w-full object-cover" />
+                        <button
+                          onClick={removeCoverPhoto}
+                          className="absolute right-3 top-3 rounded-full bg-surface-900/70 p-1.5 text-white transition-colors hover:bg-red-600"
+                          aria-label="Remove cover photo"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center bg-gradient-to-br from-brand-50 via-white to-brand-100 text-center">
+                        <ImageIcon className="h-10 w-10 text-brand-300" />
+                        <p className="mt-3 text-sm font-medium text-surface-500">No cover photo yet</p>
+                        <p className="mt-1 max-w-xs text-xs text-surface-400">
+                          Use a real storefront, food, service, team, or interior photo that feels local and inviting.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label
+                      htmlFor="cover-photo-upload"
+                      className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-surface-300 bg-surface-0 px-4 py-2 text-sm font-medium text-surface-700 transition-colors hover:bg-surface-50"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {resolvedCoverPhoto ? 'Change Cover Photo' : 'Upload Cover Photo'}
+                    </label>
+                    <input
+                      id="cover-photo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCoverPhotoSelect}
+                      className="hidden"
+                    />
+                    {resolvedCoverPhoto && (
+                      <Button type="button" variant="ghost" size="sm" onClick={removeCoverPhoto}>
+                        <Trash2 className="h-4 w-4" /> Remove
+                      </Button>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-surface-400">
+                    Best crop: a wide horizontal image, ideally at least 1600px wide.
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Logo Tips */}
+          {/* Branding Tips */}
           <Card>
-            <CardHeader><CardTitle>Logo Tips</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
+            <CardHeader><CardTitle>Branding Tips</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
               <div className="flex items-start gap-3">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
-                <p className="text-sm text-surface-600">Use a <strong>square</strong> logo with a transparent or white background for best results.</p>
+                <p className="text-sm text-surface-600">Use a <strong>square logo</strong> so it reads clearly in the smaller circular badge.</p>
               </div>
               <div className="flex items-start gap-3">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
@@ -809,22 +952,96 @@ export default function BusinessPortalPage() {
         <div className="mx-auto max-w-lg">
           <Card className="overflow-hidden">
             {/* Simulated consumer card */}
-            <div className="bg-gradient-to-br from-brand-600 to-brand-800 px-6 py-8 text-center text-white">
-              {logoPreview ? (
-                <div className="mx-auto mb-4 h-20 w-20 overflow-hidden rounded-2xl bg-white p-2 shadow-lg">
+            <div className="relative h-72 overflow-hidden bg-surface-900">
+              {resolvedCoverPhoto ? (
+                <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={logoPreview} alt="Logo" className="h-full w-full object-contain" />
-                </div>
+                  <img src={resolvedCoverPhoto} alt={`${previewTitle} cover`} className="h-full w-full object-cover" />
+                </>
               ) : (
-                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-white/20">
-                  <Store className="h-10 w-10 text-white/70" />
+                <div className="flex h-full items-end bg-gradient-to-br from-brand-500 via-brand-400 to-surface-900 p-6">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">LocalVIP Business</p>
+                    <p className="mt-2 max-w-xs text-3xl font-bold leading-tight text-white">{previewTitle}</p>
+                  </div>
                 </div>
               )}
-              <h2 className="text-xl font-bold">{basicInfo.name || 'Your Business Name'}</h2>
-              {portal.tagline && <p className="mt-1 text-sm text-white/80">{portal.tagline}</p>}
+              <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-surface-900/35 to-transparent" />
             </div>
 
-            <CardContent className="space-y-4 py-6">
+            <CardContent className="relative -mt-14 space-y-5 px-5 pb-5">
+              <div className="rounded-[2rem] bg-white p-6 shadow-xl">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="truncate text-[2rem] font-bold leading-none text-surface-900">{previewTitle}</h2>
+                    <p className="mt-3 text-lg text-surface-500">{previewCategory}</p>
+                  </div>
+                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-white shadow-[0_16px_30px_-18px_rgba(15,23,42,0.6)]">
+                    {resolvedLogo ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={resolvedLogo} alt={`${previewTitle} logo`} className="h-full w-full object-contain p-2" />
+                      </>
+                    ) : (
+                      <Store className="h-10 w-10 text-brand-400" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <Badge variant="success" className="rounded-full border-0 bg-emerald-100 px-4 py-2 text-base font-semibold text-emerald-700">
+                    {previewOfferValue}
+                  </Badge>
+                  <Badge variant="info" className="rounded-full px-4 py-2 text-base font-semibold">
+                    Verified
+                  </Badge>
+                </div>
+
+                <p className="mt-5 text-lg leading-8 text-surface-600">
+                  {previewDescription}
+                </p>
+
+                {basicInfo.address && (
+                  <div className="mt-5 flex items-start gap-3 text-surface-600">
+                    <MapPin className="mt-1 h-5 w-5 shrink-0 text-surface-400" />
+                    <div>
+                      <p className="text-lg">{basicInfo.address}</p>
+                      <p className="mt-1 text-sm text-surface-400">Featured in your local LocalVIP network</p>
+                    </div>
+                  </div>
+                )}
+
+                <Button className="mt-6 h-14 w-full rounded-2xl text-base font-semibold">
+                  {portal.offer_title ? 'Pay Now' : 'View Offer'}
+                </Button>
+              </div>
+
+              <div className="rounded-[2rem] bg-white p-6 shadow-lg">
+                <div className="flex items-center gap-3">
+                  <Sparkles className="h-5 w-5 text-rose-500" />
+                  <h3 className="text-2xl font-bold text-surface-900">Community Impact</h3>
+                </div>
+                <p className="mt-4 text-lg leading-8 text-surface-600">
+                  For each transaction at {previewTitle}, LocalVIP can help connect everyday purchases back to nearby schools and causes.
+                </p>
+
+                <div className="mt-5 grid grid-cols-2 gap-4">
+                  <div className="rounded-[1.5rem] border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-5">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-rose-500">Local Causes</p>
+                    <p className="mt-4 text-4xl font-bold text-rose-600">$0.00</p>
+                    <p className="mt-2 text-sm text-surface-500">Will grow as customers support your business.</p>
+                  </div>
+                  <div className="rounded-[1.5rem] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Active Days</p>
+                    <p className="mt-4 text-4xl font-bold text-emerald-600">{selectedDaysCount}</p>
+                    <p className="mt-2 text-sm text-surface-500">
+                      {selectedDaysCount > 0 ? 'Ready to show customers when your offer is available.' : 'Set your schedule to show offer availability.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="hidden">
               {/* Offer */}
               {portal.offer_title ? (
                 <div className="rounded-xl border-2 border-brand-200 bg-brand-50 p-4">
@@ -900,6 +1117,7 @@ export default function BusinessPortalPage() {
                   </p>
                 )}
               </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -919,8 +1137,8 @@ export default function BusinessPortalPage() {
               'Remember to save your changes'
             )}
           </p>
-          <Button onClick={handleSave} disabled={saving || uploadingLogo}>
-            {saving || uploadingLogo ? (
+          <Button onClick={handleSave} disabled={saving || uploadingBranding}>
+            {saving || uploadingBranding ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
             ) : (
               <><Save className="h-4 w-4" /> Save All Changes</>
@@ -941,4 +1159,10 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+}
+
+function safeRevokeObjectUrl(url?: string | null) {
+  if (url?.startsWith('blob:')) {
+    URL.revokeObjectURL(url)
+  }
 }

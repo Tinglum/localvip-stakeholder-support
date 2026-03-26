@@ -3,13 +3,14 @@
 import * as React from 'react'
 import NextImage from 'next/image'
 import {
-  QrCode, Download, Copy, Link, Settings, Palette,
+  QrCode, Download, Settings, Palette,
   Check, ChevronDown, Sparkles, Tag, MapPin, Building2,
   Heart, Users, FolderOpen, Megaphone, ExternalLink,
   Image as ImageIcon, Mail, Phone, Wifi, ContactRound, FileUp,
   MessageSquare, Globe, Layers, Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
+import { QrLogoEditor } from '@/components/qr/qr-logo-editor'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,12 +20,17 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { BRANDS } from '@/lib/constants'
+import { getQrPlacements } from '@/lib/materials/qr-placement'
 import { generateShortCode } from '@/lib/utils'
 import {
   generateStyledQR, generateQRSVG, downloadDataURL, downloadSVG,
   destinationToString,
   type DotStyle, type CornerStyle, type QRDestination, type QRDestinationType,
 } from '@/lib/qr/generate'
+import {
+  DEFAULT_QR_LOGO_EDIT_SETTINGS,
+  type QrLogoEditSettings,
+} from '@/lib/qr/logo-processing'
 import { useAuth } from '@/lib/auth/context'
 import { useQrCodeInsert, useCampaigns, useCities, useProfiles, useBusinesses, useCauses, useMaterials } from '@/lib/supabase/hooks'
 import type { Material } from '@/lib/types/database'
@@ -100,7 +106,7 @@ export default function QRGeneratorPage() {
   const materialsWithQrZone = React.useMemo(() =>
     materialsData.filter(m => {
       const meta = m.metadata as Record<string, unknown> | null
-      return meta?.qr_placement && m.file_url && m.mime_type?.startsWith('image/')
+      return getQrPlacements(meta).length > 0 && m.file_url && m.mime_type?.startsWith('image/')
     }),
   [materialsData])
 
@@ -126,6 +132,8 @@ export default function QRGeneratorPage() {
   // Logo
   const [logoFile, setLogoFile] = React.useState<File | null>(null)
   const [logoPreviewUrl, setLogoPreviewUrl] = React.useState<string>('')
+  const [logoEditedUrl, setLogoEditedUrl] = React.useState<string>('')
+  const [logoEditSettings, setLogoEditSettings] = React.useState<QrLogoEditSettings>(DEFAULT_QR_LOGO_EDIT_SETTINGS)
 
   // Assignments
   const [showAssignments, setShowAssignments] = React.useState(false)
@@ -140,11 +148,10 @@ export default function QRGeneratorPage() {
   const [previewUrl, setPreviewUrl] = React.useState<string>('')
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [generated, setGenerated] = React.useState(false)
-  const [shortCode, setShortCode] = React.useState('')
-  const [copied, setCopied] = React.useState(false)
 
   // File input ref
   const logoInputRef = React.useRef<HTMLInputElement>(null)
+  const activeLogoUrl = logoEditedUrl || logoPreviewUrl
 
   // Handle destination type change
   function handleDestTypeChange(type: QRDestinationType) {
@@ -161,17 +168,30 @@ export default function QRGeneratorPage() {
   function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
+      if (logoPreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(logoPreviewUrl)
+      }
       setLogoFile(file)
       setLogoPreviewUrl(URL.createObjectURL(file))
+      setLogoEditedUrl('')
+      setLogoEditSettings(DEFAULT_QR_LOGO_EDIT_SETTINGS)
     }
   }
 
   function removeLogo() {
     setLogoFile(null)
-    if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl)
+    if (logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl)
     setLogoPreviewUrl('')
+    setLogoEditedUrl('')
+    setLogoEditSettings(DEFAULT_QR_LOGO_EDIT_SETTINGS)
     if (logoInputRef.current) logoInputRef.current.value = ''
   }
+
+  React.useEffect(() => {
+    return () => {
+      if (logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl)
+    }
+  }, [logoPreviewUrl])
 
   // Resolve encoded data
   const encodedData = React.useMemo(() => {
@@ -197,7 +217,7 @@ export default function QRGeneratorPage() {
           dotStyle,
           cornerStyle,
           frameText,
-          logoFile,
+          logoUrl: activeLogoUrl || undefined,
           gradientType,
           gradientColors: [gradientColor1, gradientColor2],
         })
@@ -210,7 +230,7 @@ export default function QRGeneratorPage() {
     return () => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
     }
-  }, [encodedData, fgColor, bgColor, dotStyle, cornerStyle, frameText, logoFile, gradientType, gradientColor1, gradientColor2])
+  }, [encodedData, fgColor, bgColor, dotStyle, cornerStyle, frameText, activeLogoUrl, gradientType, gradientColor1, gradientColor2])
 
   // Generate final QR code and save to Supabase
   async function handleGenerate() {
@@ -219,7 +239,6 @@ export default function QRGeneratorPage() {
 
     try {
       const code = generateShortCode(8)
-      setShortCode(code)
 
       const finalSize = parseInt(size)
       const dataToEncode = encodedData || 'https://localvip.com'
@@ -233,7 +252,7 @@ export default function QRGeneratorPage() {
         dotStyle,
         cornerStyle,
         frameText,
-        logoFile,
+        logoUrl: activeLogoUrl || undefined,
         gradientType,
         gradientColors: [gradientColor1, gradientColor2],
       })
@@ -269,6 +288,8 @@ export default function QRGeneratorPage() {
           gradient_type: gradientType,
           gradient_colors: [gradientColor1, gradientColor2],
           size: finalSize,
+          logo_name: logoFile?.name || null,
+          logo_edit: logoFile ? logoEditSettings : null,
         },
       })
 
@@ -297,14 +318,6 @@ export default function QRGeneratorPage() {
     downloadSVG(svg, `${name || 'qr-code'}.svg`)
   }
 
-  function handleCopyLink() {
-    const link = `https://localvip.com/q/${shortCode || 'preview'}`
-    navigator.clipboard.writeText(link).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
   // ─── Place QR on Material (canvas compositing) ──────────
   const [compositing, setCompositing] = React.useState(false)
 
@@ -314,8 +327,8 @@ export default function QRGeneratorPage() {
 
     try {
       const meta = material.metadata as Record<string, unknown>
-      const placement = meta.qr_placement as { x: number; y: number; size: number }
-      if (!placement || !material.file_url) return
+      const placements = getQrPlacements(meta).filter((placement) => placement.page === 1)
+      if (!placements.length || !material.file_url) return
 
       // Load the flyer image
       const flyerImg = await loadImage(material.file_url)
@@ -331,14 +344,14 @@ export default function QRGeneratorPage() {
       // Draw the flyer
       ctx.drawImage(flyerImg, 0, 0)
 
-      // Calculate QR position and size in pixels
-      const qrW = (placement.size / 100) * canvas.width
-      const qrH = qrW // square
-      const qrX = (placement.x / 100) * canvas.width - qrW / 2
-      const qrY = (placement.y / 100) * canvas.height - qrH / 2
-
-      // Draw the QR code onto the flyer
-      ctx.drawImage(qrImg, qrX, qrY, qrW, qrH)
+      // Draw every saved QR zone for this material.
+      placements.forEach((placement) => {
+        const qrW = (placement.size / 100) * canvas.width
+        const qrH = qrW
+        const qrX = (placement.x / 100) * canvas.width - qrW / 2
+        const qrY = (placement.y / 100) * canvas.height - qrH / 2
+        ctx.drawImage(qrImg, qrX, qrY, qrW, qrH)
+      })
 
       // Download the composited image
       const compositeUrl = canvas.toDataURL('image/png')
@@ -362,7 +375,6 @@ export default function QRGeneratorPage() {
 
   function handleReset() {
     setGenerated(false)
-    setShortCode('')
   }
 
   return (
@@ -375,56 +387,6 @@ export default function QRGeneratorPage() {
           { label: 'Generator' },
         ]}
       />
-
-      {/* Success state */}
-      {generated && (
-        <Card className="border-2 border-success-500 bg-success-50/30">
-          <CardContent className="py-6">
-            <div className="flex flex-col items-center text-center gap-4 sm:flex-row sm:text-left">
-              <div className="shrink-0">
-                {previewUrl && (
-                  <NextImage
-                    src={previewUrl}
-                    alt="Generated QR Code"
-                    width={128}
-                    height={128}
-                    unoptimized
-                    className="h-32 w-32 rounded-lg shadow-md"
-                  />
-                )}
-              </div>
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2 justify-center sm:justify-start">
-                  <Check className="h-5 w-5 text-success-600" />
-                  <h3 className="text-lg font-semibold text-surface-900">QR Code Generated</h3>
-                </div>
-                <p className="text-sm text-surface-600">
-                  <span className="font-medium">{name}</span> is ready. Share the short link or download.
-                </p>
-                <div className="flex items-center gap-2 justify-center sm:justify-start">
-                  <code className="rounded-md bg-surface-100 px-3 py-1 text-sm font-mono text-brand-700">
-                    localvip.com/q/{shortCode}
-                  </code>
-                  <Button variant="ghost" size="icon-sm" onClick={handleCopyLink}>
-                    {copied ? <Check className="h-4 w-4 text-success-600" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 shrink-0">
-                <Button onClick={handleDownloadPNG} size="sm">
-                  <Download className="h-4 w-4" /> Download PNG
-                </Button>
-                <Button variant="outline" onClick={handleDownloadSVG} size="sm">
-                  <Download className="h-4 w-4" /> Download SVG
-                </Button>
-                <Button variant="ghost" onClick={handleReset} size="sm">
-                  Create Another
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Main two-panel layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -839,33 +801,25 @@ export default function QRGeneratorPage() {
 
               {/* Logo Upload */}
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">
-                  <span className="flex items-center gap-1.5"><ImageIcon className="h-3.5 w-3.5" /> Center Logo</span>
-                </label>
                 {logoPreviewUrl ? (
-                  <div className="flex items-center gap-3">
-                    <NextImage
-                      src={logoPreviewUrl}
-                      alt="Logo preview"
-                      width={56}
-                      height={56}
-                      unoptimized
-                      className="h-14 w-14 rounded-lg border border-surface-200 object-contain p-1"
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm text-surface-700 font-medium">{logoFile?.name}</p>
-                      <p className="text-xs text-surface-400">{logoFile ? `${(logoFile.size / 1024).toFixed(1)} KB` : ''}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={removeLogo} className="text-danger-500">Remove</Button>
-                  </div>
+                  <QrLogoEditor
+                    file={logoFile!}
+                    sourceUrl={logoPreviewUrl}
+                    editedUrl={logoEditedUrl}
+                    settings={logoEditSettings}
+                    onSettingsChange={setLogoEditSettings}
+                    onEditedUrlChange={setLogoEditedUrl}
+                    onReplace={() => logoInputRef.current?.click()}
+                    onRemove={removeLogo}
+                  />
                 ) : (
                   <div
                     onClick={() => logoInputRef.current?.click()}
                     className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-surface-200 p-4 text-center hover:border-brand-300 hover:bg-brand-50/30 transition-colors"
                   >
                     <ImageIcon className="h-8 w-8 text-surface-300" />
-                    <p className="text-sm text-surface-500">Click to upload logo</p>
-                    <p className="text-xs text-surface-400">PNG, JPG, or SVG. Recommended: square, under 500KB</p>
+                    <p className="text-sm text-surface-500">Click to upload center artwork</p>
+                    <p className="text-xs text-surface-400">PNG, JPG, SVG, or WebP. Wide and tall images now stay proportional.</p>
                   </div>
                 )}
                 <input
@@ -1051,10 +1005,6 @@ export default function QRGeneratorPage() {
                   </Button>
                 </div>
 
-                <Button variant="ghost" onClick={handleCopyLink} className="w-full" size="sm" disabled={!generated}>
-                  {copied ? <><Check className="h-3.5 w-3.5 text-success-600" /> Copied!</> : <><Link className="h-3.5 w-3.5" /> Copy Short Link</>}
-                </Button>
-
                 {/* Place on Material */}
                 {materialsWithQrZone.length > 0 && previewUrl && (
                   <div className="w-full border-t border-surface-100 pt-3">
@@ -1063,7 +1013,7 @@ export default function QRGeneratorPage() {
                       Place on Material
                     </p>
                     <p className="mb-2 text-xs text-surface-400">
-                      Select a flyer to auto-place the QR code at its predefined position.
+                      Select a flyer to auto-place the QR code on every saved zone for that material.
                     </p>
                     <div className="space-y-1.5 max-h-40 overflow-y-auto">
                       {materialsWithQrZone.map(m => (
@@ -1125,6 +1075,48 @@ export default function QRGeneratorPage() {
           </div>
         </div>
       </div>
+
+      {/* Success state */}
+      {generated && (
+        <Card className="border-2 border-success-500 bg-success-50/30">
+          <CardContent className="py-6">
+            <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
+              <div className="shrink-0">
+                {previewUrl && (
+                  <NextImage
+                    src={previewUrl}
+                    alt="Generated QR Code"
+                    width={128}
+                    height={128}
+                    unoptimized
+                    className="h-32 w-32 rounded-lg shadow-md"
+                  />
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center justify-center gap-2 sm:justify-start">
+                  <Check className="h-5 w-5 text-success-600" />
+                  <h3 className="text-lg font-semibold text-surface-900">QR Code Generated</h3>
+                </div>
+                <p className="text-sm text-surface-600">
+                  <span className="font-medium">{name}</span> is ready to download or place on materials.
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2">
+                <Button onClick={handleDownloadPNG} size="sm">
+                  <Download className="h-4 w-4" /> Download PNG
+                </Button>
+                <Button variant="outline" onClick={handleDownloadSVG} size="sm">
+                  <Download className="h-4 w-4" /> Download SVG
+                </Button>
+                <Button variant="ghost" onClick={handleReset} size="sm">
+                  Create Another
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

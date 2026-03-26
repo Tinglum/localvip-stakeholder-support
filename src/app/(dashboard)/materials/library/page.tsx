@@ -4,7 +4,7 @@ import * as React from 'react'
 import {
   FileText, Download, Eye, Grid, List, Search,
   Upload, FolderOpen, File, Image as ImageIcon, Mail,
-  MessageSquare, Printer, QrCode, X, Loader2, Move,
+  MessageSquare, Printer, QrCode, X, Loader2, Move, Trash2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -13,7 +13,16 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
+import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
+import { QrPlacementPicker } from '@/components/materials/qr-placement-picker'
 import { useAuth } from '@/lib/auth/context'
+import { deleteMaterial } from '@/lib/materials/delete-material'
+import {
+  getQrPlacements,
+  hasQrPlacements,
+  qrPlacementMetadata,
+  type QrPlacement,
+} from '@/lib/materials/qr-placement'
 import { BRANDS, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { useMaterials, useMaterialInsert } from '@/lib/supabase/hooks'
@@ -50,7 +59,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
 
 // ─── QR Placement type ──────────────────────────────────────
 
-interface QrPlacement {
+interface LegacyQrPlacement {
   x: number   // percentage 0-100 from left
   y: number   // percentage 0-100 from top
   size: number // percentage of image width
@@ -58,7 +67,7 @@ interface QrPlacement {
 
 // ─── QR Placement Picker ─────────────────────────────────────
 
-function QrPlacementPicker({
+function LegacyQrPlacementPicker({
   previewUrl,
   previewMimeType,
   placement,
@@ -66,8 +75,8 @@ function QrPlacementPicker({
 }: {
   previewUrl: string
   previewMimeType?: string | null
-  placement: QrPlacement | null
-  onChange: (p: QrPlacement | null) => void
+  placement: LegacyQrPlacement | null
+  onChange: (p: LegacyQrPlacement | null) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = React.useState(false)
@@ -194,7 +203,7 @@ function UploadMaterialDialog({
   const [filePreviewUrl, setFilePreviewUrl] = React.useState<string | null>(null)
   const [uploading, setUploading] = React.useState(false)
   const [dragOver, setDragOver] = React.useState(false)
-  const [qrPlacement, setQrPlacement] = React.useState<QrPlacement | null>(null)
+  const [qrPlacements, setQrPlacements] = React.useState<QrPlacement[]>([])
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
@@ -214,7 +223,7 @@ function UploadMaterialDialog({
     setFilePreviewUrl(null)
     setUploading(false)
     setDragOver(false)
-    setQrPlacement(null)
+    setQrPlacements([])
   }
 
   function handleFileSelect(selectedFile: File | undefined) {
@@ -223,7 +232,7 @@ function UploadMaterialDialog({
       URL.revokeObjectURL(filePreviewUrl)
     }
     setFile(selectedFile)
-    setQrPlacement(null)
+    setQrPlacements([])
     if (!title) {
       const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '')
       setTitle(nameWithoutExt)
@@ -311,8 +320,8 @@ function UploadMaterialDialog({
     setUploading(false)
 
     const metadata: Record<string, unknown> = {}
-    if (qrPlacement) {
-      metadata.qr_placement = qrPlacement
+    if (qrPlacements.length > 0) {
+      Object.assign(metadata, qrPlacementMetadata(qrPlacements))
     }
 
     const result = await insert({
@@ -347,14 +356,14 @@ function UploadMaterialDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-8">
-      <div className="w-full max-w-lg rounded-xl bg-surface-0 shadow-xl my-auto">
+      <div className="my-auto w-full max-w-6xl rounded-xl bg-surface-0 shadow-xl">
         <div className="flex items-center justify-between border-b border-surface-100 px-6 py-4">
           <h2 className="text-lg font-semibold text-surface-900">Upload Material</h2>
           <button onClick={onClose} className="text-surface-400 hover:text-surface-600">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4 p-6 max-h-[70vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="space-y-4 p-6 max-h-[90vh] overflow-y-auto">
           {/* File drop zone */}
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-600">File</label>
@@ -378,7 +387,7 @@ function UploadMaterialDialog({
                   onClick={() => {
                     setFile(null)
                     setFilePreviewUrl(null)
-                    setQrPlacement(null)
+                    setQrPlacements([])
                     if (fileInputRef.current) fileInputRef.current.value = ''
                   }}
                   className="shrink-0 text-surface-400 hover:text-surface-600"
@@ -427,8 +436,8 @@ function UploadMaterialDialog({
             <QrPlacementPicker
               previewUrl={qrPreviewUrl}
               previewMimeType={file?.type}
-              placement={qrPlacement}
-              onChange={setQrPlacement}
+              placements={qrPlacements}
+              onChange={setQrPlacements}
             />
           )}
 
@@ -524,6 +533,10 @@ export default function MaterialsLibraryPage() {
   const [useCaseFilter, setUseCaseFilter] = React.useState('')
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [uploadOpen, setUploadOpen] = React.useState(false)
+  const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
+  const [deletingId, setDeletingId] = React.useState<string | null>(null)
+  const [actionMessage, setActionMessage] = React.useState<string | null>(null)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
 
   const filtered = React.useMemo(() => {
     return materials.filter(m => {
@@ -535,6 +548,26 @@ export default function MaterialsLibraryPage() {
       return true
     })
   }, [materials, search, typeFilter, brandFilter, useCaseFilter])
+
+  async function handleDelete(material: Material) {
+    if (!confirm('Delete this material? Any linked business or outreach references will be cleared.')) return
+
+    setDeletingId(material.id)
+    setActionMessage(null)
+    setDeleteError(null)
+
+    const result = await deleteMaterial(material, { manageReferences: isAdmin })
+
+    setDeletingId(null)
+
+    if (!result.success) {
+      setDeleteError(result.error || 'Failed to delete material.')
+      return
+    }
+
+    setActionMessage('Material deleted.')
+    refetch()
+  }
 
   return (
     <div>
@@ -554,6 +587,14 @@ export default function MaterialsLibraryPage() {
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onSuccess={refetch}
+      />
+
+      <MaterialPreviewDialog
+        material={previewMaterial}
+        open={!!previewMaterial}
+        onOpenChange={(open) => {
+          if (!open) setPreviewMaterial(null)
+        }}
       />
 
       {/* Filters */}
@@ -624,6 +665,18 @@ export default function MaterialsLibraryPage() {
         </div>
       )}
 
+      {deleteError && (
+        <div className="mb-4 rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          {deleteError}
+        </div>
+      )}
+
+      {actionMessage && (
+        <div className="mb-4 rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
+          {actionMessage}
+        </div>
+      )}
+
       {/* Loading skeleton */}
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -647,7 +700,8 @@ export default function MaterialsLibraryPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map(material => {
-            const hasQrZone = !!(material.metadata as Record<string, unknown>)?.qr_placement
+            const qrZoneCount = getQrPlacements(material.metadata as Record<string, unknown> | null).length
+            const hasQrZone = hasQrPlacements(material.metadata as Record<string, unknown> | null)
             return (
               <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
                 {/* Thumbnail */}
@@ -662,7 +716,7 @@ export default function MaterialsLibraryPage() {
                   />
                   {hasQrZone && (
                     <div className="absolute top-2 right-2 rounded bg-brand-500 px-1.5 py-0.5 text-[10px] font-medium text-white flex items-center gap-0.5">
-                      <QrCode className="h-2.5 w-2.5" /> QR Zone
+                      <QrCode className="h-2.5 w-2.5" /> {qrZoneCount} QR {qrZoneCount === 1 ? 'zone' : 'zones'}
                     </div>
                   )}
                 </div>
@@ -684,11 +738,14 @@ export default function MaterialsLibraryPage() {
                       {formatDate(material.updated_at)}
                     </span>
                     <div className="flex gap-1">
-                      {material.file_url && (
-                        <Button variant="ghost" size="icon-sm" title="Preview" asChild>
-                          <a href={material.file_url} target="_blank" rel="noopener noreferrer">
-                            <Eye className="h-3.5 w-3.5" />
-                          </a>
+                      {(material.file_url || material.thumbnail_url) && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Preview"
+                          onClick={() => setPreviewMaterial(material)}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
                         </Button>
                       )}
                       {material.file_url && (
@@ -696,6 +753,18 @@ export default function MaterialsLibraryPage() {
                           <a href={material.file_url} download>
                             <Download className="h-3.5 w-3.5" />
                           </a>
+                        </Button>
+                      )}
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Delete"
+                          onClick={() => handleDelete(material)}
+                          disabled={deletingId === material.id}
+                          className="text-danger-500 hover:text-danger-700"
+                        >
+                          {deletingId === material.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         </Button>
                       )}
                     </div>
@@ -709,7 +778,8 @@ export default function MaterialsLibraryPage() {
         /* List view */
         <div className="space-y-2">
           {filtered.map(material => {
-            const hasQrZone = !!(material.metadata as Record<string, unknown>)?.qr_placement
+            const qrZoneCount = getQrPlacements(material.metadata as Record<string, unknown> | null).length
+            const hasQrZone = hasQrPlacements(material.metadata as Record<string, unknown> | null)
             return (
               <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
                 <CardContent className="flex items-center gap-4 py-3">
@@ -724,7 +794,7 @@ export default function MaterialsLibraryPage() {
                       </Badge>
                       {hasQrZone && (
                         <span className="shrink-0 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 flex items-center gap-0.5">
-                          <QrCode className="h-2.5 w-2.5" /> QR Zone
+                          <QrCode className="h-2.5 w-2.5" /> {qrZoneCount} QR {qrZoneCount === 1 ? 'zone' : 'zones'}
                         </span>
                       )}
                     </div>
@@ -735,11 +805,14 @@ export default function MaterialsLibraryPage() {
                     <span>{formatDate(material.updated_at)}</span>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    {material.file_url && (
-                      <Button variant="ghost" size="icon-sm" asChild>
-                        <a href={material.file_url} target="_blank" rel="noopener noreferrer">
-                          <Eye className="h-3.5 w-3.5" />
-                        </a>
+                    {(material.file_url || material.thumbnail_url) && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Preview"
+                        onClick={() => setPreviewMaterial(material)}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
                       </Button>
                     )}
                     {material.file_url && (
@@ -747,6 +820,18 @@ export default function MaterialsLibraryPage() {
                         <a href={material.file_url} download>
                           <Download className="h-3.5 w-3.5" /> Download
                         </a>
+                      </Button>
+                    )}
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Delete"
+                        onClick={() => handleDelete(material)}
+                        disabled={deletingId === material.id}
+                        className="text-danger-500 hover:text-danger-700"
+                      >
+                        {deletingId === material.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                       </Button>
                     )}
                   </div>
