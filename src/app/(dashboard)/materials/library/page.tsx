@@ -171,29 +171,37 @@ function UploadMaterialDialog({
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
-  const [type, setType] = React.useState<Material['type']>('pdf')
+  const [type, setType] = React.useState<Material['type']>('flyer')
   const [brand, setBrand] = React.useState<'localvip' | 'hato'>('localvip')
   const [category, setCategory] = React.useState('')
   const [useCase, setUseCase] = React.useState('')
   const [file, setFile] = React.useState<File | null>(null)
   const [filePreviewUrl, setFilePreviewUrl] = React.useState<string | null>(null)
+  const [previewImage, setPreviewImage] = React.useState<File | null>(null)
+  const [previewImageUrl, setPreviewImageUrl] = React.useState<string | null>(null)
   const [uploading, setUploading] = React.useState(false)
   const [dragOver, setDragOver] = React.useState(false)
   const [qrPlacement, setQrPlacement] = React.useState<QrPlacement | null>(null)
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const previewInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
   const isImageFile = file && file.type.startsWith('image/')
+
+  // The image used for QR placement — either the file itself (if image) or a separate preview image
+  const qrPreviewUrl = isImageFile ? filePreviewUrl : previewImageUrl
 
   function reset() {
     setTitle('')
     setDescription('')
-    setType('pdf')
+    setType('flyer')
     setBrand('localvip')
     setCategory('')
     setUseCase('')
     setFile(null)
     setFilePreviewUrl(null)
+    setPreviewImage(null)
+    setPreviewImageUrl(null)
     setUploading(false)
     setDragOver(false)
     setQrPlacement(null)
@@ -210,9 +218,19 @@ function UploadMaterialDialog({
     // Generate preview URL for image files
     if (selectedFile.type.startsWith('image/')) {
       setFilePreviewUrl(URL.createObjectURL(selectedFile))
+      // Clear separate preview image since the file itself is an image
+      setPreviewImage(null)
+      setPreviewImageUrl(null)
     } else {
       setFilePreviewUrl(null)
     }
+  }
+
+  function handlePreviewImageSelect(selectedFile: File | undefined) {
+    if (!selectedFile || !selectedFile.type.startsWith('image/')) return
+    setPreviewImage(selectedFile)
+    setPreviewImageUrl(URL.createObjectURL(selectedFile))
+    setQrPlacement(null)
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -237,49 +255,65 @@ function UploadMaterialDialog({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  // Clean up preview URL on unmount
+  // Clean up preview URLs on unmount
   React.useEffect(() => {
     return () => {
       if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl)
+      if (previewImageUrl) URL.revokeObjectURL(previewImageUrl)
     }
-  }, [filePreviewUrl])
+  }, [filePreviewUrl, previewImageUrl])
+
+  async function uploadFile(fileToUpload: File, folder: string): Promise<string | null> {
+    try {
+      const supabase = createClient()
+      const filePath = `${folder}/${profile.id}/${Date.now()}-${fileToUpload.name}`
+      const { error: uploadError } = await supabase.storage
+        .from('materials')
+        .upload(filePath, fileToUpload, { upsert: true })
+
+      if (uploadError) {
+        console.warn('Storage upload failed, falling back to data URL:', uploadError.message)
+        return await fileToDataUrl(fileToUpload)
+      }
+      const { data: urlData } = supabase.storage
+        .from('materials')
+        .getPublicUrl(filePath)
+      return urlData.publicUrl
+    } catch (err) {
+      console.warn('Upload error, falling back to data URL:', err)
+      return await fileToDataUrl(fileToUpload)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
     let fileUrl: string | null = null
+    let thumbnailUrl: string | null = null
     let fileName: string | null = null
     let fileSize: number | null = null
     let mimeType: string | null = null
 
+    setUploading(true)
+
     if (file) {
-      setUploading(true)
       fileName = file.name
       fileSize = file.size
       mimeType = file.type || null
+      fileUrl = await uploadFile(file, 'materials')
 
-      try {
-        const supabase = createClient()
-        const filePath = `materials/${profile.id}/${Date.now()}-${file.name}`
-        const { error: uploadError } = await supabase.storage
-          .from('materials')
-          .upload(filePath, file, { upsert: true })
-
-        if (uploadError) {
-          console.warn('Storage upload failed, falling back to data URL:', uploadError.message)
-          fileUrl = await fileToDataUrl(file)
-        } else {
-          const { data: urlData } = supabase.storage
-            .from('materials')
-            .getPublicUrl(filePath)
-          fileUrl = urlData.publicUrl
-        }
-      } catch (err) {
-        console.warn('Upload error, falling back to data URL:', err)
-        fileUrl = await fileToDataUrl(file)
+      // For image files, use the same URL as thumbnail
+      if (file.type.startsWith('image/')) {
+        thumbnailUrl = fileUrl
       }
-      setUploading(false)
     }
+
+    // Upload separate preview image for non-image files (PDFs, etc.)
+    if (previewImage && !isImageFile) {
+      thumbnailUrl = await uploadFile(previewImage, 'thumbnails')
+    }
+
+    setUploading(false)
 
     const metadata: Record<string, unknown> = {}
     if (qrPlacement) {
@@ -297,7 +331,7 @@ function UploadMaterialDialog({
       file_name: fileName,
       file_size: fileSize,
       mime_type: mimeType,
-      thumbnail_url: null,
+      thumbnail_url: thumbnailUrl,
       target_roles: [],
       campaign_id: null,
       city_id: null,
@@ -349,6 +383,8 @@ function UploadMaterialDialog({
                   onClick={() => {
                     setFile(null)
                     setFilePreviewUrl(null)
+                    setPreviewImage(null)
+                    setPreviewImageUrl(null)
                     setQrPlacement(null)
                     if (fileInputRef.current) fileInputRef.current.value = ''
                   }}
@@ -371,17 +407,66 @@ function UploadMaterialDialog({
               >
                 <Upload className={`h-8 w-8 ${dragOver ? 'text-brand-500' : 'text-surface-400'}`} />
                 <p className="text-sm text-surface-600">
-                  <span className="font-medium text-brand-600">Click to browse</span> or drag & drop
+                  <span className="font-medium text-brand-600">Click to browse</span> or drag &amp; drop
                 </p>
                 <p className="text-xs text-surface-400">PDF, images, documents, or any file type</p>
               </div>
             )}
           </div>
 
-          {/* QR Placement Picker — shown for image files */}
-          {isImageFile && filePreviewUrl && (
+          {/* Preview image upload for non-image files (PDFs, docs, etc.) */}
+          {file && !isImageFile && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+              <input
+                ref={previewInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => handlePreviewImageSelect(e.target.files?.[0])}
+              />
+              <div className="flex items-center gap-2">
+                <Image className="h-4 w-4 text-brand-600" />
+                <span className="text-xs font-medium text-surface-700">
+                  Upload a preview image to set QR code placement
+                </span>
+              </div>
+              <p className="text-xs text-surface-500">
+                Upload a screenshot or design image of this material so you can mark where the QR code should go.
+              </p>
+              {previewImage ? (
+                <div className="flex items-center gap-2 rounded border border-surface-300 bg-surface-0 px-3 py-2">
+                  <Image className="h-4 w-4 text-brand-600" />
+                  <span className="text-xs text-surface-700 flex-1 truncate">{previewImage.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewImage(null)
+                      setPreviewImageUrl(null)
+                      setQrPlacement(null)
+                      if (previewInputRef.current) previewInputRef.current.value = ''
+                    }}
+                    className="text-surface-400 hover:text-surface-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => previewInputRef.current?.click()}
+                >
+                  <Image className="h-3.5 w-3.5" /> Upload Preview Image
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* QR Placement Picker — shown when we have a preview image (from file or separate upload) */}
+          {file && qrPreviewUrl && (
             <QrPlacementPicker
-              imageUrl={filePreviewUrl}
+              imageUrl={qrPreviewUrl}
               placement={qrPlacement}
               onChange={setQrPlacement}
             />
@@ -606,10 +691,10 @@ export default function MaterialsLibraryPage() {
             return (
               <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
                 {/* Thumbnail */}
-                <div className="flex h-36 items-center justify-center border-b border-surface-100 bg-surface-50 relative">
+                <div className="flex h-36 items-center justify-center border-b border-surface-100 bg-surface-50 relative overflow-hidden">
                   {material.thumbnail_url ? (
                     <img src={material.thumbnail_url} alt={material.title} className="h-full w-full object-cover" />
-                  ) : material.file_url && material.mime_type?.startsWith('image/') ? (
+                  ) : material.file_url && (material.mime_type?.startsWith('image/') || material.file_url.startsWith('data:image/')) ? (
                     <img src={material.file_url} alt={material.title} className="h-full w-full object-cover" />
                   ) : (
                     <div className="text-surface-300">
