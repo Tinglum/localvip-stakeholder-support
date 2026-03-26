@@ -33,6 +33,17 @@ export const BUSINESS_NAV_ITEMS: NavItem[] = [
   { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', minLevel: 0 },
 ]
 
+export const FIELD_OUTREACH_NAV_ITEMS: NavItem[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
+  { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
+  { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 0 },
+  { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', minLevel: 0 },
+  { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
+  { label: 'My Stats', href: '/analytics', icon: 'BarChart3', minLevel: 0 },
+]
+
+const FIELD_OUTREACH_ROLES: UserRole[] = ['intern', 'volunteer', 'influencer', 'affiliate']
+
 const BUSINESS_ALLOWED_PREFIXES = [
   '/dashboard',
   '/portal/business',
@@ -43,6 +54,10 @@ const BUSINESS_ALLOWED_PREFIXES = [
 
 export function isBusinessRole(role: UserRole): boolean {
   return role === 'business'
+}
+
+export function isFieldOutreachRole(role: UserRole): boolean {
+  return FIELD_OUTREACH_ROLES.includes(role)
 }
 
 function normalizeDomain(value?: string | null): string | null {
@@ -136,6 +151,10 @@ export function normalizeBusinessProfile(
 export function getSidebarNavItems(role: UserRole, userLevel: number): NavItem[] {
   if (isBusinessRole(role)) {
     return BUSINESS_NAV_ITEMS
+  }
+
+  if (isFieldOutreachRole(role)) {
+    return FIELD_OUTREACH_NAV_ITEMS
   }
 
   return NAV_ITEMS.filter((item) => userLevel >= item.minLevel)

@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { BusinessDashboardPage } from '@/components/business/business-dashboard-page'
+import { FieldOutreachDashboardPage } from '@/components/field/field-outreach-dashboard-page'
+import { isFieldOutreachRole } from '@/lib/business-portal'
 import { ROLES, ROLE_TOOLS, ROLE_THEMES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 
@@ -58,6 +60,10 @@ export default function DashboardPage() {
 
   if (profile.role === 'business') {
     return <BusinessDashboardPage />
+  }
+
+  if (isFieldOutreachRole(profile.role)) {
+    return <FieldOutreachDashboardPage />
   }
 
   return <TeamDashboardPage />

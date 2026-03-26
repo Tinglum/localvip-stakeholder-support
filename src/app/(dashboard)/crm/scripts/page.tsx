@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { StatCard } from '@/components/ui/stat-card'
 import { useAuth } from '@/lib/auth/context'
+import { isFieldOutreachRole } from '@/lib/business-portal'
 import {
   useBusinesses,
   useCampaigns,
@@ -244,6 +245,7 @@ function HistoryRow({
 export default function OutreachScriptsPage() {
   const searchParams = useSearchParams()
   const { profile } = useAuth()
+  const isFieldUser = isFieldOutreachRole(profile.role)
   const { data: businesses, loading: businessesLoading, error: businessesError } = useBusinesses()
   const { data: campaigns } = useCampaigns()
   const { data: cities } = useCities()
@@ -368,6 +370,20 @@ export default function OutreachScriptsPage() {
     return map
   }, [assignments])
 
+  const myBusinessIds = React.useMemo(() => {
+    const ids = new Set<string>()
+    for (const assignment of assignments) {
+      if (assignment.stakeholder_id === profile.id) ids.add(assignment.entity_id)
+    }
+    for (const business of businesses) {
+      if (business.owner_id === profile.id) ids.add(business.id)
+    }
+    for (const item of history) {
+      if (item.created_by === profile.id) ids.add(item.business_id)
+    }
+    return ids
+  }, [assignments, businesses, history, profile.id])
+
   const historyByBusiness = React.useMemo(() => {
     const map: Record<string, OutreachScript[]> = {}
     for (const item of history) {
@@ -415,6 +431,7 @@ export default function OutreachScriptsPage() {
         explicitCause,
         suggestedCause,
         causeMode,
+        isMyBusiness: myBusinessIds.has(business.id),
         linkedMaterial: business.linked_material_id ? materialMap[business.linked_material_id] || null : null,
         linkedQrCode: business.linked_qr_code_id ? qrCodeMap[business.linked_qr_code_id] || null : null,
         linkedQrCollection: business.linked_qr_collection_id ? qrCollectionMap[business.linked_qr_collection_id] || null : null,
@@ -424,11 +441,11 @@ export default function OutreachScriptsPage() {
         ownerContact,
       }
     })
-  }, [businesses, businessContacts, campaignMap, causes, causeMap, cityLabelMap, cityNameMap, historyByBusiness, materialMap, qrCodeMap, qrCollectionMap])
+  }, [businesses, businessContacts, campaignMap, causes, causeMap, cityLabelMap, cityNameMap, historyByBusiness, materialMap, myBusinessIds, qrCodeMap, qrCollectionMap])
 
   const filteredBusinesses = React.useMemo(() => {
     const term = deferredSearch.trim().toLowerCase()
-    return enrichedBusinesses.filter((business) => {
+    const filtered = enrichedBusinesses.filter((business) => {
       if (term) {
         const haystack = [
           business.name,
@@ -445,7 +462,21 @@ export default function OutreachScriptsPage() {
       if (causeFilter !== 'all' && business.causeMode !== causeFilter) return false
       return true
     })
-  }, [categoryFilter, cityFilter, causeFilter, deferredSearch, enrichedBusinesses, stageFilter])
+
+    if (!isFieldUser) return filtered
+
+    return [...filtered].sort((left, right) => {
+      if (Number(right.isMyBusiness) !== Number(left.isMyBusiness)) {
+        return Number(right.isMyBusiness) - Number(left.isMyBusiness)
+      }
+
+      const rightRecent = right.recentHistory ? +new Date(right.recentHistory.created_at) : 0
+      const leftRecent = left.recentHistory ? +new Date(left.recentHistory.created_at) : 0
+      if (rightRecent !== leftRecent) return rightRecent - leftRecent
+
+      return left.name.localeCompare(right.name)
+    })
+  }, [categoryFilter, cityFilter, causeFilter, deferredSearch, enrichedBusinesses, isFieldUser, stageFilter])
 
   React.useEffect(() => {
     if (!filteredBusinesses.length) {
@@ -757,18 +788,34 @@ export default function OutreachScriptsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Outreach Scripts"
-        description="Generate highly specific local-business scripts, personalize them fast, and push every attempt straight back into the CRM."
-        breadcrumb={[
-          { label: 'CRM', href: '/crm/businesses' },
-          { label: 'Outreach Scripts' },
-        ]}
+        title={isFieldUser ? 'Intern Outreach Script Engine' : 'Outreach Scripts'}
+        description={isFieldUser
+          ? 'Start with a business, add your real local angle, and copy or log the outreach without leaving your workflow.'
+          : 'Generate highly specific local-business scripts, personalize them fast, and push every attempt straight back into the CRM.'}
+        breadcrumb={isFieldUser
+          ? [
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Outreach Scripts' },
+            ]
+          : [
+              { label: 'CRM', href: '/crm/businesses' },
+              { label: 'Outreach Scripts' },
+            ]}
         actions={
-          <Link href="/crm/outreach">
-            <Button variant="outline">
-              View Outreach Timeline <ArrowUpRight className="h-4 w-4" />
-            </Button>
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {isFieldUser && (
+              <Link href="/dashboard">
+                <Button variant="outline">
+                  My Outreach Workspace <ArrowUpRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            )}
+            <Link href="/crm/outreach">
+              <Button variant="outline">
+                View Outreach Timeline <ArrowUpRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -791,6 +838,11 @@ export default function OutreachScriptsPage() {
               <span className="rounded-full bg-white/70 px-3 py-1">Category-specific</span>
               <span className="rounded-full bg-white/70 px-3 py-1">CRM-connected</span>
               <span className="rounded-full bg-white/70 px-3 py-1">Ready for QR / asset hooks</span>
+              {isFieldUser && myBusinessIds.size > 0 && (
+                <span className="rounded-full bg-white/70 px-3 py-1">
+                  {myBusinessIds.size} focus business{myBusinessIds.size === 1 ? '' : 'es'} prioritized first
+                </span>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

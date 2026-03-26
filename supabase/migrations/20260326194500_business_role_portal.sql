@@ -189,7 +189,11 @@ CREATE POLICY materials_select_active ON materials
     AND (
       COALESCE(current_user_role()::text, '') <> 'business'
       OR category = 'business_to_consumer'
-      OR 'business' = ANY(COALESCE(target_roles, ARRAY[]::user_role[]))
+      OR EXISTS (
+        SELECT 1
+        FROM unnest(COALESCE(target_roles, ARRAY[]::user_role[])) AS target_role
+        WHERE target_role::text = 'business'
+      )
     )
   );
 
