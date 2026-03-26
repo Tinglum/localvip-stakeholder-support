@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createServiceClient } from '@/lib/supabase/server'
 import {
+  BusinessJoinClaimError,
   ensureBusinessJoinResource,
   resolveBusinessByJoinIdentifier,
   upsertBusinessJoinContact,
@@ -76,37 +77,46 @@ export async function POST(
     return NextResponse.json({ error: 'This business offer page is no longer active.' }, { status: 404 })
   }
 
-  const actorId = business.owner_user_id || business.owner_id || null
-  const resource = await ensureBusinessJoinResource(supabase, business, actorId)
-  const contact = await upsertBusinessJoinContact(supabase, business, {
-    firstName: parsed.data.firstName,
-    phone: parsed.data.phone || null,
-    email: parsed.data.email || null,
-    supportsLocalCauses: parsed.data.supportsLocalCauses,
-  })
-
-  await (supabase
-    .from('qr_code_events') as any)
-    .insert({
-      qr_code_id: resource.qrCodeId,
-      event_type: 'signup',
-      ip_address: ipAddress,
-      user_agent: request.headers.get('user-agent'),
-      referrer: request.headers.get('referer'),
-      metadata: {
-        contact_id: contact.id,
-        source: 'business_join_qr',
-        supports_local_causes: parsed.data.supportsLocalCauses,
-      },
+  try {
+    const actorId = business.owner_user_id || business.owner_id || null
+    const resource = await ensureBusinessJoinResource(supabase, business, actorId)
+    const contact = await upsertBusinessJoinContact(supabase, business, {
+      firstName: parsed.data.firstName,
+      phone: parsed.data.phone || null,
+      email: parsed.data.email || null,
+      supportsLocalCauses: parsed.data.supportsLocalCauses,
     })
 
-  return NextResponse.json({
-    success: true,
-    businessName: business.name,
-    offerTitle: resource.offerTitle,
-    offerDescription: resource.offerDescription,
-    offerValue: resource.offerValue,
-  })
+    await (supabase
+      .from('qr_code_events') as any)
+      .insert({
+        qr_code_id: resource.qrCodeId,
+        event_type: 'signup',
+        ip_address: ipAddress,
+        user_agent: request.headers.get('user-agent'),
+        referrer: request.headers.get('referer'),
+        metadata: {
+          contact_id: contact.id,
+          source: 'business_join_qr',
+          supports_local_causes: parsed.data.supportsLocalCauses,
+        },
+      })
+
+    return NextResponse.json({
+      success: true,
+      businessName: business.name,
+      offerTitle: resource.offerTitle,
+      offerDescription: resource.offerDescription,
+      offerValue: resource.offerValue,
+      claimedAt: contact.joined_at || contact.created_at,
+    })
+  } catch (error) {
+    if (error instanceof BusinessJoinClaimError) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
+    }
+
+    throw error
+  }
 }
 
 function getClientIp(request: NextRequest) {

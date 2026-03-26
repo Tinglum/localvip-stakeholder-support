@@ -141,12 +141,14 @@ export async function upsertBusinessJoinContact(
     )
   }) || null
 
+  if (existing) {
+    throw new BusinessJoinClaimError(
+      'This phone number or email has already been used to claim this offer.',
+      existing,
+    )
+  }
+
   const nextMetadata = {
-    ...((existing?.metadata as Record<string, unknown> | null) || {}),
-    list_status: 'joined',
-    offer_eligible: true,
-    supports_local_causes: payload.supportsLocalCauses,
-    capture_source: 'business_join_qr',
     future_hooks: {
       sms_after_signup: false,
       email_confirmation: false,
@@ -154,26 +156,10 @@ export async function upsertBusinessJoinContact(
       school_cause_attribution: false,
       stakeholder_variants: false,
     },
-  }
-
-  if (existing) {
-    const { data } = await (supabase.from('contacts') as any)
-      .update({
-        first_name: payload.firstName || existing.first_name,
-        phone: phone || existing.phone || null,
-        email: email || existing.email || null,
-        source: 'qr',
-        list_status: 'joined',
-        joined_at: existing.joined_at || now,
-        owner_id: existing.owner_id || ownerId,
-        created_by_user_id: existing.created_by_user_id || ownerId,
-        metadata: nextMetadata,
-      })
-      .eq('id', existing.id)
-      .select()
-      .single()
-
-    return (data || existing) as Contact
+    list_status: 'joined',
+    offer_eligible: true,
+    supports_local_causes: payload.supportsLocalCauses,
+    capture_source: 'business_join_qr',
   }
 
   const { data } = await (supabase
@@ -198,6 +184,16 @@ export async function upsertBusinessJoinContact(
     .single()
 
   return data as Contact
+}
+
+export class BusinessJoinClaimError extends Error {
+  constructor(
+    message: string,
+    public readonly contact: Contact | null = null,
+  ) {
+    super(message)
+    this.name = 'BusinessJoinClaimError'
+  }
 }
 
 export function userCanManageBusinessJoin(profile: Profile | null, business: Business | null) {

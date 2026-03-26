@@ -18,7 +18,10 @@ interface JoinSuccessPayload {
   offerTitle: string
   offerDescription: string
   offerValue?: string | null
+  claimedAt: string
 }
+
+const CLAIM_STORAGE_PREFIX = 'localvip-business-claim'
 
 export function PublicBusinessJoinForm({
   slug,
@@ -34,6 +37,33 @@ export function PublicBusinessJoinForm({
   const [error, setError] = React.useState<string | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
   const [submitted, setSubmitted] = React.useState<JoinSuccessPayload | null>(null)
+  const [elapsedLabel, setElapsedLabel] = React.useState('00:00')
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const cached = window.localStorage.getItem(getClaimStorageKey(slug))
+    if (!cached) return
+
+    try {
+      const parsed = JSON.parse(cached) as JoinSuccessPayload
+      if (parsed?.claimedAt) {
+        setSubmitted(parsed)
+      }
+    } catch {
+      window.localStorage.removeItem(getClaimStorageKey(slug))
+    }
+  }, [slug])
+
+  React.useEffect(() => {
+    if (!submitted?.claimedAt) return
+
+    const tick = () => setElapsedLabel(formatElapsedTime(submitted.claimedAt))
+    tick()
+
+    const timer = window.setInterval(tick, 1000)
+    return () => window.clearInterval(timer)
+  }, [submitted?.claimedAt])
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -60,7 +90,12 @@ export function PublicBusinessJoinForm({
         throw new Error(payload.error || 'Your offer could not be claimed.')
       }
 
-      setSubmitted(payload as JoinSuccessPayload)
+      const nextSubmitted = payload as JoinSuccessPayload
+      setSubmitted(nextSubmitted)
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(getClaimStorageKey(slug), JSON.stringify(nextSubmitted))
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Your offer could not be claimed.')
     } finally {
@@ -83,6 +118,12 @@ export function PublicBusinessJoinForm({
           <p className="mt-3 text-base text-surface-600">
             You&apos;re in for <span className="font-semibold text-surface-900">{submitted.businessName}</span>.
           </p>
+        </div>
+
+        <div className="mt-5 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-5 py-4 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Claimed</p>
+          <p className="mt-2 text-3xl font-black tracking-tight text-emerald-700">{elapsedLabel}</p>
+          <p className="mt-2 text-sm text-emerald-800">minutes:seconds since this offer was registered</p>
         </div>
 
         <div className="mt-6 rounded-[1.75rem] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 text-center shadow-sm">
@@ -177,4 +218,20 @@ export function PublicBusinessJoinForm({
       </form>
     </div>
   )
+}
+
+function getClaimStorageKey(slug: string) {
+  return `${CLAIM_STORAGE_PREFIX}:${slug}`
+}
+
+function formatElapsedTime(claimedAt: string) {
+  const claimedTime = new Date(claimedAt).getTime()
+
+  if (!Number.isFinite(claimedTime)) return '00:00'
+
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - claimedTime) / 1000))
+  const minutes = Math.floor(elapsedSeconds / 60)
+  const seconds = elapsedSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
