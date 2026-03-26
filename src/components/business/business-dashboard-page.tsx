@@ -17,7 +17,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
+import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
 import { useAuth } from '@/lib/auth/context'
+import { getBusinessJoinCaptureData } from '@/lib/business-join'
 import {
   getActivationLabel,
   getActivationTone,
@@ -66,7 +68,17 @@ export function BusinessDashboardPage() {
     },
     [business?.id]
   )
-  const { data: contacts, loading: contactsLoading } = useContacts(contactFilters)
+  const { data: contacts, loading: contactsLoading, refetch } = useContacts(contactFilters)
+
+  React.useEffect(() => {
+    if (!business) return
+
+    const interval = window.setInterval(() => {
+      refetch()
+    }, 12000)
+
+    return () => window.clearInterval(interval)
+  }, [business, refetch])
 
   if (businessesLoading || (business && contactsLoading)) {
     return (
@@ -90,6 +102,8 @@ export function BusinessDashboardPage() {
   }
 
   const portal = getBusinessPortalData(business)
+  const capture = getBusinessJoinCaptureData(business)
+  const hasCaptureReady = !!(capture.join_url || capture.qr_code_id)
   const activationStatus = getBusinessActivationStatus(business, contacts)
   const milestone = getNetworkMilestone(contacts.length)
   const invitedCount = contacts.filter((contact) => getContactListStatus(contact) !== 'added').length
@@ -115,8 +129,8 @@ export function BusinessDashboardPage() {
     {
       label: 'Share your LocalVIP link',
       href: '/portal/clients',
-      complete: false,
-      detail: 'This is being prepared for your launch materials',
+      complete: hasCaptureReady,
+      detail: hasCaptureReady ? 'Your QR and join page are ready to use in-store' : 'Your QR and join page will appear in My 100 List',
     },
     {
       label: 'Review your business profile',
@@ -234,6 +248,14 @@ export function BusinessDashboardPage() {
           detail={business.category || 'Set your business category'}
         />
       </div>
+
+      <BusinessJoinQrCard
+        business={business}
+        totalClients={contacts.length}
+        todayAdds={todayAdds}
+        progressPercent={progressPercent}
+        compact
+      />
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-surface-800">Quick Actions</h2>

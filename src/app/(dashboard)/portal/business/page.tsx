@@ -7,6 +7,7 @@ import {
   Sparkles, Eye, Trash2, Star, Info,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
+import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth/context'
 import { useBusinesses, useBusinessUpdate, useCauses, useContacts } from '@/lib/supabase/hooks'
-import { getBusinessActivationStatus, resolveScopedBusiness } from '@/lib/business-portal'
+import { getBusinessActivationStatus, isCreatedToday, resolveScopedBusiness } from '@/lib/business-portal'
 import { createClient } from '@/lib/supabase/client'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import type { Business } from '@/lib/types/database'
@@ -510,6 +511,8 @@ export default function BusinessPortalPage() {
   const previewOfferValue = portal.offer_value || 'LocalVIP Offer'
   const activationStatus = getBusinessActivationStatus(biz, clientContacts)
   const selectedDaysCount = (portal.selected_days || []).length
+  const todayAdds = clientContacts.filter((contact) => isCreatedToday(contact.created_at)).length
+  const progressPercent = Math.min(100, Math.round((clientContacts.length / 100) * 100))
   const autosaveLabel =
     autosaveState === 'saving' || uploadingBranding
       ? 'Saving changes...'
@@ -551,6 +554,14 @@ export default function BusinessPortalPage() {
           {autosaveError}
         </div>
       )}
+
+      <BusinessJoinQrCard
+        business={biz}
+        totalClients={clientContacts.length}
+        todayAdds={todayAdds}
+        progressPercent={progressPercent}
+        compact
+      />
 
       {/* Business selector (if user has multiple) */}
       {profile.role !== 'business' && businesses.length > 1 && (

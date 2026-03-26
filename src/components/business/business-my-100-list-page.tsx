@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
 import { useAuth } from '@/lib/auth/context'
 import {
   getContactDisplayName,
@@ -32,6 +33,7 @@ import {
   getContactPrimaryChannel,
   getContactTag,
   getNetworkMilestone,
+  isCreatedToday,
   resolveScopedBusiness,
   splitFullName,
 } from '@/lib/business-portal'
@@ -93,6 +95,16 @@ export function BusinessMy100ListPage() {
   const [bulkLoading, setBulkLoading] = React.useState(false)
   const [rowActionId, setRowActionId] = React.useState<string | null>(null)
 
+  React.useEffect(() => {
+    if (!business) return
+
+    const interval = window.setInterval(() => {
+      refetch()
+    }, 12000)
+
+    return () => window.clearInterval(interval)
+  }, [business, refetch])
+
   if (businessesLoading || (business && contactsLoading)) {
     return (
       <div className="flex min-h-[55vh] items-center justify-center">
@@ -117,6 +129,7 @@ export function BusinessMy100ListPage() {
   const totalAdded = contacts.length
   const invitedCount = contacts.filter((contact) => getContactListStatus(contact) !== 'added').length
   const joinedCount = contacts.filter((contact) => getContactListStatus(contact) === 'joined').length
+  const todayAdds = contacts.filter((contact) => isCreatedToday(contact.created_at)).length
   const milestone = getNetworkMilestone(totalAdded)
   const progressPercent = Math.min(100, Math.round((totalAdded / 100) * 100))
 
@@ -403,34 +416,12 @@ export function BusinessMy100ListPage() {
           </div>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Who to add first</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-surface-600">
-              Start with people who already like you, know your team, or come in often. That is the fastest path to momentum.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {SUGGESTED_TAGS.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => handleOpenCreate(tag)}
-                  className="rounded-full border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-sm font-semibold text-surface-900">Simple rule</p>
-              <p className="mt-1 text-sm text-surface-600">
-                If you would feel comfortable texting them today, they belong on your list.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <BusinessJoinQrCard
+          business={business}
+          totalClients={totalAdded}
+          todayAdds={todayAdds}
+          progressPercent={progressPercent}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -478,6 +469,35 @@ export function BusinessMy100ListPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Who to add first</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-surface-600">
+            Start with people who already like you, know your team, or come in often. That is the fastest path to momentum.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTED_TAGS.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => handleOpenCreate(tag)}
+                className="rounded-full border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+          <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+            <p className="text-sm font-semibold text-surface-900">Simple rule</p>
+            <p className="mt-1 text-sm text-surface-600">
+              If you would feel comfortable texting them today, they belong on your list.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
