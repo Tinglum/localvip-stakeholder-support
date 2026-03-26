@@ -8,6 +8,8 @@ import type {
   UserRole,
 } from '@/lib/types/database'
 
+type BusinessPortalOwnershipRecord = Pick<Business, 'id' | 'email' | 'website' | 'owner_id'>
+
 export interface BusinessPortalData {
   logo_url?: string
   cover_photo_url?: string
@@ -41,6 +43,94 @@ const BUSINESS_ALLOWED_PREFIXES = [
 
 export function isBusinessRole(role: UserRole): boolean {
   return role === 'business'
+}
+
+function normalizeDomain(value?: string | null): string | null {
+  if (!value) return null
+
+  const trimmed = value.trim().toLowerCase()
+  if (!trimmed) return null
+
+  try {
+    const url = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+      ? new URL(trimmed)
+      : new URL(`https://${trimmed}`)
+
+    return url.hostname.replace(/^www\./, '')
+  } catch {
+    const sanitized = trimmed.replace(/^https?:\/\//, '').replace(/^www\./, '')
+    return sanitized.split('/')[0] || null
+  }
+}
+
+function getEmailDomain(email?: string | null): string | null {
+  if (!email) return null
+  const [, domain] = email.trim().toLowerCase().split('@')
+  return domain ? domain.replace(/^www\./, '') : null
+}
+
+export function shouldTreatAsBusinessUser(
+  profile: Profile,
+  ownedBusinesses: BusinessPortalOwnershipRecord[],
+): boolean {
+  if (isBusinessRole(profile.role)) return true
+  if (!ownedBusinesses.length) return false
+
+  const metadata = profile.metadata as Record<string, unknown> | null
+  if (
+    profile.business_id
+    || metadata?.portal_role === 'business'
+    || metadata?.account_type === 'business'
+    || metadata?.business_user === true
+  ) {
+    return true
+  }
+
+  const profileDomain = getEmailDomain(profile.email)
+  if (!profileDomain) return false
+
+  return ownedBusinesses.some((business) => {
+    const businessEmailDomain = getEmailDomain(business.email)
+    const businessWebsiteDomain = normalizeDomain(business.website)
+
+    return profileDomain === businessEmailDomain || profileDomain === businessWebsiteDomain
+  })
+}
+
+export function normalizeBusinessProfile(
+  profile: Profile,
+  ownedBusinesses: BusinessPortalOwnershipRecord[],
+): Profile {
+  if (!shouldTreatAsBusinessUser(profile, ownedBusinesses)) {
+    return profile
+  }
+
+  const profileDomain = getEmailDomain(profile.email)
+  const matchedBusiness =
+    ownedBusinesses.find((business) => {
+      const businessEmailDomain = getEmailDomain(business.email)
+      const businessWebsiteDomain = normalizeDomain(business.website)
+
+      return !!profileDomain && (
+        profileDomain === businessEmailDomain
+        || profileDomain === businessWebsiteDomain
+      )
+    })
+    || ownedBusinesses.find((business) => business.id === profile.business_id)
+    || ownedBusinesses[0]
+  const scopedBusinessId = matchedBusiness?.id || profile.business_id || null
+  const metadata = (profile.metadata as Record<string, unknown> | null) || {}
+
+  return {
+    ...profile,
+    role: 'business',
+    business_id: scopedBusinessId,
+    metadata: {
+      ...metadata,
+      original_role: metadata.original_role || profile.role,
+      portal_role: 'business',
+    },
+  }
 }
 
 export function getSidebarNavItems(role: UserRole, userLevel: number): NavItem[] {

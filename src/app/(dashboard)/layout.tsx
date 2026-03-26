@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
 import { AuthProvider } from '@/lib/auth/context'
+import { normalizeBusinessProfile } from '@/lib/business-portal'
 import type { Profile } from '@/lib/types/database'
 import { createClient } from '@/lib/supabase/client'
 
@@ -14,6 +15,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
+    async function resolvePortalProfile(baseProfile: Profile) {
+      const { data: ownedBusinesses, error: ownedBusinessesError } = await supabase
+        .from('businesses')
+        .select('id,email,website,owner_id')
+        .eq('owner_id', baseProfile.id)
+
+      if (ownedBusinessesError) {
+        console.error('Failed to load owned businesses for profile normalization:', ownedBusinessesError)
+        return baseProfile
+      }
+
+      return normalizeBusinessProfile(baseProfile, ownedBusinesses || [])
+    }
+
     async function loadProfile() {
       // Check Supabase auth session
       const { data: { user }, error } = await supabase.auth.getUser()
@@ -52,12 +67,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           created_at: user.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }
-        setProfile(fallbackProfile)
+        setProfile(await resolvePortalProfile(fallbackProfile))
         setLoading(false)
         return
       }
 
-      setProfile(profileData as Profile)
+      setProfile(await resolvePortalProfile(profileData as Profile))
       setLoading(false)
     }
 

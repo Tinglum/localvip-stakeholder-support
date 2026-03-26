@@ -41,6 +41,100 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 })
 
 const DEMO_PASSWORD = 'demo1234'
+type DemoUser = {
+  email: string
+  name: string
+  role: string
+  brand: string
+  referral_code: string
+  org_id?: string
+}
+
+async function listAllAuthUsers() {
+  const users: Array<{ id: string; email?: string | null }> = []
+  let page = 1
+
+  while (true) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 200 })
+    if (error) throw error
+
+    users.push(...data.users)
+    if (data.users.length < 200) break
+    page += 1
+  }
+
+  return users
+}
+
+function omitProfileMetadata<T extends Record<string, unknown>>(payload: T) {
+  const { metadata, ...rest } = payload
+  return rest
+}
+
+async function upsertDemoProfile(userId: string, user: DemoUser) {
+  const payload = {
+    id: userId,
+    email: user.email,
+    full_name: user.name,
+    role: user.role,
+    brand_context: user.brand,
+    organization_id: user.org_id || null,
+    city_id: '00000000-0000-0000-0000-200000000001',
+    referral_code: user.referral_code,
+    status: 'active',
+    metadata: user.role === 'business' ? { portal_role: 'business' } : null,
+  }
+
+  const attempts = [
+    { payload, persistedRole: user.role, usedFallback: false },
+    ...(user.role === 'business'
+      ? [
+          { payload: { ...payload, role: 'business_onboarding' }, persistedRole: 'business_onboarding', usedFallback: true },
+          { payload: omitProfileMetadata({ ...payload, role: 'business_onboarding' }), persistedRole: 'business_onboarding', usedFallback: true },
+        ]
+      : []),
+    { payload: omitProfileMetadata(payload), persistedRole: user.role, usedFallback: true },
+  ]
+
+  let lastError: { message?: string } | null = null
+
+  for (const attempt of attempts) {
+    const { error } = await supabase.from('profiles').upsert(attempt.payload, { onConflict: 'id' })
+    if (!error) {
+      return { persistedRole: attempt.persistedRole, usedFallback: attempt.usedFallback }
+    }
+
+    lastError = error
+  }
+
+  throw lastError
+}
+
+async function syncDemoUser(user: DemoUser, authUserMap: Map<string, string>) {
+  let userId = authUserMap.get(user.email.toLowerCase()) || null
+
+  if (!userId) {
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email: user.email,
+      password: DEMO_PASSWORD,
+      email_confirm: true,
+      user_metadata: {
+        full_name: user.name,
+        role: user.role,
+        portal_role: user.role === 'business' ? 'business' : undefined,
+      },
+    })
+
+    if (authError) throw authError
+    userId = authUser.user.id
+    authUserMap.set(user.email.toLowerCase(), userId)
+  }
+
+  const { persistedRole, usedFallback } = await upsertDemoProfile(userId, user)
+  console.log(
+    `  Synced user: ${user.email} (${usedFallback ? `${user.role} via ${persistedRole} + metadata fallback` : persistedRole})`
+  )
+}
 
 async function seed() {
   console.log('Seeding LocalVIP Stakeholder Support System...\n')
@@ -66,7 +160,7 @@ async function seed() {
 
   // 3. Create demo auth users and profiles
   console.log('Creating demo users...')
-  const demoUsers = [
+  const demoUsers: DemoUser[] = [
     { email: 'kenneth@localvip.com', name: 'Kenneth', role: 'super_admin', brand: 'localvip', referral_code: 'kenneth-admin' },
     { email: 'rick@localvip.com', name: 'Rick', role: 'internal_admin', brand: 'localvip', referral_code: 'rick-admin' },
     { email: 'principal@mlkschool.edu', name: 'Dr. Sarah Johnson', role: 'school_leader', brand: 'hato', referral_code: 'sarah-mlk', org_id: '00000000-0000-0000-0000-100000000001' },
@@ -77,35 +171,18 @@ async function seed() {
     { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'influencer', brand: 'localvip', referral_code: 'jordan-inf' },
     { email: 'volunteer@example.com', name: 'Casey Adams', role: 'volunteer', brand: 'localvip', referral_code: 'casey-vol' },
   ]
+  const authUserMap = new Map(
+    (await listAllAuthUsers())
+      .map((user) => [user.email?.toLowerCase() || '', user.id] as const)
+      .filter(([email]) => email)
+  )
 
   for (const user of demoUsers) {
-    // Create auth user (idempotent via email)
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-      email: user.email,
-      password: DEMO_PASSWORD,
-      email_confirm: true,
-      user_metadata: { full_name: user.name, role: user.role },
-    })
-
-    if (authError && !authError.message.includes('already been registered')) {
-      console.error(`  Error creating ${user.email}:`, authError.message)
-      continue
-    }
-
-    const userId = authUser?.user?.id
-    if (userId) {
-      await supabase.from('profiles').upsert({
-        id: userId,
-        email: user.email,
-        full_name: user.name,
-        role: user.role,
-        brand_context: user.brand,
-        organization_id: (user as any).org_id || null,
-        city_id: '00000000-0000-0000-0000-200000000001',
-        referral_code: user.referral_code,
-        status: 'active',
-      }, { onConflict: 'id' })
-      console.log(`  Created user: ${user.email} (${user.role})`)
+    try {
+      await syncDemoUser(user, authUserMap)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`
+      console.error(`  Error syncing ${user.email}:`, message)
     }
   }
 
@@ -324,15 +401,42 @@ async function seed() {
     .single()
 
   if (lisaOwnerId && lisaBusiness?.id) {
-    await supabase
+    const { error: ownerLinkError } = await supabase
       .from('businesses')
       .update({ owner_user_id: lisaOwnerId })
       .eq('id', lisaBusiness.id)
 
-    await supabase
-      .from('profiles')
-      .update({ role: 'business', business_id: lisaBusiness.id })
-      .eq('id', lisaOwnerId)
+    if (ownerLinkError && !ownerLinkError.message.toLowerCase().includes('owner_user_id')) {
+      throw ownerLinkError
+    }
+
+    const lisaProfileAttempts = [
+      { role: 'business', business_id: lisaBusiness.id, metadata: { portal_role: 'business', business_id: lisaBusiness.id } },
+      { role: 'business_onboarding', business_id: lisaBusiness.id, metadata: { portal_role: 'business', business_id: lisaBusiness.id } },
+      { role: 'business_onboarding', business_id: lisaBusiness.id },
+      { role: 'business_onboarding' },
+    ]
+
+    let lisaProfileFixed = false
+    let lastLisaProfileError: { message?: string } | null = null
+
+    for (const attempt of lisaProfileAttempts) {
+      const { error } = await supabase
+        .from('profiles')
+        .update(attempt)
+        .eq('id', lisaOwnerId)
+
+      if (!error) {
+        lisaProfileFixed = true
+        break
+      }
+
+      lastLisaProfileError = error
+    }
+
+    if (!lisaProfileFixed && lastLisaProfileError) {
+      throw lastLisaProfileError
+    }
   }
 
   // 7. Create sample causes
