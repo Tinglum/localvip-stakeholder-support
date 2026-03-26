@@ -63,7 +63,19 @@
       "Bash(npx tsx:*)",
       "Bash(node -e \"let d='''''''';process.stdin.on\\(''''data'''',c=>d+=c\\);process.stdin.on\\(''''end'''',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\(j[0].state, j[0].created_at, j[0].error_message||''''OK''''\\)}\\)\")",
       "Bash(wc -l \"C:\\\\Users\\\\kenne\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-kenne-Downloads-OnboardingLocalvip\\\\1bc24205-5ee3-40f0-abaa-1f41328b189b\\\\tasks\"\"*.output 2>/dev/null || echo \"No output files yet \")",
-      "Bash(wc -l src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/causes/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/contacts/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/tasks/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/outreach/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/cities/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/stakeholders/page.tsx src/app/\\\\\\(dashboard\\\\\\)/dashboard/page.tsx)"
+      "Bash(wc -l src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/causes/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/contacts/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/tasks/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/outreach/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/cities/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/stakeholders/page.tsx src/app/\\\\\\(dashboard\\\\\\)/dashboard/page.tsx)",
+      "Bash(node -e \"let d='''''''';process.stdin.on\\(''''data'''',c=>d+=c\\);process.stdin.on\\(''''end'''',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\(j[0].state, j[0].created_at\\)}\\)\")",
+      "Bash(wc -l src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/[id]/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/causes/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/contacts/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/tasks/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/outreach/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/cities/page.tsx src/app/\\\\\\(dashboard\\\\\\)/crm/stakeholders/page.tsx src/app/\\\\\\(dashboard\\\\\\)/campaigns/page.tsx src/app/\\\\\\(dashboard\\\\\\)/dashboard/page.tsx src/app/\\\\\\(dashboard\\\\\\)/qr/mine/page.tsx src/app/\\\\\\(dashboard\\\\\\)/qr/generator/page.tsx src/app/\\\\\\(dashboard\\\\\\)/materials/library/page.tsx src/app/\\\\\\(dashboard\\\\\\)/materials/mine/page.tsx src/app/\\\\\\(dashboard\\\\\\)/onboarding/business/page.tsx src/app/\\\\\\(dashboard\\\\\\)/onboarding/cause/page.tsx src/app/\\\\\\(dashboard\\\\\\)/analytics/page.tsx src/app/\\\\\\(dashboard\\\\\\)/admin/audit/page.tsx src/app/\\\\\\(dashboard\\\\\\)/qr/analytics/page.tsx)",
+      "Bash(find \"C:/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\(dashboard\\)\" -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\))",
+      "Bash(ls src/app/\\\\\\(dashboard\\\\\\)/portal/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/login)",
+      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip/src/app -type d -name \"\\(dashboard\\)\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //PID 253596 //F)",
+      "Bash(npx kill-port:*)",
+      "Bash(taskkill //F //FI \"WINDOWTITLE eq next*\")",
+      "Bash(node -e \":*)"
     ]
   }
 }

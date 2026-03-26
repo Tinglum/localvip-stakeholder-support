@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import NextImage from 'next/image'
 import Link from 'next/link'
 import {
   QrCode, Download, Copy, Grid, List,
@@ -126,7 +127,14 @@ export default function MyQrCodesPage() {
             <Card key={qr.id} className="group transition-shadow hover:shadow-card-hover">
               <div className="flex items-center justify-center border-b border-surface-100 bg-surface-50 p-6">
                 {qrPreviews[qr.id] ? (
-                  <img src={qrPreviews[qr.id]} alt={qr.name} className="h-32 w-32" />
+                  <NextImage
+                    src={qrPreviews[qr.id]}
+                    alt={qr.name}
+                    width={128}
+                    height={128}
+                    unoptimized
+                    className="h-32 w-32"
+                  />
                 ) : (
                   <div className="h-32 w-32 animate-pulse rounded bg-surface-200" />
                 )}
@@ -184,7 +192,14 @@ export default function MyQrCodesPage() {
               <CardContent className="flex items-center gap-4 py-3">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-50 border border-surface-100">
                   {qrPreviews[qr.id] ? (
-                    <img src={qrPreviews[qr.id]} alt={qr.name} className="h-10 w-10" />
+                    <NextImage
+                      src={qrPreviews[qr.id]}
+                      alt={qr.name}
+                      width={40}
+                      height={40}
+                      unoptimized
+                      className="h-10 w-10"
+                    />
                   ) : (
                     <QrCode className="h-6 w-6 text-surface-300" />
                   )}

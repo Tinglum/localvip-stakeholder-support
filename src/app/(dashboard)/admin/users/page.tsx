@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { Users, Plus, Shield, Mail, Calendar } from 'lucide-react'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
@@ -35,6 +36,7 @@ const ROLE_BADGE_VARIANT: Record<string, 'default' | 'info' | 'success' | 'warni
 }
 
 export default function AdminUsersPage() {
+  const router = useRouter()
   const { isAdmin } = useAuth()
   const { data: users, loading } = useProfiles()
   const [inviteOpen, setInviteOpen] = React.useState(false)
@@ -136,6 +138,7 @@ export default function AdminUsersPage() {
         keyField="id"
         searchable
         loading={loading}
+        onRowClick={(user) => router.push(`/admin/users/${user.id}`)}
         emptyState={
           <EmptyState
             icon={<Users className="h-8 w-8" />}

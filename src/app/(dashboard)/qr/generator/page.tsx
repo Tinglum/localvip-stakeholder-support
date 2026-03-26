@@ -1,11 +1,12 @@
 'use client'
 
 import * as React from 'react'
+import NextImage from 'next/image'
 import {
   QrCode, Download, Copy, Link, Settings, Palette,
   Check, ChevronDown, Sparkles, Tag, MapPin, Building2,
   Heart, Users, FolderOpen, Megaphone, ExternalLink,
-  Image, Mail, Phone, Wifi, ContactRound, FileUp,
+  Image as ImageIcon, Mail, Phone, Wifi, ContactRound, FileUp,
   MessageSquare, Globe, Layers, Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
@@ -382,7 +383,14 @@ export default function QRGeneratorPage() {
             <div className="flex flex-col items-center text-center gap-4 sm:flex-row sm:text-left">
               <div className="shrink-0">
                 {previewUrl && (
-                  <img src={previewUrl} alt="Generated QR Code" className="h-32 w-32 rounded-lg shadow-md" />
+                  <NextImage
+                    src={previewUrl}
+                    alt="Generated QR Code"
+                    width={128}
+                    height={128}
+                    unoptimized
+                    className="h-32 w-32 rounded-lg shadow-md"
+                  />
                 )}
               </div>
               <div className="flex-1 space-y-2">
@@ -832,11 +840,18 @@ export default function QRGeneratorPage() {
               {/* Logo Upload */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">
-                  <span className="flex items-center gap-1.5"><Image className="h-3.5 w-3.5" /> Center Logo</span>
+                  <span className="flex items-center gap-1.5"><ImageIcon className="h-3.5 w-3.5" /> Center Logo</span>
                 </label>
                 {logoPreviewUrl ? (
                   <div className="flex items-center gap-3">
-                    <img src={logoPreviewUrl} alt="Logo preview" className="h-14 w-14 rounded-lg border border-surface-200 object-contain p-1" />
+                    <NextImage
+                      src={logoPreviewUrl}
+                      alt="Logo preview"
+                      width={56}
+                      height={56}
+                      unoptimized
+                      className="h-14 w-14 rounded-lg border border-surface-200 object-contain p-1"
+                    />
                     <div className="flex-1">
                       <p className="text-sm text-surface-700 font-medium">{logoFile?.name}</p>
                       <p className="text-xs text-surface-400">{logoFile ? `${(logoFile.size / 1024).toFixed(1)} KB` : ''}</p>
@@ -848,7 +863,7 @@ export default function QRGeneratorPage() {
                     onClick={() => logoInputRef.current?.click()}
                     className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-surface-200 p-4 text-center hover:border-brand-300 hover:bg-brand-50/30 transition-colors"
                   >
-                    <Image className="h-8 w-8 text-surface-300" />
+                    <ImageIcon className="h-8 w-8 text-surface-300" />
                     <p className="text-sm text-surface-500">Click to upload logo</p>
                     <p className="text-xs text-surface-400">PNG, JPG, or SVG. Recommended: square, under 500KB</p>
                   </div>
@@ -986,7 +1001,14 @@ export default function QRGeneratorPage() {
                   style={{ backgroundColor: gradientType !== 'none' ? undefined : bgColor }}
                 >
                   {previewUrl ? (
-                    <img src={previewUrl} alt="QR Code Preview" className="h-56 w-56 object-contain" />
+                    <NextImage
+                      src={previewUrl}
+                      alt="QR Code Preview"
+                      width={224}
+                      height={224}
+                      unoptimized
+                      className="h-56 w-56 object-contain"
+                    />
                   ) : (
                     <div className="flex h-56 w-56 flex-col items-center justify-center text-center text-surface-300">
                       <QrCode className="mb-2 h-16 w-16" />
@@ -1053,7 +1075,14 @@ export default function QRGeneratorPage() {
                           className="flex w-full items-center gap-2.5 rounded-lg border border-surface-200 px-3 py-2 text-left text-xs hover:bg-surface-50 transition-colors disabled:opacity-50"
                         >
                           {m.file_url && m.mime_type?.startsWith('image/') ? (
-                            <img src={m.file_url} alt="" className="h-8 w-8 rounded object-cover shrink-0" />
+                            <NextImage
+                              src={m.file_url}
+                              alt=""
+                              width={32}
+                              height={32}
+                              unoptimized
+                              className="h-8 w-8 rounded object-cover shrink-0"
+                            />
                           ) : (
                             <div className="h-8 w-8 rounded bg-surface-100 flex items-center justify-center shrink-0">
                               <Layers className="h-4 w-4 text-surface-400" />

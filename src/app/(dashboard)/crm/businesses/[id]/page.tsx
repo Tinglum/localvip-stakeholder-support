@@ -18,13 +18,34 @@ import { ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
 import {
+  useCampaigns,
   useRecord,
+  useCauses,
+  useCities,
+  useMaterials,
   useOutreach, useOutreachInsert,
   useTasks, useTaskInsert, useTaskUpdate,
   useNotes, useNoteInsert,
   useBusinessUpdate,
+  useProfiles,
+  useQrCodes,
+  useStakeholderAssignments,
 } from '@/lib/supabase/hooks'
-import type { Business, OutreachActivity, Task, Note, OnboardingStage, OutreachType, TaskPriority, TaskStatus } from '@/lib/types/database'
+import type {
+  Business,
+  Campaign,
+  Cause,
+  City,
+  Note,
+  OnboardingStage,
+  OutreachActivity,
+  OutreachType,
+  Profile,
+  StakeholderAssignment,
+  Task,
+  TaskPriority,
+  TaskStatus,
+} from '@/lib/types/database'
 
 // ─── Stage badge variant ────────────────────────────────────
 
@@ -79,6 +100,13 @@ export default function BusinessDetailPage() {
 
   // ── Data hooks ──
   const { data: biz, loading: bizLoading } = useRecord<Business>('businesses', id)
+  const { data: profiles } = useProfiles()
+  const { data: cities } = useCities()
+  const { data: causes } = useCauses()
+  const { data: campaigns } = useCampaigns()
+  const { data: qrCodes } = useQrCodes()
+  const { data: materials } = useMaterials()
+  const { data: assignments } = useStakeholderAssignments({ entity_id: id })
   const { data: outreach, loading: outreachLoading, refetch: refetchOutreach } = useOutreach({ entity_id: id })
   const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ entity_id: id })
   const { data: notes, loading: notesLoading, refetch: refetchNotes } = useNotes({ entity_id: id })
@@ -89,6 +117,18 @@ export default function BusinessDetailPage() {
   const { insert: insertTask, loading: insertingTask } = useTaskInsert()
   const { insert: insertNote, loading: insertingNote } = useNoteInsert()
   const { update: updateTask } = useTaskUpdate()
+
+  const profileMap = React.useMemo(() => new Map(profiles.map(item => [item.id, item])), [profiles])
+  const owner = biz?.owner_id ? profileMap.get(biz.owner_id) : null
+  const city = biz?.city_id ? cities.find(item => item.id === biz.city_id) || null : null
+  const linkedCause = biz?.linked_cause_id ? causes.find(item => item.id === biz.linked_cause_id) || null : null
+  const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
+  const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
+  const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
+  const helperAssignments = React.useMemo(() => assignments
+    .filter(assignment => assignment.entity_type === 'business' && assignment.entity_id === id && assignment.status === 'active')
+    .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
+    .filter((item): item is { assignment: StakeholderAssignment; profile: Profile } => !!item.profile), [assignments, id, profileMap])
 
   // ── Stage change handler ──
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
@@ -169,6 +209,7 @@ export default function BusinessDetailPage() {
       {/* Page Header */}
       <PageHeader
         title={biz.name}
+        description="Owner, city, campaign, linked cause, materials, QR, tasks, and outreach all in one place."
         breadcrumb={[
           { label: 'CRM', href: '/crm/businesses' },
           { label: 'Businesses', href: '/crm/businesses' },
@@ -209,7 +250,13 @@ export default function BusinessDetailPage() {
               )}
             </div>
             <span className="text-xs text-surface-400">owned by</span>
-            <span className="text-sm font-medium text-surface-700">{biz.owner_id ?? 'Unassigned'}</span>
+            {owner ? (
+              <Link href={`/admin/users/${owner.id}`} className="text-sm font-medium text-surface-700 transition-colors hover:text-brand-700">
+                {owner.full_name}
+              </Link>
+            ) : (
+              <span className="text-sm font-medium text-surface-700">Unassigned</span>
+            )}
           </div>
         }
       />
@@ -228,6 +275,61 @@ export default function BusinessDetailPage() {
         <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}>
           <QrCode className="h-3.5 w-3.5" /> Generate QR Code
         </Button>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-4">
+        <Card>
+          <CardContent className="space-y-2 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Primary Owner</p>
+            {owner ? (
+              <Link href={`/admin/users/${owner.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
+                {owner.full_name}
+              </Link>
+            ) : (
+              <p className="text-sm text-surface-500">No owner assigned yet.</p>
+            )}
+            <p className="text-xs text-surface-400">{helperAssignments.length} active helpers</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="space-y-2 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">City</p>
+            {city ? (
+              <Link href={`/crm/cities/${city.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
+                {city.name}, {city.state}
+              </Link>
+            ) : (
+              <p className="text-sm text-surface-500">No city linked yet.</p>
+            )}
+            <p className="text-xs text-surface-400">{biz.address || 'No address on file'}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="space-y-2 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Linked Cause</p>
+            {linkedCause ? (
+              <Link href={`/crm/causes/${linkedCause.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
+                {linkedCause.name}
+              </Link>
+            ) : (
+              <p className="text-sm text-surface-500">No school or cause linked yet.</p>
+            )}
+            <p className="text-xs text-surface-400">{linkedCause?.type || 'Link a cause to clarify the story.'}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="space-y-2 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
+            {campaign ? (
+              <Link href={`/campaigns/${campaign.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
+                {campaign.name}
+              </Link>
+            ) : (
+              <p className="text-sm text-surface-500">No campaign linked yet.</p>
+            )}
+            <p className="text-xs text-surface-400">{campaign?.status || 'Useful for city launch tracking.'}</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tabs */}
@@ -251,7 +353,16 @@ export default function BusinessDetailPage() {
 
       {/* Tab Content */}
       {activeTab === 'overview' && (
-        <OverviewTab biz={biz} updateBusiness={updateBusiness} updateLoading={updateLoading} />
+        <OverviewTab
+          biz={biz}
+          city={city}
+          owner={owner}
+          linkedCause={linkedCause}
+          campaign={campaign}
+          helperAssignments={helperAssignments}
+          updateBusiness={updateBusiness}
+          updateLoading={updateLoading}
+        />
       )}
 
       {activeTab === 'activity' && (
@@ -262,6 +373,7 @@ export default function BusinessDetailPage() {
           onInsert={insertOutreach}
           inserting={insertingOutreach}
           refetch={refetchOutreach}
+          profileMap={profileMap}
           userId={profile.id}
         />
       )}
@@ -274,6 +386,7 @@ export default function BusinessDetailPage() {
           onInsert={insertTask}
           inserting={insertingTask}
           onUpdate={updateTask}
+          profileMap={profileMap}
           refetch={refetchTasks}
           userId={profile.id}
         />
@@ -286,6 +399,7 @@ export default function BusinessDetailPage() {
           loading={notesLoading}
           onInsert={insertNote}
           inserting={insertingNote}
+          profileMap={profileMap}
           refetch={refetchNotes}
           userId={profile.id}
         />
@@ -299,16 +413,40 @@ export default function BusinessDetailPage() {
               <Button size="sm"><Plus className="h-3.5 w-3.5" /> Generate QR Code</Button>
             </Link>
           </div>
-          <Card>
-            <CardContent className="flex flex-col items-center py-8 text-center">
-              <QrCode className="mb-3 h-10 w-10 text-surface-300" />
-              <p className="text-sm font-medium text-surface-700">No QR codes generated yet</p>
-              <p className="mt-1 text-xs text-surface-400">Create a trackable QR code to link customers to this business.</p>
-              <Link href="/qr/generator" className="mt-4">
-                <Button size="sm">Generate First QR Code</Button>
-              </Link>
-            </CardContent>
-          </Card>
+          {linkedQr ? (
+            <Card>
+              <CardContent className="space-y-3 py-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-surface-900">{linkedQr.name}</p>
+                    <p className="mt-1 text-xs text-surface-500">{linkedQr.short_code} - {linkedQr.scan_count} scans</p>
+                  </div>
+                  <Badge variant={linkedQr.status === 'active' ? 'success' : 'default'} dot>
+                    {linkedQr.status}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a href={linkedQr.redirect_url} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open Redirect</Button>
+                  </a>
+                  <Link href="/qr/generator">
+                    <Button size="sm"><QrCode className="h-3.5 w-3.5" /> Manage QR</Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center py-8 text-center">
+                <QrCode className="mb-3 h-10 w-10 text-surface-300" />
+                <p className="text-sm font-medium text-surface-700">No QR codes generated yet</p>
+                <p className="mt-1 text-xs text-surface-400">Create a trackable QR code to link customers to this business.</p>
+                <Link href="/qr/generator" className="mt-4">
+                  <Button size="sm">Generate First QR Code</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -320,13 +458,39 @@ export default function BusinessDetailPage() {
               <Button variant="outline" size="sm"><FileText className="h-3.5 w-3.5" /> Browse Library</Button>
             </Link>
           </div>
-          <Card>
-            <CardContent className="flex flex-col items-center py-8 text-center">
-              <FileText className="mb-3 h-10 w-10 text-surface-300" />
-              <p className="text-sm font-medium text-surface-700">No materials assigned</p>
-              <p className="mt-1 text-xs text-surface-400">Attach flyers, scripts, or documents to this business record.</p>
-            </CardContent>
-          </Card>
+          {linkedMaterial ? (
+            <Card>
+              <CardContent className="space-y-3 py-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-surface-900">{linkedMaterial.title}</p>
+                    <p className="mt-1 text-xs text-surface-500">{linkedMaterial.file_name || linkedMaterial.type}</p>
+                  </div>
+                  <Badge variant={linkedMaterial.status === 'active' ? 'success' : 'default'} dot>
+                    {linkedMaterial.status}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {linkedMaterial.file_url && (
+                    <a href={linkedMaterial.file_url} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open Material</Button>
+                    </a>
+                  )}
+                  <Link href="/materials/library">
+                    <Button size="sm"><FileText className="h-3.5 w-3.5" /> Manage Materials</Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center py-8 text-center">
+                <FileText className="mb-3 h-10 w-10 text-surface-300" />
+                <p className="text-sm font-medium text-surface-700">No materials assigned</p>
+                <p className="mt-1 text-xs text-surface-400">Attach flyers, scripts, or documents to this business record.</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>
@@ -337,10 +501,20 @@ export default function BusinessDetailPage() {
 
 function OverviewTab({
   biz,
+  city,
+  owner,
+  linkedCause,
+  campaign,
+  helperAssignments,
   updateBusiness,
   updateLoading,
 }: {
   biz: Business
+  city: City | null
+  owner: Profile | null
+  linkedCause: Cause | null
+  campaign: Campaign | null
+  helperAssignments: Array<{ assignment: StakeholderAssignment; profile: Profile }>
   updateBusiness: (id: string, changes: Partial<Business>) => Promise<Business | null>
   updateLoading: boolean
 }) {
@@ -444,16 +618,78 @@ function OverviewTab({
         </CardContent>
       </Card>
 
-      {/* Key Dates */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Key Dates</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <DateRow label="Created" value={biz.created_at} />
-          <DateRow label="Last Updated" value={biz.updated_at} />
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Relationships</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <RelationshipRow label="Owner">
+              {owner ? (
+                <Link href={`/admin/users/${owner.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+                  {owner.full_name}
+                </Link>
+              ) : (
+                <span className="text-sm text-surface-500">Unassigned</span>
+              )}
+            </RelationshipRow>
+            <RelationshipRow label="City">
+              {city ? (
+                <Link href={`/crm/cities/${city.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+                  {city.name}, {city.state}
+                </Link>
+              ) : (
+                <span className="text-sm text-surface-500">No city linked</span>
+              )}
+            </RelationshipRow>
+            <RelationshipRow label="Cause">
+              {linkedCause ? (
+                <Link href={`/crm/causes/${linkedCause.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+                  {linkedCause.name}
+                </Link>
+              ) : (
+                <span className="text-sm text-surface-500">No cause linked</span>
+              )}
+            </RelationshipRow>
+            <RelationshipRow label="Campaign">
+              {campaign ? (
+                <Link href={`/campaigns/${campaign.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+                  {campaign.name}
+                </Link>
+              ) : (
+                <span className="text-sm text-surface-500">No campaign linked</span>
+              )}
+            </RelationshipRow>
+            <div>
+              <p className="text-xs text-surface-400">Helpers</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {helperAssignments.length > 0 ? helperAssignments.map(({ assignment, profile }) => (
+                  <Link
+                    key={assignment.id}
+                    href={`/admin/users/${profile.id}`}
+                    className="rounded-full border border-surface-200 bg-surface-50 px-2.5 py-1 text-xs font-medium text-surface-700 hover:border-surface-300"
+                  >
+                    {profile.full_name}
+                    {assignment.role ? ` - ${assignment.role}` : ''}
+                  </Link>
+                )) : (
+                  <span className="text-sm text-surface-500">No helper assignments yet.</span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Key Dates</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <DateRow label="Created" value={biz.created_at} />
+            <DateRow label="Last Updated" value={biz.updated_at} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
@@ -467,6 +703,7 @@ function ActivityTab({
   onInsert,
   inserting,
   refetch,
+  profileMap,
   userId,
 }: {
   biz: Business
@@ -475,6 +712,7 @@ function ActivityTab({
   onInsert: (record: Partial<OutreachActivity>) => Promise<OutreachActivity | null>
   inserting: boolean
   refetch: () => void
+  profileMap: Map<string, Profile>
   userId: string
 }) {
   const [showForm, setShowForm] = React.useState(false)
@@ -609,6 +847,11 @@ function ActivityTab({
                     <Badge variant="default">{act.outcome}</Badge>
                   </div>
                 )}
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-surface-400">
+                  <span>By {profileMap.get(act.performed_by)?.full_name || act.performed_by}</span>
+                  {act.next_step && <span>Next: {act.next_step}</span>}
+                  {act.next_step_date && <span>Due {formatDate(act.next_step_date)}</span>}
+                </div>
               </div>
             </div>
           ))}
@@ -627,6 +870,7 @@ function TasksTab({
   onInsert,
   inserting,
   onUpdate,
+  profileMap,
   refetch,
   userId,
 }: {
@@ -636,6 +880,7 @@ function TasksTab({
   onInsert: (record: Partial<Task>) => Promise<Task | null>
   inserting: boolean
   onUpdate: (id: string, changes: Partial<Task>) => Promise<Task | null>
+  profileMap: Map<string, Profile>
   refetch: () => void
   userId: string
 }) {
@@ -760,6 +1005,9 @@ function TasksTab({
                     <p className="text-xs text-surface-400">
                       {task.due_date ? `Due ${formatDate(task.due_date)}` : 'No due date'}
                     </p>
+                    <p className="text-xs text-surface-400">
+                      Assigned to {task.assigned_to ? (profileMap.get(task.assigned_to)?.full_name || task.assigned_to) : 'Unassigned'}
+                    </p>
                   </div>
                 </div>
                 <Badge variant={PRIORITY_VARIANT[task.priority]}>
@@ -782,6 +1030,7 @@ function NotesTab({
   loading,
   onInsert,
   inserting,
+  profileMap,
   refetch,
   userId,
 }: {
@@ -790,6 +1039,7 @@ function NotesTab({
   loading: boolean
   onInsert: (record: Partial<Note>) => Promise<Note | null>
   inserting: boolean
+  profileMap: Map<string, Profile>
   refetch: () => void
   userId: string
 }) {
@@ -850,7 +1100,7 @@ function NotesTab({
             <Card key={note.id}>
               <CardContent className="py-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-surface-600">{note.created_by}</span>
+                  <span className="text-xs font-medium text-surface-600">{profileMap.get(note.created_by)?.full_name || note.created_by}</span>
                   <span className="text-xs text-surface-400">{formatDateTime(note.created_at)}</span>
                 </div>
                 <p className="text-sm text-surface-700">{note.content}</p>
@@ -872,6 +1122,21 @@ function DateRow({ label, value }: { label: string; value: string | null }) {
       <span className="text-sm text-surface-700">
         {value ? formatDate(value) : <span className="italic text-surface-400">--</span>}
       </span>
+    </div>
+  )
+}
+
+function RelationshipRow({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <span className="text-xs text-surface-400">{label}</span>
+      <div className="text-right">{children}</div>
     </div>
   )
 }

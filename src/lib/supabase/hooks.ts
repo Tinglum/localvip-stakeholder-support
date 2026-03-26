@@ -2,7 +2,10 @@
 
 import * as React from 'react'
 import { createClient } from './client'
-import type { Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material } from '@/lib/types/database'
+import type {
+  Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material, Organization,
+  StakeholderAssignment, OnboardingFlow, OnboardingStep, OutreachScript, MaterialAssignment, QrCodeCollection,
+} from '@/lib/types/database'
 
 // ─── Generic fetch hook ─────────────────────────────────────
 
@@ -27,8 +30,16 @@ function useSupabaseQuery<T>(
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [refetchKey, setRefetchKey] = React.useState(0)
-
+  const orderBy = options?.orderBy
+  const orderAsc = options?.orderAsc ?? false
+  const limit = options?.limit
   const filtersKey = JSON.stringify(options?.filters || {})
+  const filterEntries = React.useMemo(
+    () => Object.entries(
+      JSON.parse(filtersKey) as Record<string, string | number | boolean | null>
+    ).filter(([, value]) => value !== null && value !== undefined && value !== ''),
+    [filtersKey]
+  )
 
   React.useEffect(() => {
     async function fetch() {
@@ -37,22 +48,18 @@ function useSupabaseQuery<T>(
 
       let query = supabase.from(table).select('*')
 
-      if (options?.filters) {
-        for (const [key, value] of Object.entries(options.filters)) {
-          if (value !== null && value !== undefined && value !== '') {
-            query = query.eq(key, value)
-          }
-        }
+      for (const [key, value] of filterEntries) {
+        query = query.eq(key, value as string | number | boolean)
       }
 
-      if (options?.orderBy) {
-        query = query.order(options.orderBy, { ascending: options.orderAsc ?? false })
+      if (orderBy) {
+        query = query.order(orderBy, { ascending: orderAsc })
       } else {
         query = query.order('created_at', { ascending: false })
       }
 
-      if (options?.limit) {
-        query = query.limit(options.limit)
+      if (limit) {
+        query = query.limit(limit)
       }
 
       const { data: rows, error: err } = await query
@@ -67,7 +74,7 @@ function useSupabaseQuery<T>(
     }
 
     fetch()
-  }, [supabase, table, options?.orderBy, options?.orderAsc, options?.limit, filtersKey, refetchKey])
+  }, [supabase, table, orderBy, orderAsc, limit, filterEntries, refetchKey])
 
   const refetch = React.useCallback(() => setRefetchKey(k => k + 1), [])
 
@@ -166,10 +173,18 @@ export function useContacts(filters?: Record<string, string>) {
 }
 export function useContactInsert() { return useSupabaseInsert<Contact>('contacts') }
 
+export function useStakeholderAssignments(filters?: Record<string, string>) {
+  return useSupabaseQuery<StakeholderAssignment>('stakeholder_assignments', { filters })
+}
+
 export function useCities() {
   return useSupabaseQuery<City>('cities', { orderBy: 'name', orderAsc: true })
 }
 export function useCityInsert() { return useSupabaseInsert<City>('cities') }
+
+export function useOrganizations(filters?: Record<string, string>) {
+  return useSupabaseQuery<Organization>('organizations', { filters, orderBy: 'name', orderAsc: true })
+}
 
 export function useCampaigns(filters?: Record<string, string>) {
   return useSupabaseQuery<Campaign>('campaigns', { filters })
@@ -187,12 +202,21 @@ export function useOutreach(filters?: Record<string, string>) {
 }
 export function useOutreachInsert() { return useSupabaseInsert<OutreachActivity>('outreach_activities') }
 
+export function useOutreachScripts(filters?: Record<string, string>) {
+  return useSupabaseQuery<OutreachScript>('outreach_scripts', { filters })
+}
+export function useOutreachScriptInsert() { return useSupabaseInsert<OutreachScript>('outreach_scripts') }
+export function useOutreachScriptUpdate() { return useSupabaseUpdate<OutreachScript>('outreach_scripts') }
+
 export function useProfiles() {
   return useSupabaseQuery<Profile>('profiles', { orderBy: 'full_name', orderAsc: true })
 }
 
 export function useQrCodes(filters?: Record<string, string>) {
   return useSupabaseQuery<QrCode>('qr_codes', { filters })
+}
+export function useQrCodeCollections(filters?: Record<string, string>) {
+  return useSupabaseQuery<QrCodeCollection>('qr_code_collections', { filters })
 }
 export function useQrCodeInsert() { return useSupabaseInsert<QrCode>('qr_codes') }
 export function useQrCodeDelete() { return useSupabaseDelete('qr_codes') }
@@ -201,6 +225,9 @@ export function useMaterials(filters?: Record<string, string>) {
   return useSupabaseQuery<Material>('materials', { filters })
 }
 export function useMaterialInsert() { return useSupabaseInsert<Material>('materials') }
+export function useMaterialAssignments(filters?: Record<string, string>) {
+  return useSupabaseQuery<MaterialAssignment>('material_assignments', { filters })
+}
 
 export function useCauseUpdate() { return useSupabaseUpdate<Cause>('causes') }
 
@@ -209,27 +236,42 @@ export function useNotes(filters?: Record<string, string>) {
 }
 export function useNoteInsert() { return useSupabaseInsert<Note>('notes') }
 
+export function useOnboardingFlows(filters?: Record<string, string>) {
+  return useSupabaseQuery<OnboardingFlow>('onboarding_flows', { filters })
+}
+
+export function useOnboardingSteps(filters?: Record<string, string>) {
+  return useSupabaseQuery<OnboardingStep>('onboarding_steps', {
+    filters,
+    orderBy: 'sort_order',
+    orderAsc: true,
+  })
+}
+
 // ─── Count hooks ────────────────────────────────────────────
 
 export function useCount(table: string, filters?: Record<string, string | number | boolean | null>) {
   const supabase = React.useMemo(() => createClient(), [])
   const [count, setCount] = React.useState(0)
+  const filtersKey = JSON.stringify(filters || {})
+  const filterEntries = React.useMemo(
+    () => Object.entries(
+      JSON.parse(filtersKey) as Record<string, string | number | boolean | null>
+    ).filter(([, value]) => value !== null && value !== undefined && value !== ''),
+    [filtersKey]
+  )
 
   React.useEffect(() => {
     async function fetch() {
       let query = supabase.from(table).select('*', { count: 'exact', head: true })
-      if (filters) {
-        for (const [key, value] of Object.entries(filters)) {
-          if (value !== null && value !== undefined && value !== '') {
-            query = query.eq(key, value)
-          }
-        }
+      for (const [key, value] of filterEntries) {
+        query = query.eq(key, value as string | number | boolean)
       }
       const { count: c } = await query
       setCount(c || 0)
     }
     fetch()
-  }, [supabase, table, JSON.stringify(filters)])
+  }, [supabase, table, filterEntries])
 
   return count
 }

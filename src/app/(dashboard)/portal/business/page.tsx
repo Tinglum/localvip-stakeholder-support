@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import {
-  Store, Upload, Image, Calendar, Gift, Clock, Save,
+  Store, Upload, Image as ImageIcon, Calendar, Gift, Clock, Save,
   Check, X, Loader2, MapPin, Globe, Mail, Phone,
   Sparkles, Eye, ChevronDown, Trash2, Star, Info,
 } from 'lucide-react'
@@ -240,7 +240,7 @@ export default function BusinessPortalPage() {
 
   const sections = [
     { key: 'info' as const, label: 'Business Info', icon: <Store className="h-4 w-4" /> },
-    { key: 'branding' as const, label: 'Logo & Branding', icon: <Image className="h-4 w-4" /> },
+    { key: 'branding' as const, label: 'Logo & Branding', icon: <ImageIcon className="h-4 w-4" /> },
     { key: 'offer' as const, label: 'LocalVIP Offer', icon: <Gift className="h-4 w-4" /> },
     { key: 'schedule' as const, label: 'Schedule & Days', icon: <Calendar className="h-4 w-4" /> },
     { key: 'preview' as const, label: 'Preview', icon: <Eye className="h-4 w-4" /> },
@@ -475,7 +475,7 @@ export default function BusinessPortalPage() {
                     </>
                   ) : (
                     <div className="text-center">
-                      <Image className="mx-auto h-8 w-8 text-surface-300" />
+                      <ImageIcon className="mx-auto h-8 w-8 text-surface-300" />
                       <p className="mt-1 text-xs text-surface-400">No logo</p>
                     </div>
                   )}

@@ -3,7 +3,7 @@
 import * as React from 'react'
 import {
   FileText, Download, Eye, Grid, List, Search,
-  Upload, FolderOpen, File, Image, Mail,
+  Upload, FolderOpen, File, Image as ImageIcon, Mail,
   MessageSquare, Printer, QrCode, X, Loader2, Move,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
+import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { useAuth } from '@/lib/auth/context'
 import { BRANDS, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
@@ -30,11 +31,15 @@ function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
+function isMaterialPreviewable(mimeType?: string | null) {
+  return !!mimeType && (mimeType.startsWith('image/') || mimeType === 'application/pdf')
+}
+
 // ─── Type icons ───────────────────────────────────────────────
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   one_pager: <File className="h-5 w-5" />,
-  flyer: <Image className="h-5 w-5" />,
+  flyer: <ImageIcon className="h-5 w-5" />,
   pdf: <FileText className="h-5 w-5" />,
   script: <MessageSquare className="h-5 w-5" />,
   email_template: <Mail className="h-5 w-5" />,
@@ -54,11 +59,13 @@ interface QrPlacement {
 // ─── QR Placement Picker ─────────────────────────────────────
 
 function QrPlacementPicker({
-  imageUrl,
+  previewUrl,
+  previewMimeType,
   placement,
   onChange,
 }: {
-  imageUrl: string
+  previewUrl: string
+  previewMimeType?: string | null
   placement: QrPlacement | null
   onChange: (p: QrPlacement | null) => void
 }) {
@@ -107,13 +114,21 @@ function QrPlacementPicker({
       <p className="text-xs text-surface-400">Click on the image to place the QR code zone. Drag to reposition.</p>
       <div
         ref={containerRef}
-        className="relative cursor-crosshair overflow-hidden rounded-lg border-2 border-dashed border-surface-300 bg-surface-50"
+        className="relative h-[28rem] cursor-crosshair overflow-hidden rounded-lg border-2 border-dashed border-surface-300 bg-surface-50"
         onClick={handleClick}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <img src={imageUrl} alt="Material preview" className="w-full select-none" draggable={false} />
+        <MaterialPreviewFrame
+          src={previewUrl}
+          mimeType={previewMimeType}
+          title="Material preview"
+          fit="contain"
+          showPdfBadge
+          className="h-full w-full"
+          pdfClassName="h-full w-full pointer-events-none"
+        />
         {placement && (
           <div
             className="absolute border-2 border-brand-500 bg-brand-500/20 rounded shadow-sm flex items-center justify-center cursor-move"
@@ -177,19 +192,16 @@ function UploadMaterialDialog({
   const [useCase, setUseCase] = React.useState('')
   const [file, setFile] = React.useState<File | null>(null)
   const [filePreviewUrl, setFilePreviewUrl] = React.useState<string | null>(null)
-  const [previewImage, setPreviewImage] = React.useState<File | null>(null)
-  const [previewImageUrl, setPreviewImageUrl] = React.useState<string | null>(null)
   const [uploading, setUploading] = React.useState(false)
   const [dragOver, setDragOver] = React.useState(false)
   const [qrPlacement, setQrPlacement] = React.useState<QrPlacement | null>(null)
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const previewInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
-  const isImageFile = file && file.type.startsWith('image/')
+  const isPreviewableFile = file ? isMaterialPreviewable(file.type) : false
 
-  // The image used for QR placement — either the file itself (if image) or a separate preview image
-  const qrPreviewUrl = isImageFile ? filePreviewUrl : previewImageUrl
+  // Use the uploaded file itself as the preview source whenever it can render inline.
+  const qrPreviewUrl = isPreviewableFile ? filePreviewUrl : null
 
   function reset() {
     setTitle('')
@@ -200,8 +212,6 @@ function UploadMaterialDialog({
     setUseCase('')
     setFile(null)
     setFilePreviewUrl(null)
-    setPreviewImage(null)
-    setPreviewImageUrl(null)
     setUploading(false)
     setDragOver(false)
     setQrPlacement(null)
@@ -209,28 +219,20 @@ function UploadMaterialDialog({
 
   function handleFileSelect(selectedFile: File | undefined) {
     if (!selectedFile) return
+    if (filePreviewUrl) {
+      URL.revokeObjectURL(filePreviewUrl)
+    }
     setFile(selectedFile)
     setQrPlacement(null)
     if (!title) {
       const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '')
       setTitle(nameWithoutExt)
     }
-    // Generate preview URL for image files
-    if (selectedFile.type.startsWith('image/')) {
+    if (isMaterialPreviewable(selectedFile.type)) {
       setFilePreviewUrl(URL.createObjectURL(selectedFile))
-      // Clear separate preview image since the file itself is an image
-      setPreviewImage(null)
-      setPreviewImageUrl(null)
     } else {
       setFilePreviewUrl(null)
     }
-  }
-
-  function handlePreviewImageSelect(selectedFile: File | undefined) {
-    if (!selectedFile || !selectedFile.type.startsWith('image/')) return
-    setPreviewImage(selectedFile)
-    setPreviewImageUrl(URL.createObjectURL(selectedFile))
-    setQrPlacement(null)
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -259,9 +261,8 @@ function UploadMaterialDialog({
   React.useEffect(() => {
     return () => {
       if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl)
-      if (previewImageUrl) URL.revokeObjectURL(previewImageUrl)
     }
-  }, [filePreviewUrl, previewImageUrl])
+  }, [filePreviewUrl])
 
   async function uploadFile(fileToUpload: File, folder: string): Promise<string | null> {
     try {
@@ -302,15 +303,9 @@ function UploadMaterialDialog({
       mimeType = file.type || null
       fileUrl = await uploadFile(file, 'materials')
 
-      // For image files, use the same URL as thumbnail
-      if (file.type.startsWith('image/')) {
+      if (isMaterialPreviewable(file.type)) {
         thumbnailUrl = fileUrl
       }
-    }
-
-    // Upload separate preview image for non-image files (PDFs, etc.)
-    if (previewImage && !isImageFile) {
-      thumbnailUrl = await uploadFile(previewImage, 'thumbnails')
     }
 
     setUploading(false)
@@ -383,8 +378,6 @@ function UploadMaterialDialog({
                   onClick={() => {
                     setFile(null)
                     setFilePreviewUrl(null)
-                    setPreviewImage(null)
-                    setPreviewImageUrl(null)
                     setQrPlacement(null)
                     if (fileInputRef.current) fileInputRef.current.value = ''
                   }}
@@ -414,59 +407,26 @@ function UploadMaterialDialog({
             )}
           </div>
 
-          {/* Preview image upload for non-image files (PDFs, docs, etc.) */}
-          {file && !isImageFile && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
-              <input
-                ref={previewInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => handlePreviewImageSelect(e.target.files?.[0])}
-              />
+          {/* Inline preview note for files that cannot render directly in-app */}
+          {file && !isPreviewableFile && (
+            <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2">
               <div className="flex items-center gap-2">
-                <Image className="h-4 w-4 text-brand-600" />
-                <span className="text-xs font-medium text-surface-700">
-                  Upload a preview image to set QR code placement
+                <FileText className="h-4 w-4 text-warning-700" />
+                <span className="text-xs font-medium text-warning-700">
+                  Inline preview is only available for PDFs and images
                 </span>
               </div>
-              <p className="text-xs text-surface-500">
-                Upload a screenshot or design image of this material so you can mark where the QR code should go.
+              <p className="text-xs text-warning-700/80">
+                PDFs render directly here for placement, and images use their own preview. Other file types still upload normally without a separate picture step.
               </p>
-              {previewImage ? (
-                <div className="flex items-center gap-2 rounded border border-surface-300 bg-surface-0 px-3 py-2">
-                  <Image className="h-4 w-4 text-brand-600" />
-                  <span className="text-xs text-surface-700 flex-1 truncate">{previewImage.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPreviewImage(null)
-                      setPreviewImageUrl(null)
-                      setQrPlacement(null)
-                      if (previewInputRef.current) previewInputRef.current.value = ''
-                    }}
-                    className="text-surface-400 hover:text-surface-600"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => previewInputRef.current?.click()}
-                >
-                  <Image className="h-3.5 w-3.5" /> Upload Preview Image
-                </Button>
-              )}
             </div>
           )}
 
-          {/* QR Placement Picker — shown when we have a preview image (from file or separate upload) */}
+          {/* QR placement works directly against the uploaded previewable file */}
           {file && qrPreviewUrl && (
             <QrPlacementPicker
-              imageUrl={qrPreviewUrl}
+              previewUrl={qrPreviewUrl}
+              previewMimeType={file?.type}
               placement={qrPlacement}
               onChange={setQrPlacement}
             />
@@ -692,15 +652,14 @@ export default function MaterialsLibraryPage() {
               <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
                 {/* Thumbnail */}
                 <div className="flex h-36 items-center justify-center border-b border-surface-100 bg-surface-50 relative overflow-hidden">
-                  {material.thumbnail_url ? (
-                    <img src={material.thumbnail_url} alt={material.title} className="h-full w-full object-cover" />
-                  ) : material.file_url && (material.mime_type?.startsWith('image/') || material.file_url.startsWith('data:image/')) ? (
-                    <img src={material.file_url} alt={material.title} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="text-surface-300">
-                      {TYPE_ICONS[material.type] || <FileText className="h-10 w-10" />}
-                    </div>
-                  )}
+                  <MaterialPreviewFrame
+                    src={material.file_url || material.thumbnail_url}
+                    mimeType={material.mime_type}
+                    title={material.title}
+                    showPdfBadge
+                    imageSizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
+                    className="h-full w-full"
+                  />
                   {hasQrZone && (
                     <div className="absolute top-2 right-2 rounded bg-brand-500 px-1.5 py-0.5 text-[10px] font-medium text-white flex items-center gap-0.5">
                       <QrCode className="h-2.5 w-2.5" /> QR Zone

@@ -34,6 +34,17 @@ export type OutreachType =
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+export type OutreachScriptTier = 'good' | 'better' | 'best'
+export type OutreachScriptChannel = 'in_person' | 'text_dm' | 'email' | 'leave_behind'
+export type OutreachScriptStatus =
+  | 'not_started'
+  | 'copied'
+  | 'sent'
+  | 'delivered'
+  | 'replied'
+  | 'interested'
+  | 'not_interested'
+  | 'follow_up_needed'
 
 export type QrCodeFormat = 'png' | 'svg'
 
@@ -84,6 +95,11 @@ export interface Database {
         Row: OutreachActivity
         Insert: Omit<OutreachActivity, 'id' | 'created_at'>
         Update: Partial<Omit<OutreachActivity, 'id'>>
+      }
+      outreach_scripts: {
+        Row: OutreachScript
+        Insert: Omit<OutreachScript, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<OutreachScript, 'id'>>
       }
       tasks: {
         Row: Task
@@ -171,6 +187,9 @@ export interface Database {
       outreach_type: OutreachType
       task_priority: TaskPriority
       task_status: TaskStatus
+      outreach_script_tier: OutreachScriptTier
+      outreach_script_channel: OutreachScriptChannel
+      outreach_script_status: OutreachScriptStatus
     }
   }
 }
@@ -250,6 +269,10 @@ export interface Business {
   source: string | null
   source_detail: string | null
   campaign_id: string | null
+  linked_cause_id: string | null
+  linked_material_id: string | null
+  linked_qr_code_id: string | null
+  linked_qr_collection_id: string | null
   duplicate_of: string | null
   external_id: string | null
   status: EntityStatus
@@ -321,11 +344,60 @@ export interface OutreachActivity {
   entity_id: string
   performed_by: string
   campaign_id: string | null
+  outreach_script_id: string | null
+  business_id: string | null
+  cause_id: string | null
+  city_id: string | null
+  contact_id: string | null
+  script_category: string | null
+  script_type: string | null
+  script_tier: OutreachScriptTier | null
+  script_channel: OutreachScriptChannel | null
+  outreach_status: OutreachScriptStatus | null
+  business_category: string | null
+  generated_script_content: string | null
+  edited_script_content: string | null
+  log_notes: string | null
+  linked_material_id: string | null
+  linked_qr_code_id: string | null
+  linked_qr_collection_id: string | null
   outcome: string | null
   next_step: string | null
   next_step_date: string | null
   metadata: Record<string, unknown> | null
   created_at: string
+}
+
+export interface OutreachScript {
+  id: string
+  business_id: string
+  cause_id: string | null
+  campaign_id: string | null
+  city_id: string | null
+  contact_id: string | null
+  created_by: string
+  script_category: string
+  script_type: string
+  script_tier: OutreachScriptTier
+  channel: OutreachScriptChannel
+  status: OutreachScriptStatus
+  business_category: string | null
+  generated_content: string
+  final_content: string
+  was_edited: boolean
+  notes: string | null
+  copy_count: number
+  copied_at: string | null
+  sent_at: string | null
+  delivered_at: string | null
+  replied_at: string | null
+  linked_material_id: string | null
+  linked_qr_code_id: string | null
+  linked_qr_collection_id: string | null
+  personalization: Record<string, unknown>
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
 }
 
 export interface Task {

@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "db:migrate": "supabase db push",
-    "db:seed": "npx tsx scripts/seed.ts",
+    "db:seed": "npx tsx scripts/seed.ts && npx tsx scripts/seed-fixtures.ts",
     "db:reset": "supabase db reset"
   },
   "dependencies": {
@@ -32,6 +32,7 @@
     "date-fns": "^3.6.0",
     "lucide-react": "^0.400.0",
     "next": "^14.2.0",
+    "pdfjs-dist": "^5.5.207",
     "qr-code-styling": "^1.9.2",
     "qrcode": "^1.5.4",
     "react": "^18.3.0",

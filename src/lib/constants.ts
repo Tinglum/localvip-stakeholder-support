@@ -29,12 +29,12 @@ export function hasMinLevel(role: UserRole, minLevel: number): boolean {
 
 // ─── Role theme colors ──────────────────────────────────────
 export const ROLE_THEMES: Record<UserRole, { primary: string; accent: string; bg: string; sidebar: string; label: string }> = {
-  super_admin:        { primary: '#1e40af', accent: '#2563eb', bg: 'bg-blue-50',    sidebar: 'border-blue-800',   label: 'Super Admin' },
+  super_admin:        { primary: '#1e3a8a', accent: '#1e40af', bg: 'bg-blue-50',    sidebar: 'border-blue-900',   label: 'Super Admin' },
   internal_admin:     { primary: '#1d4ed8', accent: '#3b82f6', bg: 'bg-blue-50',    sidebar: 'border-blue-700',   label: 'Internal Admin' },
-  school_leader:      { primary: '#2563eb', accent: '#60a5fa', bg: 'bg-blue-50',    sidebar: 'border-blue-500',   label: 'School Leader' },
-  cause_leader:       { primary: '#7c3aed', accent: '#a78bfa', bg: 'bg-violet-50',  sidebar: 'border-violet-500', label: 'Cause Leader' },
-  business_onboarding:{ primary: '#2563eb', accent: '#3b82f6', bg: 'bg-blue-50',    sidebar: 'border-blue-500',   label: 'Onboarding Partner' },
-  influencer:         { primary: '#c026d3', accent: '#e879f9', bg: 'bg-fuchsia-50', sidebar: 'border-fuchsia-500',label: 'Influencer' },
+  school_leader:      { primary: '#db2777', accent: '#f472b6', bg: 'bg-pink-50',    sidebar: 'border-pink-600',   label: 'School Leader' },
+  cause_leader:       { primary: '#e11d48', accent: '#fb7185', bg: 'bg-rose-50',    sidebar: 'border-rose-600',   label: 'Cause Leader' },
+  business_onboarding:{ primary: '#d97706', accent: '#65a30d', bg: 'bg-amber-50',   sidebar: 'border-amber-600',  label: 'Onboarding Partner' },
+  influencer:         { primary: '#7c3aed', accent: '#a78bfa', bg: 'bg-violet-50',  sidebar: 'border-violet-500', label: 'Influencer' },
   affiliate:          { primary: '#4f46e5', accent: '#818cf8', bg: 'bg-indigo-50',  sidebar: 'border-indigo-500', label: 'Affiliate' },
   volunteer:          { primary: '#d97706', accent: '#f59e0b', bg: 'bg-amber-50',   sidebar: 'border-amber-500',  label: 'Volunteer' },
   intern:             { primary: '#6366f1', accent: '#a5b4fc', bg: 'bg-indigo-50',  sidebar: 'border-indigo-400', label: 'Intern' },
@@ -68,11 +68,13 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
   ],
   business_onboarding: [
     { label: 'My Businesses', href: '/onboarding/business', icon: 'Store', description: 'Businesses I onboard' },
+    { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', description: 'Generate tailored scripts fast' },
     { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record activities' },
     { label: 'QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'My QR codes' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Onboarding materials' },
   ],
   influencer: [
+    { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', description: 'Create local business scripts' },
     { label: 'My QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'Share & track' },
     { label: 'Generate QR', href: '/qr/generator', icon: 'Plus', description: 'Create new QR' },
     { label: 'My Stats', href: '/analytics', icon: 'BarChart3', description: 'Track your impact' },
@@ -85,12 +87,14 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record activities' },
   ],
   volunteer: [
+    { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', description: 'Use guided local scripts' },
     { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record visits & calls' },
     { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', description: 'Action items' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Scripts & flyers' },
     { label: 'My QR Code', href: '/qr/mine', icon: 'QrCode', description: 'Your personal QR' },
   ],
   intern: [
+    { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', description: 'Generate business-specific scripts' },
     { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', description: 'Assigned tasks' },
     { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record activities' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Training materials' },
@@ -152,6 +156,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Contacts', href: '/crm/contacts', icon: 'Users', minLevel: 40 },
       { label: 'Stakeholders', href: '/crm/stakeholders', icon: 'UserCheck', minLevel: 40 },
       { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 40 },
+      { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 20 },
       { label: 'Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 20 },
       { label: 'Tasks', href: '/crm/tasks', icon: 'CheckSquare', minLevel: 20 },
     ],
