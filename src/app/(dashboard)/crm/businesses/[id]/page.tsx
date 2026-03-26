@@ -119,7 +119,7 @@ export default function BusinessDetailPage() {
   const { update: updateTask } = useTaskUpdate()
 
   const profileMap = React.useMemo(() => new Map(profiles.map(item => [item.id, item])), [profiles])
-  const owner = biz?.owner_id ? profileMap.get(biz.owner_id) : null
+  const owner = biz?.owner_id ? profileMap.get(biz.owner_id) || null : null
   const city = biz?.city_id ? cities.find(item => item.id === biz.city_id) || null : null
   const linkedCause = biz?.linked_cause_id ? causes.find(item => item.id === biz.linked_cause_id) || null : null
   const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
