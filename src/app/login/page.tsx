@@ -13,6 +13,7 @@ const DEMO_ACCOUNTS = [
   { email: 'principal@mlkschool.edu', name: 'Dr. Sarah Johnson', role: 'School Leader' },
   { email: 'director@communitystrong.org', name: 'Marcus Williams', role: 'Cause Leader' },
   { email: 'alex@partner.com', name: 'Alex Rivera', role: 'Onboarding Partner' },
+  { email: 'maya@localvip.com', name: 'Maya Patel', role: 'College Intern' },
   { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'Influencer' },
   { email: 'volunteer@example.com', name: 'Casey Adams', role: 'Volunteer' },
   { email: 'owner@mainstreetbakery.com', name: 'Lisa Chen', role: 'Business Owner' },
@@ -85,7 +86,7 @@ export default function LoginPage() {
           </h1>
           <p className="mt-4 max-w-md text-white/70">
             Marketing materials, QR codes, onboarding pipelines, analytics, and CRM —
-            built for schools, causes, influencers, volunteers, and partners.
+            built for schools, causes, interns, influencers, volunteers, and partners.
           </p>
         </div>
         <div className="flex items-center gap-4">

@@ -16,6 +16,7 @@
  *   - principal@mlkschool.edu (School Leader)
  *   - director@communitystrong.org (Cause Leader)
  *   - alex@partner.com (Business Onboarding Partner)
+ *   - maya@localvip.com (College Intern)
  *   - owner@mainstreetbakery.com (Business Owner — Lisa Chen)
  *   - jordan@influencer.com (Influencer)
  *   - volunteer@example.com (Volunteer)
@@ -71,7 +72,8 @@ async function seed() {
     { email: 'principal@mlkschool.edu', name: 'Dr. Sarah Johnson', role: 'school_leader', brand: 'hato', referral_code: 'sarah-mlk', org_id: '00000000-0000-0000-0000-100000000001' },
     { email: 'director@communitystrong.org', name: 'Marcus Williams', role: 'cause_leader', brand: 'localvip', referral_code: 'marcus-cs', org_id: '00000000-0000-0000-0000-100000000002' },
     { email: 'alex@partner.com', name: 'Alex Rivera', role: 'business_onboarding', brand: 'localvip', referral_code: 'alex-biz' },
-    { email: 'owner@mainstreetbakery.com', name: 'Lisa Chen', role: 'business_onboarding', brand: 'localvip', referral_code: 'lisa-biz' },
+    { email: 'maya@localvip.com', name: 'Maya Patel', role: 'intern', brand: 'localvip', referral_code: 'maya-clt' },
+    { email: 'owner@mainstreetbakery.com', name: 'Lisa Chen', role: 'business', brand: 'localvip', referral_code: 'lisa-biz' },
     { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'influencer', brand: 'localvip', referral_code: 'jordan-inf' },
     { email: 'volunteer@example.com', name: 'Casey Adams', role: 'volunteer', brand: 'localvip', referral_code: 'casey-vol' },
   ]
@@ -184,7 +186,7 @@ async function seed() {
       source: 'Campaign',
       status: 'active',
       address: '55 River Walk Dr, Atlanta, GA 30339',
-      owner_id: lisaOwnerId,
+      owner_id: alexOwnerId,
       metadata: {
         logo_url: null,
         offer_title: '15% Off Brunch for Two',
@@ -314,6 +316,24 @@ async function seed() {
     },
   ], { onConflict: 'id' })
   console.log('  Created 5 businesses with metadata')
+
+  const { data: lisaBusiness } = await supabase
+    .from('businesses')
+    .select('id')
+    .eq('name', 'Main Street Bakery')
+    .single()
+
+  if (lisaOwnerId && lisaBusiness?.id) {
+    await supabase
+      .from('businesses')
+      .update({ owner_user_id: lisaOwnerId })
+      .eq('id', lisaBusiness.id)
+
+    await supabase
+      .from('profiles')
+      .update({ role: 'business', business_id: lisaBusiness.id })
+      .eq('id', lisaOwnerId)
+  }
 
   // 7. Create sample causes
   console.log('Creating causes...')

@@ -7,6 +7,7 @@ export const ROLES: Record<UserRole, { label: string; description: string; level
   internal_admin: { label: 'Internal Admin', description: 'Manage operations', level: 90 },
   school_leader: { label: 'School Leader', description: 'Manage school onboarding', level: 50 },
   cause_leader: { label: 'Cause Leader', description: 'Manage cause onboarding', level: 50 },
+  business: { label: 'Business', description: 'Manage one business portal', level: 0 },
   business_onboarding: { label: 'Onboarding Partner', description: 'Onboard businesses', level: 40 },
   influencer: { label: 'Influencer', description: 'Promote and refer', level: 30 },
   affiliate: { label: 'Affiliate', description: 'Referral partner', level: 30 },
@@ -33,6 +34,7 @@ export const ROLE_THEMES: Record<UserRole, { primary: string; accent: string; bg
   internal_admin:     { primary: '#1d4ed8', accent: '#3b82f6', bg: 'bg-blue-50',    sidebar: 'border-blue-700',   label: 'Internal Admin' },
   school_leader:      { primary: '#db2777', accent: '#f472b6', bg: 'bg-pink-50',    sidebar: 'border-pink-600',   label: 'School Leader' },
   cause_leader:       { primary: '#e11d48', accent: '#fb7185', bg: 'bg-rose-50',    sidebar: 'border-rose-600',   label: 'Cause Leader' },
+  business:           { primary: '#d97706', accent: '#84cc16', bg: 'bg-amber-50',   sidebar: 'border-amber-500',  label: 'Business' },
   business_onboarding:{ primary: '#d97706', accent: '#65a30d', bg: 'bg-amber-50',   sidebar: 'border-amber-600',  label: 'Onboarding Partner' },
   influencer:         { primary: '#7c3aed', accent: '#a78bfa', bg: 'bg-violet-50',  sidebar: 'border-violet-500', label: 'Influencer' },
   affiliate:          { primary: '#4f46e5', accent: '#818cf8', bg: 'bg-indigo-50',  sidebar: 'border-indigo-500', label: 'Affiliate' },
@@ -65,6 +67,12 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'Business Pipeline', href: '/onboarding/business', icon: 'Store', description: 'Onboarding pipeline' },
     { label: 'QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'My QR codes' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Download materials' },
+  ],
+  business: [
+    { label: 'My Business', href: '/portal/business', icon: 'Store', description: 'Update your business profile' },
+    { label: 'My 100 List', href: '/portal/clients', icon: 'Users', description: 'Build your supporter list' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Customer-facing materials only' },
+    { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', description: 'Track invites and joins' },
   ],
   business_onboarding: [
     { label: 'My Businesses', href: '/onboarding/business', icon: 'Store', description: 'Businesses I onboard' },
@@ -234,5 +242,13 @@ export const MATERIAL_USE_CASES = [
   { value: 'cause_onboarding', label: 'Cause Onboarding' },
   { value: 'volunteer_outreach', label: 'Volunteer Outreach' },
   { value: 'influencer_outreach', label: 'Influencer Outreach' },
+  { value: 'general', label: 'General' },
+] as const
+
+export const MATERIAL_CATEGORIES = [
+  { value: 'business_to_consumer', label: 'Business to Consumer' },
+  { value: 'business_onboarding', label: 'Business Onboarding' },
+  { value: 'partner_outreach', label: 'Partner Outreach' },
+  { value: 'internal_training', label: 'Internal Training' },
   { value: 'general', label: 'General' },
 ] as const

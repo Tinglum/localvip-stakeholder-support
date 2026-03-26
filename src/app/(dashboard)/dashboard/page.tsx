@@ -13,9 +13,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
-import { ROLES, BRANDS, ROLE_TOOLS, ROLE_THEMES, ONBOARDING_STAGES } from '@/lib/constants'
+import { BusinessDashboardPage } from '@/components/business/business-dashboard-page'
+import { ROLES, ROLE_TOOLS, ROLE_THEMES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
-import type { OnboardingStage } from '@/lib/types/database'
 
 // Icon map for dynamic role tools
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -54,7 +54,18 @@ function getActionsForRole(role: string) {
 // ─── Component ───────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { profile, isAdmin, hasMinLevel } = useAuth()
+  const { profile } = useAuth()
+
+  if (profile.role === 'business') {
+    return <BusinessDashboardPage />
+  }
+
+  return <TeamDashboardPage />
+}
+
+function TeamDashboardPage() {
+  const { profile, isAdmin } = useAuth()
+
   const actions = getActionsForRole(profile.role)
 
   // Role-specific tools and theme

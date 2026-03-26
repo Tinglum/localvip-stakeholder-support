@@ -69,6 +69,7 @@ export function QrPlacementPicker({
   const [loadingPdf, setLoadingPdf] = React.useState(false)
   const [pdfError, setPdfError] = React.useState<string | null>(null)
   const [imageLoaded, setImageLoaded] = React.useState(false)
+  const [pdfRenderVersion, setPdfRenderVersion] = React.useState(0)
   const pdfDocumentRef = React.useRef<any>(null)
   const draggingIdRef = React.useRef<string | null>(null)
 
@@ -86,6 +87,7 @@ export function QrPlacementPicker({
     setCurrentPage(1)
     setPdfError(null)
     setImageLoaded(false)
+    setRenderedSize({ width: 0, height: 0 })
   }, [previewUrl])
 
   React.useEffect(() => {
@@ -134,6 +136,7 @@ export function QrPlacementPicker({
         }
 
         pdfDocumentRef.current = document
+        setPdfRenderVersion((value) => value + 1)
         setPageCount(document.numPages || 1)
         setCurrentPage((value) => clamp(value, 1, document.numPages || 1))
       } catch (error) {
@@ -150,6 +153,11 @@ export function QrPlacementPicker({
 
     return () => {
       disposed = true
+      const existingDocument = pdfDocumentRef.current
+      pdfDocumentRef.current = null
+      if (existingDocument?.destroy) {
+        void existingDocument.destroy()
+      }
     }
   }, [isPdf, previewUrl])
 
@@ -203,7 +211,7 @@ export function QrPlacementPicker({
     return () => {
       disposed = true
     }
-  }, [containerWidth, currentPage, isPdf])
+  }, [containerWidth, currentPage, isPdf, pdfRenderVersion])
 
   function updatePlacement(id: string, updates: Partial<QrPlacement>) {
     onChange(

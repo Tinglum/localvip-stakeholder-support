@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import {
-  Store, Upload, Image as ImageIcon, Calendar, Gift, Clock, Save,
+  Store, Upload, Image as ImageIcon, Calendar, Gift, Clock,
   Check, X, Loader2, MapPin, Globe, Mail, Phone,
   Sparkles, Eye, Trash2, Star, Info,
 } from 'lucide-react'
@@ -13,7 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth/context'
-import { useBusinesses, useBusinessUpdate } from '@/lib/supabase/hooks'
+import { useBusinesses, useBusinessUpdate, useCauses, useContacts } from '@/lib/supabase/hooks'
+import { getBusinessActivationStatus, resolveScopedBusiness } from '@/lib/business-portal'
 import { createClient } from '@/lib/supabase/client'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import type { Business } from '@/lib/types/database'
@@ -64,16 +65,50 @@ interface BusinessPortalData {
   special_hours_notes?: string
   tagline?: string
   description?: string
+  avg_ticket?: string
+  products_services_text?: string
   social_facebook?: string
   social_instagram?: string
   social_tiktok?: string
   social_x?: string
 }
 
+interface BusinessPortalBasicInfo {
+  name: string
+  email: string
+  phone: string
+  website: string
+  address: string
+  category: string
+}
+
+type AutosaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+
 // ─── Helper: get portal data from business metadata ──────────
 
 function getPortalData(biz: Business): BusinessPortalData {
   return (biz.metadata as BusinessPortalData) || {}
+}
+
+function buildPortalSnapshot({
+  basicInfo,
+  portal,
+  logoFile,
+  coverPhotoFile,
+}: {
+  basicInfo: BusinessPortalBasicInfo
+  portal: BusinessPortalData
+  logoFile: File | null
+  coverPhotoFile: File | null
+}) {
+  return JSON.stringify({
+    basicInfo,
+    portal,
+    pendingAssets: {
+      logo: logoFile ? { name: logoFile.name, size: logoFile.size, lastModified: logoFile.lastModified } : null,
+      cover: coverPhotoFile ? { name: coverPhotoFile.name, size: coverPhotoFile.size, lastModified: coverPhotoFile.lastModified } : null,
+    },
+  })
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -82,44 +117,103 @@ export default function BusinessPortalPage() {
   const { profile } = useAuth()
   const supabase = React.useMemo(() => createClient(), [])
 
-  // Load businesses owned by this user
-  const { data: businesses, loading: bizLoading, refetch } = useBusinesses({ owner_id: profile.id })
-  const { update, loading: saving } = useBusinessUpdate()
+  const businessFilters = React.useMemo<Record<string, string>>(
+    () => {
+      const filters: Record<string, string> = {}
+      if (profile.business_id) {
+        filters.id = profile.business_id
+      } else {
+        filters.owner_id = profile.id
+      }
+      return filters
+    },
+    [profile.business_id, profile.id]
+  )
+  const { data: businesses, loading: bizLoading } = useBusinesses(businessFilters)
+  const { update } = useBusinessUpdate()
 
   // Selected business (first one by default, or user picks)
   const [selectedBizId, setSelectedBizId] = React.useState<string | null>(null)
   const biz = React.useMemo(() => {
     if (selectedBizId) return businesses.find(b => b.id === selectedBizId) || null
-    return businesses[0] || null
-  }, [businesses, selectedBizId])
+    return resolveScopedBusiness(profile, businesses)
+  }, [businesses, profile, selectedBizId])
+  const causeFilters = React.useMemo<Record<string, string>>(
+    () => {
+      const filters: Record<string, string> = {}
+      filters.id = biz?.linked_cause_id || '__none__'
+      return filters
+    },
+    [biz?.linked_cause_id]
+  )
+  const contactFilters = React.useMemo<Record<string, string>>(
+    () => {
+      const filters: Record<string, string> = {}
+      filters.business_id = biz?.id || '__none__'
+      return filters
+    },
+    [biz?.id]
+  )
+  const { data: linkedCauseRows } = useCauses(causeFilters)
+  const { data: clientContacts } = useContacts(contactFilters)
+  const linkedCause = linkedCauseRows[0] || null
 
   // Form state
   const [portal, setPortal] = React.useState<BusinessPortalData>({})
   const [basicInfo, setBasicInfo] = React.useState({
-    name: '', email: '', phone: '', website: '', address: '',
+    name: '', email: '', phone: '', website: '', address: '', category: '',
   })
   const [logoFile, setLogoFile] = React.useState<File | null>(null)
   const [logoPreview, setLogoPreview] = React.useState<string | null>(null)
   const [coverPhotoFile, setCoverPhotoFile] = React.useState<File | null>(null)
   const [coverPhotoPreview, setCoverPhotoPreview] = React.useState<string | null>(null)
   const [uploadingBranding, setUploadingBranding] = React.useState(false)
-  const [saveSuccess, setSaveSuccess] = React.useState(false)
+  const [autosaveState, setAutosaveState] = React.useState<AutosaveState>('idle')
+  const [autosaveError, setAutosaveError] = React.useState<string | null>(null)
   const [activeSection, setActiveSection] = React.useState<'info' | 'branding' | 'offer' | 'schedule' | 'preview'>('info')
+  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedSnapshotRef = React.useRef('')
+  const saveInFlightRef = React.useRef(false)
+  const saveQueuedRef = React.useRef(false)
+  const skipNextAutosaveRef = React.useRef(false)
+  const persistChangesRef = React.useRef<() => Promise<boolean>>(async () => true)
 
   // Initialize form when business loads
   React.useEffect(() => {
     if (biz) {
       const pd = getPortalData(biz)
-      setPortal(pd)
-      setBasicInfo({
+      const nextPortal: BusinessPortalData = {
+        ...pd,
+        description: pd.description ?? biz.public_description ?? '',
+        avg_ticket: pd.avg_ticket ?? biz.avg_ticket ?? '',
+        products_services_text: pd.products_services_text ?? biz.products_services?.join(', ') ?? '',
+      }
+      const nextBasicInfo: BusinessPortalBasicInfo = {
         name: biz.name || '',
         email: biz.email || '',
         phone: biz.phone || '',
         website: biz.website || '',
         address: biz.address || '',
+        category: biz.category || '',
+      }
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      if (saveFeedbackTimerRef.current) clearTimeout(saveFeedbackTimerRef.current)
+      setPortal(nextPortal)
+      setBasicInfo(nextBasicInfo)
+      setLogoFile(null)
+      setCoverPhotoFile(null)
+      setLogoPreview(nextPortal.logo_url || null)
+      setCoverPhotoPreview(nextPortal.cover_photo_url || null)
+      skipNextAutosaveRef.current = true
+      lastSavedSnapshotRef.current = buildPortalSnapshot({
+        basicInfo: nextBasicInfo,
+        portal: nextPortal,
+        logoFile: null,
+        coverPhotoFile: null,
       })
-      setLogoPreview(pd.logo_url || null)
-      setCoverPhotoPreview(pd.cover_photo_url || null)
+      setAutosaveState('idle')
+      setAutosaveError(null)
     }
   }, [biz])
 
@@ -154,7 +248,7 @@ export default function BusinessPortalPage() {
     setPortal(p => ({ ...p, cover_photo_url: undefined }))
   }
 
-  async function uploadBrandAsset({
+  const uploadBrandAsset = React.useCallback(async ({
     file,
     folder,
     fileName,
@@ -164,7 +258,7 @@ export default function BusinessPortalPage() {
     folder: string
     fileName: string
     fallbackUrl?: string
-  }): Promise<string | null> {
+  }): Promise<string | null> => {
     if (!file || !biz) return fallbackUrl || null
 
     try {
@@ -190,7 +284,7 @@ export default function BusinessPortalPage() {
       // Fallback: convert to data URL and store in metadata
       return await fileToDataUrl(file)
     }
-  }
+  }, [biz, supabase])
 
   // Toggle a day
   const toggleDay = (day: string) => {
@@ -205,16 +299,36 @@ export default function BusinessPortalPage() {
 
   React.useEffect(() => {
     return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      if (saveFeedbackTimerRef.current) clearTimeout(saveFeedbackTimerRef.current)
       safeRevokeObjectUrl(logoPreview)
       safeRevokeObjectUrl(coverPhotoPreview)
     }
   }, [logoPreview, coverPhotoPreview])
 
-  // Save everything
-  const handleSave = async () => {
-    if (!biz) return
+  const persistChanges = React.useCallback(async () => {
+    if (!biz) return true
 
+    const snapshot = buildPortalSnapshot({
+      basicInfo,
+      portal,
+      logoFile,
+      coverPhotoFile,
+    })
+
+    if (snapshot === lastSavedSnapshotRef.current) {
+      return true
+    }
+
+    if (saveInFlightRef.current) {
+      saveQueuedRef.current = true
+      return false
+    }
+
+    saveInFlightRef.current = true
     setUploadingBranding(true)
+    setAutosaveState('saving')
+    setAutosaveError(null)
 
     try {
       const logoUrl = await uploadBrandAsset({
@@ -243,19 +357,106 @@ export default function BusinessPortalPage() {
         phone: basicInfo.phone || null,
         website: basicInfo.website || null,
         address: basicInfo.address || null,
+        category: basicInfo.category || null,
+        public_description: updatedMetadata.description || null,
+        avg_ticket: updatedMetadata.avg_ticket || null,
+        products_services: splitProductsServices(updatedMetadata.products_services_text),
         metadata: updatedMetadata as Record<string, unknown>,
       })
 
-      if (result) {
-        setSaveSuccess(true)
-        setLogoFile(null)
-        setCoverPhotoFile(null)
-        refetch()
-        setTimeout(() => setSaveSuccess(false), 3000)
+      if (!result) {
+        throw new Error('Changes could not be saved.')
       }
+
+      safeRevokeObjectUrl(logoPreview)
+      safeRevokeObjectUrl(coverPhotoPreview)
+
+      setPortal(updatedMetadata)
+      setLogoFile(null)
+      setCoverPhotoFile(null)
+      setLogoPreview(logoUrl || null)
+      setCoverPhotoPreview(coverPhotoUrl || null)
+
+      lastSavedSnapshotRef.current = buildPortalSnapshot({
+        basicInfo,
+        portal: updatedMetadata,
+        logoFile: null,
+        coverPhotoFile: null,
+      })
+
+      setAutosaveState('saved')
+      if (saveFeedbackTimerRef.current) clearTimeout(saveFeedbackTimerRef.current)
+      saveFeedbackTimerRef.current = setTimeout(() => {
+        setAutosaveState((current) => (current === 'saved' ? 'idle' : current))
+      }, 1800)
+
+      return true
+    } catch (error) {
+      console.error('Autosave failed:', error)
+      setAutosaveState('error')
+      setAutosaveError(error instanceof Error ? error.message : 'Changes could not be saved.')
+      return false
     } finally {
+      saveInFlightRef.current = false
       setUploadingBranding(false)
+
+      if (saveQueuedRef.current) {
+        saveQueuedRef.current = false
+        queueMicrotask(() => {
+          void persistChangesRef.current()
+        })
+      }
     }
+  }, [basicInfo, biz, coverPhotoFile, coverPhotoPreview, logoFile, logoPreview, portal, update, uploadBrandAsset])
+
+  persistChangesRef.current = persistChanges
+
+  const currentSnapshot = React.useMemo(() => buildPortalSnapshot({
+    basicInfo,
+    portal,
+    logoFile,
+    coverPhotoFile,
+  }), [basicInfo, portal, logoFile, coverPhotoFile])
+
+  React.useEffect(() => {
+    if (!biz) return
+    if (!lastSavedSnapshotRef.current) return
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false
+      return
+    }
+    if (currentSnapshot === lastSavedSnapshotRef.current) return
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+
+    setAutosaveState((current) => (current === 'saving' ? current : 'pending'))
+    setAutosaveError(null)
+
+    saveTimerRef.current = setTimeout(() => {
+      void persistChanges()
+    }, logoFile || coverPhotoFile ? 250 : 700)
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [biz, coverPhotoFile, currentSnapshot, logoFile, persistChanges])
+
+  const handleBusinessChange = async (nextBusinessId: string) => {
+    if (!biz) return
+    if (nextBusinessId === biz.id) return
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+
+    const hasUnsavedChanges = currentSnapshot !== lastSavedSnapshotRef.current
+    if (hasUnsavedChanges) {
+      const saved = await persistChanges()
+      if (!saved) return
+    }
+
+    setSelectedBizId(nextBusinessId)
   }
 
   // Loading
@@ -300,45 +501,64 @@ export default function BusinessPortalPage() {
   const resolvedLogo = logoPreview || portal.logo_url || null
   const resolvedCoverPhoto = coverPhotoPreview || portal.cover_photo_url || null
   const previewTitle = basicInfo.name || 'Your Business Name'
-  const previewCategory = biz.category || 'Local Business'
+  const previewCategory = basicInfo.category || biz.category || 'Local Business'
   const previewDescription =
     portal.description ||
     portal.offer_description ||
     portal.tagline ||
     'Add a short description so customers quickly understand why they should visit your business.'
   const previewOfferValue = portal.offer_value || 'LocalVIP Offer'
+  const activationStatus = getBusinessActivationStatus(biz, clientContacts)
   const selectedDaysCount = (portal.selected_days || []).length
+  const autosaveLabel =
+    autosaveState === 'saving' || uploadingBranding
+      ? 'Saving changes...'
+      : autosaveState === 'pending'
+        ? 'Saving soon...'
+        : autosaveState === 'saved'
+          ? 'All changes saved'
+          : autosaveState === 'error'
+            ? 'Autosave failed'
+            : 'Changes save automatically'
+  const autosaveTone =
+    autosaveState === 'error'
+      ? 'text-danger-600'
+      : autosaveState === 'saved'
+        ? 'text-success-600'
+        : 'text-surface-500'
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Business Portal"
-        description="Manage your LocalVIP profile. Upload your logo and cover photo, set your offer, and choose your days."
+        description="Manage your LocalVIP profile. Upload your logo and cover photo, set your offer, and choose your days. Changes save automatically."
         actions={
-          <div className="flex items-center gap-3">
-            {saveSuccess && (
-              <span className="flex items-center gap-1 text-sm text-success-600">
-                <Check className="h-4 w-4" /> Saved!
-              </span>
-            )}
-            <Button onClick={handleSave} disabled={saving || uploadingBranding}>
-              {saving || uploadingBranding ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
-              ) : (
-                <><Save className="h-4 w-4" /> Save Changes</>
-              )}
-            </Button>
+          <div className={`flex items-center gap-2 text-sm ${autosaveTone}`}>
+            {autosaveState === 'saving' || uploadingBranding ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : autosaveState === 'saved' ? (
+              <Check className="h-4 w-4" />
+            ) : autosaveState === 'error' ? (
+              <X className="h-4 w-4" />
+            ) : null}
+            <span>{autosaveLabel}</span>
           </div>
         }
       />
 
+      {autosaveError && (
+        <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          {autosaveError}
+        </div>
+      )}
+
       {/* Business selector (if user has multiple) */}
-      {businesses.length > 1 && (
+      {profile.role !== 'business' && businesses.length > 1 && (
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-surface-600">Business:</label>
           <select
             value={biz.id}
-            onChange={e => setSelectedBizId(e.target.value)}
+            onChange={e => void handleBusinessChange(e.target.value)}
             className="h-9 rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             {businesses.map(b => (
@@ -352,10 +572,10 @@ export default function BusinessPortalPage() {
       <Card className="border-l-4 border-l-brand-500">
         <CardContent className="flex items-center gap-4 py-3">
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-surface-200 bg-white shadow-sm">
-            {logoPreview ? (
+            {resolvedLogo ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={logoPreview} alt={`${biz.name} logo`} className="h-full w-full object-contain p-1.5" />
+                <img src={resolvedLogo} alt={`${biz.name} logo`} className="h-full w-full object-contain p-1.5" />
               </>
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-brand-50">
@@ -364,10 +584,20 @@ export default function BusinessPortalPage() {
             )}
           </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold text-surface-800">{biz.name}</p>
-            <p className="text-xs text-surface-500">
-              Onboarding Stage: <Badge variant={biz.stage === 'live' ? 'success' : biz.stage === 'onboarded' ? 'success' : 'info'} dot>{ONBOARDING_STAGES[biz.stage]?.label}</Badge>
-            </p>
+            <p className="text-sm font-semibold text-surface-800">{basicInfo.name || biz.name}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-surface-500">
+              <span>
+                Onboarding Stage: <Badge variant={biz.stage === 'live' ? 'success' : biz.stage === 'onboarded' ? 'success' : 'info'} dot>{ONBOARDING_STAGES[biz.stage]?.label}</Badge>
+              </span>
+              <span>
+                Activation: <Badge variant={activationStatus === 'active' ? 'success' : activationStatus === 'in_progress' ? 'info' : 'warning'} dot>
+                  {activationStatus === 'active' ? 'Active' : activationStatus === 'in_progress' ? 'In Progress' : 'Not Started'}
+                </Badge>
+              </span>
+            </div>
+            {linkedCause && (
+              <p className="mt-2 text-xs text-surface-500">Linked cause or school: {linkedCause.name}</p>
+            )}
           </div>
           <div className="text-right">
             <p className="text-xs text-surface-400">Brand</p>
@@ -409,6 +639,24 @@ export default function BusinessPortalPage() {
                   placeholder="Your business name"
                 />
               </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
+                  <Input
+                    value={basicInfo.category}
+                    onChange={e => setBasicInfo(p => ({ ...p, category: e.target.value }))}
+                    placeholder="Restaurant, coffee shop, salon..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Average Ticket</label>
+                  <Input
+                    value={portal.avg_ticket || ''}
+                    onChange={e => setPortal(p => ({ ...p, avg_ticket: e.target.value }))}
+                    placeholder="$12, $25, $60..."
+                  />
+                </div>
+              </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">Tagline</label>
                 <Input
@@ -427,12 +675,38 @@ export default function BusinessPortalPage() {
                   rows={4}
                 />
               </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-surface-700">Products / Services</label>
+                <Textarea
+                  value={portal.products_services_text || ''}
+                  onChange={e => setPortal(p => ({ ...p, products_services_text: e.target.value }))}
+                  placeholder="Coffee drinks, pastries, catering, birthday cakes"
+                  rows={3}
+                />
+                <p className="mt-1 text-xs text-surface-400">Use commas to separate the main things customers buy from you.</p>
+              </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader><CardTitle>Contact Details</CardTitle></CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Onboarding</p>
+                  <p className="mt-1 text-lg font-semibold text-surface-900">{ONBOARDING_STAGES[biz.stage]?.label}</p>
+                </div>
+                <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Activation</p>
+                  <p className="mt-1 text-lg font-semibold text-surface-900">
+                    {activationStatus === 'active' ? 'Active' : activationStatus === 'in_progress' ? 'In Progress' : 'Not Started'}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Linked cause or school</p>
+                <p className="mt-1 text-sm text-surface-700">{linkedCause?.name || 'Not linked yet'}</p>
+              </div>
               <div>
                 <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-surface-700">
                   <Mail className="h-3.5 w-3.5 text-surface-400" /> Email
@@ -1127,25 +1401,6 @@ export default function BusinessPortalPage() {
         </div>
       )}
 
-      {/* Floating save bar */}
-      <div className="sticky bottom-0 z-30 -mx-6 border-t border-surface-200 bg-surface-0/95 px-6 py-3 backdrop-blur-sm">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-surface-500">
-            {saveSuccess ? (
-              <span className="flex items-center gap-1 text-success-600"><Check className="h-4 w-4" /> All changes saved</span>
-            ) : (
-              'Remember to save your changes'
-            )}
-          </p>
-          <Button onClick={handleSave} disabled={saving || uploadingBranding}>
-            {saving || uploadingBranding ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
-            ) : (
-              <><Save className="h-4 w-4" /> Save All Changes</>
-            )}
-          </Button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -1165,4 +1420,15 @@ function safeRevokeObjectUrl(url?: string | null) {
   if (url?.startsWith('blob:')) {
     URL.revokeObjectURL(url)
   }
+}
+
+function splitProductsServices(value?: string | null) {
+  if (!value) return null
+
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return items.length > 0 ? items : null
 }

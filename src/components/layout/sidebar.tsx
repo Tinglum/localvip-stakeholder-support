@@ -11,7 +11,8 @@ import {
   PanelLeftClose, PanelLeft, Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { NAV_ITEMS, type NavItem, BRANDS, ROLES, ROLE_THEMES } from '@/lib/constants'
+import { type NavItem, BRANDS, ROLES, ROLE_THEMES } from '@/lib/constants'
+import { getSidebarNavItems } from '@/lib/business-portal'
 import type { UserRole, Brand } from '@/lib/types/database'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -32,7 +33,7 @@ export function Sidebar({ role, brand, collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname()
   const userLevel = ROLES[role].level
 
-  const visibleItems = NAV_ITEMS.filter(item => userLevel >= item.minLevel)
+  const visibleItems = getSidebarNavItems(role, userLevel)
 
   return (
     <aside

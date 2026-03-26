@@ -2,7 +2,7 @@
 
 Internal operations platform for managing stakeholder onboarding, outreach tracking, QR code campaigns, and materials distribution across the LocalVIP and HATO brands.
 
-This is **not** a consumer-facing application. It is a CRM and workflow tool used by internal admins, school/cause leaders, business onboarding partners, influencers, and volunteers to coordinate community engagement at the city level.
+This is **not** a consumer-facing application. It is a CRM and workflow tool used by internal admins, school/cause leaders, business onboarding partners, interns, influencers, and volunteers to coordinate community engagement at the city level.
 
 ## Tech Stack
 

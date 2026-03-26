@@ -44,6 +44,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           brand_context: 'localvip',
           organization_id: null,
           city_id: null,
+          business_id: (meta.business_id as string | null) || null,
           phone: null,
           referral_code: null,
           status: 'active',

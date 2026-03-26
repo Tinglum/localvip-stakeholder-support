@@ -7,6 +7,8 @@ import { ROLES } from '@/lib/constants'
 interface AuthContextValue {
   profile: Profile
   isAdmin: boolean
+  isBusiness: boolean
+  businessId: string | null
   hasMinLevel: (level: number) => boolean
   hasRole: (roles: UserRole[]) => boolean
 }
@@ -23,6 +25,8 @@ export function AuthProvider({
   const value = React.useMemo<AuthContextValue>(() => ({
     profile,
     isAdmin: ROLES[profile.role].level >= 90,
+    isBusiness: profile.role === 'business',
+    businessId: profile.business_id || null,
     hasMinLevel: (level) => ROLES[profile.role].level >= level,
     hasRole: (roles) => roles.includes(profile.role),
   }), [profile])

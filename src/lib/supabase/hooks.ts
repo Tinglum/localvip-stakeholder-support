@@ -172,6 +172,8 @@ export function useContacts(filters?: Record<string, string>) {
   return useSupabaseQuery<Contact>('contacts', { filters })
 }
 export function useContactInsert() { return useSupabaseInsert<Contact>('contacts') }
+export function useContactUpdate() { return useSupabaseUpdate<Contact>('contacts') }
+export function useContactDelete() { return useSupabaseDelete('contacts') }
 
 export function useStakeholderAssignments(filters?: Record<string, string>) {
   return useSupabaseQuery<StakeholderAssignment>('stakeholder_assignments', { filters })
@@ -225,6 +227,7 @@ export function useMaterials(filters?: Record<string, string>) {
   return useSupabaseQuery<Material>('materials', { filters })
 }
 export function useMaterialInsert() { return useSupabaseInsert<Material>('materials') }
+export function useMaterialUpdate() { return useSupabaseUpdate<Material>('materials') }
 export function useMaterialAssignments(filters?: Record<string, string>) {
   return useSupabaseQuery<MaterialAssignment>('material_assignments', { filters })
 }

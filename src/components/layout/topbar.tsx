@@ -6,6 +6,7 @@ import { Bell, LogOut, User, ChevronDown, Search } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
+import { isBusinessRole } from '@/lib/business-portal'
 import { ROLES, BRANDS } from '@/lib/constants'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types/database'
@@ -37,7 +38,7 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
         <input
           type="text"
-          placeholder="Search anything..."
+          placeholder={isBusinessRole(profile.role) ? 'Search my business portal...' : 'Search anything...'}
           className="h-8 w-full rounded-lg bg-surface-100 pl-9 pr-3 text-sm text-surface-700 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>

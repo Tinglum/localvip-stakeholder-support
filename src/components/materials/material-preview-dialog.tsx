@@ -60,10 +60,12 @@ function PdfPreviewPane({
   const [renderedSize, setRenderedSize] = React.useState({ width: 0, height: 0 })
   const [loadingPdf, setLoadingPdf] = React.useState(false)
   const [pdfError, setPdfError] = React.useState<string | null>(null)
+  const [pdfRenderVersion, setPdfRenderVersion] = React.useState(0)
 
   React.useEffect(() => {
     setCurrentPage(1)
     setPdfError(null)
+    setRenderedSize({ width: 0, height: 0 })
   }, [src])
 
   React.useEffect(() => {
@@ -95,6 +97,7 @@ function PdfPreviewPane({
         }
 
         pdfDocumentRef.current = document
+        setPdfRenderVersion((value) => value + 1)
         setPageCount(document.numPages || 1)
         setCurrentPage((value) => clamp(value, 1, document.numPages || 1))
       } catch (error) {
@@ -111,6 +114,11 @@ function PdfPreviewPane({
 
     return () => {
       disposed = true
+      const existingDocument = pdfDocumentRef.current
+      pdfDocumentRef.current = null
+      if (existingDocument?.destroy) {
+        void existingDocument.destroy()
+      }
     }
   }, [src])
 
@@ -166,7 +174,7 @@ function PdfPreviewPane({
     return () => {
       disposed = true
     }
-  }, [containerWidth, currentPage])
+  }, [containerWidth, currentPage, pdfRenderVersion])
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">

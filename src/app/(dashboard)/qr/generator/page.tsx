@@ -7,7 +7,7 @@ import {
   Check, ChevronDown, Sparkles, Tag, MapPin, Building2,
   Heart, Users, FolderOpen, Megaphone, ExternalLink,
   Image as ImageIcon, Mail, Phone, Wifi, ContactRound, FileUp,
-  MessageSquare, Globe, Layers, Loader2,
+  MessageSquare, Globe, Layers, Loader2, FileText,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { QrLogoEditor } from '@/components/qr/qr-logo-editor'
@@ -20,6 +20,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { BRANDS } from '@/lib/constants'
+import { exportPdfWithQrPlacements } from '@/lib/materials/pdf-export'
 import { getQrPlacements } from '@/lib/materials/qr-placement'
 import { generateShortCode } from '@/lib/utils'
 import {
@@ -81,6 +82,10 @@ const SIZE_OPTIONS = [
   { value: '2048', label: '2048px (Print)' },
 ]
 
+function isPdfMaterial(material: Pick<Material, 'mime_type'>) {
+  return material.mime_type === 'application/pdf' || material.mime_type?.includes('pdf')
+}
+
 // ─── Component ──────────────────────────────────────────────
 
 export default function QRGeneratorPage() {
@@ -106,7 +111,9 @@ export default function QRGeneratorPage() {
   const materialsWithQrZone = React.useMemo(() =>
     materialsData.filter(m => {
       const meta = m.metadata as Record<string, unknown> | null
-      return getQrPlacements(meta).length > 0 && m.file_url && m.mime_type?.startsWith('image/')
+      return getQrPlacements(meta).length > 0
+        && !!m.file_url
+        && (m.mime_type?.startsWith('image/') || isPdfMaterial(m))
     }),
   [materialsData])
 
@@ -319,16 +326,34 @@ export default function QRGeneratorPage() {
   }
 
   // ─── Place QR on Material (canvas compositing) ──────────
-  const [compositing, setCompositing] = React.useState(false)
+  const [compositingMaterialId, setCompositingMaterialId] = React.useState<string | null>(null)
+  const [materialExportMessage, setMaterialExportMessage] = React.useState<string | null>(null)
+  const [materialExportError, setMaterialExportError] = React.useState<string | null>(null)
 
   async function handlePlaceOnMaterial(material: Material) {
     if (!previewUrl) return
-    setCompositing(true)
+    setMaterialExportMessage(null)
+    setMaterialExportError(null)
+    setCompositingMaterialId(material.id)
 
     try {
       const meta = material.metadata as Record<string, unknown>
-      const placements = getQrPlacements(meta).filter((placement) => placement.page === 1)
+      const placements = getQrPlacements(meta)
       if (!placements.length || !material.file_url) return
+
+      if (isPdfMaterial(material)) {
+        await exportPdfWithQrPlacements({
+          pdfUrl: material.file_url,
+          qrDataUrl: previewUrl,
+          placements,
+          filename: `${material.title}-with-qr.pdf`,
+        })
+        setMaterialExportMessage(`Stamped PDF download started for ${material.title}.`)
+        return
+      }
+
+      const imagePlacements = placements.filter((placement) => placement.page === 1)
+      if (!imagePlacements.length) return
 
       // Load the flyer image
       const flyerImg = await loadImage(material.file_url)
@@ -345,7 +370,7 @@ export default function QRGeneratorPage() {
       ctx.drawImage(flyerImg, 0, 0)
 
       // Draw every saved QR zone for this material.
-      placements.forEach((placement) => {
+      imagePlacements.forEach((placement) => {
         const qrW = (placement.size / 100) * canvas.width
         const qrH = qrW
         const qrX = (placement.x / 100) * canvas.width - qrW / 2
@@ -356,10 +381,12 @@ export default function QRGeneratorPage() {
       // Download the composited image
       const compositeUrl = canvas.toDataURL('image/png')
       downloadDataURL(compositeUrl, `${material.title}-with-qr.png`)
+      setMaterialExportMessage(`Stamped PNG download started for ${material.title}.`)
     } catch (err) {
       console.error('Composite failed:', err)
+      setMaterialExportError('The material export failed. Please try again.')
     } finally {
-      setCompositing(false)
+      setCompositingMaterialId(null)
     }
   }
 
@@ -1013,14 +1040,24 @@ export default function QRGeneratorPage() {
                       Place on Material
                     </p>
                     <p className="mb-2 text-xs text-surface-400">
-                      Select a flyer to auto-place the QR code on every saved zone for that material.
+                      Select a saved material to auto-place this QR on every saved zone. Image materials download as PNGs, and PDF materials download as stamped PDFs.
                     </p>
+                    {materialExportError && (
+                      <div className="mb-2 rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700">
+                        {materialExportError}
+                      </div>
+                    )}
+                    {materialExportMessage && (
+                      <div className="mb-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-xs text-success-700">
+                        {materialExportMessage}
+                      </div>
+                    )}
                     <div className="space-y-1.5 max-h-40 overflow-y-auto">
                       {materialsWithQrZone.map(m => (
                         <button
                           key={m.id}
                           type="button"
-                          disabled={compositing}
+                          disabled={!!compositingMaterialId}
                           onClick={() => handlePlaceOnMaterial(m)}
                           className="flex w-full items-center gap-2.5 rounded-lg border border-surface-200 px-3 py-2 text-left text-xs hover:bg-surface-50 transition-colors disabled:opacity-50"
                         >
@@ -1033,6 +1070,10 @@ export default function QRGeneratorPage() {
                               unoptimized
                               className="h-8 w-8 rounded object-cover shrink-0"
                             />
+                          ) : isPdfMaterial(m) ? (
+                            <div className="h-8 w-8 rounded bg-surface-100 flex items-center justify-center shrink-0">
+                              <FileText className="h-4 w-4 text-surface-400" />
+                            </div>
                           ) : (
                             <div className="h-8 w-8 rounded bg-surface-100 flex items-center justify-center shrink-0">
                               <Layers className="h-4 w-4 text-surface-400" />
@@ -1040,9 +1081,11 @@ export default function QRGeneratorPage() {
                           )}
                           <div className="min-w-0 flex-1">
                             <p className="font-medium text-surface-700 truncate">{m.title}</p>
-                            <p className="text-surface-400">{m.brand === 'hato' ? 'HATO' : 'LocalVIP'}</p>
+                            <p className="text-surface-400">
+                              {m.brand === 'hato' ? 'HATO' : 'LocalVIP'} • {isPdfMaterial(m) ? 'Downloads PDF' : 'Downloads PNG'}
+                            </p>
                           </div>
-                          {compositing ? (
+                          {compositingMaterialId === m.id ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-500 shrink-0" />
                           ) : (
                             <Download className="h-3.5 w-3.5 text-surface-400 shrink-0" />

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
+import { MaterialQrZonesDialog } from '@/components/materials/material-qr-zones-dialog'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { QrPlacementPicker } from '@/components/materials/qr-placement-picker'
@@ -23,7 +24,7 @@ import {
   qrPlacementMetadata,
   type QrPlacement,
 } from '@/lib/materials/qr-placement'
-import { BRANDS, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
+import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { useMaterials, useMaterialInsert } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
@@ -481,10 +482,19 @@ function UploadMaterialDialog({
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-surface-600">Category</label>
-              <Input value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g. Onboarding" />
-            </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-surface-600">Category</label>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                >
+                  <option value="">None</option>
+                  {MATERIAL_CATEGORIES.map(item => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-surface-600">Use Case</label>
               <select
@@ -534,6 +544,7 @@ export default function MaterialsLibraryPage() {
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [uploadOpen, setUploadOpen] = React.useState(false)
   const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
+  const [editingQrMaterial, setEditingQrMaterial] = React.useState<Material | null>(null)
   const [deletingId, setDeletingId] = React.useState<string | null>(null)
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
   const [deleteError, setDeleteError] = React.useState<string | null>(null)
@@ -594,6 +605,18 @@ export default function MaterialsLibraryPage() {
         open={!!previewMaterial}
         onOpenChange={(open) => {
           if (!open) setPreviewMaterial(null)
+        }}
+      />
+
+      <MaterialQrZonesDialog
+        material={editingQrMaterial}
+        open={!!editingQrMaterial}
+        onOpenChange={(open) => {
+          if (!open) setEditingQrMaterial(null)
+        }}
+        onSaved={() => {
+          setActionMessage('QR zones saved.')
+          refetch()
         }}
       />
 
@@ -748,6 +771,16 @@ export default function MaterialsLibraryPage() {
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
                       )}
+                      {isAdmin && material.file_url && isMaterialPreviewable(material.mime_type) && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Edit QR Zones"
+                          onClick={() => setEditingQrMaterial(material)}
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       {material.file_url && (
                         <Button variant="ghost" size="icon-sm" title="Download" asChild>
                           <a href={material.file_url} download>
@@ -813,6 +846,16 @@ export default function MaterialsLibraryPage() {
                         onClick={() => setPreviewMaterial(material)}
                       >
                         <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {isAdmin && material.file_url && isMaterialPreviewable(material.mime_type) && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Edit QR Zones"
+                        onClick={() => setEditingQrMaterial(material)}
+                      >
+                        <QrCode className="h-3.5 w-3.5" />
                       </Button>
                     )}
                     {material.file_url && (

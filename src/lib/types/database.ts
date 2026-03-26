@@ -3,6 +3,7 @@ export type UserRole =
   | 'internal_admin'
   | 'school_leader'
   | 'cause_leader'
+  | 'business'
   | 'business_onboarding'
   | 'influencer'
   | 'affiliate'
@@ -34,6 +35,8 @@ export type OutreachType =
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+export type BusinessActivationStatus = 'not_started' | 'in_progress' | 'active'
+export type BusinessContactStatus = 'added' | 'invited' | 'joined'
 export type OutreachScriptTier = 'good' | 'better' | 'best'
 export type OutreachScriptChannel = 'in_person' | 'text_dm' | 'email' | 'leave_behind'
 export type OutreachScriptStatus =
@@ -205,6 +208,7 @@ export interface Profile {
   brand_context: Brand
   organization_id: string | null
   city_id: string | null
+  business_id?: string | null
   phone: string | null
   referral_code: string | null
   status: EntityStatus
@@ -266,6 +270,7 @@ export interface Business {
   brand: Brand
   stage: OnboardingStage
   owner_id: string | null
+  owner_user_id?: string | null
   source: string | null
   source_detail: string | null
   campaign_id: string | null
@@ -275,6 +280,10 @@ export interface Business {
   linked_qr_collection_id: string | null
   duplicate_of: string | null
   external_id: string | null
+  public_description?: string | null
+  avg_ticket?: string | null
+  products_services?: string[] | null
+  activation_status?: BusinessActivationStatus | null
   status: EntityStatus
   metadata: Record<string, unknown> | null
   created_at: string
@@ -316,7 +325,12 @@ export interface Contact {
   cause_id: string | null
   organization_id: string | null
   owner_id: string | null
+  created_by_user_id?: string | null
   source: string | null
+  tag?: string | null
+  list_status?: BusinessContactStatus | null
+  invited_at?: string | null
+  joined_at?: string | null
   duplicate_of: string | null
   status: EntityStatus
   metadata: Record<string, unknown> | null
@@ -343,6 +357,7 @@ export interface OutreachActivity {
   entity_type: 'business' | 'cause' | 'contact'
   entity_id: string
   performed_by: string
+  user_id?: string | null
   campaign_id: string | null
   outreach_script_id: string | null
   business_id: string | null
