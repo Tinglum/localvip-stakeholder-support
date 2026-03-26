@@ -45,7 +45,9 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/forgot-password')
 
   const isPublicRoute = request.nextUrl.pathname === '/' ||
-    request.nextUrl.pathname.startsWith('/r/') // QR redirect routes
+    request.nextUrl.pathname.startsWith('/r/') ||
+    request.nextUrl.pathname.startsWith('/join/') ||
+    request.nextUrl.pathname.startsWith('/api/join/')
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()
