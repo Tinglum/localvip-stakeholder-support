@@ -29,15 +29,15 @@ export function hasMinLevel(role: UserRole, minLevel: number): boolean {
 
 // ─── Role theme colors ──────────────────────────────────────
 export const ROLE_THEMES: Record<UserRole, { primary: string; accent: string; bg: string; sidebar: string; label: string }> = {
-  super_admin:        { primary: '#dc2626', accent: '#ef4444', bg: 'bg-red-50',     sidebar: 'border-red-500',    label: 'Super Admin' },
-  internal_admin:     { primary: '#ea580c', accent: '#f97316', bg: 'bg-orange-50',  sidebar: 'border-orange-500', label: 'Internal Admin' },
-  school_leader:      { primary: '#0891b2', accent: '#06b6d4', bg: 'bg-cyan-50',    sidebar: 'border-cyan-500',   label: 'School Leader' },
-  cause_leader:       { primary: '#7c3aed', accent: '#8b5cf6', bg: 'bg-violet-50',  sidebar: 'border-violet-500', label: 'Cause Leader' },
+  super_admin:        { primary: '#1e40af', accent: '#2563eb', bg: 'bg-blue-50',    sidebar: 'border-blue-800',   label: 'Super Admin' },
+  internal_admin:     { primary: '#1d4ed8', accent: '#3b82f6', bg: 'bg-blue-50',    sidebar: 'border-blue-700',   label: 'Internal Admin' },
+  school_leader:      { primary: '#2563eb', accent: '#60a5fa', bg: 'bg-blue-50',    sidebar: 'border-blue-500',   label: 'School Leader' },
+  cause_leader:       { primary: '#7c3aed', accent: '#a78bfa', bg: 'bg-violet-50',  sidebar: 'border-violet-500', label: 'Cause Leader' },
   business_onboarding:{ primary: '#2563eb', accent: '#3b82f6', bg: 'bg-blue-50',    sidebar: 'border-blue-500',   label: 'Onboarding Partner' },
-  influencer:         { primary: '#db2777', accent: '#ec4899', bg: 'bg-pink-50',    sidebar: 'border-pink-500',   label: 'Influencer' },
-  affiliate:          { primary: '#059669', accent: '#10b981', bg: 'bg-emerald-50', sidebar: 'border-emerald-500',label: 'Affiliate' },
-  volunteer:          { primary: '#ca8a04', accent: '#eab308', bg: 'bg-yellow-50',  sidebar: 'border-yellow-500', label: 'Volunteer' },
-  intern:             { primary: '#6366f1', accent: '#818cf8', bg: 'bg-indigo-50',  sidebar: 'border-indigo-500', label: 'Intern' },
+  influencer:         { primary: '#c026d3', accent: '#e879f9', bg: 'bg-fuchsia-50', sidebar: 'border-fuchsia-500',label: 'Influencer' },
+  affiliate:          { primary: '#4f46e5', accent: '#818cf8', bg: 'bg-indigo-50',  sidebar: 'border-indigo-500', label: 'Affiliate' },
+  volunteer:          { primary: '#d97706', accent: '#f59e0b', bg: 'bg-amber-50',   sidebar: 'border-amber-500',  label: 'Volunteer' },
+  intern:             { primary: '#6366f1', accent: '#a5b4fc', bg: 'bg-indigo-50',  sidebar: 'border-indigo-400', label: 'Intern' },
 }
 
 // ─── Role-specific tools/links ──────────────────────────────
