@@ -15,6 +15,7 @@ const DEMO_ACCOUNTS = [
   { email: 'alex@partner.com', name: 'Alex Rivera', role: 'Onboarding Partner' },
   { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'Influencer' },
   { email: 'volunteer@example.com', name: 'Casey Adams', role: 'Volunteer' },
+  { email: 'owner@mainstreetbakery.com', name: 'Lisa Chen', role: 'Business Owner' },
 ]
 
 export default function LoginPage() {

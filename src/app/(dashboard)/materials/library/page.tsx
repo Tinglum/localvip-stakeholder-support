@@ -4,7 +4,7 @@ import * as React from 'react'
 import {
   FileText, Download, Eye, Grid, List, Search,
   Upload, FolderOpen, File, Image, Mail,
-  MessageSquare, Printer, QrCode, X, Loader2,
+  MessageSquare, Printer, QrCode, X, Loader2, Move,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,7 +16,19 @@ import { useAuth } from '@/lib/auth/context'
 import { BRANDS, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { useMaterials, useMaterialInsert } from '@/lib/supabase/hooks'
+import { createClient } from '@/lib/supabase/client'
 import type { Material } from '@/lib/types/database'
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
 
 // ─── Type icons ───────────────────────────────────────────────
 
@@ -31,6 +43,118 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   other: <FolderOpen className="h-5 w-5" />,
 }
 
+// ─── QR Placement type ──────────────────────────────────────
+
+interface QrPlacement {
+  x: number   // percentage 0-100 from left
+  y: number   // percentage 0-100 from top
+  size: number // percentage of image width
+}
+
+// ─── QR Placement Picker ─────────────────────────────────────
+
+function QrPlacementPicker({
+  imageUrl,
+  placement,
+  onChange,
+}: {
+  imageUrl: string
+  placement: QrPlacement | null
+  onChange: (p: QrPlacement | null) => void
+}) {
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [dragging, setDragging] = React.useState(false)
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 100
+    const y = ((e.clientY - rect.top) / rect.height) * 100
+    onChange({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, size: placement?.size || 15 })
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setDragging(true)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragging || !placement) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 100
+    const y = ((e.clientY - rect.top) / rect.height) * 100
+    onChange({
+      ...placement,
+      x: Math.max(0, Math.min(100, Math.round(x * 10) / 10)),
+      y: Math.max(0, Math.min(100, Math.round(y * 10) / 10)),
+    })
+  }
+
+  const handleMouseUp = () => setDragging(false)
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="block text-xs font-medium text-surface-600">
+          <QrCode className="mr-1 inline h-3.5 w-3.5" />
+          QR Code Placement Zone
+        </label>
+        {placement && (
+          <button type="button" onClick={() => onChange(null)} className="text-xs text-red-500 hover:text-red-700">
+            Remove
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-surface-400">Click on the image to place the QR code zone. Drag to reposition.</p>
+      <div
+        ref={containerRef}
+        className="relative cursor-crosshair overflow-hidden rounded-lg border-2 border-dashed border-surface-300 bg-surface-50"
+        onClick={handleClick}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        <img src={imageUrl} alt="Material preview" className="w-full select-none" draggable={false} />
+        {placement && (
+          <div
+            className="absolute border-2 border-brand-500 bg-brand-500/20 rounded shadow-sm flex items-center justify-center cursor-move"
+            style={{
+              left: `${placement.x - placement.size / 2}%`,
+              top: `${placement.y - placement.size / 2}%`,
+              width: `${placement.size}%`,
+              height: `${placement.size}%`,
+            }}
+            onMouseDown={handleMouseDown}
+            onClick={e => e.stopPropagation()}
+          >
+            <QrCode className="h-6 w-6 text-brand-700 opacity-60" />
+          </div>
+        )}
+      </div>
+      {placement && (
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs text-surface-500">
+            <Move className="h-3 w-3" />
+            <span>X: {placement.x.toFixed(1)}% Y: {placement.y.toFixed(1)}%</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-surface-500">Size:</label>
+            <input
+              type="range"
+              min={5}
+              max={40}
+              value={placement.size}
+              onChange={e => onChange({ ...placement, size: Number(e.target.value) })}
+              className="h-1 w-24 accent-brand-500"
+              onClick={e => e.stopPropagation()}
+            />
+            <span className="text-xs text-surface-500 w-8">{placement.size}%</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Upload Dialog ────────────────────────────────────────────
 
 function UploadMaterialDialog({
@@ -43,7 +167,7 @@ function UploadMaterialDialog({
   onSuccess: () => void
 }) {
   const { profile } = useAuth()
-  const { insert, loading, error } = useMaterialInsert()
+  const { insert, loading: insertLoading, error } = useMaterialInsert()
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -51,7 +175,15 @@ function UploadMaterialDialog({
   const [brand, setBrand] = React.useState<'localvip' | 'hato'>('localvip')
   const [category, setCategory] = React.useState('')
   const [useCase, setUseCase] = React.useState('')
-  const [fileUrl, setFileUrl] = React.useState('')
+  const [file, setFile] = React.useState<File | null>(null)
+  const [filePreviewUrl, setFilePreviewUrl] = React.useState<string | null>(null)
+  const [uploading, setUploading] = React.useState(false)
+  const [dragOver, setDragOver] = React.useState(false)
+  const [qrPlacement, setQrPlacement] = React.useState<QrPlacement | null>(null)
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const loading = insertLoading || uploading
+  const isImageFile = file && file.type.startsWith('image/')
 
   function reset() {
     setTitle('')
@@ -60,11 +192,100 @@ function UploadMaterialDialog({
     setBrand('localvip')
     setCategory('')
     setUseCase('')
-    setFileUrl('')
+    setFile(null)
+    setFilePreviewUrl(null)
+    setUploading(false)
+    setDragOver(false)
+    setQrPlacement(null)
   }
+
+  function handleFileSelect(selectedFile: File | undefined) {
+    if (!selectedFile) return
+    setFile(selectedFile)
+    setQrPlacement(null)
+    if (!title) {
+      const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '')
+      setTitle(nameWithoutExt)
+    }
+    // Generate preview URL for image files
+    if (selectedFile.type.startsWith('image/')) {
+      setFilePreviewUrl(URL.createObjectURL(selectedFile))
+    } else {
+      setFilePreviewUrl(null)
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    handleFileSelect(e.dataTransfer.files?.[0])
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  // Clean up preview URL on unmount
+  React.useEffect(() => {
+    return () => {
+      if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl)
+    }
+  }, [filePreviewUrl])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    let fileUrl: string | null = null
+    let fileName: string | null = null
+    let fileSize: number | null = null
+    let mimeType: string | null = null
+
+    if (file) {
+      setUploading(true)
+      fileName = file.name
+      fileSize = file.size
+      mimeType = file.type || null
+
+      try {
+        const supabase = createClient()
+        const filePath = `materials/${profile.id}/${Date.now()}-${file.name}`
+        const { error: uploadError } = await supabase.storage
+          .from('materials')
+          .upload(filePath, file, { upsert: true })
+
+        if (uploadError) {
+          console.warn('Storage upload failed, falling back to data URL:', uploadError.message)
+          fileUrl = await fileToDataUrl(file)
+        } else {
+          const { data: urlData } = supabase.storage
+            .from('materials')
+            .getPublicUrl(filePath)
+          fileUrl = urlData.publicUrl
+        }
+      } catch (err) {
+        console.warn('Upload error, falling back to data URL:', err)
+        fileUrl = await fileToDataUrl(file)
+      }
+      setUploading(false)
+    }
+
+    const metadata: Record<string, unknown> = {}
+    if (qrPlacement) {
+      metadata.qr_placement = qrPlacement
+    }
+
     const result = await insert({
       title,
       description: description || null,
@@ -72,10 +293,10 @@ function UploadMaterialDialog({
       brand,
       category: category || null,
       use_case: useCase || null,
-      file_url: fileUrl || null,
-      file_name: null,
-      file_size: null,
-      mime_type: null,
+      file_url: fileUrl,
+      file_name: fileName,
+      file_size: fileSize,
+      mime_type: mimeType,
       thumbnail_url: null,
       target_roles: [],
       campaign_id: null,
@@ -84,7 +305,7 @@ function UploadMaterialDialog({
       version: 1,
       status: 'active',
       created_by: profile.id,
-      metadata: null,
+      metadata: Object.keys(metadata).length > 0 ? metadata : null,
     })
     if (result) {
       reset()
@@ -96,15 +317,76 @@ function UploadMaterialDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-lg rounded-xl bg-surface-0 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-8">
+      <div className="w-full max-w-lg rounded-xl bg-surface-0 shadow-xl my-auto">
         <div className="flex items-center justify-between border-b border-surface-100 px-6 py-4">
           <h2 className="text-lg font-semibold text-surface-900">Upload Material</h2>
           <button onClick={onClose} className="text-surface-400 hover:text-surface-600">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+        <form onSubmit={handleSubmit} className="space-y-4 p-6 max-h-[70vh] overflow-y-auto">
+          {/* File drop zone */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-surface-600">File</label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={e => handleFileSelect(e.target.files?.[0])}
+            />
+            {file ? (
+              <div className="flex items-center gap-3 rounded-lg border border-surface-300 bg-surface-50 px-4 py-3">
+                <File className="h-5 w-5 shrink-0 text-brand-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-surface-800">{file.name}</p>
+                  <p className="text-xs text-surface-500">
+                    {formatFileSize(file.size)} &middot; {file.type || 'unknown type'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFile(null)
+                    setFilePreviewUrl(null)
+                    setQrPlacement(null)
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  }}
+                  className="shrink-0 text-surface-400 hover:text-surface-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 transition-colors ${
+                  dragOver
+                    ? 'border-brand-500 bg-brand-50'
+                    : 'border-surface-300 bg-surface-50 hover:border-brand-400 hover:bg-surface-100'
+                }`}
+              >
+                <Upload className={`h-8 w-8 ${dragOver ? 'text-brand-500' : 'text-surface-400'}`} />
+                <p className="text-sm text-surface-600">
+                  <span className="font-medium text-brand-600">Click to browse</span> or drag & drop
+                </p>
+                <p className="text-xs text-surface-400">PDF, images, documents, or any file type</p>
+              </div>
+            )}
+          </div>
+
+          {/* QR Placement Picker — shown for image files */}
+          {isImageFile && filePreviewUrl && (
+            <QrPlacementPicker
+              imageUrl={filePreviewUrl}
+              placement={qrPlacement}
+              onChange={setQrPlacement}
+            />
+          )}
+
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-600">Title *</label>
             <Input value={title} onChange={e => setTitle(e.target.value)} required placeholder="e.g. Business One-Pager" />
@@ -163,16 +445,21 @@ function UploadMaterialDialog({
               </select>
             </div>
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-surface-600">File URL</label>
-            <Input value={fileUrl} onChange={e => setFileUrl(e.target.value)} placeholder="https://..." />
-          </div>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={loading || !title}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Upload
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {uploading ? 'Uploading...' : 'Saving...'}
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" />
+                  Upload
+                </>
+              )}
             </Button>
           </div>
         </form>
@@ -314,97 +601,115 @@ export default function MaterialsLibraryPage() {
         />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map(material => (
-            <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
-              {/* Thumbnail */}
-              <div className="flex h-36 items-center justify-center border-b border-surface-100 bg-surface-50">
-                {material.thumbnail_url ? (
-                  <img src={material.thumbnail_url} alt={material.title} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="text-surface-300">
-                    {TYPE_ICONS[material.type] || <FileText className="h-10 w-10" />}
-                  </div>
-                )}
-              </div>
-              <CardContent className="p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <Badge variant={material.brand === 'hato' ? 'hato' : 'info'}>
-                    {BRANDS[material.brand]?.label ?? material.brand}
-                  </Badge>
-                  <Badge variant="default">
-                    {MATERIAL_TYPES.find(t => t.value === material.type)?.label ?? material.type}
-                  </Badge>
+          {filtered.map(material => {
+            const hasQrZone = !!(material.metadata as Record<string, unknown>)?.qr_placement
+            return (
+              <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
+                {/* Thumbnail */}
+                <div className="flex h-36 items-center justify-center border-b border-surface-100 bg-surface-50 relative">
+                  {material.thumbnail_url ? (
+                    <img src={material.thumbnail_url} alt={material.title} className="h-full w-full object-cover" />
+                  ) : material.file_url && material.mime_type?.startsWith('image/') ? (
+                    <img src={material.file_url} alt={material.title} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="text-surface-300">
+                      {TYPE_ICONS[material.type] || <FileText className="h-10 w-10" />}
+                    </div>
+                  )}
+                  {hasQrZone && (
+                    <div className="absolute top-2 right-2 rounded bg-brand-500 px-1.5 py-0.5 text-[10px] font-medium text-white flex items-center gap-0.5">
+                      <QrCode className="h-2.5 w-2.5" /> QR Zone
+                    </div>
+                  )}
                 </div>
-                <h3 className="text-sm font-semibold text-surface-800 group-hover:text-brand-700 transition-colors">
-                  {material.title}
-                </h3>
-                <p className="mt-1 text-xs text-surface-500 line-clamp-2">{material.description}</p>
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-xs text-surface-400">
-                    {formatDate(material.updated_at)}
-                  </span>
-                  <div className="flex gap-1">
+                <CardContent className="p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Badge variant={material.brand === 'hato' ? 'hato' : 'info'}>
+                      {BRANDS[material.brand]?.label ?? material.brand}
+                    </Badge>
+                    <Badge variant="default">
+                      {MATERIAL_TYPES.find(t => t.value === material.type)?.label ?? material.type}
+                    </Badge>
+                  </div>
+                  <h3 className="text-sm font-semibold text-surface-800 group-hover:text-brand-700 transition-colors">
+                    {material.title}
+                  </h3>
+                  <p className="mt-1 text-xs text-surface-500 line-clamp-2">{material.description}</p>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs text-surface-400">
+                      {formatDate(material.updated_at)}
+                    </span>
+                    <div className="flex gap-1">
+                      {material.file_url && (
+                        <Button variant="ghost" size="icon-sm" title="Preview" asChild>
+                          <a href={material.file_url} target="_blank" rel="noopener noreferrer">
+                            <Eye className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      )}
+                      {material.file_url && (
+                        <Button variant="ghost" size="icon-sm" title="Download" asChild>
+                          <a href={material.file_url} download>
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      ) : (
+        /* List view */
+        <div className="space-y-2">
+          {filtered.map(material => {
+            const hasQrZone = !!(material.metadata as Record<string, unknown>)?.qr_placement
+            return (
+              <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
+                <CardContent className="flex items-center gap-4 py-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-100 text-surface-400">
+                    {TYPE_ICONS[material.type]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-medium text-surface-800 truncate">{material.title}</h3>
+                      <Badge variant={material.brand === 'hato' ? 'hato' : 'info'} className="shrink-0">
+                        {BRANDS[material.brand]?.label ?? material.brand}
+                      </Badge>
+                      {hasQrZone && (
+                        <span className="shrink-0 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 flex items-center gap-0.5">
+                          <QrCode className="h-2.5 w-2.5" /> QR Zone
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-surface-500 truncate">{material.description}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-4 text-xs text-surface-400">
+                    <span>{material.use_case ? MATERIAL_USE_CASES.find(u => u.value === material.use_case)?.label : ''}</span>
+                    <span>{formatDate(material.updated_at)}</span>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
                     {material.file_url && (
-                      <Button variant="ghost" size="icon-sm" title="Preview" asChild>
+                      <Button variant="ghost" size="icon-sm" asChild>
                         <a href={material.file_url} target="_blank" rel="noopener noreferrer">
                           <Eye className="h-3.5 w-3.5" />
                         </a>
                       </Button>
                     )}
                     {material.file_url && (
-                      <Button variant="ghost" size="icon-sm" title="Download" asChild>
+                      <Button variant="outline" size="sm" asChild>
                         <a href={material.file_url} download>
-                          <Download className="h-3.5 w-3.5" />
+                          <Download className="h-3.5 w-3.5" /> Download
                         </a>
                       </Button>
                     )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        /* List view */
-        <div className="space-y-2">
-          {filtered.map(material => (
-            <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
-              <CardContent className="flex items-center gap-4 py-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-100 text-surface-400">
-                  {TYPE_ICONS[material.type]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium text-surface-800 truncate">{material.title}</h3>
-                    <Badge variant={material.brand === 'hato' ? 'hato' : 'info'} className="shrink-0">
-                      {BRANDS[material.brand]?.label ?? material.brand}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-surface-500 truncate">{material.description}</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-4 text-xs text-surface-400">
-                  <span>{material.use_case ? MATERIAL_USE_CASES.find(u => u.value === material.use_case)?.label : ''}</span>
-                  <span>{formatDate(material.updated_at)}</span>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  {material.file_url && (
-                    <Button variant="ghost" size="icon-sm" asChild>
-                      <a href={material.file_url} target="_blank" rel="noopener noreferrer">
-                        <Eye className="h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  )}
-                  {material.file_url && (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={material.file_url} download>
-                        <Download className="h-3.5 w-3.5" /> Download
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

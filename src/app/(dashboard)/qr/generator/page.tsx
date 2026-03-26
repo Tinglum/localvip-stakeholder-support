@@ -6,7 +6,7 @@ import {
   Check, ChevronDown, Sparkles, Tag, MapPin, Building2,
   Heart, Users, FolderOpen, Megaphone, ExternalLink,
   Image, Mail, Phone, Wifi, ContactRound, FileUp,
-  MessageSquare, Globe,
+  MessageSquare, Globe, Layers, Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,9 @@ import {
   destinationToString,
   type DotStyle, type CornerStyle, type QRDestination, type QRDestinationType,
 } from '@/lib/qr/generate'
+import { useAuth } from '@/lib/auth/context'
+import { useQrCodeInsert, useCampaigns, useCities, useProfiles, useBusinesses, useCauses, useMaterials } from '@/lib/supabase/hooks'
+import type { Material } from '@/lib/types/database'
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -64,35 +67,6 @@ const COLOR_PRESETS = [
   { fg: '#0f172a', bg: '#f8fafc', label: 'Soft' },
 ]
 
-const DEMO_CAMPAIGNS = [
-  { value: 'spring-2026', label: 'Spring 2026 Launch' },
-  { value: 'back-to-school', label: 'Back to School 2026' },
-  { value: 'holiday-giving', label: 'Holiday Giving Drive' },
-]
-
-const DEMO_CITIES = [
-  { value: 'atlanta', label: 'Atlanta, GA' },
-  { value: 'charlotte', label: 'Charlotte, NC' },
-  { value: 'nashville', label: 'Nashville, TN' },
-]
-
-const DEMO_STAKEHOLDERS = [
-  { value: 'alex-rivera', label: 'Alex Rivera' },
-  { value: 'casey-adams', label: 'Casey Adams' },
-  { value: 'jordan-taylor', label: 'Jordan Taylor' },
-]
-
-const DEMO_BUSINESSES = [
-  { value: 'main-street-bakery', label: 'Main Street Bakery' },
-  { value: 'river-cafe', label: 'River Cafe' },
-  { value: 'summit-fitness', label: 'Summit Fitness' },
-]
-
-const DEMO_CAUSES = [
-  { value: 'oak-hill-elementary', label: 'Oak Hill Elementary' },
-  { value: 'community-strong', label: 'CommunityStrong Foundation' },
-]
-
 const SIZE_OPTIONS = [
   { value: '256', label: '256px (Small)' },
   { value: '512', label: '512px (Medium)' },
@@ -103,6 +77,32 @@ const SIZE_OPTIONS = [
 // ─── Component ──────────────────────────────────────────────
 
 export default function QRGeneratorPage() {
+  const { profile } = useAuth()
+  const { insert: insertQrCode, loading: savingQr, error: saveError } = useQrCodeInsert()
+
+  // Real data from Supabase
+  const { data: campaignsData } = useCampaigns()
+  const { data: citiesData } = useCities()
+  const { data: profilesData } = useProfiles()
+  const { data: businessesData } = useBusinesses()
+  const { data: causesData } = useCauses()
+
+  const { data: materialsData } = useMaterials()
+
+  const campaignOptions = React.useMemo(() => campaignsData.map(c => ({ value: c.id, label: c.name })), [campaignsData])
+  const cityOptions = React.useMemo(() => citiesData.map(c => ({ value: c.id, label: `${c.name}, ${c.state}` })), [citiesData])
+  const stakeholderOptions = React.useMemo(() => profilesData.map(p => ({ value: p.id, label: p.full_name })), [profilesData])
+  const businessOptions = React.useMemo(() => businessesData.map(b => ({ value: b.id, label: b.name })), [businessesData])
+  const causeOptions = React.useMemo(() => causesData.map(c => ({ value: c.id, label: c.name })), [causesData])
+
+  // Materials with QR placement zones
+  const materialsWithQrZone = React.useMemo(() =>
+    materialsData.filter(m => {
+      const meta = m.metadata as Record<string, unknown> | null
+      return meta?.qr_placement && m.file_url && m.mime_type?.startsWith('image/')
+    }),
+  [materialsData])
+
   // Core
   const [name, setName] = React.useState('')
   const [brand, setBrand] = React.useState<string>('localvip')
@@ -211,7 +211,7 @@ export default function QRGeneratorPage() {
     }
   }, [encodedData, fgColor, bgColor, dotStyle, cornerStyle, frameText, logoFile, gradientType, gradientColor1, gradientColor2])
 
-  // Generate final QR code
+  // Generate final QR code and save to Supabase
   async function handleGenerate() {
     if (!name.trim()) return
     setIsGenerating(true)
@@ -238,6 +238,39 @@ export default function QRGeneratorPage() {
       })
 
       setPreviewUrl(dataUrl)
+
+      // Save to Supabase qr_codes table
+      const redirectUrl = `https://localvip.com/q/${code}`
+      await insertQrCode({
+        name: name.trim(),
+        short_code: code,
+        destination_url: dataToEncode,
+        redirect_url: redirectUrl,
+        brand: brand as 'localvip' | 'hato',
+        foreground_color: fgColor,
+        background_color: bgColor,
+        frame_text: frameText || null,
+        campaign_id: campaign || null,
+        city_id: city || null,
+        stakeholder_id: stakeholder || null,
+        business_id: business || null,
+        cause_id: cause || null,
+        scan_count: 0,
+        version: 1,
+        status: 'active',
+        created_by: profile.id,
+        logo_url: null,
+        collection_id: null,
+        destination_preset: null,
+        metadata: {
+          dot_style: dotStyle,
+          corner_style: cornerStyle,
+          gradient_type: gradientType,
+          gradient_colors: [gradientColor1, gradientColor2],
+          size: finalSize,
+        },
+      })
+
       setGenerated(true)
     } catch (err) {
       console.error('QR generation failed:', err)
@@ -268,6 +301,61 @@ export default function QRGeneratorPage() {
     navigator.clipboard.writeText(link).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  // ─── Place QR on Material (canvas compositing) ──────────
+  const [compositing, setCompositing] = React.useState(false)
+
+  async function handlePlaceOnMaterial(material: Material) {
+    if (!previewUrl) return
+    setCompositing(true)
+
+    try {
+      const meta = material.metadata as Record<string, unknown>
+      const placement = meta.qr_placement as { x: number; y: number; size: number }
+      if (!placement || !material.file_url) return
+
+      // Load the flyer image
+      const flyerImg = await loadImage(material.file_url)
+      // Load the QR code image
+      const qrImg = await loadImage(previewUrl)
+
+      // Create canvas at flyer resolution
+      const canvas = document.createElement('canvas')
+      canvas.width = flyerImg.naturalWidth
+      canvas.height = flyerImg.naturalHeight
+      const ctx = canvas.getContext('2d')!
+
+      // Draw the flyer
+      ctx.drawImage(flyerImg, 0, 0)
+
+      // Calculate QR position and size in pixels
+      const qrW = (placement.size / 100) * canvas.width
+      const qrH = qrW // square
+      const qrX = (placement.x / 100) * canvas.width - qrW / 2
+      const qrY = (placement.y / 100) * canvas.height - qrH / 2
+
+      // Draw the QR code onto the flyer
+      ctx.drawImage(qrImg, qrX, qrY, qrW, qrH)
+
+      // Download the composited image
+      const compositeUrl = canvas.toDataURL('image/png')
+      downloadDataURL(compositeUrl, `${material.title}-with-qr.png`)
+    } catch (err) {
+      console.error('Composite failed:', err)
+    } finally {
+      setCompositing(false)
+    }
+  }
+
+  function loadImage(src: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = src
     })
   }
 
@@ -813,7 +901,7 @@ export default function QRGeneratorPage() {
                     </label>
                     <Select value={campaign} onValueChange={setCampaign}>
                       <SelectTrigger><SelectValue placeholder="Select campaign..." /></SelectTrigger>
-                      <SelectContent>{DEMO_CAMPAIGNS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                      <SelectContent>{campaignOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
@@ -822,7 +910,7 @@ export default function QRGeneratorPage() {
                     </label>
                     <Select value={city} onValueChange={setCity}>
                       <SelectTrigger><SelectValue placeholder="Select city..." /></SelectTrigger>
-                      <SelectContent>{DEMO_CITIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                      <SelectContent>{cityOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
@@ -831,7 +919,7 @@ export default function QRGeneratorPage() {
                     </label>
                     <Select value={stakeholder} onValueChange={setStakeholder}>
                       <SelectTrigger><SelectValue placeholder="Select stakeholder..." /></SelectTrigger>
-                      <SelectContent>{DEMO_STAKEHOLDERS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                      <SelectContent>{stakeholderOptions.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
@@ -840,7 +928,7 @@ export default function QRGeneratorPage() {
                     </label>
                     <Select value={business} onValueChange={setBusiness}>
                       <SelectTrigger><SelectValue placeholder="Select business..." /></SelectTrigger>
-                      <SelectContent>{DEMO_BUSINESSES.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}</SelectContent>
+                      <SelectContent>{businessOptions.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
@@ -849,7 +937,7 @@ export default function QRGeneratorPage() {
                     </label>
                     <Select value={cause} onValueChange={setCause}>
                       <SelectTrigger><SelectValue placeholder="Select cause..." /></SelectTrigger>
-                      <SelectContent>{DEMO_CAUSES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                      <SelectContent>{causeOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                 </div>
@@ -945,6 +1033,47 @@ export default function QRGeneratorPage() {
                   {copied ? <><Check className="h-3.5 w-3.5 text-success-600" /> Copied!</> : <><Link className="h-3.5 w-3.5" /> Copy Short Link</>}
                 </Button>
 
+                {/* Place on Material */}
+                {materialsWithQrZone.length > 0 && previewUrl && (
+                  <div className="w-full border-t border-surface-100 pt-3">
+                    <p className="mb-2 text-xs font-medium text-surface-500 flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5" />
+                      Place on Material
+                    </p>
+                    <p className="mb-2 text-xs text-surface-400">
+                      Select a flyer to auto-place the QR code at its predefined position.
+                    </p>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {materialsWithQrZone.map(m => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          disabled={compositing}
+                          onClick={() => handlePlaceOnMaterial(m)}
+                          className="flex w-full items-center gap-2.5 rounded-lg border border-surface-200 px-3 py-2 text-left text-xs hover:bg-surface-50 transition-colors disabled:opacity-50"
+                        >
+                          {m.file_url && m.mime_type?.startsWith('image/') ? (
+                            <img src={m.file_url} alt="" className="h-8 w-8 rounded object-cover shrink-0" />
+                          ) : (
+                            <div className="h-8 w-8 rounded bg-surface-100 flex items-center justify-center shrink-0">
+                              <Layers className="h-4 w-4 text-surface-400" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-surface-700 truncate">{m.title}</p>
+                            <p className="text-surface-400">{m.brand === 'hato' ? 'HATO' : 'LocalVIP'}</p>
+                          </div>
+                          {compositing ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-500 shrink-0" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5 text-surface-400 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Config summary */}
                 <div className="w-full space-y-2 border-t border-surface-100 pt-3">
                   <p className="text-xs font-medium text-surface-500">Configuration</p>
@@ -958,8 +1087,8 @@ export default function QRGeneratorPage() {
                     {frameText && <Badge variant="outline">CTA: {frameText}</Badge>}
                     {gradientType !== 'none' && <Badge variant="outline">{gradientType} gradient</Badge>}
                     {destType !== 'url' && <Badge variant="info">{DESTINATION_TYPES.find(d => d.value === destType)?.label}</Badge>}
-                    {campaign && <Badge variant="outline">{DEMO_CAMPAIGNS.find(c => c.value === campaign)?.label}</Badge>}
-                    {city && <Badge variant="outline">{DEMO_CITIES.find(c => c.value === city)?.label}</Badge>}
+                    {campaign && <Badge variant="outline">{campaignOptions.find(c => c.value === campaign)?.label}</Badge>}
+                    {city && <Badge variant="outline">{cityOptions.find(c => c.value === city)?.label}</Badge>}
                   </div>
                 </div>
               </CardContent>
