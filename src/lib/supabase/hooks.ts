@@ -13,7 +13,7 @@ interface UseQueryResult<T> {
   data: T[]
   loading: boolean
   error: string | null
-  refetch: () => void
+  refetch: (options?: { silent?: boolean }) => void
 }
 
 function useSupabaseQuery<T>(
@@ -30,6 +30,7 @@ function useSupabaseQuery<T>(
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [refetchKey, setRefetchKey] = React.useState(0)
+  const silentRefetchRef = React.useRef(false)
   const orderBy = options?.orderBy
   const orderAsc = options?.orderAsc ?? false
   const limit = options?.limit
@@ -43,7 +44,9 @@ function useSupabaseQuery<T>(
 
   React.useEffect(() => {
     async function fetch() {
-      setLoading(true)
+      if (!silentRefetchRef.current) {
+        setLoading(true)
+      }
       setError(null)
 
       let query = supabase.from(table).select('*')
@@ -71,12 +74,16 @@ function useSupabaseQuery<T>(
         setData((rows || []) as T[])
       }
       setLoading(false)
+      silentRefetchRef.current = false
     }
 
     fetch()
   }, [supabase, table, orderBy, orderAsc, limit, filterEntries, refetchKey])
 
-  const refetch = React.useCallback(() => setRefetchKey(k => k + 1), [])
+  const refetch = React.useCallback((options?: { silent?: boolean }) => {
+    silentRefetchRef.current = !!options?.silent
+    setRefetchKey(k => k + 1)
+  }, [])
 
   return { data, loading, error, refetch }
 }

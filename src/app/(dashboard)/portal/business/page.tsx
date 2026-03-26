@@ -156,7 +156,7 @@ export default function BusinessPortalPage() {
     [biz?.id]
   )
   const { data: linkedCauseRows } = useCauses(causeFilters)
-  const { data: clientContacts } = useContacts(contactFilters)
+  const { data: clientContacts, refetch: refetchClientContacts } = useContacts(contactFilters)
   const linkedCause = linkedCauseRows[0] || null
 
   // Form state
@@ -217,6 +217,16 @@ export default function BusinessPortalPage() {
       setAutosaveError(null)
     }
   }, [biz])
+
+  React.useEffect(() => {
+    if (!biz) return
+
+    const interval = window.setInterval(() => {
+      refetchClientContacts({ silent: true })
+    }, 5000)
+
+    return () => window.clearInterval(interval)
+  }, [biz, refetchClientContacts])
 
   // Logo file handler
   const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {

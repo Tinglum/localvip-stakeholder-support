@@ -74,8 +74,8 @@ export function BusinessDashboardPage() {
     if (!business) return
 
     const interval = window.setInterval(() => {
-      refetch()
-    }, 12000)
+      refetch({ silent: true })
+    }, 5000)
 
     return () => window.clearInterval(interval)
   }, [business, refetch])

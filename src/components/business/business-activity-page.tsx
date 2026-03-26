@@ -44,7 +44,17 @@ export function BusinessActivityPage() {
     },
     [business?.id]
   )
-  const { data: contacts, loading: contactsLoading } = useContacts(contactFilters)
+  const { data: contacts, loading: contactsLoading, refetch } = useContacts(contactFilters)
+
+  React.useEffect(() => {
+    if (!business) return
+
+    const interval = window.setInterval(() => {
+      refetch({ silent: true })
+    }, 5000)
+
+    return () => window.clearInterval(interval)
+  }, [business, refetch])
 
   if (businessesLoading || (business && contactsLoading)) {
     return (

@@ -18,7 +18,7 @@ let pdfModulePromise: Promise<any> | null = null
 
 async function loadPdfModule() {
   if (!pdfModulePromise) {
-    pdfModulePromise = import('pdfjs-dist').then((pdfjs) => {
+    pdfModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((pdfjs) => {
       if (!pdfjs.GlobalWorkerOptions.workerSrc) {
         pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
       }
@@ -174,11 +174,12 @@ export function QrPlacementPicker({
         if (disposed) return
 
         const baseViewport = page.getViewport({ scale: 1 })
-        const availableWidth = Math.max(containerWidth - 32, 240)
-        const scale = availableWidth / baseViewport.width
+        const maxWidth = clamp(containerWidth - 48, 240, 460)
+        const maxHeight = 620
+        const scale = Math.min(maxWidth / baseViewport.width, maxHeight / baseViewport.height)
         const cssWidth = baseViewport.width * scale
         const cssHeight = baseViewport.height * scale
-        const outputScale = window.devicePixelRatio || 1
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2)
         const renderViewport = page.getViewport({ scale: scale * outputScale })
         const canvas = canvasRef.current
         const context = canvas?.getContext('2d')
@@ -315,147 +316,193 @@ export function QrPlacementPicker({
         </div>
       </div>
 
-      <div ref={sizeHostRef} className="rounded-xl border-2 border-dashed border-surface-300 bg-surface-50 p-4">
-        <div
-          className="flex justify-center overflow-auto"
-          onMouseMove={handleMouseMove}
-          onMouseUp={stopDragging}
-          onMouseLeave={stopDragging}
-        >
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr),280px]">
+        <div className="rounded-xl border-2 border-dashed border-surface-300 bg-surface-50 p-4">
           <div
-            ref={pageFrameRef}
-            className={cn(
-              'relative cursor-crosshair overflow-hidden rounded-lg border border-surface-200 bg-white shadow-sm',
-              !imageLoaded && !isPdf && 'min-h-[18rem] min-w-[12rem]',
-            )}
-            style={renderedSize.width && renderedSize.height ? { width: renderedSize.width, height: renderedSize.height } : undefined}
-            onClick={handleCanvasClick}
+            ref={sizeHostRef}
+            className="flex max-h-[70vh] min-h-[26rem] justify-center overflow-auto"
+            onMouseMove={handleMouseMove}
+            onMouseUp={stopDragging}
+            onMouseLeave={stopDragging}
           >
-            {isPdf ? (
-              <>
-                <canvas ref={canvasRef} className="block" />
-                {showPdfBadge()}
-                {loadingPdf && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                    <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
-                  </div>
-                )}
-                {pdfError && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-surface-400">
-                    <FileText className="h-8 w-8" />
-                    <span className="text-xs font-medium">{pdfError}</span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <img
-                  src={previewUrl}
-                  alt="Material preview"
-                  className="block h-auto max-w-full"
-                  onLoad={(event) => {
-                    const element = event.currentTarget
-                    setImageLoaded(true)
-                    setRenderedSize({
-                      width: element.clientWidth,
-                      height: element.clientHeight,
-                    })
-                  }}
-                />
-              </>
-            )}
+            <div
+              ref={pageFrameRef}
+              className={cn(
+                'relative cursor-crosshair overflow-hidden rounded-lg border border-surface-200 bg-white shadow-sm',
+                !imageLoaded && !isPdf && 'min-h-[18rem] min-w-[12rem]',
+              )}
+              style={renderedSize.width && renderedSize.height ? { width: renderedSize.width, height: renderedSize.height } : undefined}
+              onClick={handleCanvasClick}
+            >
+              {isPdf ? (
+                <>
+                  <canvas ref={canvasRef} className="block" />
+                  {showPdfBadge()}
+                  {loadingPdf && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+                      <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
+                    </div>
+                  )}
+                  {pdfError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-surface-400">
+                      <FileText className="h-8 w-8" />
+                      <span className="text-xs font-medium">{pdfError}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <img
+                    src={previewUrl}
+                    alt="Material preview"
+                    className="block h-auto max-w-full"
+                    onLoad={(event) => {
+                      const element = event.currentTarget
+                      setImageLoaded(true)
+                      setRenderedSize({
+                        width: element.clientWidth,
+                        height: element.clientHeight,
+                      })
+                    }}
+                  />
+                </>
+              )}
 
-            {placementsOnCurrentPage.map((placement) => (
-              <button
-                key={placement.id}
-                type="button"
-                onMouseDown={(event) => handlePlacementPointerDown(placement.id, event)}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setActivePlacementId(placement.id)
-                }}
-                className={cn(
-                  'absolute flex items-center justify-center rounded border-2 transition-colors',
-                  activePlacementId === placement.id
-                    ? 'border-brand-600 bg-brand-500/15'
-                    : 'border-brand-400 bg-brand-500/10 hover:bg-brand-500/15',
-                )}
-                style={{
-                  left: `${placement.x - placement.size / 2}%`,
-                  top: `${placement.y - placement.size / 2}%`,
-                  width: `${placement.size}%`,
-                  height: `${placement.size}%`,
-                }}
-              >
-                <QrCode className="h-6 w-6 text-brand-700 opacity-70" />
-              </button>
-            ))}
+              {placementsOnCurrentPage.map((placement) => (
+                <button
+                  key={placement.id}
+                  type="button"
+                  onMouseDown={(event) => handlePlacementPointerDown(placement.id, event)}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setActivePlacementId(placement.id)
+                  }}
+                  className={cn(
+                    'absolute flex items-center justify-center rounded border-2 transition-colors',
+                    activePlacementId === placement.id
+                      ? 'border-brand-600 bg-brand-500/15'
+                      : 'border-brand-400 bg-brand-500/10 hover:bg-brand-500/15',
+                  )}
+                  style={{
+                    left: `${placement.x - placement.size / 2}%`,
+                    top: `${placement.y - placement.size / 2}%`,
+                    width: `${placement.size}%`,
+                    height: `${placement.size}%`,
+                  }}
+                >
+                  <QrCode className="h-6 w-6 text-brand-700 opacity-70" />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-4 text-xs text-surface-500">
-          <div className="flex items-center gap-2">
-            <Move className="h-3 w-3" />
-            <span>
-              {activePlacement
-                ? `X: ${activePlacement.x.toFixed(1)}% Y: ${activePlacement.y.toFixed(1)}%`
-                : 'Select a zone to adjust it'}
-            </span>
+        <div className="space-y-3 rounded-xl border border-surface-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Preview</p>
+            <p className="mt-2 text-sm text-surface-700">
+              The full page is scaled to fit inside this modal. Click on the page to add a QR zone.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-surface-500">Size:</label>
-            <input
-              type="range"
-              min={8}
-              max={40}
-              value={activePlacement?.size || 18}
-              disabled={!activePlacement}
-              onChange={(event) => {
-                if (!activePlacement) return
-                updatePlacement(activePlacement.id, { size: Number(event.target.value) })
-              }}
-              className="h-1 w-28 accent-brand-500 disabled:opacity-40"
-            />
-            <span className="w-9 text-xs text-surface-500">
-              {activePlacement ? `${activePlacement.size}%` : '--'}
-            </span>
+
+          {isPdf && (
+            <div className="rounded-lg border border-surface-200 bg-surface-50 p-2">
+              <div className="flex items-center gap-1 rounded-lg border border-surface-200 bg-surface-0 p-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => clamp(page - 1, 1, pageCount))}
+                  disabled={currentPage === 1}
+                  className="rounded p-1 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="min-w-20 flex-1 text-center text-xs font-medium text-surface-700">
+                  Page {currentPage} of {pageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => clamp(page + 1, 1, pageCount))}
+                  disabled={currentPage === pageCount}
+                  className="rounded p-1 text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-40"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-3 text-xs text-surface-500">
+            <div className="flex items-center justify-between gap-2">
+              <span>{placements.length} zone{placements.length !== 1 ? 's' : ''}</span>
+              <span>{activePlacement ? placementLabel(placements, activePlacement) : 'No zone selected'}</span>
+            </div>
           </div>
-          {activePlacement && (
-            <button
-              type="button"
-              onClick={() => removePlacement(activePlacement.id)}
-              className="inline-flex items-center gap-1 rounded-lg border border-danger-200 bg-danger-50 px-2.5 py-1 text-danger-700 transition-colors hover:bg-danger-100"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Remove selected
-            </button>
+
+          <div className="space-y-3 rounded-lg border border-surface-200 bg-surface-50 px-3 py-3">
+            <div className="flex items-center gap-2 text-xs text-surface-500">
+              <Move className="h-3 w-3" />
+              <span>
+                {activePlacement
+                  ? `X: ${activePlacement.x.toFixed(1)}% Y: ${activePlacement.y.toFixed(1)}%`
+                  : 'Select a zone to adjust it'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-surface-500">Size:</label>
+              <input
+                type="range"
+                min={8}
+                max={40}
+                value={activePlacement?.size || 18}
+                disabled={!activePlacement}
+                onChange={(event) => {
+                  if (!activePlacement) return
+                  updatePlacement(activePlacement.id, { size: Number(event.target.value) })
+                }}
+                className="h-1 flex-1 accent-brand-500 disabled:opacity-40"
+              />
+              <span className="w-9 text-xs text-surface-500">
+                {activePlacement ? `${activePlacement.size}%` : '--'}
+              </span>
+            </div>
+            {activePlacement && (
+              <button
+                type="button"
+                onClick={() => removePlacement(activePlacement.id)}
+                className="inline-flex items-center gap-1 rounded-lg border border-danger-200 bg-danger-50 px-2.5 py-1 text-danger-700 transition-colors hover:bg-danger-100"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove selected
+              </button>
+            )}
+          </div>
+
+          {placements.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Zones</p>
+              <div className="flex flex-wrap gap-2">
+                {placements.map((placement) => (
+                  <button
+                    key={placement.id}
+                    type="button"
+                    onClick={() => {
+                      setCurrentPage(placement.page)
+                      setActivePlacementId(placement.id)
+                    }}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                      activePlacementId === placement.id
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-surface-200 bg-surface-0 text-surface-600 hover:bg-surface-50',
+                    )}
+                  >
+                    {placementLabel(placements, placement)}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
-
-        {placements.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {placements.map((placement) => (
-              <button
-                key={placement.id}
-                type="button"
-                onClick={() => {
-                  setCurrentPage(placement.page)
-                  setActivePlacementId(placement.id)
-                }}
-                className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                  activePlacementId === placement.id
-                    ? 'border-brand-500 bg-brand-50 text-brand-700'
-                    : 'border-surface-200 bg-surface-0 text-surface-600 hover:bg-surface-50',
-                )}
-              >
-                {placementLabel(placements, placement)}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   )

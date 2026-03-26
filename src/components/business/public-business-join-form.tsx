@@ -1,23 +1,39 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { CheckCircle2, Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 interface PublicBusinessJoinFormProps {
   slug: string
+  businessName: string
   offerTitle: string
+  offerValue?: string | null
+  supportLabel: string
 }
 
-export function PublicBusinessJoinForm({ slug, offerTitle }: PublicBusinessJoinFormProps) {
+interface JoinSuccessPayload {
+  businessName: string
+  offerTitle: string
+  offerDescription: string
+  offerValue?: string | null
+}
+
+export function PublicBusinessJoinForm({
+  slug,
+  businessName,
+  offerTitle,
+  offerValue,
+  supportLabel,
+}: PublicBusinessJoinFormProps) {
   const [firstName, setFirstName] = React.useState('')
   const [phone, setPhone] = React.useState('')
   const [email, setEmail] = React.useState('')
   const [supportsLocalCauses, setSupportsLocalCauses] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
-  const [submitted, setSubmitted] = React.useState(false)
+  const [submitted, setSubmitted] = React.useState<JoinSuccessPayload | null>(null)
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -44,7 +60,7 @@ export function PublicBusinessJoinForm({ slug, offerTitle }: PublicBusinessJoinF
         throw new Error(payload.error || 'Your offer could not be claimed.')
       }
 
-      setSubmitted(true)
+      setSubmitted(payload as JoinSuccessPayload)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Your offer could not be claimed.')
     } finally {
@@ -52,30 +68,52 @@ export function PublicBusinessJoinForm({ slug, offerTitle }: PublicBusinessJoinF
     }
   }
 
+  const claimedOffer = submitted?.offerValue || submitted?.offerTitle || offerValue || offerTitle
+
   if (submitted) {
     return (
-      <div className="rounded-[2rem] border border-emerald-200 bg-white/95 p-6 shadow-xl">
-        <div className="flex items-start gap-4">
-          <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
-            <CheckCircle2 className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-surface-900">You&apos;re in</p>
-            <p className="mt-2 text-sm leading-6 text-surface-600">
-              Show this at checkout and mention <span className="font-semibold text-surface-900">{offerTitle}</span>.
-            </p>
-            <p className="mt-3 text-sm text-surface-500">
-              You&apos;ll receive your offer shortly, and you&apos;re now part of something local.
-            </p>
-          </div>
+      <div className="rounded-[2rem] border border-emerald-200 bg-white/96 p-6 shadow-[0_24px_80px_-35px_rgba(16,185,129,0.55)] backdrop-blur">
+        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
+          <CheckCircle2 className="h-16 w-16" />
+        </div>
+
+        <div className="mt-6 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-emerald-600">Registered</p>
+          <h2 className="mt-3 text-4xl font-black tracking-tight text-surface-900">REGISTERED</h2>
+          <p className="mt-3 text-base text-surface-600">
+            You&apos;re in for <span className="font-semibold text-surface-900">{submitted.businessName}</span>.
+          </p>
+        </div>
+
+        <div className="mt-6 rounded-[1.75rem] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 text-center shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Show this to claim</p>
+          <p className="mt-3 text-2xl font-bold leading-tight text-surface-900">{claimedOffer}</p>
+          <p className="mt-3 text-sm leading-6 text-surface-600">
+            Show this screen at checkout to claim your {submitted.offerTitle.toLowerCase()}.
+          </p>
+        </div>
+
+        <div className="mt-5 rounded-[1.5rem] border border-surface-200 bg-surface-50 p-4 text-center">
+          <p className="text-sm font-semibold text-surface-900">You&apos;re part of something local now.</p>
+          <p className="mt-2 text-sm leading-6 text-surface-600">
+            {supportLabel}. Keep this screen open until your offer is redeemed.
+          </p>
         </div>
       </div>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-[2rem] border border-white/80 bg-white/95 p-6 shadow-xl">
-      <div className="space-y-4">
+    <div className="rounded-[2rem] border border-white/80 bg-white/96 p-6 shadow-[0_24px_80px_-35px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="text-center">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-600">Claim Offer</p>
+        <h2 className="mt-3 text-3xl font-black tracking-tight text-surface-900">{offerTitle}</h2>
+        <p className="mt-3 text-sm leading-6 text-surface-600">
+          Enter your details and we&apos;ll register you instantly for {businessName}.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div>
           <label className="mb-2 block text-sm font-semibold text-surface-800">First name</label>
           <Input
@@ -102,7 +140,7 @@ export function PublicBusinessJoinForm({ slug, offerTitle }: PublicBusinessJoinF
             placeholder="you@example.com"
             type="email"
           />
-          <p className="mt-1 text-xs text-surface-500">Add a phone number or an email. One is enough.</p>
+          <p className="mt-1 text-xs text-surface-500">Phone or email is enough. You don&apos;t need both.</p>
         </div>
 
         <label className="flex items-start gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
@@ -127,13 +165,16 @@ export function PublicBusinessJoinForm({ slug, offerTitle }: PublicBusinessJoinF
           {submitting ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Saving your spot...
+              Registering...
             </>
           ) : (
-            'Get My Offer'
+            <>
+              <Sparkles className="h-4 w-4" />
+              Get My Offer
+            </>
           )}
         </Button>
-      </div>
-    </form>
+      </form>
+    </div>
   )
 }

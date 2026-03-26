@@ -105,6 +105,7 @@ export async function POST(
     businessName: business.name,
     offerTitle: resource.offerTitle,
     offerDescription: resource.offerDescription,
+    offerValue: resource.offerValue,
   })
 }
 
