@@ -1,4 +1,4 @@
-import type { Business, Contact, Profile, QrCode } from '@/lib/types/database'
+import type { Business, Contact, Offer, Profile, QrCode } from '@/lib/types/database'
 import { createServiceClient } from '@/lib/supabase/server'
 import {
   buildBusinessJoinResource,
@@ -9,6 +9,7 @@ import {
   isBusinessJoinQrCode,
   mergeBusinessJoinCaptureMetadata,
 } from '@/lib/business-join'
+import { resolveBusinessOffer } from '@/lib/offers'
 import { generateShortCode, normalizePhone } from '@/lib/utils'
 
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>
@@ -88,6 +89,8 @@ export async function ensureBusinessJoinResource(
   }
 
   const linkedCauseName = await getLinkedCauseName(supabase, business.linked_cause_id)
+  const offers = await getBusinessOffers(supabase, business.id)
+  const captureOffer = resolveBusinessOffer(business, offers, 'capture')
 
   const resource = buildBusinessJoinResource(business, {
     joinSlug,
@@ -95,6 +98,11 @@ export async function ensureBusinessJoinResource(
     redirectUrl: qrCode.redirect_url || getBusinessRedirectUrl(qrCode.short_code),
     qrCodeId: qrCode.id,
     linkedCauseName,
+    captureOffer: {
+      headline: captureOffer.headline,
+      description: captureOffer.description,
+      valueLabel: captureOffer.value_label,
+    },
   })
 
   await (supabase
@@ -127,6 +135,8 @@ export async function upsertBusinessJoinContact(
   const now = new Date().toISOString()
   const ownerId = business.owner_user_id || business.owner_id || null
   const contacts = await getBusinessContacts(supabase, business.id)
+  const offers = await getBusinessOffers(supabase, business.id)
+  const captureOffer = resolveBusinessOffer(business, offers, 'capture')
   const email = payload.email?.trim().toLowerCase() || null
   const phone = payload.phone?.trim() || null
   const normalizedPhone = phone ? normalizePhone(phone) : ''
@@ -172,11 +182,14 @@ export async function upsertBusinessJoinContact(
       business_id: business.id,
       owner_id: ownerId,
       created_by_user_id: ownerId,
+      capture_offer_id: captureOffer.id,
       source: 'qr',
       tag: 'Offer signup',
       list_status: 'joined',
       invited_at: null,
       joined_at: now,
+      normalized_email: email,
+      normalized_phone: normalizedPhone || null,
       status: 'active',
       metadata: nextMetadata,
     })
@@ -239,7 +252,7 @@ async function createBusinessJoinQrCode(
       status: 'active',
       created_by: actorId,
       metadata: {
-        purpose: 'business_100_list_capture',
+        purpose: 'business_capture',
         customer_capture: true,
         join_slug: joinSlug,
         join_url: joinUrl,
@@ -288,7 +301,7 @@ async function syncExistingBusinessJoinQrCode(
 
   const nextMetadata = {
     ...((qrCode.metadata as Record<string, unknown> | null) || {}),
-    purpose: 'business_100_list_capture',
+    purpose: 'business_capture',
     customer_capture: true,
     join_slug: joinSlug,
     join_url: joinUrl,
@@ -390,6 +403,15 @@ async function getBusinessContacts(supabase: ServiceSupabaseClient, businessId: 
     .limit(250)
 
   return (data || []) as Contact[]
+}
+
+async function getBusinessOffers(supabase: ServiceSupabaseClient, businessId: string) {
+  const { data } = await supabase
+    .from('offers')
+    .select('*')
+    .eq('business_id', businessId)
+
+  return (data || []) as Offer[]
 }
 
 function isUuid(value: string) {

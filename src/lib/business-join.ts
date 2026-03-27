@@ -84,12 +84,12 @@ export function getBusinessJoinDisplayUrl(joinUrl: string) {
 
 export function getBusinessJoinOfferDescription(business: Business) {
   const portal = getBusinessPortalData(business)
-  return portal.offer_description || 'Join our list and be part of something local'
+  return portal.capture_offer_description || portal.offer_description || 'Join our list and be part of something local'
 }
 
 export function getBusinessJoinOfferValue(business: Business) {
   const portal = getBusinessPortalData(business)
-  return portal.offer_value || null
+  return portal.capture_offer_value || portal.offer_value || null
 }
 
 export function getBusinessJoinLogoUrl(business: Business) {
@@ -98,9 +98,13 @@ export function getBusinessJoinLogoUrl(business: Business) {
 }
 
 export function getBusinessSupportLabel(business: Business, linkedCauseName?: string | null) {
+  const portal = getBusinessPortalData(business)
+  if (portal.capture_offer_title || portal.capture_offer_description) {
+    return 'Used to get your first 100 customers'
+  }
+
   if (linkedCauseName) return `Supporting ${linkedCauseName}`
 
-  const portal = getBusinessPortalData(business)
   if (portal.linked_cause_name) return `Supporting ${portal.linked_cause_name}`
 
   return 'Supporting local schools'
@@ -111,7 +115,8 @@ export function isBusinessJoinQrCode(qrCode: Pick<QrCode, 'business_id' | 'metad
   return (
     (!businessId || qrCode.business_id === businessId)
     && (
-      metadata?.purpose === 'business_100_list_capture'
+      metadata?.purpose === 'business_capture'
+      || metadata?.purpose === 'business_100_list_capture'
       || metadata?.customer_capture === true
     )
   )
@@ -150,6 +155,11 @@ export function buildBusinessJoinResource(
     redirectUrl: string
     qrCodeId: string
     linkedCauseName?: string | null
+    captureOffer?: {
+      headline: string
+      description: string | null
+      valueLabel: string | null
+    } | null
   },
 ): BusinessJoinResource {
   const joinUrl = getBusinessJoinUrl(options.joinSlug)
@@ -166,9 +176,9 @@ export function buildBusinessJoinResource(
     qrCodeId: options.qrCodeId,
     frameText: 'GET MY OFFER',
     logoUrl: getBusinessJoinLogoUrl(business),
-    offerTitle: getBusinessOfferTitle(business),
-    offerDescription: getBusinessJoinOfferDescription(business),
-    offerValue: getBusinessJoinOfferValue(business),
+    offerTitle: options.captureOffer?.headline || getBusinessOfferTitle(business),
+    offerDescription: options.captureOffer?.description || getBusinessJoinOfferDescription(business),
+    offerValue: options.captureOffer?.valueLabel || getBusinessJoinOfferValue(business),
     supportLabel: getBusinessSupportLabel(business, options.linkedCauseName),
   }
 }

@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog'
 import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
 import { useAuth } from '@/lib/auth/context'
+import { resolveBusinessOffer } from '@/lib/offers'
 import {
   getContactDisplayName,
   getContactListStatus,
@@ -43,6 +44,7 @@ import {
   useContactDelete,
   useContactInsert,
   useContactUpdate,
+  useOffers,
 } from '@/lib/supabase/hooks'
 import { formatDate } from '@/lib/utils'
 import type { BusinessContactStatus, Contact } from '@/lib/types/database'
@@ -81,6 +83,7 @@ export function BusinessMy100ListPage() {
     [business?.id]
   )
   const { data: contacts, loading: contactsLoading, refetch } = useContacts(contactFilters)
+  const { data: offers } = useOffers({ business_id: business?.id || '__none__' })
   const { insert, loading: inserting } = useContactInsert()
   const { update, loading: updating } = useContactUpdate()
   const { remove } = useContactDelete()
@@ -127,6 +130,7 @@ export function BusinessMy100ListPage() {
   }
 
   const totalAdded = contacts.length
+  const captureOffer = resolveBusinessOffer(business, offers, 'capture')
   const invitedCount = contacts.filter((contact) => getContactListStatus(contact) !== 'added').length
   const joinedCount = contacts.filter((contact) => getContactListStatus(contact) === 'joined').length
   const todayAdds = contacts.filter((contact) => isCreatedToday(contact.created_at)).length
@@ -390,6 +394,21 @@ export function BusinessMy100ListPage() {
           </Button>
         }
       />
+
+      <Card className="border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50">
+        <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Customer Capture Offer (Pre-launch)</p>
+            <p className="mt-2 text-2xl font-bold text-surface-900">{captureOffer.headline}</p>
+            <p className="mt-2 text-sm text-surface-600">{captureOffer.description}</p>
+          </div>
+          {captureOffer.value_label && (
+            <Badge variant="warning" className="w-fit">
+              {captureOffer.value_label}
+            </Badge>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr,0.85fr]">
         <Card className="overflow-hidden border-surface-200">

@@ -22,9 +22,9 @@ const sid = (group: number, index: number) =>
   `00000000-0000-0000-0000-${String(group).padStart(2, '0')}${String(index).padStart(10, '0')}`
 
 const extraUsers = [
-  ['maya@localvip.com', 'Maya Patel', 'intern', 'localvip', 'maya-clt', 'Charlotte'],
-  ['ethan@localvip.com', 'Ethan Brooks', 'intern', 'localvip', 'ethan-nsh', 'Nashville'],
-  ['naomi@localvip.com', 'Naomi Carter', 'volunteer', 'hato', 'naomi-bhm', 'Birmingham'],
+  ['maya@localvip.com', 'Maya Patel', 'field', 'intern', 'localvip', 'maya-clt', 'Charlotte'],
+  ['ethan@localvip.com', 'Ethan Brooks', 'field', 'intern', 'localvip', 'ethan-nsh', 'Nashville'],
+  ['naomi@localvip.com', 'Naomi Carter', 'field', 'volunteer', 'hato', 'naomi-bhm', 'Birmingham'],
 ] as const
 
 const makeIdMap = <T extends readonly string[]>(group: number, keys: T) =>
@@ -66,14 +66,14 @@ async function seedFixtures() {
   const cityByName = new Map(cities.map(city => [city.name, city]))
   const authMap = new Map((await listAllAuthUsers()).map(user => [user.email?.toLowerCase() || '', user.id]))
 
-  for (const [email, name, role, brand, referralCode, cityName] of extraUsers) {
+  for (const [email, name, role, roleSubtype, brand, referralCode, cityName] of extraUsers) {
     let userId = authMap.get(email.toLowerCase()) || null
     if (!userId) {
       const { data, error } = await supabase.auth.admin.createUser({
         email,
         password: DEMO_PASSWORD,
         email_confirm: true,
-        user_metadata: { full_name: name, role },
+        user_metadata: { full_name: name, role, role_subtype: roleSubtype },
       })
       if (error) throw error
       userId = data.user.id
@@ -84,6 +84,7 @@ async function seedFixtures() {
       email,
       full_name: name,
       role,
+      role_subtype: roleSubtype,
       brand_context: brand,
       city_id: cityByName.get(cityName)?.id || null,
       referral_code: referralCode,
@@ -265,12 +266,12 @@ async function seedFixtures() {
   }))))
 
   await upsert('materials', [
-    { id: sid(70, 11), title: 'Atlanta Business One-Pager', description: 'Core LocalVIP business overview.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'atlanta-one-pager.pdf', file_size: 28000, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'Onboarding', use_case: 'business_onboarding', target_roles: ['business_onboarding', 'intern', 'volunteer'], campaign_id: campaignByName.get('Atlanta Spring 2026 Launch')?.id || null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('alex@partner.com') },
-    { id: sid(70, 12), title: 'Charlotte Pilot Flyer', description: 'Coffee-shop pilot PDF.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'charlotte-pilot.pdf', file_size: 27720, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'Pilot', use_case: 'influencer_outreach', target_roles: ['influencer', 'intern'], campaign_id: campaignByName.get('Charlotte Pilot')?.id || null, city_id: cityByName.get('Charlotte')?.id || null, is_template: false, version: 1, status: 'active', created_by: profileId('maya@localvip.com') },
-    { id: sid(70, 13), title: 'HATO School One-Pager', description: 'School support overview.', type: 'pdf', brand: 'hato', file_url: PDF_URL, file_name: 'hato-school.pdf', file_size: 30000, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'School support', use_case: 'cause_onboarding', target_roles: ['school_leader', 'volunteer', 'intern'], campaign_id: campaignByName.get('HATO Back to School')?.id || null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('principal@mlkschool.edu') },
-    { id: sid(70, 14), title: 'How to Invite Your Customers', description: 'Simple business-owner script for inviting regulars into LocalVIP.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'invite-your-customers.pdf', file_size: 28120, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'business_to_consumer', use_case: 'general', target_roles: ['business'], campaign_id: null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('alex@partner.com') },
-    { id: sid(70, 15), title: 'What to Say to Your Regulars', description: 'Short talking points for in-store customer conversations.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'what-to-say.pdf', file_size: 28180, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'business_to_consumer', use_case: 'general', target_roles: ['business'], campaign_id: null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('alex@partner.com') },
-    { id: sid(70, 16), title: 'Simple Script to Explain LocalVIP', description: 'Quick leave-behind explanation for customers who want the short version.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'simple-script-localvip.pdf', file_size: 28210, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'business_to_consumer', use_case: 'general', target_roles: ['business'], campaign_id: null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('alex@partner.com') },
+    { id: sid(70, 11), title: 'Atlanta Business One-Pager', description: 'Core LocalVIP business overview.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'atlanta-one-pager.pdf', file_size: 28000, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'launch_partner', use_case: 'business_onboarding', target_roles: ['launch_partner', 'field'], target_subtypes: ['intern', 'volunteer'], campaign_id: campaignByName.get('Atlanta Spring 2026 Launch')?.id || null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('alex@partner.com') },
+    { id: sid(70, 12), title: 'Charlotte Pilot Flyer', description: 'Coffee-shop pilot PDF.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'charlotte-pilot.pdf', file_size: 27720, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'field_outreach', use_case: 'influencer_outreach', target_roles: ['influencer', 'field'], target_subtypes: ['intern'], campaign_id: campaignByName.get('Charlotte Pilot')?.id || null, city_id: cityByName.get('Charlotte')?.id || null, is_template: false, version: 1, status: 'active', created_by: profileId('maya@localvip.com') },
+    { id: sid(70, 13), title: 'HATO School One-Pager', description: 'School support overview.', type: 'pdf', brand: 'hato', file_url: PDF_URL, file_name: 'hato-school.pdf', file_size: 30000, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'community_mobilization', use_case: 'cause_onboarding', target_roles: ['community', 'field'], target_subtypes: ['school', 'intern', 'volunteer'], campaign_id: campaignByName.get('HATO Back to School')?.id || null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('principal@mlkschool.edu') },
+    { id: sid(70, 14), title: 'How to Invite Your Customers', description: 'Simple business-owner script for inviting regulars into LocalVIP.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'invite-your-customers.pdf', file_size: 28120, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'customer_capture', use_case: 'general', target_roles: ['business'], target_subtypes: [], campaign_id: null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('alex@partner.com') },
+    { id: sid(70, 15), title: 'What to Say to Your Regulars', description: 'Short talking points for in-store customer conversations.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'what-to-say.pdf', file_size: 28180, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'localvip_live', use_case: 'general', target_roles: ['business'], target_subtypes: [], campaign_id: null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('alex@partner.com') },
+    { id: sid(70, 16), title: 'Simple Script to Explain LocalVIP', description: 'Quick leave-behind explanation for customers who want the short version.', type: 'pdf', brand: 'localvip', file_url: PDF_URL, file_name: 'simple-script-localvip.pdf', file_size: 28210, mime_type: 'application/pdf', thumbnail_url: PDF_URL, category: 'business_to_business', use_case: 'general', target_roles: ['business'], target_subtypes: [], campaign_id: null, city_id: cityByName.get('Atlanta')?.id || null, is_template: true, version: 1, status: 'active', created_by: profileId('alex@partner.com') },
   ])
   await upsert('material_assignments', [
     { id: sid(87, 11), material_id: sid(70, 11), stakeholder_id: profileId('alex@partner.com'), assigned_by: profileId('kenneth@localvip.com') },
@@ -327,11 +328,48 @@ async function seedFixtures() {
     { id: referralIds.caseyPlayTown, referrer_id: profileId('volunteer@example.com'), referral_code: 'casey-playtown', entity_type: 'business', entity_id: playTownId, campaign_id: campaignByName.get('Atlanta Spring 2026 Launch')?.id || null, status: 'pending', metadata: { source: 'dm_intro' } },
   ])
 
+  await upsert('business_referrals', [
+    {
+      id: sid(99, 11),
+      source_business_id: businessId('Main Street Bakery'),
+      created_by: profileId('owner@mainstreetbakery.com'),
+      target_business_name: 'Peachtree Flower Studio',
+      target_city_id: cityByName.get('Atlanta')?.id || null,
+      target_category: 'Retail',
+      target_contact_name: 'Mia Brooks',
+      target_contact_email: 'hello@peachtreeflowerstudio.com',
+      target_contact_phone: '(404) 555-1111',
+      channel: 'sms',
+      message_snapshot: 'We are part of something local that is helping bring in more customers while also supporting schools here in Atlanta. Want me to send you a quick overview?',
+      status: 'sent',
+      notes: 'Good fit because bakery customers also buy flowers nearby.',
+      converted_business_id: null,
+      metadata: { source: 'seed-fixtures' },
+    },
+    {
+      id: sid(99, 12),
+      source_business_id: queenCityId,
+      created_by: profileId('maya@localvip.com'),
+      target_business_name: 'Midwood Juice Bar',
+      target_city_id: cityByName.get('Charlotte')?.id || null,
+      target_category: 'Health & Wellness',
+      target_contact_name: 'Evan Price',
+      target_contact_email: 'owner@midwoodjuicebar.com',
+      target_contact_phone: '(704) 555-1212',
+      channel: 'link_share',
+      message_snapshot: 'It has been really simple to set up, and I think it could work really well for you too.',
+      status: 'responded',
+      notes: 'Owner asked for a one-pager.',
+      converted_business_id: null,
+      metadata: { source: 'seed-fixtures' },
+    },
+  ])
+
   await upsert('analytics_rollups', [
     { id: sid(92, 11), period: 'weekly', period_start: '2026-03-16', dimension_type: 'city', dimension_id: cityByName.get('Atlanta')?.id || null, metric: 'outreach_volume', value: 18, metadata: { brand: 'localvip' } },
     { id: sid(92, 12), period: 'weekly', period_start: '2026-03-16', dimension_type: 'city', dimension_id: cityByName.get('Charlotte')?.id || null, metric: 'outreach_volume', value: 7, metadata: { brand: 'localvip' } },
     { id: sid(92, 13), period: 'weekly', period_start: '2026-03-16', dimension_type: 'campaign', dimension_id: campaignByName.get('Charlotte Pilot')?.id || null, metric: 'businesses_contacted', value: 3, metadata: {} },
-    { id: sid(92, 14), period: 'weekly', period_start: '2026-03-16', dimension_type: 'stakeholder', dimension_id: profileId('alex@partner.com'), metric: 'outreach_volume', value: 9, metadata: { role: 'business_onboarding' } },
+    { id: sid(92, 14), period: 'weekly', period_start: '2026-03-16', dimension_type: 'stakeholder', dimension_id: profileId('alex@partner.com'), metric: 'outreach_volume', value: 9, metadata: { role: 'launch_partner' } },
   ])
 
   await upsert('tags', [

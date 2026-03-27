@@ -256,7 +256,7 @@ export function FieldOutreachDashboardPage() {
                 Start with the businesses you already have in motion and turn each conversation into a stronger local ask.
               </h2>
               <p className="max-w-2xl text-sm leading-6 text-surface-600">
-                You are working from {myCityLabel}. Pick a business, add the real school or cause connection, choose Good, Better, or Best,
+                You are working from {myCityLabel}. Pick a business, add the real school or cause connection, choose Good, Better, Best, or Ultra,
                 then copy the script and log the result without leaving the support system.
               </p>
             </div>
@@ -520,7 +520,7 @@ export function FieldOutreachDashboardPage() {
               </div>
               <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
                 <p className="text-sm font-medium text-surface-900">Choose the right tier</p>
-                <p className="mt-1 text-xs leading-5 text-surface-500">Good is fast. Better adds context. Best should feel like a believable conversation opener for that exact business.</p>
+                <p className="mt-1 text-xs leading-5 text-surface-500">Good is fast. Better adds context. Best should feel believable. Ultra should sound like you already know the business and the local context around it.</p>
               </div>
               <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
                 <p className="text-sm font-medium text-surface-900">Always log the touchpoint</p>

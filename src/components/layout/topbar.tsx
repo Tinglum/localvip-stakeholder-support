@@ -6,8 +6,8 @@ import { Bell, LogOut, User, ChevronDown, Search } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-import { isBusinessRole, isFieldOutreachRole } from '@/lib/business-portal'
-import { ROLES, BRANDS } from '@/lib/constants'
+import { BRANDS } from '@/lib/constants'
+import { getStakeholderAccess, isAdminProfile } from '@/lib/stakeholder-access'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types/database'
 
@@ -19,11 +19,8 @@ interface TopbarProps {
 export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
   const router = useRouter()
   const supabase = React.useMemo(() => createClient(), [])
-  const searchPlaceholder = isBusinessRole(profile.role)
-    ? 'Search my business portal...'
-    : isFieldOutreachRole(profile.role)
-      ? 'Search businesses, scripts, or tasks...'
-      : 'Search anything...'
+  const access = getStakeholderAccess(profile)
+  const searchPlaceholder = access.searchPlaceholder
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -37,7 +34,7 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
         'fixed top-0 right-0 z-30 flex h-14 items-center gap-4 border-b border-surface-200 bg-surface-0/95 backdrop-blur px-4 no-print transition-all',
         sidebarCollapsed ? 'left-16' : 'left-60'
       )}
-    >
+      >
       {/* Search */}
       <div className="relative flex-1 max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
@@ -49,7 +46,7 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
       </div>
 
       {/* Brand switcher (admins only) */}
-      {ROLES[profile.role].level >= 90 && (
+      {isAdminProfile(profile) && (
         <div className="flex items-center gap-1.5 rounded-lg bg-surface-50 px-2 py-1">
           <div
             className="h-2.5 w-2.5 rounded-full"
@@ -74,7 +71,7 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
             <Avatar name={profile.full_name} src={profile.avatar_url} size="sm" />
             <div className="hidden md:block text-left">
               <p className="text-sm font-medium text-surface-800">{profile.full_name}</p>
-              <p className="text-[10px] text-surface-400">{ROLES[profile.role].label}</p>
+              <p className="text-[10px] text-surface-400">{access.label}</p>
             </div>
             <ChevronDown className="h-3.5 w-3.5 text-surface-400" />
           </button>

@@ -24,7 +24,23 @@ import { formatDate } from '@/lib/utils'
 import type { Material } from '@/lib/types/database'
 
 function isBusinessMaterial(material: Material) {
-  return material.category === 'business_to_consumer' || material.target_roles.includes('business')
+  return (
+    ['customer_capture', 'localvip_live', 'business_to_business', 'business_to_consumer'].includes(material.category || '')
+    || material.target_roles.includes('business')
+  )
+}
+
+function labelForBusinessCategory(category?: string | null) {
+  switch (category) {
+    case 'customer_capture':
+      return 'Customer Capture'
+    case 'localvip_live':
+      return 'LocalVIP Live'
+    case 'business_to_business':
+      return 'Business to Business'
+    default:
+      return 'Business to Consumer'
+  }
 }
 
 export function BusinessMaterialsPage() {
@@ -56,7 +72,7 @@ export function BusinessMaterialsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Materials"
-        description="Only the business-to-consumer materials that help you explain LocalVIP to customers."
+        description="Only the business-facing materials that help you collect your first 100 customers, explain LocalVIP live, or invite other businesses."
       />
 
       <MaterialPreviewDialog
@@ -160,7 +176,7 @@ export function BusinessMaterialsPage() {
                   <Badge variant={material.brand === 'hato' ? 'hato' : 'info'}>
                     {BRANDS[material.brand]?.label ?? material.brand}
                   </Badge>
-                  <Badge variant="success">Business to Consumer</Badge>
+                  <Badge variant="success">{labelForBusinessCategory(material.category)}</Badge>
                   <Badge variant="default">
                     {MATERIAL_TYPES.find((item) => item.value === material.type)?.label ?? material.type}
                   </Badge>
@@ -215,7 +231,7 @@ export function BusinessMaterialsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="truncate text-sm font-semibold text-surface-900">{material.title}</h3>
-                    <Badge variant="success">Business to Consumer</Badge>
+                    <Badge variant="success">{labelForBusinessCategory(material.category)}</Badge>
                   </div>
                   <p className="mt-1 truncate text-xs text-surface-500">
                     {material.description || 'No description yet.'}

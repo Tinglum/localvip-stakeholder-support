@@ -45,6 +45,7 @@ type DemoUser = {
   email: string
   name: string
   role: string
+  role_subtype?: string | null
   brand: string
   referral_code: string
   org_id?: string
@@ -67,7 +68,7 @@ async function listAllAuthUsers() {
 }
 
 function omitProfileMetadata<T extends Record<string, unknown>>(payload: T) {
-  const { metadata, ...rest } = payload
+  const { metadata, role_subtype, ...rest } = payload
   return rest
 }
 
@@ -77,24 +78,61 @@ async function upsertDemoProfile(userId: string, user: DemoUser) {
     email: user.email,
     full_name: user.name,
     role: user.role,
+    role_subtype: user.role_subtype || null,
     brand_context: user.brand,
     organization_id: user.org_id || null,
     city_id: '00000000-0000-0000-0000-200000000001',
     referral_code: user.referral_code,
     status: 'active',
-    metadata: user.role === 'business' ? { portal_role: 'business' } : null,
+    metadata: {
+      portal_role: user.role,
+      role_subtype: user.role_subtype || null,
+    },
   }
 
-  const attempts = [
-    { payload, persistedRole: user.role, usedFallback: false },
-    ...(user.role === 'business'
-      ? [
-          { payload: { ...payload, role: 'business_onboarding' }, persistedRole: 'business_onboarding', usedFallback: true },
-          { payload: omitProfileMetadata({ ...payload, role: 'business_onboarding' }), persistedRole: 'business_onboarding', usedFallback: true },
-        ]
-      : []),
-    { payload: omitProfileMetadata(payload), persistedRole: user.role, usedFallback: true },
-  ]
+  const fallbackRoles =
+    user.role === 'admin'
+      ? user.role_subtype === 'super'
+        ? ['super_admin', 'internal_admin']
+        : ['internal_admin', 'super_admin']
+      : user.role === 'field'
+        ? user.role_subtype === 'volunteer'
+          ? ['volunteer', 'intern']
+          : ['intern', 'volunteer']
+        : user.role === 'launch_partner'
+          ? ['business_onboarding']
+          : user.role === 'community'
+            ? user.role_subtype === 'cause'
+              ? ['cause_leader', 'school_leader']
+              : ['school_leader', 'cause_leader']
+            : user.role === 'business'
+              ? ['business_onboarding']
+              : []
+
+  const attempts = [{ payload, persistedRole: user.role, usedFallback: false }]
+
+  for (const fallbackRole of fallbackRoles) {
+    attempts.push({
+      payload: {
+        ...payload,
+        role: fallbackRole,
+        role_subtype: null,
+      },
+      persistedRole: fallbackRole,
+      usedFallback: true,
+    })
+    attempts.push({
+      payload: omitProfileMetadata({
+        ...payload,
+        role: fallbackRole,
+        role_subtype: null,
+      }),
+      persistedRole: fallbackRole,
+      usedFallback: true,
+    })
+  }
+
+  attempts.push({ payload: omitProfileMetadata(payload), persistedRole: user.role, usedFallback: true })
 
   let lastError: { message?: string } | null = null
 
@@ -121,7 +159,8 @@ async function syncDemoUser(user: DemoUser, authUserMap: Map<string, string>) {
       user_metadata: {
         full_name: user.name,
         role: user.role,
-        portal_role: user.role === 'business' ? 'business' : undefined,
+        role_subtype: user.role_subtype || undefined,
+        portal_role: user.role,
       },
     })
 
@@ -161,15 +200,15 @@ async function seed() {
   // 3. Create demo auth users and profiles
   console.log('Creating demo users...')
   const demoUsers: DemoUser[] = [
-    { email: 'kenneth@localvip.com', name: 'Kenneth', role: 'super_admin', brand: 'localvip', referral_code: 'kenneth-admin' },
-    { email: 'rick@localvip.com', name: 'Rick', role: 'internal_admin', brand: 'localvip', referral_code: 'rick-admin' },
-    { email: 'principal@mlkschool.edu', name: 'Dr. Sarah Johnson', role: 'school_leader', brand: 'hato', referral_code: 'sarah-mlk', org_id: '00000000-0000-0000-0000-100000000001' },
-    { email: 'director@communitystrong.org', name: 'Marcus Williams', role: 'cause_leader', brand: 'localvip', referral_code: 'marcus-cs', org_id: '00000000-0000-0000-0000-100000000002' },
-    { email: 'alex@partner.com', name: 'Alex Rivera', role: 'business_onboarding', brand: 'localvip', referral_code: 'alex-biz' },
-    { email: 'maya@localvip.com', name: 'Maya Patel', role: 'intern', brand: 'localvip', referral_code: 'maya-clt' },
+    { email: 'kenneth@localvip.com', name: 'Kenneth', role: 'admin', role_subtype: 'super', brand: 'localvip', referral_code: 'kenneth-admin' },
+    { email: 'rick@localvip.com', name: 'Rick', role: 'admin', role_subtype: 'internal', brand: 'localvip', referral_code: 'rick-admin' },
+    { email: 'principal@mlkschool.edu', name: 'Dr. Sarah Johnson', role: 'community', role_subtype: 'school', brand: 'hato', referral_code: 'sarah-mlk', org_id: '00000000-0000-0000-0000-100000000001' },
+    { email: 'director@communitystrong.org', name: 'Marcus Williams', role: 'community', role_subtype: 'cause', brand: 'localvip', referral_code: 'marcus-cs', org_id: '00000000-0000-0000-0000-100000000002' },
+    { email: 'alex@partner.com', name: 'Alex Rivera', role: 'launch_partner', brand: 'localvip', referral_code: 'alex-biz' },
+    { email: 'maya@localvip.com', name: 'Maya Patel', role: 'field', role_subtype: 'intern', brand: 'localvip', referral_code: 'maya-clt' },
     { email: 'owner@mainstreetbakery.com', name: 'Lisa Chen', role: 'business', brand: 'localvip', referral_code: 'lisa-biz' },
     { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'influencer', brand: 'localvip', referral_code: 'jordan-inf' },
-    { email: 'volunteer@example.com', name: 'Casey Adams', role: 'volunteer', brand: 'localvip', referral_code: 'casey-vol' },
+    { email: 'volunteer@example.com', name: 'Casey Adams', role: 'field', role_subtype: 'volunteer', brand: 'localvip', referral_code: 'casey-vol' },
   ]
   const authUserMap = new Map(
     (await listAllAuthUsers())
@@ -411,10 +450,24 @@ async function seed() {
     }
 
     const lisaProfileAttempts = [
-      { role: 'business', business_id: lisaBusiness.id, metadata: { portal_role: 'business', business_id: lisaBusiness.id } },
-      { role: 'business_onboarding', business_id: lisaBusiness.id, metadata: { portal_role: 'business', business_id: lisaBusiness.id } },
-      { role: 'business_onboarding', business_id: lisaBusiness.id },
-      { role: 'business_onboarding' },
+      {
+        role: 'business',
+        role_subtype: null,
+        business_id: lisaBusiness.id,
+        metadata: { portal_role: 'business', business_id: lisaBusiness.id },
+      },
+      {
+        role: 'business',
+        role_subtype: null,
+        business_id: lisaBusiness.id,
+      },
+      {
+        role: 'business_onboarding',
+        role_subtype: null,
+        business_id: lisaBusiness.id,
+        metadata: { portal_role: 'business', business_id: lisaBusiness.id },
+      },
+      { role: 'business_onboarding', role_subtype: null, business_id: lisaBusiness.id },
     ]
 
     let lisaProfileFixed = false
@@ -437,6 +490,122 @@ async function seed() {
     if (!lisaProfileFixed && lastLisaProfileError) {
       throw lastLisaProfileError
     }
+  }
+
+  console.log('Creating business offers...')
+  const { data: seededBusinesses } = await supabase
+    .from('businesses')
+    .select('id,name,metadata')
+
+  if (seededBusinesses) {
+    const offerRows = seededBusinesses.flatMap((business) => {
+      const metadata = (business.metadata as Record<string, unknown> | null) || {}
+      const captureTitle = `${metadata.capture_offer_title || metadata.offer_title || 'Join our list and get access to exclusive offers'}`
+      const captureDescription = `${metadata.capture_offer_description || metadata.offer_description || 'This offer is only used to collect your first 100 customers before you go live.'}`
+      const captureValue = metadata.capture_offer_value || metadata.offer_value || null
+      const cashbackPercent = Number(metadata.cashback_percent || 10)
+      const safeCashbackPercent = Number.isNaN(cashbackPercent) ? 10 : Math.min(25, Math.max(5, cashbackPercent))
+
+      return [
+        {
+          business_id: business.id,
+          offer_type: 'capture',
+          status: 'active',
+          headline: captureTitle,
+          description: captureDescription,
+          value_type: 'label',
+          value_label: captureValue ? `${captureValue}` : null,
+          cashback_percent: null,
+          starts_at: null,
+          ends_at: null,
+          metadata: { seeded: true, source: 'scripts/seed.ts' },
+        },
+        {
+          business_id: business.id,
+          offer_type: 'cashback',
+          status: 'active',
+          headline: `${metadata.cashback_offer_title || 'Standard LocalVIP Cashback'}`,
+          description: `${metadata.cashback_offer_description || 'This is the percentage customers receive back when they shop with you through LocalVIP.'}`,
+          value_type: 'cashback_percent',
+          value_label: `${safeCashbackPercent}% cashback`,
+          cashback_percent: safeCashbackPercent,
+          starts_at: null,
+          ends_at: null,
+          metadata: { seeded: true, source: 'scripts/seed.ts' },
+        },
+      ]
+    })
+
+    const { error: offersError } = await supabase
+      .from('offers')
+      .upsert(offerRows, { onConflict: 'business_id,offer_type' })
+
+    if (offersError && !offersError.message.toLowerCase().includes('offers')) {
+      throw offersError
+    }
+  }
+
+  console.log('Creating stakeholder assignments and sample city request...')
+  const { data: seededProfiles } = await supabase
+    .from('profiles')
+    .select('id,email')
+
+  const profileIdByEmail = new Map((seededProfiles || []).map((item) => [item.email.toLowerCase(), item.id]))
+  const kennethId = profileIdByEmail.get('kenneth@localvip.com') || null
+  const alexId = profileIdByEmail.get('alex@partner.com') || null
+  const mayaId = profileIdByEmail.get('maya@localvip.com') || null
+  const caseyId = profileIdByEmail.get('volunteer@example.com') || null
+
+  const { error: assignmentError } = await supabase.from('stakeholder_assignments').upsert([
+    {
+      id: '00000000-0000-0000-0000-970000000001',
+      stakeholder_id: alexId,
+      entity_type: 'city',
+      entity_id: '00000000-0000-0000-0000-200000000001',
+      role: 'launch_partner',
+      assigned_by: kennethId,
+      status: 'active',
+    },
+    {
+      id: '00000000-0000-0000-0000-970000000002',
+      stakeholder_id: mayaId,
+      entity_type: 'city',
+      entity_id: '00000000-0000-0000-0000-200000000002',
+      role: 'field',
+      assigned_by: kennethId,
+      status: 'active',
+    },
+    {
+      id: '00000000-0000-0000-0000-970000000003',
+      stakeholder_id: caseyId,
+      entity_type: 'city',
+      entity_id: '00000000-0000-0000-0000-200000000001',
+      role: 'field',
+      assigned_by: kennethId,
+      status: 'active',
+    },
+  ], { onConflict: 'id' })
+
+  if (assignmentError && !assignmentError.message.toLowerCase().includes('stakeholder_assignments')) {
+    throw assignmentError
+  }
+
+  const { error: requestError } = await supabase.from('city_access_requests').upsert([
+    {
+      id: '00000000-0000-0000-0000-980000000001',
+      requester_id: alexId,
+      requested_city_name: 'Nashville, TN',
+      requested_city_id: '00000000-0000-0000-0000-200000000003',
+      reason: 'Ready to start the next launch market once Atlanta is stable.',
+      status: 'pending',
+      reviewed_by: null,
+      reviewed_at: null,
+      metadata: { seeded: true },
+    },
+  ], { onConflict: 'id' })
+
+  if (requestError && !requestError.message.toLowerCase().includes('city_access_requests')) {
+    throw requestError
   }
 
   // 7. Create sample causes

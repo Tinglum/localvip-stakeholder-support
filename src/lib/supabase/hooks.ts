@@ -5,6 +5,7 @@ import { createClient } from './client'
 import type {
   Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material, Organization,
   StakeholderAssignment, OnboardingFlow, OnboardingStep, OutreachScript, MaterialAssignment, QrCodeCollection,
+  Offer, BusinessReferral, CityAccessRequest, AuditLog,
 } from '@/lib/types/database'
 
 // ─── Generic fetch hook ─────────────────────────────────────
@@ -185,6 +186,15 @@ export function useContactDelete() { return useSupabaseDelete('contacts') }
 export function useStakeholderAssignments(filters?: Record<string, string>) {
   return useSupabaseQuery<StakeholderAssignment>('stakeholder_assignments', { filters })
 }
+export function useBusinessReferrals(filters?: Record<string, string>) {
+  return useSupabaseQuery<BusinessReferral>('business_referrals', { filters })
+}
+export function useBusinessReferralInsert() { return useSupabaseInsert<BusinessReferral>('business_referrals') }
+export function useCityAccessRequests(filters?: Record<string, string>) {
+  return useSupabaseQuery<CityAccessRequest>('city_access_requests', { filters })
+}
+export function useCityAccessRequestInsert() { return useSupabaseInsert<CityAccessRequest>('city_access_requests') }
+export function useCityAccessRequestUpdate() { return useSupabaseUpdate<CityAccessRequest>('city_access_requests') }
 
 export function useCities() {
   return useSupabaseQuery<City>('cities', { orderBy: 'name', orderAsc: true })
@@ -199,6 +209,11 @@ export function useCampaigns(filters?: Record<string, string>) {
   return useSupabaseQuery<Campaign>('campaigns', { filters })
 }
 export function useCampaignInsert() { return useSupabaseInsert<Campaign>('campaigns') }
+export function useOffers(filters?: Record<string, string>) {
+  return useSupabaseQuery<Offer>('offers', { filters })
+}
+export function useOfferInsert() { return useSupabaseInsert<Offer>('offers') }
+export function useOfferUpdate() { return useSupabaseUpdate<Offer>('offers') }
 
 export function useTasks(filters?: Record<string, string>) {
   return useSupabaseQuery<Task>('tasks', { filters })
@@ -220,6 +235,7 @@ export function useOutreachScriptUpdate() { return useSupabaseUpdate<OutreachScr
 export function useProfiles() {
   return useSupabaseQuery<Profile>('profiles', { orderBy: 'full_name', orderAsc: true })
 }
+export function useProfileUpdate() { return useSupabaseUpdate<Profile>('profiles') }
 
 export function useQrCodes(filters?: Record<string, string>) {
   return useSupabaseQuery<QrCode>('qr_codes', { filters })
@@ -240,6 +256,8 @@ export function useMaterialAssignments(filters?: Record<string, string>) {
 }
 
 export function useCauseUpdate() { return useSupabaseUpdate<Cause>('causes') }
+export function useStakeholderAssignmentInsert() { return useSupabaseInsert<StakeholderAssignment>('stakeholder_assignments') }
+export function useAuditLogInsert() { return useSupabaseInsert<AuditLog>('audit_logs') }
 
 export function useNotes(filters?: Record<string, string>) {
   return useSupabaseQuery<Note>('notes', { filters })

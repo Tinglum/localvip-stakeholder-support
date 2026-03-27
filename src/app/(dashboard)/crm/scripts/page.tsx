@@ -31,7 +31,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { StatCard } from '@/components/ui/stat-card'
 import { useAuth } from '@/lib/auth/context'
-import { isFieldOutreachRole } from '@/lib/business-portal'
+import { getStakeholderShell } from '@/lib/stakeholder-access'
 import {
   useBusinesses,
   useCampaigns,
@@ -245,7 +245,7 @@ function HistoryRow({
 export default function OutreachScriptsPage() {
   const searchParams = useSearchParams()
   const { profile } = useAuth()
-  const isFieldUser = isFieldOutreachRole(profile.role)
+  const isFieldUser = getStakeholderShell(profile) === 'field'
   const { data: businesses, loading: businessesLoading, error: businessesError } = useBusinesses()
   const { data: campaigns } = useCampaigns()
   const { data: cities } = useCities()
@@ -830,7 +830,7 @@ export default function OutreachScriptsPage() {
               Built for interns, volunteers, influencers, and outreach helpers who need strong local scripts fast.
             </h2>
             <p className="max-w-2xl text-sm leading-6 text-surface-700">
-              Pick a business from the CRM, add your real local connection, choose a Good, Better, or Best version,
+              Pick a business from the CRM, add your real local connection, choose a Good, Better, Best, or Ultra version,
               then copy it, tweak it, and log the outreach without leaving the support system.
             </p>
             <div className="flex flex-wrap gap-2 text-xs text-surface-700">
@@ -1224,7 +1224,7 @@ export default function OutreachScriptsPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Script Type Selector</CardTitle>
-                    <CardDescription>Choose the angle, quality level, and delivery mode that fit this business best.</CardDescription>
+                    <CardDescription>Choose the angle, quality level, and delivery mode that fit this business best, then tighten it until it sounds like something you would actually say out loud.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <div className="grid gap-4 lg:grid-cols-2">
@@ -1260,7 +1260,7 @@ export default function OutreachScriptsPage() {
 
                     <div>
                       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-surface-400">Quality Tier</p>
-                      <div className="grid gap-3 md:grid-cols-3">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         {OUTREACH_SCRIPT_TIER_OPTIONS.map((option) => (
                           <button
                             key={option.value}

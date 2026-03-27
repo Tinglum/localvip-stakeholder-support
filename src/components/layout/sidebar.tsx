@@ -11,9 +11,9 @@ import {
   PanelLeftClose, PanelLeft, Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { type NavItem, BRANDS, ROLES, ROLE_THEMES } from '@/lib/constants'
-import { getSidebarNavItems } from '@/lib/business-portal'
-import type { UserRole, Brand } from '@/lib/types/database'
+import { type NavItem, BRANDS } from '@/lib/constants'
+import { getStakeholderAccess, getThemeForProfile } from '@/lib/stakeholder-access'
+import type { Brand, Profile } from '@/lib/types/database'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Building2, Store, Heart, Users, UserCheck,
@@ -23,24 +23,24 @@ const ICON_MAP: Record<string, React.ElementType> = {
 }
 
 interface SidebarProps {
-  role: UserRole
+  profile: Profile
   brand: Brand
   collapsed: boolean
   onToggle: () => void
 }
 
-export function Sidebar({ role, brand, collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ profile, brand, collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname()
-  const userLevel = ROLES[role].level
-
-  const visibleItems = getSidebarNavItems(role, userLevel)
+  const access = getStakeholderAccess(profile)
+  const roleTheme = getThemeForProfile(profile)
+  const visibleItems = access.navItems
 
   return (
     <aside
       className={cn(
         'fixed left-0 top-0 z-40 flex h-full flex-col border-r border-surface-200 bg-surface-0 transition-all duration-200 no-print',
         collapsed ? 'w-16' : 'w-60',
-        `border-t-4 ${ROLE_THEMES[role]?.sidebar || ''}`
+        `border-t-4 ${roleTheme?.sidebar || ''}`
       )}
     >
       {/* Logo */}
@@ -62,8 +62,8 @@ export function Sidebar({ role, brand, collapsed, onToggle }: SidebarProps) {
 
       {/* Role badge */}
       {!collapsed && (
-        <div className={cn('mx-3 mb-2 rounded-md px-2.5 py-1 text-xs font-medium text-center', ROLE_THEMES[role]?.bg)} style={{ color: ROLE_THEMES[role]?.primary }}>
-          {ROLE_THEMES[role]?.label || role}
+        <div className={cn('mx-3 mb-2 rounded-md px-2.5 py-1 text-xs font-medium text-center', roleTheme?.bg)} style={{ color: roleTheme?.primary }}>
+          {access.label}
         </div>
       )}
 
@@ -75,7 +75,7 @@ export function Sidebar({ role, brand, collapsed, onToggle }: SidebarProps) {
               key={item.href}
               item={item}
               pathname={pathname}
-              userLevel={userLevel}
+              userLevel={0}
               collapsed={collapsed}
             />
           ))}

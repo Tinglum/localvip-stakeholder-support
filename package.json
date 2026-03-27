@@ -9,7 +9,8 @@
     "lint": "next lint",
     "db:migrate": "supabase db push",
     "db:seed": "npx tsx scripts/seed.ts && npx tsx scripts/seed-fixtures.ts",
-    "db:reset": "supabase db reset"
+    "db:reset": "supabase db reset",
+    "db:retire-affiliates": "npx tsx scripts/retire-affiliates.ts"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.0",

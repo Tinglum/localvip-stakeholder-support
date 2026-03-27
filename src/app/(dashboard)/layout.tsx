@@ -98,6 +98,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     )
   }
 
+  if (profile.role === 'affiliate') {
+    return (
+      <div className="flex h-screen items-center justify-center px-6">
+        <div className="max-w-lg rounded-3xl border border-surface-200 bg-white p-8 text-center shadow-xl">
+          <h1 className="text-2xl font-bold text-surface-900">This account type has been retired</h1>
+          <p className="mt-3 text-sm leading-6 text-surface-600">
+            Affiliate access is no longer part of the active LocalVIP stakeholder system. Please contact an admin if this account should be reassigned to a current stakeholder role.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <AuthProvider profile={profile}>
       <AppShell profile={profile}>

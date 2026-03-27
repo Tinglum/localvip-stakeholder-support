@@ -20,10 +20,12 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
 import { useAuth } from '@/lib/auth/context'
 import { getBusinessJoinCaptureData } from '@/lib/business-join'
+import { formatCashbackLabel, resolveBusinessOffer } from '@/lib/offers'
 import {
   getActivationLabel,
   getActivationTone,
   getBusinessActivationStatus,
+  getBusinessLaunchPhase,
   getBusinessPortalData,
   getBusinessProducts,
   getContactDisplayName,
@@ -32,7 +34,7 @@ import {
   isCreatedToday,
   resolveScopedBusiness,
 } from '@/lib/business-portal'
-import { useBusinesses, useContacts } from '@/lib/supabase/hooks'
+import { useBusinesses, useContacts, useOffers } from '@/lib/supabase/hooks'
 import { formatDateTime } from '@/lib/utils'
 import type { Contact } from '@/lib/types/database'
 
@@ -69,6 +71,7 @@ export function BusinessDashboardPage() {
     [business?.id]
   )
   const { data: contacts, loading: contactsLoading, refetch } = useContacts(contactFilters)
+  const { data: offers } = useOffers({ business_id: business?.id || '__none__' })
 
   React.useEffect(() => {
     if (!business) return
@@ -103,14 +106,15 @@ export function BusinessDashboardPage() {
 
   const portal = getBusinessPortalData(business)
   const capture = getBusinessJoinCaptureData(business)
+  const captureOffer = resolveBusinessOffer(business, offers, 'capture')
+  const cashbackOffer = resolveBusinessOffer(business, offers, 'cashback')
   const hasCaptureReady = !!(capture.join_url || capture.qr_code_id)
   const activationStatus = getBusinessActivationStatus(business, contacts)
+  const launchPhase = getBusinessLaunchPhase(business, contacts)
   const milestone = getNetworkMilestone(contacts.length)
   const invitedCount = contacts.filter((contact) => getContactListStatus(contact) !== 'added').length
   const joinedCount = contacts.filter((contact) => getContactListStatus(contact) === 'joined').length
   const todayAdds = contacts.filter((contact) => isCreatedToday(contact.created_at)).length
-  const communityImpact = Number(portal.community_impact_total || 0)
-  const transactions = Number(portal.transactions_count || 0)
   const progressPercent = Math.min(100, Math.round((contacts.length / 100) * 100))
 
   const nextSteps = [
@@ -127,10 +131,10 @@ export function BusinessDashboardPage() {
       detail: invitedCount > 0 ? `${invitedCount} invited` : 'Mark people invited as you reach out',
     },
     {
-      label: 'Share your LocalVIP link',
+      label: 'Share your customer capture QR',
       href: '/portal/clients',
       complete: hasCaptureReady,
-      detail: hasCaptureReady ? 'Your QR and join page are ready to use in-store' : 'Your QR and join page will appear in My 100 List',
+      detail: hasCaptureReady ? 'Your capture QR and join page are ready to use in-store' : 'Your QR and join page will appear in My 100 List',
     },
     {
       label: 'Review your business profile',
@@ -139,10 +143,12 @@ export function BusinessDashboardPage() {
       detail: business.category ? `Category set to ${business.category}` : 'Add your category, description, and offer details',
     },
     {
-      label: 'Track your activity',
-      href: '/portal/activity',
-      complete: contacts.length > 0,
-      detail: todayAdds > 0 ? `${todayAdds} added today` : 'Watch invites and joins in one place',
+      label: 'Get ready to go live',
+      href: '/portal/setup',
+      complete: launchPhase === 'ready_to_go_live' || launchPhase === 'live',
+      detail: launchPhase === 'ready_to_go_live' || launchPhase === 'live'
+        ? 'Your first 100 customers are in place'
+        : 'Complete your first 100 customers to unlock the live cashback phase',
     },
   ]
 
@@ -231,20 +237,20 @@ export function BusinessDashboardPage() {
         />
         <SnapshotCard
           icon={<Heart className="h-5 w-5" />}
-          label="Total community impact"
-          value={`$${communityImpact.toFixed(2)}`}
-          detail="Updates as LocalVIP activity grows"
+          label="Customer capture offer"
+          value={captureOffer.value_label || captureOffer.headline}
+          detail="Used to get your first 100 customers"
         />
         <SnapshotCard
           icon={<BarChart3 className="h-5 w-5" />}
-          label="Total transactions"
-          value={transactions}
-          detail="Shown when transaction data is available"
+          label="LocalVIP cashback"
+          value={formatCashbackLabel(cashbackOffer.cashback_percent)}
+          detail="Used to generate ongoing sales"
         />
         <SnapshotCard
           icon={<Store className="h-5 w-5" />}
-          label="Activation status"
-          value={getActivationLabel(activationStatus)}
+          label="Launch phase"
+          value={launchPhase === 'capturing_100' ? 'Capturing 100' : launchPhase === 'ready_to_go_live' ? 'Ready To Go Live' : launchPhase === 'live' ? 'Live' : 'Setup'}
           detail={business.category || 'Set your business category'}
         />
       </div>
@@ -328,8 +334,14 @@ export function BusinessDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Offer</p>
-              <p className="mt-2 text-lg font-semibold text-surface-900">{portal.offer_title || 'Add your offer on My Business'}</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Customer Capture Offer</p>
+              <p className="mt-2 text-lg font-semibold text-surface-900">{captureOffer.headline}</p>
+              <p className="mt-2 text-sm text-surface-600">{captureOffer.description}</p>
+            </div>
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">LocalVIP Cashback</p>
+              <p className="mt-2 text-lg font-semibold text-surface-900">{formatCashbackLabel(cashbackOffer.cashback_percent)}</p>
+              <p className="mt-2 text-sm text-surface-600">{cashbackOffer.description}</p>
             </div>
             <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Products / Services</p>

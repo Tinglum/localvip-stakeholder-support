@@ -20,7 +20,7 @@ let pdfModulePromise: Promise<any> | null = null
 
 async function loadPdfModule() {
   if (!pdfModulePromise) {
-    pdfModulePromise = import('pdfjs-dist').then((pdfjs) => {
+    pdfModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((pdfjs) => {
       if (!pdfjs.GlobalWorkerOptions.workerSrc) {
         pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
       }
@@ -42,6 +42,20 @@ function isPdfSource(src: string | null, mimeType?: string | null) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
+}
+
+async function loadPdfBytes(src: string) {
+  if (src.startsWith('data:application/pdf')) {
+    const [, base64 = ''] = src.split(',', 2)
+    return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+  }
+
+  const response = await fetch(src)
+  if (!response.ok) {
+    throw new Error('The PDF file could not be loaded.')
+  }
+
+  return new Uint8Array(await response.arrayBuffer())
 }
 
 function PdfPreviewPane({
@@ -88,7 +102,8 @@ function PdfPreviewPane({
     ;(async () => {
       try {
         const pdfjs = await loadPdfModule()
-        const loadingTask = pdfjs.getDocument(src)
+        const pdfBytes = await loadPdfBytes(src)
+        const loadingTask = pdfjs.getDocument({ data: pdfBytes })
         const document = await loadingTask.promise
 
         if (disposed) {
@@ -136,11 +151,12 @@ function PdfPreviewPane({
         if (disposed) return
 
         const baseViewport = page.getViewport({ scale: 1 })
-        const availableWidth = Math.max(containerWidth - 48, 260)
-        const scale = availableWidth / baseViewport.width
+        const maxWidth = clamp(containerWidth - 48, 240, 460)
+        const maxHeight = 680
+        const scale = Math.min(maxWidth / baseViewport.width, maxHeight / baseViewport.height)
         const cssWidth = baseViewport.width * scale
         const cssHeight = baseViewport.height * scale
-        const outputScale = window.devicePixelRatio || 1
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2)
         const renderViewport = page.getViewport({ scale: scale * outputScale })
         const canvas = canvasRef.current
         if (!canvas) return

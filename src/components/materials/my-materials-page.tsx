@@ -35,6 +35,7 @@ import { BusinessMaterialsPage } from '@/components/business/business-materials-
 import { useAuth } from '@/lib/auth/context'
 import { deleteMaterial } from '@/lib/materials/delete-material'
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
+import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { formatDate } from '@/lib/utils'
 import { useMaterialAssignments, useMaterialInsert, useMaterials } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
@@ -350,8 +351,34 @@ function StandardMaterialsPage() {
 
   const materials = React.useMemo(() => {
     const assignedIds = new Set(assignments.map(assignment => assignment.material_id))
-    return allMaterials.filter(material => material.created_by === profile.id || assignedIds.has(material.id))
-  }, [allMaterials, assignments, profile.id])
+    const shell = getStakeholderShell(profile)
+
+    return allMaterials.filter(material => {
+      if (material.created_by === profile.id || assignedIds.has(material.id)) return true
+      if (isAdmin) return true
+
+      if (shell === 'field') {
+        return material.target_roles.some((role) => ['field', 'intern', 'volunteer'].includes(role))
+          || ['field_outreach', 'partner_outreach'].includes(material.category || '')
+      }
+
+      if (shell === 'launch_partner') {
+        return material.target_roles.some((role) => ['launch_partner', 'business_onboarding'].includes(role))
+          || ['launch_partner', 'business_onboarding', 'partner_outreach'].includes(material.category || '')
+      }
+
+      if (shell === 'community') {
+        return material.target_roles.some((role) => ['community', 'school_leader', 'cause_leader'].includes(role))
+          || material.category === 'community_mobilization'
+      }
+
+      if (shell === 'influencer') {
+        return material.target_roles.includes('influencer') || material.category === 'influencer_referral'
+      }
+
+      return false
+    })
+  }, [allMaterials, assignments, isAdmin, profile])
 
   const filtered = React.useMemo(() => {
     return materials.filter(material => {

@@ -1,7 +1,7 @@
-import { NAV_ITEMS, type NavItem } from '@/lib/constants'
 import type {
   Business,
   BusinessActivationStatus,
+  BusinessLaunchPhase,
   BusinessContactStatus,
   Contact,
   Profile,
@@ -23,34 +23,16 @@ export interface BusinessPortalData {
   community_impact_total?: number
   transactions_count?: number
   linked_cause_name?: string
+  cashback_percent?: number
+  capture_offer_title?: string
+  capture_offer_description?: string
+  capture_offer_value?: string
+  cashback_offer_title?: string
+  cashback_offer_description?: string
+  cashback_offer_value?: string
 }
 
-export const BUSINESS_NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
-  { label: 'My Business', href: '/portal/business', icon: 'Store', minLevel: 0 },
-  { label: 'My 100 List', href: '/portal/clients', icon: 'Users', minLevel: 0 },
-  { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
-  { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', minLevel: 0 },
-]
-
-export const FIELD_OUTREACH_NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
-  { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
-  { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 0 },
-  { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', minLevel: 0 },
-  { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
-  { label: 'My Stats', href: '/analytics', icon: 'BarChart3', minLevel: 0 },
-]
-
-const FIELD_OUTREACH_ROLES: UserRole[] = ['intern', 'volunteer', 'influencer', 'affiliate']
-
-const BUSINESS_ALLOWED_PREFIXES = [
-  '/dashboard',
-  '/portal/business',
-  '/portal/clients',
-  '/portal/activity',
-  '/materials/mine',
-]
+const FIELD_OUTREACH_ROLES: UserRole[] = ['field', 'intern', 'volunteer']
 
 export function isBusinessRole(role: UserRole): boolean {
   return role === 'business'
@@ -148,22 +130,6 @@ export function normalizeBusinessProfile(
   }
 }
 
-export function getSidebarNavItems(role: UserRole, userLevel: number): NavItem[] {
-  if (isBusinessRole(role)) {
-    return BUSINESS_NAV_ITEMS
-  }
-
-  if (isFieldOutreachRole(role)) {
-    return FIELD_OUTREACH_NAV_ITEMS
-  }
-
-  return NAV_ITEMS.filter((item) => userLevel >= item.minLevel)
-}
-
-export function canBusinessAccessPath(pathname: string): boolean {
-  return BUSINESS_ALLOWED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
-}
-
 export function getBusinessPortalData(business: Business | null | undefined): BusinessPortalData {
   if (!business?.metadata || typeof business.metadata !== 'object') return {}
   return business.metadata as BusinessPortalData
@@ -205,7 +171,28 @@ export function getBusinessDescription(business: Business): string {
 
 export function getBusinessOfferTitle(business: Business): string {
   const data = getBusinessPortalData(business)
-  return data.offer_title || 'Join our list and get access to exclusive offers'
+  return data.capture_offer_title || data.offer_title || 'Join our list and get access to exclusive offers'
+}
+
+export function getBusinessCashbackPercent(business: Business): number {
+  const data = getBusinessPortalData(business)
+  const percent = Number(data.cashback_percent || 10)
+  if (Number.isNaN(percent)) return 10
+  return Math.min(25, Math.max(5, percent))
+}
+
+export function getBusinessLaunchPhase(business: Business, contacts: Contact[]): BusinessLaunchPhase {
+  if (business.launch_phase) return business.launch_phase
+
+  const data = getBusinessPortalData(business)
+  const hasProfile = !!business.name && !!business.category && !!(business.public_description || data.description)
+  const hasCaptureOffer = !!(data.capture_offer_title || data.offer_title)
+  const hasCashback = !!data.cashback_percent || !!data.cashback_offer_title
+
+  if (!hasProfile || !hasCaptureOffer || !hasCashback) return 'setup'
+  if (contacts.length >= 100) return business.stage === 'live' ? 'live' : 'ready_to_go_live'
+  if (business.stage === 'live') return 'live'
+  return 'capturing_100'
 }
 
 export function getContactDisplayName(contact: Contact): string {
@@ -252,11 +239,10 @@ export function getContactTag(contact: Contact): string | null {
 export function getBusinessActivationStatus(business: Business, contacts: Contact[]): BusinessActivationStatus {
   if (business.activation_status) return business.activation_status
 
-  const totalContacts = contacts.length
-  const data = getBusinessPortalData(business)
-
-  if (business.stage === 'live' || totalContacts >= 100) return 'active'
-  if (totalContacts > 0 || !!data.offer_title || !!business.public_description || !!data.description) return 'in_progress'
+  const phase = getBusinessLaunchPhase(business, contacts)
+  if (phase === 'live' || phase === 'ready_to_go_live') return 'active'
+  if (phase === 'capturing_100') return 'in_progress'
+  if (contacts.length > 0) return 'in_progress'
   return 'not_started'
 }
 

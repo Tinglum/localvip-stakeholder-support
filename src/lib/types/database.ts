@@ -1,14 +1,27 @@
 export type UserRole =
+  | 'admin'
   | 'super_admin'
   | 'internal_admin'
+  | 'community'
   | 'school_leader'
   | 'cause_leader'
   | 'business'
+  | 'field'
+  | 'launch_partner'
   | 'business_onboarding'
   | 'influencer'
   | 'affiliate'
   | 'volunteer'
   | 'intern'
+
+export type UserRoleSubtype =
+  | 'super'
+  | 'internal'
+  | 'intern'
+  | 'volunteer'
+  | 'school'
+  | 'cause'
+  | null
 
 export type Brand = 'localvip' | 'hato'
 
@@ -36,8 +49,9 @@ export type OutreachType =
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
 export type BusinessActivationStatus = 'not_started' | 'in_progress' | 'active'
+export type BusinessLaunchPhase = 'setup' | 'capturing_100' | 'ready_to_go_live' | 'live'
 export type BusinessContactStatus = 'added' | 'invited' | 'joined'
-export type OutreachScriptTier = 'good' | 'better' | 'best'
+export type OutreachScriptTier = 'good' | 'better' | 'best' | 'ultra'
 export type OutreachScriptChannel = 'in_person' | 'text_dm' | 'email' | 'leave_behind'
 export type OutreachScriptStatus =
   | 'not_started'
@@ -50,6 +64,10 @@ export type OutreachScriptStatus =
   | 'follow_up_needed'
 
 export type QrCodeFormat = 'png' | 'svg'
+export type OfferType = 'capture' | 'cashback'
+export type OfferStatus = 'draft' | 'active' | 'paused' | 'archived'
+export type BusinessReferralStatus = 'draft' | 'sent' | 'responded' | 'converted' | 'closed'
+export type CityAccessRequestStatus = 'pending' | 'approved' | 'declined'
 
 export interface Database {
   public: {
@@ -74,6 +92,11 @@ export interface Database {
         Insert: Omit<Campaign, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<Campaign, 'id'>>
       }
+      offers: {
+        Row: Offer
+        Insert: Omit<Offer, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<Offer, 'id'>>
+      }
       businesses: {
         Row: Business
         Insert: Omit<Business, 'id' | 'created_at' | 'updated_at'>
@@ -93,6 +116,16 @@ export interface Database {
         Row: StakeholderAssignment
         Insert: Omit<StakeholderAssignment, 'id' | 'created_at'>
         Update: Partial<Omit<StakeholderAssignment, 'id'>>
+      }
+      business_referrals: {
+        Row: BusinessReferral
+        Insert: Omit<BusinessReferral, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<BusinessReferral, 'id'>>
+      }
+      city_access_requests: {
+        Row: CityAccessRequest
+        Insert: Omit<CityAccessRequest, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<CityAccessRequest, 'id'>>
       }
       outreach_activities: {
         Row: OutreachActivity
@@ -193,6 +226,8 @@ export interface Database {
       outreach_script_tier: OutreachScriptTier
       outreach_script_channel: OutreachScriptChannel
       outreach_script_status: OutreachScriptStatus
+      offer_type: OfferType
+      offer_status: OfferStatus
     }
   }
 }
@@ -205,6 +240,7 @@ export interface Profile {
   full_name: string
   avatar_url: string | null
   role: UserRole
+  role_subtype?: UserRoleSubtype
   brand_context: Brand
   organization_id: string | null
   city_id: string | null
@@ -212,6 +248,23 @@ export interface Profile {
   phone: string | null
   referral_code: string | null
   status: EntityStatus
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Offer {
+  id: string
+  business_id: string
+  offer_type: OfferType
+  status: OfferStatus
+  headline: string
+  description: string | null
+  value_type: string | null
+  value_label: string | null
+  cashback_percent: number | null
+  starts_at: string | null
+  ends_at: string | null
   metadata: Record<string, unknown> | null
   created_at: string
   updated_at: string
@@ -284,6 +337,7 @@ export interface Business {
   avg_ticket?: string | null
   products_services?: string[] | null
   activation_status?: BusinessActivationStatus | null
+  launch_phase?: BusinessLaunchPhase | null
   status: EntityStatus
   metadata: Record<string, unknown> | null
   created_at: string
@@ -326,11 +380,14 @@ export interface Contact {
   organization_id: string | null
   owner_id: string | null
   created_by_user_id?: string | null
+  capture_offer_id?: string | null
   source: string | null
   tag?: string | null
   list_status?: BusinessContactStatus | null
   invited_at?: string | null
   joined_at?: string | null
+  normalized_email?: string | null
+  normalized_phone?: string | null
   duplicate_of: string | null
   status: EntityStatus
   metadata: Record<string, unknown> | null
@@ -347,6 +404,40 @@ export interface StakeholderAssignment {
   assigned_by: string | null
   status: EntityStatus
   created_at: string
+}
+
+export interface BusinessReferral {
+  id: string
+  source_business_id: string
+  created_by: string | null
+  target_business_name: string
+  target_city_id: string | null
+  target_category: string | null
+  target_contact_name: string | null
+  target_contact_email: string | null
+  target_contact_phone: string | null
+  channel: 'sms' | 'email' | 'link_share' | 'other'
+  message_snapshot: string | null
+  status: BusinessReferralStatus
+  notes: string | null
+  converted_business_id: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CityAccessRequest {
+  id: string
+  requester_id: string
+  requested_city_name: string
+  requested_city_id: string | null
+  reason: string | null
+  status: CityAccessRequestStatus
+  reviewed_by: string | null
+  reviewed_at: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
 }
 
 export interface OutreachActivity {
@@ -488,6 +579,7 @@ export interface Material {
   category: string | null
   use_case: string | null
   target_roles: UserRole[]
+  target_subtypes?: UserRoleSubtype[]
   campaign_id: string | null
   city_id: string | null
   is_template: boolean

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar } from './sidebar'
 import { Topbar } from './topbar'
 import { cn } from '@/lib/utils'
-import { canBusinessAccessPath, isBusinessRole } from '@/lib/business-portal'
+import { canAccessPath, getStakeholderAccess } from '@/lib/stakeholder-access'
 import type { Profile } from '@/lib/types/database'
 
 interface AppShellProps {
@@ -17,18 +17,19 @@ export function AppShell({ profile, children }: AppShellProps) {
   const [collapsed, setCollapsed] = React.useState(false)
   const pathname = usePathname()
   const router = useRouter()
-  const blockedBusinessPath = isBusinessRole(profile.role) && !canBusinessAccessPath(pathname)
+  const access = getStakeholderAccess(profile)
+  const blockedPath = !canAccessPath(profile, pathname)
 
   React.useEffect(() => {
-    if (blockedBusinessPath) {
-      router.replace('/dashboard')
+    if (blockedPath) {
+      router.replace(access.fallbackPath)
     }
-  }, [blockedBusinessPath, router])
+  }, [access.fallbackPath, blockedPath, router])
 
   return (
     <div className="min-h-screen bg-surface-50">
       <Sidebar
-        role={profile.role}
+        profile={profile}
         brand={profile.brand_context}
         collapsed={collapsed}
         onToggle={() => setCollapsed(c => !c)}
@@ -41,11 +42,11 @@ export function AppShell({ profile, children }: AppShellProps) {
         )}
       >
         <div className="p-6 lg:p-8">
-          {blockedBusinessPath ? (
+          {blockedPath ? (
             <div className="flex min-h-[60vh] items-center justify-center">
               <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-5 py-4 text-sm text-surface-500 shadow-sm">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-                Redirecting to your business dashboard...
+                Redirecting to your {access.label.toLowerCase()} dashboard...
               </div>
             </div>
           ) : children}

@@ -14,9 +14,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { BusinessDashboardPage } from '@/components/business/business-dashboard-page'
+import { CommunityDashboardPage } from '@/components/community/community-dashboard-page'
 import { FieldOutreachDashboardPage } from '@/components/field/field-outreach-dashboard-page'
-import { isFieldOutreachRole } from '@/lib/business-portal'
+import { InfluencerDashboardPage } from '@/components/influencer/influencer-dashboard-page'
+import { LaunchPartnerDashboardPage } from '@/components/partner/launch-partner-dashboard-page'
 import { ROLES, ROLE_TOOLS, ROLE_THEMES } from '@/lib/constants'
+import { getStakeholderAccess } from '@/lib/stakeholder-access'
 import { formatDate } from '@/lib/utils'
 
 // Icon map for dynamic role tools
@@ -57,13 +60,26 @@ function getActionsForRole(role: string) {
 
 export default function DashboardPage() {
   const { profile } = useAuth()
+  const access = getStakeholderAccess(profile)
 
-  if (profile.role === 'business') {
+  if (access.shell === 'business') {
     return <BusinessDashboardPage />
   }
 
-  if (isFieldOutreachRole(profile.role)) {
+  if (access.shell === 'field') {
     return <FieldOutreachDashboardPage />
+  }
+
+  if (access.shell === 'launch_partner') {
+    return <LaunchPartnerDashboardPage />
+  }
+
+  if (access.shell === 'community') {
+    return <CommunityDashboardPage />
+  }
+
+  if (access.shell === 'influencer') {
+    return <InfluencerDashboardPage />
   }
 
   return <TeamDashboardPage />

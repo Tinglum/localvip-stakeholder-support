@@ -47,7 +47,9 @@ export async function updateSession(request: NextRequest) {
   const isPublicRoute = request.nextUrl.pathname === '/' ||
     request.nextUrl.pathname.startsWith('/r/') ||
     request.nextUrl.pathname.startsWith('/join/') ||
-    request.nextUrl.pathname.startsWith('/api/join/')
+    request.nextUrl.pathname.startsWith('/api/join/') ||
+    request.nextUrl.pathname.startsWith('/support/') ||
+    request.nextUrl.pathname.startsWith('/api/support/')
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()

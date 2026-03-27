@@ -55,6 +55,7 @@ interface ScriptTemplateSet {
   good: string
   better: string
   best: string
+  ultra?: string
 }
 
 interface CategoryConfig {
@@ -116,6 +117,11 @@ export const OUTREACH_SCRIPT_TIER_OPTIONS: Array<{
     value: 'best',
     label: 'Best',
     hint: 'The strongest relationship-based version with the clearest community logic.',
+  },
+  {
+    value: 'ultra',
+    label: 'Ultra',
+    hint: 'Hyper-specific, highly local, and built to sound like a real person reaching out with a true connection.',
   },
 ]
 
@@ -598,6 +604,34 @@ function addConnectionSentence(value: string, personalConnection: string | null 
   return compactWhitespace(withConnection.join('\n\n'))
 }
 
+function elevateToUltra(
+  value: string,
+  input: OutreachScriptGenerationInput,
+) {
+  const localLine = clean(input.local_context)
+    ? `It felt worth reaching out because of the connection to ${localAreaPhrase(input.local_context, input.city)} and how close this is to the people already tied to ${supportPhraseBroad(input.local_cause_name, input.city, input.local_context)}.`
+    : `It felt worth reaching out because this already feels like a real fit for the people tied to ${supportPhraseBroad(input.local_cause_name, input.city, input.local_context)}.`
+
+  const paragraphs = compactWhitespace(value)
+    .split(/\n\s*\n/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+
+  if (paragraphs.length < 2) {
+    return compactWhitespace(`${value}\n\n${localLine}\n\nWould you be open to a really quick look?`)
+  }
+
+  const closing = 'Would you be open to a really quick look?'
+  const nextParagraphs = [...paragraphs]
+  nextParagraphs.splice(Math.max(1, nextParagraphs.length - 1), 0, localLine)
+
+  if (!nextParagraphs[nextParagraphs.length - 1].includes('Would you be open')) {
+    nextParagraphs[nextParagraphs.length - 1] = closing
+  }
+
+  return compactWhitespace(nextParagraphs.join('\n\n'))
+}
+
 function transformForChannel(
   body: string,
   input: OutreachScriptGenerationInput,
@@ -650,9 +684,12 @@ export function generateOutreachScript(input: OutreachScriptGenerationInput): Ou
   const config = getCategoryConfig(input.categoryKey)
   const scriptOption = config.scriptTypes.find(option => option.key === input.scriptType) || config.scriptTypes[0]
   const templates = config.templates[scriptOption.key] || config.templates[config.scriptTypes[0].key]
-  const template = templates[input.tier]
+  const template = templates[input.tier] || templates.best
   const tokens = tokenMap(input, config)
-  const baseBody = addConnectionSentence(fillTemplate(template, tokens), input.personal_connection)
+  let baseBody = addConnectionSentence(fillTemplate(template, tokens), input.personal_connection)
+  if (input.tier === 'ultra') {
+    baseBody = elevateToUltra(baseBody, input)
+  }
   const transformed = transformForChannel(baseBody, input, config)
 
   return {

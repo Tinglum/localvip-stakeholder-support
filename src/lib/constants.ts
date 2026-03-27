@@ -3,11 +3,15 @@ import type { UserRole, Brand, OnboardingStage, EntityStatus, TaskPriority } fro
 // ─── Role definitions ────────────────────────────────────────
 
 export const ROLES: Record<UserRole, { label: string; description: string; level: number }> = {
+  admin: { label: 'Admin', description: 'Full system access', level: 100 },
   super_admin: { label: 'Super Admin', description: 'Full system access', level: 100 },
   internal_admin: { label: 'Internal Admin', description: 'Manage operations', level: 90 },
+  community: { label: 'Community', description: 'Mobilize supporters and local participation', level: 50 },
   school_leader: { label: 'School Leader', description: 'Manage school onboarding', level: 50 },
   cause_leader: { label: 'Cause Leader', description: 'Manage cause onboarding', level: 50 },
   business: { label: 'Business', description: 'Manage one business portal', level: 0 },
+  field: { label: 'Field', description: 'Activate businesses and community outreach', level: 20 },
+  launch_partner: { label: 'Launch Partner', description: 'Grow assigned cities', level: 40 },
   business_onboarding: { label: 'Onboarding Partner', description: 'Onboard businesses', level: 40 },
   influencer: { label: 'Influencer', description: 'Promote and refer', level: 30 },
   affiliate: { label: 'Affiliate', description: 'Referral partner', level: 30 },
@@ -15,10 +19,10 @@ export const ROLES: Record<UserRole, { label: string; description: string; level
   intern: { label: 'Intern', description: 'Training and support', level: 20 },
 }
 
-export const ADMIN_ROLES: UserRole[] = ['super_admin', 'internal_admin']
-export const LEADER_ROLES: UserRole[] = ['school_leader', 'cause_leader']
-export const PARTNER_ROLES: UserRole[] = ['business_onboarding', 'influencer', 'affiliate']
-export const FIELD_ROLES: UserRole[] = ['volunteer', 'intern']
+export const ADMIN_ROLES: UserRole[] = ['admin', 'super_admin', 'internal_admin']
+export const LEADER_ROLES: UserRole[] = ['community', 'school_leader', 'cause_leader']
+export const PARTNER_ROLES: UserRole[] = ['launch_partner', 'business_onboarding', 'influencer', 'affiliate']
+export const FIELD_ROLES: UserRole[] = ['field', 'volunteer', 'intern']
 
 export function isAdmin(role: UserRole): boolean {
   return ADMIN_ROLES.includes(role)
@@ -30,11 +34,15 @@ export function hasMinLevel(role: UserRole, minLevel: number): boolean {
 
 // ─── Role theme colors ──────────────────────────────────────
 export const ROLE_THEMES: Record<UserRole, { primary: string; accent: string; bg: string; sidebar: string; label: string }> = {
+  admin:              { primary: '#1e3a8a', accent: '#1e40af', bg: 'bg-blue-50',    sidebar: 'border-blue-900',   label: 'Admin' },
   super_admin:        { primary: '#1e3a8a', accent: '#1e40af', bg: 'bg-blue-50',    sidebar: 'border-blue-900',   label: 'Super Admin' },
   internal_admin:     { primary: '#1d4ed8', accent: '#3b82f6', bg: 'bg-blue-50',    sidebar: 'border-blue-700',   label: 'Internal Admin' },
+  community:          { primary: '#db2777', accent: '#f472b6', bg: 'bg-pink-50',    sidebar: 'border-pink-600',   label: 'Community' },
   school_leader:      { primary: '#db2777', accent: '#f472b6', bg: 'bg-pink-50',    sidebar: 'border-pink-600',   label: 'School Leader' },
   cause_leader:       { primary: '#e11d48', accent: '#fb7185', bg: 'bg-rose-50',    sidebar: 'border-rose-600',   label: 'Cause Leader' },
   business:           { primary: '#d97706', accent: '#84cc16', bg: 'bg-amber-50',   sidebar: 'border-amber-500',  label: 'Business' },
+  field:              { primary: '#6366f1', accent: '#a5b4fc', bg: 'bg-indigo-50',  sidebar: 'border-indigo-400', label: 'Field' },
+  launch_partner:     { primary: '#b45309', accent: '#84cc16', bg: 'bg-amber-50',   sidebar: 'border-amber-600',  label: 'Launch Partner' },
   business_onboarding:{ primary: '#d97706', accent: '#65a30d', bg: 'bg-amber-50',   sidebar: 'border-amber-600',  label: 'Onboarding Partner' },
   influencer:         { primary: '#7c3aed', accent: '#a78bfa', bg: 'bg-violet-50',  sidebar: 'border-violet-500', label: 'Influencer' },
   affiliate:          { primary: '#4f46e5', accent: '#818cf8', bg: 'bg-indigo-50',  sidebar: 'border-indigo-500', label: 'Affiliate' },
@@ -44,6 +52,12 @@ export const ROLE_THEMES: Record<UserRole, { primary: string; accent: string; bg
 
 // ─── Role-specific tools/links ──────────────────────────────
 export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: string; description: string }[]> = {
+  admin: [
+    { label: 'User Management', href: '/admin/users', icon: 'Users', description: 'Manage all team members' },
+    { label: 'System Analytics', href: '/analytics', icon: 'TrendingUp', description: 'Platform-wide metrics' },
+    { label: 'Audit Log', href: '/admin/audit', icon: 'ScrollText', description: 'Review all actions' },
+    { label: 'All Campaigns', href: '/campaigns', icon: 'Megaphone', description: 'Manage campaigns' },
+  ],
   super_admin: [
     { label: 'User Management', href: '/admin/users', icon: 'Users', description: 'Manage all team members' },
     { label: 'System Analytics', href: '/analytics', icon: 'TrendingUp', description: 'Platform-wide metrics' },
@@ -68,11 +82,33 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'My QR codes' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Download materials' },
   ],
+  community: [
+    { label: 'Supporters', href: '/community/supporters', icon: 'Users', description: 'See your supporter list' },
+    { label: 'Share', href: '/community/share', icon: 'Megaphone', description: 'Grow your supporter base' },
+    { label: 'Activity', href: '/community/activity', icon: 'BarChart3', description: 'Track supporter growth' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Community mobilization materials' },
+  ],
   business: [
+    { label: 'Setup', href: '/portal/setup', icon: 'Rocket', description: 'Complete your business setup' },
     { label: 'My Business', href: '/portal/business', icon: 'Store', description: 'Update your business profile' },
     { label: 'My 100 List', href: '/portal/clients', icon: 'Users', description: 'Build your supporter list' },
+    { label: 'Grow with Other Businesses', href: '/portal/grow', icon: 'Megaphone', description: 'Invite nearby businesses' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Customer-facing materials only' },
     { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', description: 'Track invites and joins' },
+  ],
+  field: [
+    { label: 'My Businesses', href: '/workspace/businesses', icon: 'Store', description: 'Your active business list' },
+    { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', description: 'Generate tailored local scripts' },
+    { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', description: 'Record touchpoints' },
+    { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', description: 'Assigned work' },
+    { label: 'My Stats', href: '/analytics/me', icon: 'BarChart3', description: 'Track your impact' },
+  ],
+  launch_partner: [
+    { label: 'My City', href: '/partner/city', icon: 'MapPin', description: 'Watch your city performance' },
+    { label: 'Businesses', href: '/partner/businesses', icon: 'Store', description: 'Grow the business pipeline' },
+    { label: 'Community', href: '/partner/community', icon: 'Heart', description: 'Track schools and causes' },
+    { label: 'City Requests', href: '/partner/requests', icon: 'UserPlus', description: 'Request new city access' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Launch-partner materials' },
   ],
   business_onboarding: [
     { label: 'My Businesses', href: '/onboarding/business', icon: 'Store', description: 'Businesses I onboard' },
@@ -82,11 +118,10 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Onboarding materials' },
   ],
   influencer: [
-    { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', description: 'Create local business scripts' },
-    { label: 'My QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'Share & track' },
-    { label: 'Generate QR', href: '/qr/generator', icon: 'Plus', description: 'Create new QR' },
-    { label: 'My Stats', href: '/analytics', icon: 'BarChart3', description: 'Track your impact' },
-    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Promo materials' },
+    { label: 'Share Dashboard', href: '/influencer/share', icon: 'Megaphone', description: 'Drive local referrals' },
+    { label: 'My Links', href: '/influencer/links', icon: 'QrCode', description: 'Track personal share assets' },
+    { label: 'My Stats', href: '/influencer/stats', icon: 'BarChart3', description: 'Track your impact' },
+    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Referral materials' },
   ],
   affiliate: [
     { label: 'My QR Codes', href: '/qr/mine', icon: 'QrCode', description: 'Share & track' },
@@ -246,7 +281,15 @@ export const MATERIAL_USE_CASES = [
 ] as const
 
 export const MATERIAL_CATEGORIES = [
+  { value: 'customer_capture', label: 'Customer Capture' },
+  { value: 'localvip_live', label: 'LocalVIP Live' },
+  { value: 'business_to_business', label: 'Business to Business' },
   { value: 'business_to_consumer', label: 'Business to Consumer' },
+  { value: 'field_outreach', label: 'Field Outreach' },
+  { value: 'launch_partner', label: 'Launch Partner' },
+  { value: 'community_mobilization', label: 'Community Mobilization' },
+  { value: 'influencer_referral', label: 'Influencer Referral' },
+  { value: 'admin_internal', label: 'Admin Internal' },
   { value: 'business_onboarding', label: 'Business Onboarding' },
   { value: 'partner_outreach', label: 'Partner Outreach' },
   { value: 'internal_training', label: 'Internal Training' },

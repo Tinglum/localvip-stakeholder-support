@@ -146,7 +146,7 @@ export function BusinessJoinQrCard({
               Collect Customers
             </CardTitle>
             <p className="mt-2 text-sm text-surface-600">
-              Place this QR code where customers can scan it to get your offer.
+              Place this QR code where customers can scan it to get your pre-launch customer capture offer.
             </p>
           </div>
           <Badge variant="info">Build Your 100 List</Badge>
@@ -204,10 +204,17 @@ export function BusinessJoinQrCard({
           </div>
 
           <div className="rounded-[1.5rem] border border-surface-200 bg-white p-4">
+            {resource?.offerTitle && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Customer capture offer</p>
+                <p className="mt-2 text-base font-semibold text-surface-900">{resource.offerTitle}</p>
+                {resource.offerValue && <p className="mt-1 text-sm text-surface-600">{resource.offerValue}</p>}
+              </div>
+            )}
             <p className="text-sm font-semibold text-surface-900">What happens next</p>
             <div className="mt-3 space-y-2 text-sm text-surface-600">
               <p>1. A customer scans the QR.</p>
-              <p>2. They land on your offer page.</p>
+              <p>2. They land on your capture-offer page.</p>
               <p>3. Their contact is added straight into Our Clients.</p>
             </div>
           </div>

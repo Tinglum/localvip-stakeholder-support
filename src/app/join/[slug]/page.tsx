@@ -1,14 +1,13 @@
 import { notFound } from 'next/navigation'
 import { Store } from 'lucide-react'
 import { createServiceClient } from '@/lib/supabase/server'
+import type { Offer } from '@/lib/types/database'
 import {
   getBusinessJoinLogoUrl,
   getBusinessSupportLabel,
 } from '@/lib/business-join'
-import {
-  getBusinessOfferTitle,
-  getBusinessPortalData,
-} from '@/lib/business-portal'
+import { getBusinessPortalData } from '@/lib/business-portal'
+import { resolveBusinessOffer } from '@/lib/offers'
 import { resolveBusinessByJoinIdentifier } from '@/lib/server/business-capture'
 import { PublicBusinessJoinForm } from '@/components/business/public-business-join-form'
 
@@ -31,9 +30,11 @@ export default async function BusinessJoinPage({
   const causeName = business.linked_cause_id
     ? await getLinkedCauseName(supabase, business.linked_cause_id)
     : null
+  const { data: offerRows } = await supabase.from('offers').select('*').eq('business_id', business.id)
+  const captureOffer = resolveBusinessOffer(business, (offerRows || []) as Offer[], 'capture')
 
-  const offerTitle = getBusinessOfferTitle(business)
-  const offerValue = portal.offer_value || null
+  const offerTitle = captureOffer.headline
+  const offerValue = captureOffer.value_label || null
   const supportLabel = getBusinessSupportLabel(business, causeName)
 
   return (
@@ -57,7 +58,7 @@ export default async function BusinessJoinPage({
                   )}
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">LocalVIP Offer</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">Customer Capture Offer</p>
                   <h1 className="mt-2 text-3xl font-black tracking-tight text-white">{business.name}</h1>
                   <p className="mt-2 text-sm text-white/80">{supportLabel}</p>
                 </div>
@@ -68,7 +69,7 @@ export default async function BusinessJoinPage({
                 <p className="mt-2 text-2xl font-bold leading-tight text-white">{offerTitle}</p>
                 {offerValue && <p className="mt-2 text-base font-semibold text-emerald-100">{offerValue}</p>}
                 <p className="mt-3 text-sm leading-6 text-white/85">
-                  Enter your details below to register instantly and claim this offer in-store.
+                  Enter your details below to register instantly and claim this pre-launch offer in-store.
                 </p>
               </div>
             </div>
