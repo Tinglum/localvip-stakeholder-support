@@ -68,6 +68,23 @@ export type OfferType = 'capture' | 'cashback'
 export type OfferStatus = 'draft' | 'active' | 'paused' | 'archived'
 export type BusinessReferralStatus = 'draft' | 'sent' | 'responded' | 'converted' | 'closed'
 export type CityAccessRequestStatus = 'pending' | 'approved' | 'declined'
+export type StakeholderType =
+  | 'business'
+  | 'school'
+  | 'cause'
+  | 'launch_partner'
+  | 'influencer'
+  | 'field'
+  | 'community'
+export type MaterialLibraryFolder =
+  | 'share_with_customers'
+  | 'share_with_businesses'
+  | 'share_with_schools'
+  | 'share_with_parents'
+  | 'share_with_pta'
+export type MaterialTemplateOutputFormat = 'svg' | 'png' | 'pdf'
+export type GeneratedMaterialStatus = 'pending' | 'generated' | 'failed'
+export type AdminTaskStatus = 'needs_setup' | 'ready_to_generate' | 'generated' | 'failed'
 
 export interface Database {
   public: {
@@ -116,6 +133,31 @@ export interface Database {
         Row: StakeholderAssignment
         Insert: Omit<StakeholderAssignment, 'id' | 'created_at'>
         Update: Partial<Omit<StakeholderAssignment, 'id'>>
+      }
+      stakeholders: {
+        Row: Stakeholder
+        Insert: Omit<Stakeholder, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<Stakeholder, 'id'>>
+      }
+      stakeholder_codes: {
+        Row: StakeholderCode
+        Insert: Omit<StakeholderCode, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<StakeholderCode, 'id'>>
+      }
+      material_templates: {
+        Row: MaterialTemplate
+        Insert: Omit<MaterialTemplate, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<MaterialTemplate, 'id'>>
+      }
+      generated_materials: {
+        Row: GeneratedMaterial
+        Insert: Omit<GeneratedMaterial, 'id' | 'updated_at'>
+        Update: Partial<Omit<GeneratedMaterial, 'id'>>
+      }
+      admin_tasks: {
+        Row: AdminTask
+        Insert: Omit<AdminTask, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<AdminTask, 'id'>>
       }
       business_referrals: {
         Row: BusinessReferral
@@ -406,13 +448,86 @@ export interface StakeholderAssignment {
   created_at: string
 }
 
+export interface Stakeholder {
+  id: string
+  type: StakeholderType
+  name: string
+  city_id: string | null
+  owner_user_id: string | null
+  profile_id: string | null
+  business_id: string | null
+  cause_id: string | null
+  organization_id: string | null
+  status: EntityStatus
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface StakeholderCode {
+  id: string
+  stakeholder_id: string
+  referral_code: string
+  connection_code: string
+  join_url: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MaterialTemplate {
+  id: string
+  name: string
+  source_path: string | null
+  template_type: string
+  output_format: MaterialTemplateOutputFormat
+  audience_tags: string[]
+  stakeholder_types: StakeholderType[]
+  library_folder: MaterialLibraryFolder
+  qr_position_json: Record<string, unknown>
+  is_active: boolean
+  created_by: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GeneratedMaterial {
+  id: string
+  stakeholder_id: string
+  template_id: string
+  material_id: string | null
+  generated_file_url: string | null
+  generated_file_name: string | null
+  library_folder: MaterialLibraryFolder
+  tags: string[]
+  generation_status: GeneratedMaterialStatus
+  generation_error: string | null
+  generated_at: string | null
+  updated_at: string
+  metadata: Record<string, unknown> | null
+}
+
+export interface AdminTask {
+  id: string
+  stakeholder_id: string
+  task_type: string
+  title: string
+  status: AdminTaskStatus
+  payload_json: Record<string, unknown> | null
+  due_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface BusinessReferral {
   id: string
   source_business_id: string
   created_by: string | null
+  target_business_id?: string | null
   target_business_name: string
   target_city_id: string | null
   target_category: string | null
+  target_contact_id?: string | null
   target_contact_name: string | null
   target_contact_email: string | null
   target_contact_phone: string | null

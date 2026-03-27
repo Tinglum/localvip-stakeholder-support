@@ -5,7 +5,8 @@ import { createClient } from './client'
 import type {
   Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material, Organization,
   StakeholderAssignment, OnboardingFlow, OnboardingStep, OutreachScript, MaterialAssignment, QrCodeCollection,
-  Offer, BusinessReferral, CityAccessRequest, AuditLog,
+  Offer, BusinessReferral, CityAccessRequest, AuditLog, Stakeholder, StakeholderCode, MaterialTemplate,
+  GeneratedMaterial, AdminTask,
 } from '@/lib/types/database'
 
 // ─── Generic fetch hook ─────────────────────────────────────
@@ -186,6 +187,31 @@ export function useContactDelete() { return useSupabaseDelete('contacts') }
 export function useStakeholderAssignments(filters?: Record<string, string>) {
   return useSupabaseQuery<StakeholderAssignment>('stakeholder_assignments', { filters })
 }
+export function useStakeholders(filters?: Record<string, string>) {
+  return useSupabaseQuery<Stakeholder>('stakeholders', { filters, orderBy: 'updated_at' })
+}
+export function useStakeholderInsert() { return useSupabaseInsert<Stakeholder>('stakeholders') }
+export function useStakeholderUpdate() { return useSupabaseUpdate<Stakeholder>('stakeholders') }
+export function useStakeholderCodes(filters?: Record<string, string>) {
+  return useSupabaseQuery<StakeholderCode>('stakeholder_codes', { filters, orderBy: 'updated_at' })
+}
+export function useStakeholderCodeInsert() { return useSupabaseInsert<StakeholderCode>('stakeholder_codes') }
+export function useStakeholderCodeUpdate() { return useSupabaseUpdate<StakeholderCode>('stakeholder_codes') }
+export function useMaterialTemplates(filters?: Record<string, string>) {
+  return useSupabaseQuery<MaterialTemplate>('material_templates', { filters, orderBy: 'updated_at' })
+}
+export function useMaterialTemplateInsert() { return useSupabaseInsert<MaterialTemplate>('material_templates') }
+export function useMaterialTemplateUpdate() { return useSupabaseUpdate<MaterialTemplate>('material_templates') }
+export function useGeneratedMaterials(filters?: Record<string, string>) {
+  return useSupabaseQuery<GeneratedMaterial>('generated_materials', { filters, orderBy: 'updated_at' })
+}
+export function useGeneratedMaterialInsert() { return useSupabaseInsert<GeneratedMaterial>('generated_materials') }
+export function useGeneratedMaterialUpdate() { return useSupabaseUpdate<GeneratedMaterial>('generated_materials') }
+export function useAdminTasks(filters?: Record<string, string>) {
+  return useSupabaseQuery<AdminTask>('admin_tasks', { filters, orderBy: 'updated_at' })
+}
+export function useAdminTaskInsert() { return useSupabaseInsert<AdminTask>('admin_tasks') }
+export function useAdminTaskUpdate() { return useSupabaseUpdate<AdminTask>('admin_tasks') }
 export function useBusinessReferrals(filters?: Record<string, string>) {
   return useSupabaseQuery<BusinessReferral>('business_referrals', { filters })
 }

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import * as dotenv from 'dotenv'
 import * as path from 'path'
+import { createStakeholderRecord, upsertStakeholderCodesAndGenerate } from '../src/lib/server/material-engine'
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
@@ -43,6 +44,48 @@ async function upsert(table: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return
   const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' })
   if (error) throw error
+}
+
+async function ensureStakeholder(payload: {
+  type: 'business' | 'school' | 'cause' | 'launch_partner' | 'influencer' | 'field' | 'community'
+  name: string
+  cityId?: string | null
+  ownerUserId?: string | null
+  profileId?: string | null
+  businessId?: string | null
+  causeId?: string | null
+  organizationId?: string | null
+}) {
+  let query = supabase.from('stakeholders').select('*').limit(1)
+
+  if (payload.businessId) {
+    query = query.eq('business_id', payload.businessId)
+  } else if (payload.causeId) {
+    query = query.eq('cause_id', payload.causeId)
+  } else if (payload.profileId) {
+    query = query.eq('profile_id', payload.profileId)
+  } else {
+    query = query.eq('name', payload.name).eq('type', payload.type)
+  }
+
+  const { data: existing } = await query.maybeSingle()
+  if (existing) return existing
+
+  return createStakeholderRecord(supabase as any, {
+    type: payload.type,
+    name: payload.name,
+    cityId: payload.cityId || null,
+    ownerUserId: payload.ownerUserId || null,
+    profileId: payload.profileId || null,
+    businessId: payload.businessId || null,
+    causeId: payload.causeId || null,
+    organizationId: payload.organizationId || null,
+    status: 'active',
+    metadata: {
+      seeded: true,
+      source: 'seed-fixtures',
+    },
+  })
 }
 
 async function listAllAuthUsers() {
@@ -394,6 +437,158 @@ async function seedFixtures() {
     { id: sid(94, 12), user_id: profileId('alex@partner.com'), action: 'created_outreach_script', entity_type: 'outreach_script', entity_id: sid(84, 11), metadata: { source: 'seed-fixtures' } },
     { id: sid(94, 13), user_id: profileId('maya@localvip.com'), action: 'assigned_material', entity_type: 'material', entity_id: sid(70, 12), metadata: { source: 'seed-fixtures' } },
   ])
+
+  await upsert('material_templates', [
+    {
+      id: sid(110, 1),
+      name: 'Customer QR Poster',
+      source_path: null,
+      template_type: 'structured_svg',
+      output_format: 'svg',
+      audience_tags: ['customers'],
+      stakeholder_types: ['business'],
+      library_folder: 'share_with_customers',
+      qr_position_json: { x: 760, y: 930, width: 220, height: 220, canvas_width: 1080, canvas_height: 1440 },
+      is_active: true,
+      created_by: profileId('kenneth@localvip.com'),
+      metadata: {
+        eyebrow: 'LocalVIP',
+        headline: '{{stakeholder_name}}',
+        subheadline: '{{capture_offer_headline}}',
+        body: '{{capture_offer_description}}',
+        cta: 'Scan to claim your offer',
+        footer: '{{support_label}}',
+        qrCaption: 'Scan at the counter',
+        titlePattern: 'Poster – {{capture_offer_headline}}',
+        descriptionPattern: '{{capture_offer_headline}} already personalized for {{stakeholder_name}}.',
+      },
+    },
+    {
+      id: sid(110, 2),
+      name: 'Table Card',
+      source_path: null,
+      template_type: 'structured_svg',
+      output_format: 'svg',
+      audience_tags: ['customers'],
+      stakeholder_types: ['business'],
+      library_folder: 'share_with_customers',
+      qr_position_json: { x: 700, y: 880, width: 180, height: 180, canvas_width: 1080, canvas_height: 1440 },
+      is_active: true,
+      created_by: profileId('kenneth@localvip.com'),
+      metadata: {
+        eyebrow: 'Scan Here',
+        headline: '{{capture_offer_headline}}',
+        subheadline: '{{stakeholder_name}}',
+        body: 'Use this code to join our first 100 list and stay close to what we are building locally.',
+        cta: 'Join in 10 seconds',
+        footer: '{{support_label}}',
+        qrCaption: 'Open with your camera',
+        titlePattern: 'Table Card – {{stakeholder_name}}',
+        descriptionPattern: 'Small-format in-store QR card for {{stakeholder_name}}.',
+      },
+    },
+    {
+      id: sid(110, 3),
+      name: 'Invite Another Business Flyer',
+      source_path: null,
+      template_type: 'structured_svg',
+      output_format: 'svg',
+      audience_tags: ['businesses'],
+      stakeholder_types: ['business'],
+      library_folder: 'share_with_businesses',
+      qr_position_json: { x: 760, y: 930, width: 220, height: 220, canvas_width: 1080, canvas_height: 1440 },
+      is_active: true,
+      created_by: profileId('kenneth@localvip.com'),
+      metadata: {
+        eyebrow: 'Grow Together',
+        headline: 'Invite another business into LocalVIP',
+        subheadline: '{{stakeholder_name}} is already in motion',
+        body: 'Share this with a nearby business that would be a strong local fit. We are helping local businesses grow while supporting schools and causes in {{city_name}}.',
+        cta: 'Send the quick overview',
+        footer: '{{support_label}}',
+        qrCaption: 'Scan to see the overview',
+        titlePattern: 'Invite Another Business – {{stakeholder_name}}',
+        descriptionPattern: 'B2B invite flyer already personalized for {{stakeholder_name}}.',
+      },
+    },
+    {
+      id: sid(110, 4),
+      name: 'Support School Flyer',
+      source_path: null,
+      template_type: 'structured_svg',
+      output_format: 'svg',
+      audience_tags: ['parents'],
+      stakeholder_types: ['school', 'community'],
+      library_folder: 'share_with_parents',
+      qr_position_json: { x: 760, y: 930, width: 220, height: 220, canvas_width: 1080, canvas_height: 1440 },
+      is_active: true,
+      created_by: profileId('kenneth@localvip.com'),
+      metadata: {
+        eyebrow: 'Support Local Students',
+        headline: 'Support {{stakeholder_name}}',
+        subheadline: 'A quick action that helps families and classrooms',
+        body: 'Scan to join this school support page and help grow the local network behind {{stakeholder_name}} in {{city_name}}.',
+        cta: 'Support this school',
+        footer: '{{support_label}}',
+        qrCaption: 'Scan to join',
+        titlePattern: 'Parent Flyer – {{stakeholder_name}}',
+        descriptionPattern: 'Parent-friendly support flyer for {{stakeholder_name}}.',
+      },
+    },
+    {
+      id: sid(110, 5),
+      name: 'PTA Pitch Sheet',
+      source_path: null,
+      template_type: 'structured_svg',
+      output_format: 'svg',
+      audience_tags: ['pta'],
+      stakeholder_types: ['school', 'community'],
+      library_folder: 'share_with_pta',
+      qr_position_json: { x: 760, y: 930, width: 220, height: 220, canvas_width: 1080, canvas_height: 1440 },
+      is_active: true,
+      created_by: profileId('kenneth@localvip.com'),
+      metadata: {
+        eyebrow: 'PTA Ready',
+        headline: '{{stakeholder_name}}',
+        subheadline: 'A simple school-share page with one QR path',
+        body: 'Use this in PTA meetings, parent circles, and volunteer groups. The QR sends supporters straight into the school growth flow.',
+        cta: 'Show this at your next meeting',
+        footer: '{{support_label}}',
+        qrCaption: 'Scan to support',
+        titlePattern: 'PTA Flyer – {{stakeholder_name}}',
+        descriptionPattern: 'Structured PTA pitch flyer for {{stakeholder_name}}.',
+      },
+    },
+  ])
+
+  const lisaStakeholder = await ensureStakeholder({
+    type: 'business',
+    name: 'Main Street Bakery',
+    cityId: cityByName.get('Atlanta')?.id || null,
+    ownerUserId: profileId('owner@mainstreetbakery.com'),
+    profileId: profileId('owner@mainstreetbakery.com'),
+    businessId: businessId('Main Street Bakery'),
+  })
+
+  const mlkStakeholder = await ensureStakeholder({
+    type: 'school',
+    name: 'MLK Elementary School',
+    cityId: cityByName.get('Atlanta')?.id || null,
+    ownerUserId: profileId('principal@mlkschool.edu'),
+    profileId: profileId('principal@mlkschool.edu'),
+    causeId: causeId('MLK Elementary School'),
+    organizationId: '00000000-0000-0000-0000-100000000001',
+  })
+
+  await upsertStakeholderCodesAndGenerate(supabase as any, lisaStakeholder.id, profileId('kenneth@localvip.com'), {
+    referralCode: 'main-street-bakery',
+    connectionCode: 'main-street-bakery',
+  })
+
+  await upsertStakeholderCodesAndGenerate(supabase as any, mlkStakeholder.id, profileId('kenneth@localvip.com'), {
+    referralCode: 'mlk-support',
+    connectionCode: 'mlk-elementary-school',
+  })
 
   console.log('Fixture seed complete.')
 }
