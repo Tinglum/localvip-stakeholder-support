@@ -283,6 +283,8 @@ export function useMaterialAssignments(filters?: Record<string, string>) {
 
 export function useCauseUpdate() { return useSupabaseUpdate<Cause>('causes') }
 export function useStakeholderAssignmentInsert() { return useSupabaseInsert<StakeholderAssignment>('stakeholder_assignments') }
+export function useStakeholderAssignmentUpdate() { return useSupabaseUpdate<StakeholderAssignment>('stakeholder_assignments') }
+export function useStakeholderAssignmentDelete() { return useSupabaseDelete('stakeholder_assignments') }
 export function useAuditLogInsert() { return useSupabaseInsert<AuditLog>('audit_logs') }
 
 export function useNotes(filters?: Record<string, string>) {

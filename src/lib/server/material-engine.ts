@@ -84,10 +84,43 @@ interface RuntimeCanvasModule {
     getContext: (contextId: '2d') => any
     toBuffer: (mimeType: string) => Buffer
   }
-  loadImage: (source: string) => Promise<{
+  loadImage: (source: string | Buffer | Uint8Array | ArrayBufferLike) => Promise<{
     width: number
     height: number
   }>
+  PDFDocument: new (metadata?: {
+    title?: string
+    author?: string
+    creator?: string
+    producer?: string
+    rasterDPI?: number
+    encodingQuality?: number
+    compressionLevel?: number
+  } | null) => {
+    beginPage: (width: number, height: number, rect?: unknown) => any
+    endPage: () => void
+    close: () => Buffer
+  }
+}
+
+interface StructuredTemplateRenderState {
+  copy: TemplateCopyDefinition
+  valueMap: Record<string, string | null | undefined>
+  qrPosition: {
+    x: number
+    y: number
+    width: number
+    height: number
+    canvas_width: number
+    canvas_height: number
+  }
+  width: number
+  height: number
+  palette: ReturnType<typeof getPalette>
+  headlineLines: string[]
+  subheadlineLines: string[]
+  bodyLines: string[]
+  footerLines: string[]
 }
 
 const DEFAULT_QR_POSITION = {
@@ -98,6 +131,8 @@ const DEFAULT_QR_POSITION = {
   canvas_width: 1080,
   canvas_height: 1440,
 }
+
+let materialsBucketPrepared = false
 
 export async function createStakeholderRecord(
   supabase: ServiceSupabaseClient,
@@ -195,6 +230,8 @@ export async function generateMaterialsForStakeholder(
   const codes = await getStakeholderCode(supabase, stakeholder.id)
   if (!codes) throw new Error('Stakeholder codes are missing.')
 
+  await ensureMaterialsBucket(supabase)
+
   const context = await buildStakeholderMaterialContext(supabase, stakeholder, codes)
   const qrCode = await ensureStakeholderQrCode(supabase, context, actorId)
   const templates = await getTemplatesForStakeholder(supabase, stakeholder.type, options?.templateId)
@@ -289,7 +326,10 @@ async function generateOneMaterial(
     contentType = 'image/png'
     fileBuffer = new Uint8Array(await renderStructuredTemplatePng(template, context, qrDataUrl))
   } else if (template.output_format === 'pdf') {
-    throw new Error('PDF output needs a server-side PDF renderer dependency before it can export final files automatically.')
+    fileExtension = 'pdf'
+    contentType = 'application/pdf'
+    materialType = 'pdf'
+    fileBuffer = new Uint8Array(await renderStructuredTemplatePdf(template, context, qrDataUrl))
   }
 
   const filePath = `generated-materials/${context.stakeholder.id}/${fileBase}.${fileExtension}`
@@ -667,6 +707,27 @@ async function getStakeholderQrCode(
   }) || null
 }
 
+async function ensureMaterialsBucket(supabase: ServiceSupabaseClient) {
+  if (materialsBucketPrepared) return
+
+  const storage = supabase.storage as any
+  const bucketName = 'materials'
+  const { data, error } = await storage.getBucket(bucketName)
+
+  if (!error && data) {
+    materialsBucketPrepared = true
+    return
+  }
+
+  const createResult = await storage.createBucket(bucketName, { public: true })
+
+  if (createResult.error && !String(createResult.error.message || '').toLowerCase().includes('already exists')) {
+    throw new Error(`The materials storage bucket is not ready: ${createResult.error.message}`)
+  }
+
+  materialsBucketPrepared = true
+}
+
 async function getBusinessById(supabase: ServiceSupabaseClient, id: string) {
   const { data } = await supabase.from('businesses').select('*').eq('id', id).single()
   return (data || null) as Business | null
@@ -806,16 +867,19 @@ function renderStructuredTemplateSvg(
   context: StakeholderMaterialContext,
   qrDataUrl: string,
 ) {
-  const copy = getTemplateCopy(template)
-  const valueMap = { ...getTemplateValueMap(context), template_name: template.name }
-  const qrPosition = normalizeQrPosition(template.qr_position_json)
-  const width = copy.canvasWidth || qrPosition.canvas_width || DEFAULT_QR_POSITION.canvas_width
-  const height = copy.canvasHeight || qrPosition.canvas_height || DEFAULT_QR_POSITION.canvas_height
-  const palette = getPalette(context.brand, copy)
-  const headlineLines = wrapText(fillTemplateText(copy.headline, valueMap), 18)
-  const subheadlineLines = wrapText(fillTemplateText(copy.subheadline, valueMap), 24)
-  const bodyLines = wrapText(fillTemplateText(copy.body, valueMap), 44)
-  const footerLines = wrapText(fillTemplateText(copy.footer, valueMap), 36)
+  const renderState = buildStructuredTemplateRenderState(template, context)
+  const {
+    copy,
+    valueMap,
+    qrPosition,
+    width,
+    height,
+    palette,
+    headlineLines,
+    subheadlineLines,
+    bodyLines,
+    footerLines,
+  } = renderState
   const backgroundImage = template.source_path
     ? `<image href="${escapeXml(template.source_path)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="0.18" />`
     : ''
@@ -853,18 +917,96 @@ async function renderStructuredTemplatePng(
   qrDataUrl: string,
 ) {
   const { createCanvas, loadImage } = getRuntimeCanvasModule()
+  const renderState = buildStructuredTemplateRenderState(template, context)
+  const { width, height } = renderState
+  const canvas = createCanvas(width, height)
+  const ctx = canvas.getContext('2d')
+
+  await drawStructuredTemplateOnContext(ctx, template, renderState, qrDataUrl, loadImage)
+
+  return canvas.toBuffer('image/png')
+}
+
+async function renderStructuredTemplatePdf(
+  template: MaterialTemplate,
+  context: StakeholderMaterialContext,
+  qrDataUrl: string,
+) {
+  const { PDFDocument, loadImage } = getRuntimeCanvasModule()
+  const renderState = buildStructuredTemplateRenderState(template, context)
+  const { width, height, qrPosition } = renderState
+  const pdf = new PDFDocument({
+    title: `${context.stakeholder.name} - ${template.name}`,
+    author: context.ownerName,
+    creator: 'LocalVIP Material Engine',
+    producer: 'LocalVIP Material Engine',
+    rasterDPI: 144,
+    encodingQuality: 101,
+    compressionLevel: 6,
+  })
+  const ctx = pdf.beginPage(width, height)
+
+  await drawStructuredTemplateOnContext(ctx, template, renderState, qrDataUrl, loadImage)
+
+  if (typeof ctx.annotateLinkUrl === 'function') {
+    ctx.annotateLinkUrl(
+      qrPosition.x - 12,
+      qrPosition.y - 12,
+      qrPosition.x + qrPosition.width + 12,
+      qrPosition.y + qrPosition.height + 12,
+      context.joinUrl,
+    )
+    ctx.annotateLinkUrl(88, height - 232, width - 332, height - 120, context.joinUrl)
+  }
+
+  pdf.endPage()
+  return pdf.close()
+}
+
+function buildStructuredTemplateRenderState(
+  template: MaterialTemplate,
+  context: StakeholderMaterialContext,
+): StructuredTemplateRenderState {
   const copy = getTemplateCopy(template)
   const valueMap = { ...getTemplateValueMap(context), template_name: template.name }
   const qrPosition = normalizeQrPosition(template.qr_position_json)
   const width = copy.canvasWidth || qrPosition.canvas_width || DEFAULT_QR_POSITION.canvas_width
   const height = copy.canvasHeight || qrPosition.canvas_height || DEFAULT_QR_POSITION.canvas_height
   const palette = getPalette(context.brand, copy)
-  const headlineLines = wrapText(fillTemplateText(copy.headline, valueMap), 18)
-  const subheadlineLines = wrapText(fillTemplateText(copy.subheadline, valueMap), 24)
-  const bodyLines = wrapText(fillTemplateText(copy.body, valueMap), 44)
-  const footerLines = wrapText(fillTemplateText(copy.footer, valueMap), 36)
-  const canvas = createCanvas(width, height)
-  const ctx = canvas.getContext('2d')
+
+  return {
+    copy,
+    valueMap,
+    qrPosition,
+    width,
+    height,
+    palette,
+    headlineLines: wrapText(fillTemplateText(copy.headline, valueMap), 18),
+    subheadlineLines: wrapText(fillTemplateText(copy.subheadline, valueMap), 24),
+    bodyLines: wrapText(fillTemplateText(copy.body, valueMap), 44),
+    footerLines: wrapText(fillTemplateText(copy.footer, valueMap), 36),
+  }
+}
+
+async function drawStructuredTemplateOnContext(
+  ctx: any,
+  template: MaterialTemplate,
+  renderState: StructuredTemplateRenderState,
+  qrDataUrl: string,
+  loadImage: RuntimeCanvasModule['loadImage'],
+) {
+  const {
+    copy,
+    valueMap,
+    qrPosition,
+    width,
+    height,
+    palette,
+    headlineLines,
+    subheadlineLines,
+    bodyLines,
+    footerLines,
+  } = renderState
 
   const backgroundGradient = ctx.createLinearGradient(0, 0, width, height)
   backgroundGradient.addColorStop(0, palette.background)
@@ -926,8 +1068,6 @@ async function renderStructuredTemplatePng(
   ctx.fillText(fillTemplateText(copy.cta, valueMap), 124, height - 164)
 
   drawTextBlockCanvas(ctx, footerLines, 88, height - 76, 24, palette.text, 500)
-
-  return canvas.toBuffer('image/png')
 }
 
 function normalizeQrPosition(raw: unknown) {

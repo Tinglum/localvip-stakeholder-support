@@ -3,17 +3,13 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
+  AlertTriangle,
   ArrowRight,
   Building2,
   CheckCircle2,
-  ClipboardList,
   Clock3,
-  FileText,
-  GraduationCap,
+  Heart,
   Loader2,
-  MapPin,
-  MessageSquareText,
-  Send,
   Sparkles,
   Target,
 } from 'lucide-react'
@@ -25,201 +21,151 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
 import { useAuth } from '@/lib/auth/context'
 import {
-  useBusinesses,
-  useCauses,
-  useCities,
-  useOutreach,
-  useOutreachScripts,
-  useStakeholderAssignments,
-  useTasks,
-} from '@/lib/supabase/hooks'
-import { ONBOARDING_STAGES } from '@/lib/constants'
-import { formatDateTime } from '@/lib/utils'
-import { normalizeBusinessCategory, OUTREACH_SCRIPT_STATUS_OPTIONS } from '@/lib/outreach-script-engine'
-import type { Business, OutreachActivity, OutreachScript, Task } from '@/lib/types/database'
-
-const STAGE_VARIANT: Record<string, 'default' | 'info' | 'warning' | 'success' | 'danger'> = {
-  lead: 'default',
-  contacted: 'info',
-  interested: 'info',
-  in_progress: 'warning',
-  onboarded: 'success',
-  live: 'success',
-  paused: 'warning',
-  declined: 'danger',
-}
-
-function getBusinessField(metadata: Record<string, unknown> | null, keys: string[]) {
-  if (!metadata) return ''
-  for (const key of keys) {
-    const value = metadata[key]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  return ''
-}
-
-function relativeTime(date: string | null | undefined) {
-  if (!date) return 'Not yet logged'
-  const now = Date.now()
-  const target = new Date(date).getTime()
-  const diffHours = Math.floor((now - target) / (1000 * 60 * 60))
-  if (diffHours < 1) return 'Just now'
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
-  return formatDateTime(date)
-}
-
-function toTimestamp(value: string | null | undefined) {
-  if (!value) return 0
-  const time = new Date(value).getTime()
-  return Number.isNaN(time) ? 0 : time
-}
-
-function scriptHref(businessId: string) {
-  return `/crm/scripts?business=${encodeURIComponent(businessId)}`
-}
+  buildBusinessQueueState,
+  buildCauseQueueState,
+  formatDueLabel,
+  getAccessibleCityIds,
+  getUrgencyVariant,
+} from '@/lib/claimed-stakeholder-workflow'
+import { useBusinesses, useCauses, useCities, useContacts, useOutreach, useOutreachScripts, useStakeholderAssignments, useTasks } from '@/lib/supabase/hooks'
 
 export function FieldOutreachDashboardPage() {
   const { profile } = useAuth()
+  const { data: cities } = useCities()
   const { data: businesses, loading: businessesLoading } = useBusinesses()
-  const { data: assignments } = useStakeholderAssignments({ entity_type: 'business', stakeholder_id: profile.id })
+  const { data: causes, loading: causesLoading } = useCauses()
+  const { data: contacts } = useContacts()
+  const { data: cityAssignments } = useStakeholderAssignments({ stakeholder_id: profile.id, entity_type: 'city' })
+  const { data: businessAssignments } = useStakeholderAssignments({ stakeholder_id: profile.id, entity_type: 'business' })
+  const { data: causeAssignments } = useStakeholderAssignments({ stakeholder_id: profile.id, entity_type: 'cause' })
   const { data: tasks, loading: tasksLoading } = useTasks({ assigned_to: profile.id })
   const { data: outreach, loading: outreachLoading } = useOutreach({ performed_by: profile.id })
   const { data: scripts, loading: scriptsLoading } = useOutreachScripts({ created_by: profile.id })
-  const { data: cities } = useCities()
-  const { data: causes } = useCauses()
 
-  const cityMap = React.useMemo(() => {
-    const map: Record<string, string> = {}
-    for (const city of cities) map[city.id] = `${city.name}, ${city.state}`
-    return map
-  }, [cities])
+  const accessibleCityIds = React.useMemo(
+    () => getAccessibleCityIds(profile, cityAssignments),
+    [cityAssignments, profile]
+  )
+  const cityMap = React.useMemo(() => new Map(cities.map((city) => [city.id, `${city.name}, ${city.state}`])), [cities])
 
-  const causeMap = React.useMemo(() => {
-    const map: Record<string, string> = {}
-    for (const cause of causes) map[cause.id] = cause.name
-    return map
-  }, [causes])
-
-  const tasksByBusiness = React.useMemo(() => {
-    const map: Record<string, Task[]> = {}
-    for (const task of tasks) {
-      if (task.entity_type !== 'business' || !task.entity_id) continue
-      if (!map[task.entity_id]) map[task.entity_id] = []
-      map[task.entity_id].push(task)
+  const businessAssignmentMap = React.useMemo(() => {
+    const map = new Map<string, (typeof businessAssignments)[number]>()
+    for (const assignment of businessAssignments) {
+      if (assignment.status === 'active') map.set(assignment.entity_id, assignment)
     }
-    Object.values(map).forEach((items) => {
-      items.sort((left, right) => {
-        const leftTime = toTimestamp(left.due_date || left.created_at)
-        const rightTime = toTimestamp(right.due_date || right.created_at)
-        return leftTime - rightTime
-      })
-    })
     return map
+  }, [businessAssignments])
+
+  const causeAssignmentMap = React.useMemo(() => {
+    const map = new Map<string, (typeof causeAssignments)[number]>()
+    for (const assignment of causeAssignments) {
+      if (assignment.status === 'active') map.set(assignment.entity_id, assignment)
+    }
+    return map
+  }, [causeAssignments])
+
+  const contactsByBusiness = React.useMemo(() => {
+    const map = new Map<string, number>()
+    for (const contact of contacts) {
+      if (!contact.business_id) continue
+      map.set(contact.business_id, (map.get(contact.business_id) || 0) + 1)
+    }
+    return map
+  }, [contacts])
+
+  const tasksByEntity = React.useMemo(() => {
+    const businessMap = new Map<string, typeof tasks>()
+    const causeMap = new Map<string, typeof tasks>()
+    for (const task of tasks) {
+      if (!task.entity_id) continue
+      if (task.entity_type === 'business') businessMap.set(task.entity_id, [...(businessMap.get(task.entity_id) || []), task])
+      if (task.entity_type === 'cause') causeMap.set(task.entity_id, [...(causeMap.get(task.entity_id) || []), task])
+    }
+    return { businessMap, causeMap }
   }, [tasks])
 
-  const latestOutreachByBusiness = React.useMemo(() => {
-    const map: Record<string, OutreachActivity> = {}
+  const outreachByEntity = React.useMemo(() => {
+    const businessMap = new Map<string, typeof outreach>()
+    const causeMap = new Map<string, typeof outreach>()
     for (const item of outreach) {
-      if (!item.business_id) continue
-      const current = map[item.business_id]
-      if (!current || toTimestamp(item.created_at) > toTimestamp(current.created_at)) {
-        map[item.business_id] = item
-      }
+      if (item.business_id) businessMap.set(item.business_id, [...(businessMap.get(item.business_id) || []), item])
+      if (item.cause_id) causeMap.set(item.cause_id, [...(causeMap.get(item.cause_id) || []), item])
     }
-    return map
+    return { businessMap, causeMap }
   }, [outreach])
 
-  const latestScriptByBusiness = React.useMemo(() => {
-    const map: Record<string, OutreachScript> = {}
-    for (const item of scripts) {
-      const current = map[item.business_id]
-      if (!current || toTimestamp(item.created_at) > toTimestamp(current.created_at)) {
-        map[item.business_id] = item
-      }
-    }
-    return map
-  }, [scripts])
-
-  const workspaceBusinessIds = React.useMemo(() => {
-    const ids = new Set<string>()
-    assignments.forEach((assignment) => ids.add(assignment.entity_id))
-    businesses.forEach((business) => {
-      if (business.owner_id === profile.id) ids.add(business.id)
-    })
-    tasks.forEach((task) => {
-      if (task.entity_type === 'business' && task.entity_id) ids.add(task.entity_id)
-    })
-    outreach.forEach((item) => {
-      if (item.business_id) ids.add(item.business_id)
-    })
-    scripts.forEach((item) => ids.add(item.business_id))
-    return ids
-  }, [assignments, businesses, outreach, profile.id, scripts, tasks])
-
-  const focusBusinesses = React.useMemo(() => {
+  const claimedBusinesses = React.useMemo(() => {
     return businesses
-      .filter((business) => workspaceBusinessIds.has(business.id))
-      .map((business) => {
-        const pendingTasks = (tasksByBusiness[business.id] || []).filter((task) => task.status !== 'completed' && task.status !== 'cancelled')
-        const lastOutreach = latestOutreachByBusiness[business.id] || null
-        const lastScript = latestScriptByBusiness[business.id] || null
-        const categoryKey = normalizeBusinessCategory(business.category)
-        const lastTouch = Math.max(
-          toTimestamp(lastOutreach?.created_at),
-          toTimestamp(lastScript?.created_at),
-        )
+      .filter((business) => businessAssignmentMap.has(business.id))
+      .map((business) => ({
+        business,
+        queue: buildBusinessQueueState({
+          business,
+          assignment: businessAssignmentMap.get(business.id),
+          contactsCount: contactsByBusiness.get(business.id) || 0,
+          tasks: tasksByEntity.businessMap.get(business.id) || [],
+          outreach: outreachByEntity.businessMap.get(business.id) || [],
+        }),
+      }))
+  }, [businessAssignmentMap, businesses, contactsByBusiness, outreachByEntity.businessMap, tasksByEntity.businessMap])
 
-        return {
-          ...business,
-          avgTicket: getBusinessField(business.metadata, ['avg_ticket', 'average_ticket', 'avg_spend']) || 'Use category default',
-          cityLabel: business.city_id ? cityMap[business.city_id] || 'No city set' : 'No city set',
-          linkedCauseName: business.linked_cause_id ? causeMap[business.linked_cause_id] || 'Linked cause' : 'No cause linked yet',
-          lastOutreach,
-          lastScript,
-          lastTouch,
-          pendingTasks,
-          primaryProduct: getBusinessField(business.metadata, ['specific_product', 'offer_title', 'primary_product']) || normalizeBusinessCategory(business.category).replace(/_/g, ' '),
-          categoryKey,
-        }
-      })
+  const claimedCauses = React.useMemo(() => {
+    return causes
+      .filter((cause) => causeAssignmentMap.has(cause.id))
+      .map((cause) => ({
+        cause,
+        queue: buildCauseQueueState({
+          cause,
+          assignment: causeAssignmentMap.get(cause.id),
+          tasks: tasksByEntity.causeMap.get(cause.id) || [],
+          outreach: outreachByEntity.causeMap.get(cause.id) || [],
+        }),
+      }))
+  }, [causeAssignmentMap, causes, outreachByEntity.causeMap, tasksByEntity.causeMap])
+
+  const nextActions = React.useMemo(() => {
+    const items = [
+      ...claimedBusinesses.map((item) => ({
+        id: `business-${item.business.id}`,
+        type: 'Business',
+        name: item.business.name,
+        href: `/crm/scripts?business=${encodeURIComponent(item.business.id)}`,
+        city: item.business.city_id ? cityMap.get(item.business.city_id) || 'City not set' : 'City not set',
+        queue: item.queue,
+      })),
+      ...claimedCauses.map((item) => ({
+        id: `cause-${item.cause.id}`,
+        type: item.cause.type === 'school' ? 'School' : 'Cause',
+        name: item.cause.name,
+        href: `/crm/causes/${item.cause.id}`,
+        city: item.cause.city_id ? cityMap.get(item.cause.city_id) || 'City not set' : 'City not set',
+        queue: item.queue,
+      })),
+    ]
+
+    return items
       .sort((left, right) => {
-        if (right.pendingTasks.length !== left.pendingTasks.length) {
-          return right.pendingTasks.length - left.pendingTasks.length
-        }
-        return right.lastTouch - left.lastTouch
+        const urgencyWeight = { blocked: 0, overdue: 1, today: 2, upcoming: 3, on_track: 4 }
+        const urgencyGap = urgencyWeight[left.queue.urgency] - urgencyWeight[right.queue.urgency]
+        if (urgencyGap !== 0) return urgencyGap
+        return (left.queue.nextActionDueDate || '').localeCompare(right.queue.nextActionDueDate || '')
       })
-  }, [businesses, causeMap, cityMap, latestOutreachByBusiness, latestScriptByBusiness, tasksByBusiness, workspaceBusinessIds])
+      .slice(0, 8)
+  }, [cityMap, claimedBusinesses, claimedCauses])
 
-  const pendingBusinessTasks = React.useMemo(
-    () => tasks
-      .filter((task) => task.entity_type === 'business' && task.status !== 'completed' && task.status !== 'cancelled')
-      .sort((left, right) => toTimestamp(left.due_date || left.created_at) - toTimestamp(right.due_date || right.created_at)),
-    [tasks]
+  const blockedItems = React.useMemo(
+    () => nextActions.filter((item) => item.queue.blockedReason || item.queue.waitingOn),
+    [nextActions]
   )
 
-  const recentScripts = React.useMemo(
-    () => [...scripts]
-      .sort((left, right) => toTimestamp(right.created_at) - toTimestamp(left.created_at))
-      .slice(0, 4),
-    [scripts]
-  )
-
-  const todayPositiveSignals = React.useMemo(
-    () => outreach.filter((item) => item.outreach_status === 'interested' || item.outreach_status === 'replied').length,
-    [outreach]
-  )
-
-  const loading = businessesLoading || tasksLoading || outreachLoading || scriptsLoading
-  const primaryBusiness = focusBusinesses[0] || null
-  const myCityLabel = profile.city_id ? cityMap[profile.city_id] || 'Your city' : 'Your city'
+  const loading = businessesLoading || causesLoading || tasksLoading || outreachLoading || scriptsLoading
+  const myCityLabels = accessibleCityIds.map((cityId) => cityMap.get(cityId)).filter(Boolean) as string[]
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
-        <span className="ml-3 text-sm text-surface-500">Loading your outreach workspace...</span>
+        <span className="ml-3 text-sm text-surface-500">Loading your claimed workflow...</span>
       </div>
     )
   }
@@ -227,20 +173,20 @@ export function FieldOutreachDashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Outreach Workspace"
-        description="Generate local scripts fast, stay on top of follow-ups, and keep every business touchpoint moving."
+        title="My Claimed Workflow"
+        description="Your dashboard is now a work queue: what you own, what is next, and what is blocked."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link href={primaryBusiness ? scriptHref(primaryBusiness.id) : '/crm/scripts'}>
-                Open Script Engine
+              <Link href="/workspace/businesses">
+                Claim Businesses
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/crm/outreach">
-                View Outreach Log
-                <Send className="h-4 w-4" />
+              <Link href="/workspace/community">
+                Claim Schools / Causes
+                <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
           </div>
@@ -248,288 +194,203 @@ export function FieldOutreachDashboardPage() {
       />
 
       <Card className="overflow-hidden border-indigo-100 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.14),_transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(238,242,255,0.92))] shadow-panel">
-        <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.25fr_0.75fr] lg:p-7">
+        <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-4">
-            <Badge variant="info" className="w-fit">Intern Outreach Script Engine</Badge>
+            <Badge variant="info" className="w-fit">Execution-first dashboard</Badge>
             <div className="space-y-2">
               <h2 className="max-w-3xl text-3xl font-semibold tracking-tight text-surface-900">
-                Start with the businesses you already have in motion and turn each conversation into a stronger local ask.
+                Everything you have claimed should move because of what you do next.
               </h2>
               <p className="max-w-2xl text-sm leading-6 text-surface-600">
-                You are working from {myCityLabel}. Pick a business, add the real school or cause connection, choose Good, Better, Best, or Ultra,
-                then copy the script and log the result without leaving the support system.
+                You can claim businesses and schools / causes inside {myCityLabels.join(' / ') || 'your approved city footprint'}, own the next step, use the right scripts and materials, and keep every stakeholder moving toward live.
               </p>
             </div>
-
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl border border-white/80 bg-white/70 px-4 py-4 shadow-sm backdrop-blur">
-                <p className="text-xs font-medium uppercase tracking-wide text-surface-400">1. Pick a Business</p>
-                <p className="mt-2 text-sm text-surface-800">Search the CRM or jump into one of your active businesses below.</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Role</p>
+                <p className="mt-2 text-sm text-surface-800">Role controls capability, not ownership.</p>
               </div>
               <div className="rounded-2xl border border-white/80 bg-white/70 px-4 py-4 shadow-sm backdrop-blur">
-                <p className="text-xs font-medium uppercase tracking-wide text-surface-400">2. Add Real Context</p>
-                <p className="mt-2 text-sm text-surface-800">Use your school, city, neighborhood, and personal connection so it sounds believable.</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Claim</p>
+                <p className="mt-2 text-sm text-surface-800">Claiming makes that stakeholder your responsibility.</p>
               </div>
               <div className="rounded-2xl border border-white/80 bg-white/70 px-4 py-4 shadow-sm backdrop-blur">
-                <p className="text-xs font-medium uppercase tracking-wide text-surface-400">3. Copy + Log</p>
-                <p className="mt-2 text-sm text-surface-800">Every script you use can be copied, edited, and pushed straight back into CRM history.</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Stage</p>
+                <p className="mt-2 text-sm text-surface-800">Stage determines the next real action and what is blocking it.</p>
               </div>
             </div>
           </div>
-
-          <div className="rounded-3xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-            <div className="flex items-center gap-2 text-sm font-medium text-indigo-700">
-              <Target className="h-4 w-4" />
-              Best Next Move
-            </div>
-
-            {primaryBusiness ? (
-              <div className="mt-4 space-y-4">
-                <div>
-                  <p className="text-xl font-semibold text-surface-900">{primaryBusiness.name}</p>
-                  <p className="mt-1 text-sm text-surface-500">{primaryBusiness.cityLabel} / {primaryBusiness.category || 'Local business'}</p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={STAGE_VARIANT[primaryBusiness.stage] || 'default'}>
-                    {ONBOARDING_STAGES[primaryBusiness.stage]?.label || primaryBusiness.stage}
-                  </Badge>
-                  <Badge variant="outline">{primaryBusiness.linkedCauseName}</Badge>
-                </div>
-
-                <div className="rounded-2xl bg-surface-50 px-4 py-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Why this is first</p>
-                  <p className="mt-2 text-sm leading-6 text-surface-700">
-                    {primaryBusiness.pendingTasks.length > 0
-                      ? `${primaryBusiness.pendingTasks.length} follow-up item${primaryBusiness.pendingTasks.length > 1 ? 's are' : ' is'} waiting on this business.`
-                      : 'This is one of your most active businesses right now, so it is the fastest way to keep momentum going.'}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button asChild className="flex-1">
-                    <Link href={scriptHref(primaryBusiness.id)}>
-                      Generate Script
-                      <Sparkles className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" className="flex-1">
-                    <Link href={`/crm/businesses/${primaryBusiness.id}`}>
-                      Open Business
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <EmptyState
-                icon={<FileText className="h-6 w-6" />}
-                title="Start from the full script engine"
-                description="You can still search the central CRM, pick any business, and generate a tailored script right away."
-                action={{
-                  label: 'Open Outreach Scripts',
-                  onClick: () => { window.location.href = '/crm/scripts' },
-                }}
-                className="py-10"
-              />
-            )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StatCard label="Claimed businesses" value={claimedBusinesses.length} icon={<Building2 className="h-5 w-5" />} />
+            <StatCard label="Claimed schools / causes" value={claimedCauses.length} icon={<Heart className="h-5 w-5" />} />
+            <StatCard label="Blocked / waiting" value={blockedItems.length} icon={<AlertTriangle className="h-5 w-5" />} />
+            <StatCard label="Scripts used" value={scripts.length} icon={<Sparkles className="h-5 w-5" />} />
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Businesses In Play" value={focusBusinesses.length} icon={<Building2 className="h-5 w-5" />} />
-        <StatCard label="Scripts Used" value={scripts.length} icon={<FileText className="h-5 w-5" />} />
-        <StatCard label="Follow-Ups Due" value={pendingBusinessTasks.length} icon={<Clock3 className="h-5 w-5" />} />
-        <StatCard label="Positive Signals" value={todayPositiveSignals} icon={<CheckCircle2 className="h-5 w-5" />} />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
-              <CardTitle>Businesses In Play</CardTitle>
-              <CardDescription>The businesses currently tied to your scripts, follow-ups, assignments, or outreach history.</CardDescription>
+              <CardTitle>My Next Actions</CardTitle>
+              <CardDescription>The next steps that are actually yours right now.</CardDescription>
             </div>
             <Button asChild variant="outline" size="sm">
-              <Link href="/crm/scripts">
-                Search Full CRM
+              <Link href="/crm/tasks">
+                My Tasks
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {focusBusinesses.length === 0 ? (
+          <CardContent className="space-y-3">
+            {nextActions.length === 0 ? (
               <EmptyState
-                icon={<MessageSquareText className="h-6 w-6" />}
-                title="No active businesses yet"
-                description="Open the script engine, search the CRM, and start building outreach around the businesses you want to move first."
-                action={{
-                  label: 'Open Script Engine',
-                  onClick: () => { window.location.href = '/crm/scripts' },
-                }}
-                className="py-12"
+                icon={<Target className="h-6 w-6" />}
+                title="Claim your first stakeholder"
+                description="Once you claim a business or school / cause, the next actions will show up here."
               />
             ) : (
-              focusBusinesses.slice(0, 6).map((business) => (
-                <div key={business.id} className="rounded-2xl border border-surface-200 bg-surface-0 p-4 shadow-sm transition-shadow hover:shadow-card-hover">
+              nextActions.map((item) => (
+                <div key={item.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-base font-semibold text-surface-900">{business.name}</p>
-                        <Badge variant={STAGE_VARIANT[business.stage] || 'default'}>
-                          {ONBOARDING_STAGES[business.stage]?.label || business.stage}
-                        </Badge>
+                        <p className="text-sm font-semibold text-surface-900">{item.name}</p>
+                        <Badge variant={getUrgencyVariant(item.queue.urgency)}>{item.queue.urgencyLabel}</Badge>
+                        <Badge variant="outline">{item.type}</Badge>
                       </div>
-                      <p className="mt-1 text-sm text-surface-500">{business.category || 'Local business'} / {business.cityLabel}</p>
+                      <p className="mt-1 text-xs text-surface-500">{item.city} / {item.queue.workflowLabel}</p>
                     </div>
-                    <Badge variant="outline">{business.linkedCauseName}</Badge>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <div className="rounded-xl bg-surface-50 px-3 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Product Focus</p>
-                      <p className="mt-2 text-sm font-medium text-surface-800">{business.primaryProduct}</p>
-                    </div>
-                    <div className="rounded-xl bg-surface-50 px-3 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Average Spend</p>
-                      <p className="mt-2 text-sm font-medium text-surface-800">{business.avgTicket}</p>
-                    </div>
-                    <div className="rounded-xl bg-surface-50 px-3 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Last Touch</p>
-                      <p className="mt-2 text-sm font-medium text-surface-800">{relativeTime((business.lastOutreach || business.lastScript)?.created_at)}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-surface-500">
-                    <span className="inline-flex items-center gap-1.5">
-                      <ClipboardList className="h-3.5 w-3.5" />
-                      {business.pendingTasks.length} pending task{business.pendingTasks.length === 1 ? '' : 's'}
-                    </span>
-                    {business.lastScript && (
-                      <span className="inline-flex items-center gap-1.5">
-                        <FileText className="h-3.5 w-3.5" />
-                        Last script: {business.lastScript.script_tier.toUpperCase()} / {OUTREACH_SCRIPT_STATUS_OPTIONS.find((item) => item.value === business.lastScript.status)?.label || business.lastScript.status}
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1.5">
-                      <GraduationCap className="h-3.5 w-3.5" />
-                      {normalizeBusinessCategory(business.category).replace(/_/g, ' ')}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button asChild size="sm">
-                      <Link href={scriptHref(business.id)}>
-                        Generate Script
-                        <Sparkles className="h-3.5 w-3.5" />
-                      </Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/crm/businesses/${business.id}`}>
-                        Open Business
+                    <Button asChild variant="ghost" size="sm">
+                      <Link href={item.href}>
+                        Open
                         <ArrowRight className="h-3.5 w-3.5" />
                       </Link>
                     </Button>
                   </div>
+                  <p className="mt-3 text-sm leading-6 text-surface-700">{item.queue.nextAction}</p>
+                  <p className="mt-2 text-xs text-surface-500">Due: {formatDueLabel(item.queue.nextActionDueDate)}</p>
                 </div>
               ))
             )}
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Today&apos;s Queue</CardTitle>
-              <CardDescription>Stay close to the businesses already waiting on a follow-up or next action.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {pendingBusinessTasks.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-surface-200 px-4 py-6 text-sm text-surface-500">
-                  No business follow-ups are assigned to you right now. Use the script engine to start a new touchpoint.
+        <Card>
+          <CardHeader>
+            <CardTitle>Blocked / Waiting</CardTitle>
+            <CardDescription>These items need a unblocker, not just another touchpoint.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {blockedItems.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-surface-200 px-4 py-8 text-sm text-surface-500">
+                Nothing is blocked right now. Keep working the next actions while the lane is open.
+              </div>
+            ) : (
+              blockedItems.map((item) => (
+                <div key={`${item.id}-blocked`} className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-danger-700">{item.name}</p>
+                    <Badge variant="danger">{item.queue.urgencyLabel}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-danger-700">{item.queue.blockedReason || item.queue.waitingOn || 'Needs attention'}</p>
+                  <p className="mt-1 text-xs text-danger-700/80">{item.queue.nextAction}</p>
                 </div>
-              ) : (
-                pendingBusinessTasks.slice(0, 5).map((task) => {
-                  const business = businesses.find((item) => item.id === task.entity_id) || null
-                  return (
-                    <div key={task.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-surface-900">{task.title}</p>
-                          <p className="mt-1 text-xs text-surface-500">{business?.name || 'Business'} / {task.due_date ? formatDateTime(task.due_date) : 'No due date set'}</p>
-                        </div>
-                        {business && (
-                          <Button asChild size="sm" variant="ghost">
-                            <Link href={scriptHref(business.id)}>
-                              Continue
-                              <ArrowRight className="h-3.5 w-3.5" />
-                            </Link>
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Script Activity</CardTitle>
-              <CardDescription>What you have already copied, edited, or logged most recently.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {recentScripts.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-surface-200 px-4 py-6 text-sm text-surface-500">
-                  Once you copy or log scripts, your recent activity will show up here.
-                </div>
-              ) : (
-                recentScripts.map((item) => {
-                  const business = businesses.find((entry) => entry.id === item.business_id)
-                  return (
-                    <div key={item.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-surface-900">{business?.name || 'Business'} / {item.script_tier.toUpperCase()}</p>
-                          <p className="mt-1 text-xs text-surface-500">
-                            {item.script_type.replace(/_/g, ' ')} / {relativeTime(item.created_at)}
-                          </p>
-                        </div>
-                        <Badge variant={item.status === 'follow_up_needed' ? 'warning' : item.status === 'interested' ? 'success' : 'info'}>
-                          {OUTREACH_SCRIPT_STATUS_OPTIONS.find((option) => option.value === item.status)?.label || item.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Outreach Playbook</CardTitle>
-              <CardDescription>Keep the scripts local, specific, and easy to say out loud.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
-                <p className="text-sm font-medium text-surface-900">Lead with real local context</p>
-                <p className="mt-1 text-xs leading-5 text-surface-500">Use your city, school, neighborhood, or a real connection to the business before you talk about LocalVIP.</p>
-              </div>
-              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
-                <p className="text-sm font-medium text-surface-900">Choose the right tier</p>
-                <p className="mt-1 text-xs leading-5 text-surface-500">Good is fast. Better adds context. Best should feel believable. Ultra should sound like you already know the business and the local context around it.</p>
-              </div>
-              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
-                <p className="text-sm font-medium text-surface-900">Always log the touchpoint</p>
-                <p className="mt-1 text-xs leading-5 text-surface-500">Copying is helpful, but logging the outcome keeps the CRM clean and prevents duplicate outreach across the team.</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>My Claimed Businesses</CardTitle>
+              <CardDescription>Track business onboarding ownership all the way to live.</CardDescription>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/workspace/businesses">
+                View all
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {claimedBusinesses.length === 0 ? (
+              <EmptyState icon={<Building2 className="h-6 w-6" />} title="No businesses claimed yet" description="Claim a business to make it part of your active queue." />
+            ) : (
+              claimedBusinesses.slice(0, 5).map(({ business, queue }) => (
+                <div key={business.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-surface-900">{business.name}</p>
+                      <p className="mt-1 text-xs text-surface-500">{queue.workflowLabel} / {business.category || 'Local business'}</p>
+                    </div>
+                    <Badge variant={getUrgencyVariant(queue.urgency)}>{queue.urgencyLabel}</Badge>
+                  </div>
+                  <p className="mt-3 text-sm text-surface-700">{queue.nextAction}</p>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>My Claimed Schools / Causes</CardTitle>
+              <CardDescription>See what is live, what needs materials, and what still needs activation.</CardDescription>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/workspace/community">
+                View all
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {claimedCauses.length === 0 ? (
+              <EmptyState icon={<Heart className="h-6 w-6" />} title="No schools or causes claimed yet" description="Claim a school or cause to make it part of your queue." />
+            ) : (
+              claimedCauses.slice(0, 5).map(({ cause, queue }) => (
+                <div key={cause.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-surface-900">{cause.name}</p>
+                      <p className="mt-1 text-xs text-surface-500">{queue.workflowLabel} / {cause.type || 'Community'}</p>
+                    </div>
+                    <Badge variant={getUrgencyVariant(queue.urgency)}>{queue.urgencyLabel}</Badge>
+                  </div>
+                  <p className="mt-3 text-sm text-surface-700">{queue.nextAction}</p>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Activity Support Layer</CardTitle>
+          <CardDescription>Keep the scripts, outreach logging, and tasks close to the execution work.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <Link href="/crm/scripts" className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 transition-colors hover:border-brand-200 hover:bg-brand-50">
+            <p className="text-sm font-semibold text-surface-900">Outreach Scripts</p>
+            <p className="mt-2 text-xs leading-5 text-surface-500">Use the new step-by-step wizard and pull from past drafts when that helps you move faster.</p>
+          </Link>
+          <Link href="/crm/outreach" className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 transition-colors hover:border-brand-200 hover:bg-brand-50">
+            <p className="text-sm font-semibold text-surface-900">Outreach Log</p>
+            <p className="mt-2 text-xs leading-5 text-surface-500">Every touchpoint should go back into CRM so the next person sees the real history.</p>
+          </Link>
+          <Link href="/materials/mine" className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 transition-colors hover:border-brand-200 hover:bg-brand-50">
+            <p className="text-sm font-semibold text-surface-900">Relevant Materials</p>
+            <p className="mt-2 text-xs leading-5 text-surface-500">Jump straight into the materials that help the stakeholder you are currently moving.</p>
+          </Link>
+        </CardContent>
+      </Card>
     </div>
   )
 }

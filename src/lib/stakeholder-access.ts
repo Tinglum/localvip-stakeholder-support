@@ -67,6 +67,7 @@ const BUSINESS_NAV_ITEMS: NavItem[] = [
 const FIELD_NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
   { label: 'My Businesses', href: '/workspace/businesses', icon: 'Store', minLevel: 0 },
+  { label: 'My Schools / Causes', href: '/workspace/community', icon: 'Heart', minLevel: 0 },
   { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
   { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 0 },
   { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', minLevel: 0 },
@@ -334,6 +335,13 @@ export function canAccessPath(profile: Profile, pathname: string) {
   }
 
   if (shell === 'launch_partner') {
+    if (
+      pathname.startsWith('/crm/businesses/')
+      || pathname.startsWith('/crm/causes/')
+    ) {
+      return true
+    }
+
     return [
       '/dashboard',
       '/partner/city',

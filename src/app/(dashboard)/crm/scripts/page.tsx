@@ -215,10 +215,14 @@ function HistoryRow({
   item,
   label,
   compact = false,
+  actionLabel,
+  onAction,
 }: {
   item: OutreachScript
   label: string
   compact?: boolean
+  actionLabel?: string
+  onAction?: () => void
 }) {
   return (
     <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3">
@@ -238,7 +242,64 @@ function HistoryRow({
       {!compact && (
         <p className="mt-3 line-clamp-3 text-sm text-surface-700">{item.final_content}</p>
       )}
+      {onAction && actionLabel ? (
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={onAction}>
+            {actionLabel}
+          </Button>
+        </div>
+      ) : null}
     </div>
+  )
+}
+
+function StepCard({
+  index,
+  title,
+  description,
+  active,
+  complete,
+  onClick,
+}: {
+  index: number
+  title: string
+  description: string
+  active: boolean
+  complete: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full rounded-2xl border px-4 py-4 text-left transition-colors',
+        active
+          ? 'border-brand-500 bg-brand-50'
+          : complete
+          ? 'border-success-200 bg-success-50'
+          : 'border-surface-200 bg-surface-0 hover:border-surface-300'
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+            active
+              ? 'bg-brand-600 text-white'
+              : complete
+              ? 'bg-success-500 text-white'
+              : 'bg-surface-100 text-surface-700'
+          )}
+        >
+          {complete ? <Check className="h-4 w-4" /> : index + 1}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-surface-900">{title}</p>
+          <p className="mt-1 text-xs leading-5 text-surface-500">{description}</p>
+        </div>
+      </div>
+    </button>
   )
 }
 
@@ -271,6 +332,7 @@ export default function OutreachScriptsPage() {
   const [stageFilter, setStageFilter] = React.useState('all')
   const [causeFilter, setCauseFilter] = React.useState<'all' | 'linked' | 'suggested' | 'none'>('all')
   const [selectedBusinessId, setSelectedBusinessId] = React.useState<string | null>(null)
+  const [step, setStep] = React.useState<0 | 1 | 2 | 3>(0)
   const [tier, setTier] = React.useState<OutreachScriptTier>('better')
   const [channel, setChannel] = React.useState<OutreachScriptChannel>('in_person')
   const [scriptType, setScriptType] = React.useState('')
@@ -281,6 +343,7 @@ export default function OutreachScriptsPage() {
   const [nextStepDate, setNextStepDate] = React.useState('')
   const [copied, setCopied] = React.useState(false)
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
+  const [historyHint, setHistoryHint] = React.useState<string | null>(null)
   const [editorContent, setEditorContent] = React.useState('')
   const [draftRecord, setDraftRecord] = React.useState<OutreachScript | null>(null)
   const [personalization, setPersonalization] = React.useState({
@@ -312,6 +375,12 @@ export default function OutreachScriptsPage() {
     for (const item of profiles) map[item.id] = item.full_name
     return map
   }, [profiles])
+
+  const businessNameMap = React.useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const item of businesses) map[item.id] = item.name
+    return map
+  }, [businesses])
 
   const campaignMap = React.useMemo(() => {
     const map: Record<string, Campaign> = {}
@@ -530,26 +599,46 @@ export default function OutreachScriptsPage() {
     if (!selectedBusiness) return
     const suggestedCause = selectedBusiness.explicitCause || selectedBusiness.suggestedCause
     const defaultContact = selectedBusiness.ownerContact || selectedBusiness.contacts[0] || null
+    const latestMine = (historyByBusiness[selectedBusiness.id] || []).find((item) => item.created_by === profile.id) || null
+    const savedPersonalization = latestMine && latestMine.personalization && typeof latestMine.personalization === 'object'
+      ? latestMine.personalization as Record<string, unknown>
+      : null
     setPersonalization({
-      intern_name: profile.full_name,
-      city: selectedBusiness.cityName || '',
-      school_name: organizationName,
-      local_cause_name: suggestedCause?.name || '',
-      personal_connection: '',
-      owner_name: defaultContact ? `${defaultContact.first_name} ${defaultContact.last_name}`.trim() : getBusinessField(selectedBusiness.metadata, ['owner_name']),
-      specific_product: selectedBusiness.product || getCategoryConfig(selectedBusiness.categoryKey).defaultProduct,
-      avg_ticket: selectedBusiness.avgTicket || getCategoryConfig(selectedBusiness.categoryKey).defaultAvgTicket,
-      local_context: getBusinessField(selectedBusiness.metadata, ['local_context']) || selectedBusiness.address || selectedBusiness.cityLabel,
+      intern_name: typeof savedPersonalization?.intern_name === 'string' ? savedPersonalization.intern_name : profile.full_name,
+      city: typeof savedPersonalization?.city === 'string' ? savedPersonalization.city : selectedBusiness.cityName || '',
+      school_name: typeof savedPersonalization?.school_name === 'string' ? savedPersonalization.school_name : organizationName,
+      local_cause_name: typeof savedPersonalization?.local_cause_name === 'string' ? savedPersonalization.local_cause_name : suggestedCause?.name || '',
+      personal_connection: typeof savedPersonalization?.personal_connection === 'string' ? savedPersonalization.personal_connection : '',
+      owner_name: typeof savedPersonalization?.owner_name === 'string'
+        ? savedPersonalization.owner_name
+        : defaultContact ? `${defaultContact.first_name} ${defaultContact.last_name}`.trim() : getBusinessField(selectedBusiness.metadata, ['owner_name']),
+      specific_product: typeof savedPersonalization?.specific_product === 'string'
+        ? savedPersonalization.specific_product
+        : selectedBusiness.product || getCategoryConfig(selectedBusiness.categoryKey).defaultProduct,
+      avg_ticket: typeof savedPersonalization?.avg_ticket === 'string'
+        ? savedPersonalization.avg_ticket
+        : selectedBusiness.avgTicket || getCategoryConfig(selectedBusiness.categoryKey).defaultAvgTicket,
+      local_context: typeof savedPersonalization?.local_context === 'string'
+        ? savedPersonalization.local_context
+        : getBusinessField(selectedBusiness.metadata, ['local_context']) || selectedBusiness.address || selectedBusiness.cityLabel,
     })
     setSelectedContactId(defaultContact?.id || '')
     setNextStep('')
     setNextStepDate('')
     setLogNotes('')
     setStatus('sent')
+    if (latestMine) {
+      setTier(latestMine.script_tier)
+      setChannel(latestMine.channel)
+      setScriptType(latestMine.script_type)
+      setHistoryHint(`Loaded your last setup from ${relativeTime(latestMine.created_at)} so you can move faster on ${selectedBusiness.name}.`)
+    } else {
+      setHistoryHint(null)
+    }
     setDraftRecord(null)
     setCopied(false)
     setActionMessage(null)
-  }, [selectedBusiness, profile.full_name, organizationName])
+  }, [historyByBusiness, organizationName, profile.full_name, profile.id, selectedBusiness])
 
   const generatedScript = React.useMemo(() => {
     if (!selectedBusiness || !scriptType) return null
@@ -589,6 +678,22 @@ export default function OutreachScriptsPage() {
   }, [nextStepDate, status])
 
   const selectedHistory = selectedBusiness ? historyByBusiness[selectedBusiness.id] || [] : []
+  const myHistoryForBusiness = selectedHistory.filter((item) => item.created_by === profile.id)
+  const recommendedHistory = myHistoryForBusiness.find((item) => item.status === 'interested' || item.status === 'replied') || myHistoryForBusiness[0] || null
+  const recommendedStructures = selectedBusiness
+    ? history
+      .filter((item) =>
+        item.created_by === profile.id
+        && item.business_id !== selectedBusiness.id
+        && item.business_category === selectedBusiness.category
+      )
+      .sort((left, right) => {
+        const statusDiff = Number(right.status === 'interested' || right.status === 'replied') - Number(left.status === 'interested' || left.status === 'replied')
+        if (statusDiff !== 0) return statusDiff
+        return +new Date(right.created_at) - +new Date(left.created_at)
+      })
+      .slice(0, 3)
+    : []
   const selectedNotes = selectedBusiness
     ? notes.filter((note) => note.entity_id === selectedBusiness.id).slice(0, 3)
     : []
@@ -616,6 +721,68 @@ export default function OutreachScriptsPage() {
 
   const logBlocked = !!recentRiskByOther
   const pendingAction = insertingScript || updatingScript || insertingOutreach || insertingTask
+  const isStepComplete = [
+    !!selectedBusiness,
+    !!selectedBusiness && !!personalization.city.trim() && !!personalization.school_name.trim() && !!personalization.specific_product.trim() && !!personalization.avg_ticket.trim(),
+    !!selectedBusiness && !!generatedScript && !!scriptType,
+    !!selectedBusiness && !!generatedScript && !!editorContent.trim(),
+  ]
+
+  function goToNextStep() {
+    setStep((current) => {
+      if (current === 0) return 1
+      if (current === 1) return 2
+      if (current === 2) return 3
+      return 3
+    })
+  }
+
+  function goToPreviousStep() {
+    setStep((current) => {
+      if (current === 3) return 2
+      if (current === 2) return 1
+      if (current === 1) return 0
+      return 0
+    })
+  }
+
+  function applyHistoryRecord(
+    item: OutreachScript,
+    options?: { includePersonalization?: boolean; includeContent?: boolean; strategyOnly?: boolean }
+  ) {
+    setTier(item.script_tier)
+    setChannel(item.channel)
+    setScriptType(item.script_type)
+
+    if (!options?.strategyOnly && options?.includePersonalization) {
+      const saved = item.personalization && typeof item.personalization === 'object'
+        ? item.personalization as Record<string, unknown>
+        : null
+
+      if (saved) {
+        setPersonalization((current) => ({
+          ...current,
+          intern_name: typeof saved.intern_name === 'string' ? saved.intern_name : current.intern_name,
+          city: typeof saved.city === 'string' ? saved.city : current.city,
+          school_name: typeof saved.school_name === 'string' ? saved.school_name : current.school_name,
+          local_cause_name: typeof saved.local_cause_name === 'string' ? saved.local_cause_name : current.local_cause_name,
+          personal_connection: typeof saved.personal_connection === 'string' ? saved.personal_connection : current.personal_connection,
+          owner_name: typeof saved.owner_name === 'string' ? saved.owner_name : current.owner_name,
+          specific_product: typeof saved.specific_product === 'string' ? saved.specific_product : current.specific_product,
+          avg_ticket: typeof saved.avg_ticket === 'string' ? saved.avg_ticket : current.avg_ticket,
+          local_context: typeof saved.local_context === 'string' ? saved.local_context : current.local_context,
+        }))
+      }
+    }
+
+    if (options?.includeContent) {
+      setEditorContent(item.final_content)
+    }
+
+    setDraftRecord(null)
+    setCopied(false)
+    setActionMessage(`Loaded ${humanizeKey(item.script_tier)} / ${humanizeKey(item.channel)} from your history.`)
+  }
 
   async function persistScriptRecord(nextStatus: OutreachScriptStatus, options?: { incrementCopy?: boolean; includeOutreach?: boolean }) {
     if (!selectedBusiness || !generatedScript) return null
@@ -776,6 +943,27 @@ export default function OutreachScriptsPage() {
     }
   }
 
+  const stepMeta = [
+    {
+      title: 'Choose the business',
+      description: 'Pick the business and review what the CRM already knows before you write anything.',
+    },
+    {
+      title: 'Add your local angle',
+      description: 'Make it sound like you by grounding it in school, city, cause, and real connection.',
+    },
+    {
+      title: 'Shape the approach',
+      description: 'Choose the message angle, channel, and strength level that gives you the best shot.',
+    },
+    {
+      title: 'Use or log the script',
+      description: 'Tighten the final draft, copy it, and push the touchpoint back into the CRM.',
+    },
+  ] as const
+
+  const focusHistory = recommendedHistory || recommendedStructures[0] || null
+
   if (businessesLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -788,10 +976,10 @@ export default function OutreachScriptsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={isFieldUser ? 'Intern Outreach Script Engine' : 'Outreach Scripts'}
+        title={isFieldUser ? 'Intern Outreach Script Wizard' : 'Outreach Script Wizard'}
         description={isFieldUser
-          ? 'Start with a business, add your real local angle, and copy or log the outreach without leaving your workflow.'
-          : 'Generate highly specific local-business scripts, personalize them fast, and push every attempt straight back into the CRM.'}
+          ? 'Work business by business through a guided flow, reuse what already worked for you, and log every touchpoint cleanly.'
+          : 'Generate highly specific local-business scripts through a guided flow and push each touchpoint straight back into the CRM.'}
         breadcrumb={isFieldUser
           ? [
               { label: 'Dashboard', href: '/dashboard' },
@@ -825,23 +1013,20 @@ export default function OutreachScriptsPage() {
       >
         <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-3">
-            <Badge variant="outline" className="border-white/70 bg-white/60 text-surface-700">Intern Outreach Script Engine</Badge>
+            <Badge variant="outline" className="border-white/70 bg-white/60 text-surface-700">Intern Outreach Script Wizard</Badge>
             <h2 className="max-w-3xl text-3xl font-semibold tracking-tight text-surface-900">
-              Built for interns, volunteers, influencers, and outreach helpers who need strong local scripts fast.
+              A guided outreach flow that helps you sound more local, more credible, and more likely to get a real yes.
             </h2>
             <p className="max-w-2xl text-sm leading-6 text-surface-700">
-              Pick a business from the CRM, add your real local connection, choose a Good, Better, Best, or Ultra version,
-              then copy it, tweak it, and log the outreach without leaving the support system.
+              Pick the business, add your real connection, choose the strongest angle, then tighten the final script without losing your history or CRM logging.
             </p>
             <div className="flex flex-wrap gap-2 text-xs text-surface-700">
-              <span className="rounded-full bg-white/70 px-3 py-1">Relationship-based</span>
-              <span className="rounded-full bg-white/70 px-3 py-1">Category-specific</span>
+              <span className="rounded-full bg-white/70 px-3 py-1">Wizard-based</span>
+              <span className="rounded-full bg-white/70 px-3 py-1">History-aware</span>
               <span className="rounded-full bg-white/70 px-3 py-1">CRM-connected</span>
-              <span className="rounded-full bg-white/70 px-3 py-1">Ready for QR / asset hooks</span>
-              {isFieldUser && myBusinessIds.size > 0 && (
-                <span className="rounded-full bg-white/70 px-3 py-1">
-                  {myBusinessIds.size} focus business{myBusinessIds.size === 1 ? '' : 'es'} prioritized first
-                </span>
+              <span className="rounded-full bg-white/70 px-3 py-1">Built for conversion</span>
+              {focusHistory && (
+                <span className="rounded-full bg-white/70 px-3 py-1">Resume from your strongest recent structure</span>
               )}
             </div>
           </div>
@@ -870,154 +1055,231 @@ export default function OutreachScriptsPage() {
         <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
           <Card>
             <CardHeader>
-              <CardTitle>Business Selector</CardTitle>
-              <CardDescription>Search the CRM, narrow the list, and choose the business you are about to reach out to.</CardDescription>
+              <CardTitle>Wizard Progress</CardTitle>
+              <CardDescription>Move through one decision at a time so the script is easier to build and easier to trust.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search business, category, area..."
-                  className="pl-9"
+              {stepMeta.map((item, index) => (
+                <StepCard
+                  key={item.title}
+                  index={index}
+                  title={item.title}
+                  description={item.description}
+                  active={step === index}
+                  complete={!!isStepComplete[index]}
+                  onClick={() => setStep(index as 0 | 1 | 2 | 3)}
                 />
-              </div>
-              <div className="grid gap-3">
-                <div>
-                  <p className="mb-1 text-xs font-medium text-surface-500">Category</p>
-                  <select
-                    value={categoryFilter}
-                    onChange={(event) => setCategoryFilter(event.target.value)}
-                    className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  >
-                    <option value="all">All categories</option>
-                    <option value="coffee_shop">Coffee Shop</option>
-                    <option value="restaurant">Restaurant</option>
-                    <option value="gym_fitness">Gym / Fitness</option>
-                    <option value="salon_barbershop">Salon / Barbershop</option>
-                    <option value="family_entertainment">Family Entertainment</option>
-                  </select>
-                </div>
-                <div>
-                  <p className="mb-1 text-xs font-medium text-surface-500">City</p>
-                  <select
-                    value={cityFilter}
-                    onChange={(event) => setCityFilter(event.target.value)}
-                    className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  >
-                    <option value="all">All cities</option>
-                    {cities.map((city) => (
-                      <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <p className="mb-1 text-xs font-medium text-surface-500">Onboarding Status</p>
-                  <select
-                    value={stageFilter}
-                    onChange={(event) => setStageFilter(event.target.value)}
-                    className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  >
-                    <option value="all">All stages</option>
-                    {Object.entries(ONBOARDING_STAGES).map(([value, def]) => (
-                      <option key={value} value={value}>{def.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <p className="mb-1 text-xs font-medium text-surface-500">Cause / School Relationship</p>
-                  <select
-                    value={causeFilter}
-                    onChange={(event) => setCauseFilter(event.target.value as 'all' | 'linked' | 'suggested' | 'none')}
-                    className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  >
-                    <option value="all">All relationship states</option>
-                    <option value="linked">Explicitly linked</option>
-                    <option value="suggested">Suggested from city</option>
-                    <option value="none">No relationship yet</option>
-                  </select>
-                </div>
-              </div>
+              ))}
 
-              <div className="flex items-center justify-between text-xs text-surface-500">
-                <span>{filteredBusinesses.length} available</span>
-                <span className="flex items-center gap-1"><Filter className="h-3.5 w-3.5" /> Filtered from CRM</span>
+              {historyHint && (
+                <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
+                  {historyHint}
+                </div>
+              )}
+
+              {focusHistory && (
+                <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Quick resume</p>
+                  <p className="mt-2 text-sm font-medium text-surface-900">
+                    {humanizeKey(focusHistory.script_tier)} / {humanizeKey(focusHistory.channel)}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-surface-500">
+                    Pull in your strongest recent structure instead of starting from a blank page.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      applyHistoryRecord(focusHistory, {
+                        includePersonalization: true,
+                        includeContent: focusHistory.business_id === selectedBusiness?.id,
+                      })
+                      setStep(focusHistory.business_id === selectedBusiness?.id ? 3 : 2)
+                    }}
+                  >
+                    Use recent structure
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" className="flex-1" onClick={goToPreviousStep} disabled={step === 0}>
+                  Back
+                </Button>
+                <Button className="flex-1" onClick={goToNextStep} disabled={step === 3 || !isStepComplete[step]}>
+                  Continue
+                </Button>
               </div>
             </CardContent>
           </Card>
 
-          <div className="space-y-3">
-            {filteredBusinesses.length === 0 ? (
+          {step === 0 ? (
+            <>
               <Card>
-                <CardContent className="py-10">
-                  <EmptyState
-                    icon={<Store className="h-8 w-8" />}
-                    title="No matching businesses"
-                    description="Adjust the filters or add more businesses in the CRM."
-                  />
+                <CardHeader>
+                  <CardTitle>Find the business</CardTitle>
+                  <CardDescription>Start with the CRM so the rest of the flow is grounded in the right context.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                    <Input
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search business, category, area..."
+                      className="pl-9"
+                    />
+                  </div>
+                  <div className="grid gap-3">
+                    <div>
+                      <p className="mb-1 text-xs font-medium text-surface-500">Category</p>
+                      <select
+                        value={categoryFilter}
+                        onChange={(event) => setCategoryFilter(event.target.value)}
+                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                      >
+                        <option value="all">All categories</option>
+                        <option value="coffee_shop">Coffee Shop</option>
+                        <option value="restaurant">Restaurant</option>
+                        <option value="gym_fitness">Gym / Fitness</option>
+                        <option value="salon_barbershop">Salon / Barbershop</option>
+                        <option value="family_entertainment">Family Entertainment</option>
+                      </select>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-medium text-surface-500">City</p>
+                      <select
+                        value={cityFilter}
+                        onChange={(event) => setCityFilter(event.target.value)}
+                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                      >
+                        <option value="all">All cities</option>
+                        {cities.map((city) => (
+                          <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-medium text-surface-500">Onboarding Status</p>
+                      <select
+                        value={stageFilter}
+                        onChange={(event) => setStageFilter(event.target.value)}
+                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                      >
+                        <option value="all">All stages</option>
+                        {Object.entries(ONBOARDING_STAGES).map(([value, def]) => (
+                          <option key={value} value={value}>{def.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-medium text-surface-500">Cause / School Relationship</p>
+                      <select
+                        value={causeFilter}
+                        onChange={(event) => setCauseFilter(event.target.value as 'all' | 'linked' | 'suggested' | 'none')}
+                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                      >
+                        <option value="all">All relationship states</option>
+                        <option value="linked">Explicitly linked</option>
+                        <option value="suggested">Suggested from city</option>
+                        <option value="none">No relationship yet</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-surface-500">
+                    <span>{filteredBusinesses.length} available</span>
+                    <span className="flex items-center gap-1"><Filter className="h-3.5 w-3.5" /> Filtered from CRM</span>
+                  </div>
                 </CardContent>
               </Card>
-            ) : (
-              filteredBusinesses.map((business) => {
-                const isSelected = business.id === selectedBusinessId
-                const assignedPeople = businessAssignments[business.id] || []
-                return (
-                  <button
-                    key={business.id}
-                    type="button"
-                    onClick={() => setSelectedBusinessId(business.id)}
-                    className={cn(
-                      'w-full rounded-card border text-left transition-all',
-                      isSelected
-                        ? 'border-brand-500 bg-brand-50/60 shadow-card-hover'
-                        : 'border-surface-200 bg-surface-0 hover:border-surface-300 hover:shadow-card-hover'
-                    )}
-                  >
-                    <div className="space-y-3 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-surface-900">{business.name}</p>
-                          <p className="mt-0.5 text-xs text-surface-500">{categoryLabel(business.category)}</p>
-                        </div>
-                        <Badge variant={STAGE_VARIANT[business.stage] || 'default'} dot>
-                          {ONBOARDING_STAGES[business.stage]?.label || business.stage}
-                        </Badge>
-                      </div>
 
-                      <div className="flex flex-wrap gap-2 text-xs text-surface-500">
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5" />
-                          {business.cityLabel}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <User className="h-3.5 w-3.5" />
-                          {assignedPeople.length ? `${assignedPeople.length} assigned` : 'No assignee'}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant={business.causeMode === 'linked' ? 'success' : business.causeMode === 'suggested' ? 'warning' : 'default'}>
-                          {business.causeMode === 'linked' ? 'Cause Linked' : business.causeMode === 'suggested' ? 'Cause Suggested' : 'No Cause Link'}
-                        </Badge>
-                        {business.recentHistory && (
-                          <Badge variant={SCRIPT_STATUS_VARIANT[business.recentHistory.status]}>
-                            {OUTREACH_SCRIPT_STATUS_OPTIONS.find(option => option.value === business.recentHistory.status)?.label || business.recentHistory.status}
-                          </Badge>
+              <div className="space-y-3">
+                {filteredBusinesses.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-10">
+                      <EmptyState
+                        icon={<Store className="h-8 w-8" />}
+                        title="No matching businesses"
+                        description="Adjust the filters or add more businesses in the CRM."
+                      />
+                    </CardContent>
+                  </Card>
+                ) : (
+                  filteredBusinesses.map((business) => {
+                    const isSelected = business.id === selectedBusinessId
+                    const assignedPeople = businessAssignments[business.id] || []
+                    return (
+                      <button
+                        key={business.id}
+                        type="button"
+                        onClick={() => setSelectedBusinessId(business.id)}
+                        className={cn(
+                          'w-full rounded-card border text-left transition-all',
+                          isSelected
+                            ? 'border-brand-500 bg-brand-50/60 shadow-card-hover'
+                            : 'border-surface-200 bg-surface-0 hover:border-surface-300 hover:shadow-card-hover'
                         )}
-                      </div>
+                      >
+                        <div className="space-y-3 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-surface-900">{business.name}</p>
+                              <p className="mt-0.5 text-xs text-surface-500">{categoryLabel(business.category)}</p>
+                            </div>
+                            <Badge variant={STAGE_VARIANT[business.stage] || 'default'} dot>
+                              {ONBOARDING_STAGES[business.stage]?.label || business.stage}
+                            </Badge>
+                          </div>
 
-                      {business.recentHistory && (
-                        <div className="rounded-lg bg-surface-50 px-3 py-2 text-xs text-surface-600">
-                          Last script {relativeTime(business.recentHistory.created_at)} by {personLabel(business.recentHistory.created_by, profileMap, profile.id)}
+                          <div className="flex flex-wrap gap-2 text-xs text-surface-500">
+                            <span className="inline-flex items-center gap-1">
+                              <MapPin className="h-3.5 w-3.5" />
+                              {business.cityLabel}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <User className="h-3.5 w-3.5" />
+                              {assignedPeople.length ? `${assignedPeople.length} assigned` : 'No assignee'}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant={business.causeMode === 'linked' ? 'success' : business.causeMode === 'suggested' ? 'warning' : 'default'}>
+                              {business.causeMode === 'linked' ? 'Cause Linked' : business.causeMode === 'suggested' ? 'Cause Suggested' : 'No Cause Link'}
+                            </Badge>
+                            {business.recentHistory && (
+                              <Badge variant={SCRIPT_STATUS_VARIANT[business.recentHistory.status]}>
+                                {OUTREACH_SCRIPT_STATUS_OPTIONS.find(option => option.value === business.recentHistory.status)?.label || business.recentHistory.status}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {business.recentHistory && (
+                            <div className="rounded-lg bg-surface-50 px-3 py-2 text-xs text-surface-600">
+                              Last script {relativeTime(business.recentHistory.created_at)} by {personLabel(business.recentHistory.created_by, profileMap, profile.id)}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </button>
-                )
-              })
-            )}
-          </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </>
+          ) : (
+            <Card className="bg-surface-50">
+              <CardContent className="grid gap-3 p-4">
+                <div className="flex items-center justify-between text-xs text-surface-500">
+                  <span>My outreach snapshot</span>
+                  <span>{recentMine.length} recent scripts</span>
+                </div>
+                <StatCard label="My scripts" value={stats.generated} icon={<Sparkles className="h-4 w-4" />} />
+                <StatCard label="Interested" value={stats.interested} icon={<Send className="h-4 w-4" />} />
+                <StatCard label="Follow-ups" value={stats.followUps} icon={<History className="h-4 w-4" />} />
+              </CardContent>
+            </Card>
+          )}
         </div>
         {!selectedBusiness || !generatedScript ? (
           <Card>
@@ -1025,7 +1287,7 @@ export default function OutreachScriptsPage() {
               <EmptyState
                 icon={<Sparkles className="h-8 w-8" />}
                 title="Choose a business to start"
-                description="Once you pick a business from the selector, the engine will build category-aware scripts and loggable outreach actions."
+                description="Once you pick a business in step one, the wizard will guide you through local context, script angle, and final CRM logging."
               />
             </CardContent>
           </Card>
@@ -1033,10 +1295,11 @@ export default function OutreachScriptsPage() {
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
               <div className="space-y-6">
+                {step === 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Business Snapshot</CardTitle>
-                    <CardDescription>The key business context the script engine is pulling from the CRM right now.</CardDescription>
+                    <CardDescription>Confirm the business context first so the rest of the script feels true instead of generic.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1179,11 +1442,13 @@ export default function OutreachScriptsPage() {
                     </div>
                   </CardContent>
                 </Card>
+                )}
 
+                {step === 1 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Personalization Panel</CardTitle>
-                    <CardDescription>Use real local context. Tighten the fields until the script sounds like something you would actually say.</CardDescription>
+                    <CardTitle>Add Your Local Angle</CardTitle>
+                    <CardDescription>Use real local context. Tighten the fields until the script sounds like something you would actually say out loud.</CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-4 md:grid-cols-2">
                     <InputBlock label="Intern Name">
@@ -1214,17 +1479,19 @@ export default function OutreachScriptsPage() {
                       <Textarea
                         value={personalization.personal_connection}
                         onChange={(event) => setPersonalization((current) => ({ ...current, personal_connection: event.target.value }))}
-                        placeholder="Example: I've been coming here since middle school after games."
-                        rows={3}
+                        placeholder="Example: I used to stop by after games, or I know families from my school already come here."
+                        rows={4}
                       />
                     </InputBlock>
                   </CardContent>
                 </Card>
+                )}
 
+                {step === 2 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Script Type Selector</CardTitle>
-                    <CardDescription>Choose the angle, quality level, and delivery mode that fit this business best, then tighten it until it sounds like something you would actually say out loud.</CardDescription>
+                    <CardTitle>Choose the Angle</CardTitle>
+                    <CardDescription>Choose the angle, quality level, and delivery mode that give you the best shot with this business.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <div className="grid gap-4 lg:grid-cols-2">
@@ -1306,20 +1573,22 @@ export default function OutreachScriptsPage() {
                     )}
                   </CardContent>
                 </Card>
+                )}
               </div>
 
               <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
+                {step >= 2 && (
                 <Card className="overflow-hidden border-brand-100 shadow-panel">
                   <div className="border-b border-brand-100 bg-brand-50/60 px-5 py-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-brand-700">{generatedScript.title}</p>
+                        <p className="text-sm font-semibold text-brand-700">{step === 2 ? 'Preview Draft' : generatedScript.title}</p>
                         <p className="mt-1 text-xs text-surface-600">
                           {tier.charAt(0).toUpperCase() + tier.slice(1)} tier / {OUTREACH_SCRIPT_CHANNEL_OPTIONS.find((option) => option.value === channel)?.label}
                         </p>
                       </div>
-                      <Badge variant={SCRIPT_STATUS_VARIANT[status]}>
-                        {OUTREACH_SCRIPT_STATUS_OPTIONS.find((option) => option.value === status)?.label}
+                      <Badge variant={step === 2 ? 'info' : SCRIPT_STATUS_VARIANT[status]}>
+                        {step === 2 ? 'Preview' : OUTREACH_SCRIPT_STATUS_OPTIONS.find((option) => option.value === status)?.label}
                       </Badge>
                     </div>
                   </div>
@@ -1336,21 +1605,39 @@ export default function OutreachScriptsPage() {
                       onChange={(event) => setEditorContent(event.target.value)}
                       rows={18}
                       className="min-h-[26rem] text-[15px] leading-7"
+                      readOnly={step === 2}
                     />
 
-                    <div className="flex flex-wrap gap-2">
-                      <Button onClick={handleCopy} disabled={pendingAction || !editorContent.trim()}>
-                        {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                        {copied ? 'Copied' : generatedScript.subject ? 'Copy Email Draft' : 'Copy Script'}
-                      </Button>
-                    </div>
+                    {step === 3 ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button onClick={handleCopy} disabled={pendingAction || !editorContent.trim()}>
+                          {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                          {copied ? 'Copied' : generatedScript.subject ? 'Copy Email Draft' : 'Copy Script'}
+                        </Button>
+                        {focusHistory && (
+                          <Button
+                            variant="outline"
+                            onClick={() => applyHistoryRecord(focusHistory, { includePersonalization: true, includeContent: true })}
+                            disabled={pendingAction}
+                          >
+                            Use prior full draft
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-surface-200 px-4 py-3 text-xs leading-6 text-surface-500">
+                        Preview the structure here first. If it feels right, continue to the final step to edit, copy, and log it.
+                      </div>
+                    )}
 
                     <div className="rounded-lg border border-dashed border-surface-200 px-4 py-3 text-xs leading-6 text-surface-500">
                       Edits are tracked against the generated draft so we can later report by city, category, script tier, stakeholder, and outreach channel.
                     </div>
                   </CardContent>
                 </Card>
+                )}
 
+                {step === 3 && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Outreach Logging</CardTitle>
@@ -1444,14 +1731,65 @@ export default function OutreachScriptsPage() {
                     </div>
                   </CardContent>
                 </Card>
+                )}
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Script History</CardTitle>
-                    <CardDescription>Review what has already been used for this business and what you have recently touched yourself.</CardDescription>
+                    <CardTitle>{step === 1 ? 'Use Your History' : step === 2 ? 'Useful Structures' : 'Script History'}</CardTitle>
+                    <CardDescription>
+                      {step === 1
+                        ? 'Reuse a setup that already sounded like you, then adapt it for this business.'
+                        : step === 2
+                        ? 'Pull in a structure that already worked before you move to the final edit step.'
+                        : 'Review what has already been used for this business and what you have recently touched yourself.'}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-5">
-                    {historyLoading ? (
+                    {step === 1 ? (
+                      focusHistory ? (
+                        <div className="space-y-3">
+                          <HistoryRow
+                            item={focusHistory}
+                            label={focusHistory.business_id === selectedBusiness.id ? 'This business' : 'A similar business'}
+                            actionLabel="Use this setup"
+                            onAction={() => applyHistoryRecord(focusHistory, { includePersonalization: true, strategyOnly: false })}
+                          />
+                          {recommendedStructures.filter((item) => item.id !== focusHistory.id).slice(0, 2).map((item) => (
+                            <HistoryRow
+                              key={item.id}
+                              item={item}
+                              label={businessNameMap[item.business_id] || 'Another business'}
+                              compact
+                              actionLabel="Reuse setup"
+                              onAction={() => applyHistoryRecord(item, { includePersonalization: true, strategyOnly: true })}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-surface-200 px-4 py-4 text-sm text-surface-500">
+                          Once you have used the wizard on a few businesses, your strongest setups will show up here automatically.
+                        </div>
+                      )
+                    ) : step === 2 ? (
+                      recommendedStructures.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-surface-200 px-4 py-4 text-sm text-surface-500">
+                          No similar-business patterns yet. Once you work a few more businesses, the wizard will recommend stronger structures automatically.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {recommendedStructures.map((item) => (
+                            <HistoryRow
+                              key={item.id}
+                              item={item}
+                              label={businessNameMap[item.business_id] || 'Another business'}
+                              compact
+                              actionLabel="Use this structure"
+                              onAction={() => applyHistoryRecord(item, { includePersonalization: true, includeContent: false, strategyOnly: true })}
+                            />
+                          ))}
+                        </div>
+                      )
+                    ) : historyLoading ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
                       </div>
@@ -1468,7 +1806,13 @@ export default function OutreachScriptsPage() {
                             </div>
                           ) : (
                             selectedHistory.slice(0, 4).map((item) => (
-                              <HistoryRow key={item.id} item={item} label={personLabel(item.created_by, profileMap, profile.id)} />
+                              <HistoryRow
+                                key={item.id}
+                                item={item}
+                                label={personLabel(item.created_by, profileMap, profile.id)}
+                                actionLabel="Load draft"
+                                onAction={() => applyHistoryRecord(item, { includePersonalization: true, includeContent: true })}
+                              />
                             ))
                           )}
                         </div>

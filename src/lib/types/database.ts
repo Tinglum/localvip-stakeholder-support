@@ -445,7 +445,12 @@ export interface StakeholderAssignment {
   role: string | null
   assigned_by: string | null
   status: EntityStatus
+  claimed_at?: string | null
+  next_action?: string | null
+  next_action_due_date?: string | null
+  metadata?: Record<string, unknown> | null
   created_at: string
+  updated_at?: string
 }
 
 export interface Stakeholder {

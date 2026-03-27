@@ -188,7 +188,7 @@ export function MaterialEngineTemplatesPage() {
                   >
                     <option value="svg">SVG</option>
                     <option value="png">PNG</option>
-                    <option value="pdf">PDF (future renderer)</option>
+                    <option value="pdf">PDF</option>
                   </select>
                 </div>
                 <div>
@@ -319,8 +319,8 @@ export function MaterialEngineTemplatesPage() {
                     ))}
                   </div>
                   {template.output_format === 'pdf' && (
-                    <div className="mt-3 rounded-2xl border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700">
-                      PDF output is reserved for the future server-side PDF renderer. SVG and PNG generate automatically today.
+                    <div className="mt-3 rounded-2xl border border-info-200 bg-info-50 px-3 py-2 text-xs text-info-700">
+                      PDF templates generate automatically and are delivered into the stakeholder library as downloadable PDF assets.
                     </div>
                   )}
                 </div>
@@ -334,8 +334,8 @@ export function MaterialEngineTemplatesPage() {
         <CardContent className="flex items-start gap-3 p-5">
           <CheckCircle2 className="mt-0.5 h-5 w-5 text-success-600" />
           <div className="text-sm text-surface-600">
-            Structured SVG and PNG templates are live end-to-end today. PDF output is wired into the schema and admin UI,
-            and will activate once a server-side PDF renderer dependency is added.
+            Structured SVG, PNG, and PDF templates are live end-to-end today. When codes are saved, the engine can generate all
+            three formats automatically and place the finished assets into the right stakeholder library.
           </div>
         </CardContent>
       </Card>

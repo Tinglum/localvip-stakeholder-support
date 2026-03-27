@@ -573,9 +573,11 @@ function tokenMap(input: OutreachScriptGenerationInput, config: CategoryConfig) 
     business_name: businessName,
     business_type: clean(input.business_type) || config.businessTypeLabel,
     city_phrase: cityPhrase(city),
+    intern_first_name: firstName(input.intern_name),
     intern_name: clean(input.intern_name),
     kids_school_phrase: kidsSchoolPhrase(localCause, city),
     local_area_phrase: localAreaPhrase(localContext, city),
+    owner_first_name: firstName(input.owner_name),
     owner_name: clean(input.owner_name),
     school_reference: schoolReference(input.school_name, city),
     specific_product: specificProduct,
@@ -600,7 +602,8 @@ function addConnectionSentence(value: string, personalConnection: string | null 
   if (paragraphs.length === 0) return sentence
   if (paragraphs.some(paragraph => paragraph.includes(sentence))) return compactWhitespace(value)
 
-  const withConnection = [paragraphs[0], sentence, ...paragraphs.slice(1)]
+  const connectionLead = `Part of why I thought of this business specifically is simple: ${sentence}`
+  const withConnection = [paragraphs[0], connectionLead, ...paragraphs.slice(1)]
   return compactWhitespace(withConnection.join('\n\n'))
 }
 
@@ -630,6 +633,59 @@ function elevateToUltra(
   }
 
   return compactWhitespace(nextParagraphs.join('\n\n'))
+}
+
+function strengthenBusinessCase(
+  value: string,
+  input: OutreachScriptGenerationInput,
+) {
+  if (input.tier === 'good') return compactWhitespace(value)
+
+  const paragraphs = compactWhitespace(value)
+    .split(/\n\s*\n/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+
+  const fitLine = clean(input.avg_ticket) && clean(input.specific_product)
+    ? `The quick business case is pretty simple: people are already saying yes to ${clean(input.specific_product)} around ${clean(input.avg_ticket)}, so this gives them one more reason to come back and makes the local impact easy to explain.`
+    : `The quick business case is pretty simple: this gives people one more reason to choose the business again while making the local impact easy to explain.`
+
+  if (paragraphs.some((paragraph) => /one more reason to (come back|choose)/i.test(paragraph))) {
+    return compactWhitespace(value)
+  }
+
+  const insertAt = Math.max(1, paragraphs.length - 1)
+  paragraphs.splice(insertAt, 0, fitLine)
+  return compactWhitespace(paragraphs.join('\n\n'))
+}
+
+function replaceClosingCta(
+  value: string,
+  channel: OutreachScriptChannel,
+) {
+  const closing = channel === 'email'
+    ? 'If you are open to it, I can send the one-pager and keep it quick.'
+    : channel === 'text_dm'
+    ? 'If you are open to it, I can send the quick one-pager.'
+    : channel === 'leave_behind'
+    ? 'Happy to send the quick one-pager if it feels relevant.'
+    : 'If you are open to it, I can show you the one-page version in under a minute.'
+
+  const paragraphs = compactWhitespace(value)
+    .split(/\n\s*\n/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+
+  if (!paragraphs.length) return closing
+
+  const last = paragraphs[paragraphs.length - 1]
+  if (/would you be open|can I show you|could I show you|want me to send/i.test(last)) {
+    paragraphs[paragraphs.length - 1] = closing
+  } else if (!paragraphs.some((paragraph) => paragraph === closing)) {
+    paragraphs.push(closing)
+  }
+
+  return compactWhitespace(paragraphs.join('\n\n'))
 }
 
 function transformForChannel(
@@ -687,9 +743,12 @@ export function generateOutreachScript(input: OutreachScriptGenerationInput): Ou
   const template = templates[input.tier] || templates.best
   const tokens = tokenMap(input, config)
   let baseBody = addConnectionSentence(fillTemplate(template, tokens), input.personal_connection)
-  if (input.tier === 'ultra') {
+  const hasExplicitUltra = !!templates.ultra
+  if (input.tier === 'ultra' && !hasExplicitUltra) {
     baseBody = elevateToUltra(baseBody, input)
   }
+  baseBody = strengthenBusinessCase(baseBody, input)
+  baseBody = replaceClosingCta(baseBody, input.channel)
   const transformed = transformForChannel(baseBody, input, config)
 
   return {
