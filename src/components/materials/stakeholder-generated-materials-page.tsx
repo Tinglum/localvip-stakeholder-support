@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
+import { MaterialEditDialog } from '@/components/materials/material-edit-dialog'
 import { PageHeader } from '@/components/ui/page-header'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
@@ -16,6 +17,11 @@ import {
   getMaterialLibraryFolderMeta,
   MATERIAL_LIBRARY_FOLDERS,
 } from '@/lib/material-engine'
+import {
+  getMaterialCustomTags,
+  getMaterialVisibilityRoleLabels,
+  getMaterialVisibilitySubtypeLabels,
+} from '@/lib/materials/material-targeting'
 import {
   useGeneratedMaterials,
   useMaterials,
@@ -34,13 +40,14 @@ function resolveCurrentStakeholder(profile: ReturnType<typeof useAuth>['profile'
 }
 
 export function StakeholderGeneratedMaterialsPage() {
-  const { profile, shell } = useAuth()
+  const { profile, shell, isAdmin } = useAuth()
   const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
   const { data: generatedMaterials, loading: generatedLoading } = useGeneratedMaterials()
-  const { data: materials, loading: materialsLoading } = useMaterials()
+  const { data: materials, loading: materialsLoading, refetch } = useMaterials()
   const [search, setSearch] = React.useState('')
   const [selectedFolder, setSelectedFolder] = React.useState<MaterialLibraryFolder | 'all'>('all')
   const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
+  const [editingMaterial, setEditingMaterial] = React.useState<Material | null>(null)
 
   const stakeholder = React.useMemo(
     () => resolveCurrentStakeholder(profile, stakeholders),
@@ -63,10 +70,12 @@ export function StakeholderGeneratedMaterialsPage() {
       if (selectedFolder !== 'all' && generated.library_folder !== selectedFolder) return false
       if (!search) return true
       const query = search.toLowerCase()
+      const customTags = getMaterialCustomTags(material!).join(' ').toLowerCase()
       return (
         material!.title.toLowerCase().includes(query)
         || (material!.description || '').toLowerCase().includes(query)
         || generated.tags.join(' ').toLowerCase().includes(query)
+        || customTags.includes(query)
       )
     })
   }, [linkedGenerated, search, selectedFolder])
@@ -127,6 +136,18 @@ export function StakeholderGeneratedMaterialsPage() {
         open={!!previewMaterial}
         onOpenChange={(open) => {
           if (!open) setPreviewMaterial(null)
+        }}
+      />
+
+      <MaterialEditDialog
+        material={editingMaterial}
+        open={!!editingMaterial}
+        onOpenChange={(open) => {
+          if (!open) setEditingMaterial(null)
+        }}
+        onSaved={() => {
+          setEditingMaterial(null)
+          refetch()
         }}
       />
 
@@ -196,47 +217,74 @@ export function StakeholderGeneratedMaterialsPage() {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {items.map(({ generated, material }) => (
-                  <Card key={generated.id} className="overflow-hidden transition-shadow hover:shadow-card-hover">
-                    <div className="relative h-48 border-b border-surface-100 bg-surface-50">
-                      <MaterialPreviewFrame
-                        src={material.file_url || material.thumbnail_url}
-                        mimeType={material.mime_type}
-                        title={material.title}
-                        className="h-full w-full"
-                        fit="contain"
-                        showPdfBadge
-                        pdfClassName="h-full w-full"
-                      />
-                    </div>
-                    <CardContent className="space-y-3 p-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="success">{getAudienceLabel(generated.tags)}</Badge>
-                        <Badge variant="info">{folderMeta.label}</Badge>
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-surface-900">{material.title}</h3>
-                        <p className="mt-1 line-clamp-2 text-xs text-surface-500">
-                          {material.description || 'No description available yet.'}
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between text-xs text-surface-400">
-                        <span>{formatDate(generated.generated_at || generated.updated_at)}</span>
-                        <span>Ready</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setPreviewMaterial(material)}>
-                          <Eye className="h-3.5 w-3.5" /> Preview
-                        </Button>
-                        {material.file_url && (
-                          <Button size="sm" asChild>
-                            <a href={material.file_url} download>
-                              <Download className="h-3.5 w-3.5" /> Download
-                            </a>
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  (() => {
+                    const customTags = getMaterialCustomTags(material)
+                    const visibilityLabels = getMaterialVisibilityRoleLabels(material)
+                    const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
+                    const canEdit = isAdmin || material.created_by === profile.id
+
+                    return (
+                      <Card key={generated.id} className="overflow-hidden transition-shadow hover:shadow-card-hover">
+                        <div className="relative h-48 border-b border-surface-100 bg-surface-50">
+                          <MaterialPreviewFrame
+                            src={material.file_url || material.thumbnail_url}
+                            mimeType={material.mime_type}
+                            title={material.title}
+                            className="h-full w-full"
+                            fit="contain"
+                            showPdfBadge
+                            pdfClassName="h-full w-full"
+                          />
+                        </div>
+                        <CardContent className="space-y-3 p-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="success">{getAudienceLabel(customTags.length > 0 ? customTags : generated.tags)}</Badge>
+                            <Badge variant="info">{folderMeta.label}</Badge>
+                          </div>
+                          {(visibilityLabels.length > 0 || subtypeLabels.length > 0 || customTags.length > 0) && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {visibilityLabels.slice(0, 3).map((label) => (
+                                <Badge key={label} variant="info">{label}</Badge>
+                              ))}
+                              {subtypeLabels.slice(0, 2).map((label) => (
+                                <Badge key={label} variant="success">{label}</Badge>
+                              ))}
+                              {customTags.slice(0, 2).map((tag) => (
+                                <Badge key={tag} variant="default">{tag}</Badge>
+                              ))}
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="text-sm font-semibold text-surface-900">{material.title}</h3>
+                            <p className="mt-1 line-clamp-2 text-xs text-surface-500">
+                              {material.description || 'No description available yet.'}
+                            </p>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-surface-400">
+                            <span>{formatDate(generated.generated_at || generated.updated_at)}</span>
+                            <span>Ready</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setPreviewMaterial(material)}>
+                              <Eye className="h-3.5 w-3.5" /> Preview
+                            </Button>
+                            {material.file_url && (
+                              <Button size="sm" asChild>
+                                <a href={material.file_url} download>
+                                  <Download className="h-3.5 w-3.5" /> Download
+                                </a>
+                              </Button>
+                            )}
+                            {canEdit && (
+                              <Button variant="ghost" size="sm" onClick={() => setEditingMaterial(material)}>
+                                Edit
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })()
                 ))}
               </div>
             </div>

@@ -12,6 +12,13 @@ import { useCount, useOutreach, useBusinesses } from '@/lib/supabase/hooks'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { StatCard } from '@/components/ui/stat-card'
 import { BusinessDashboardPage } from '@/components/business/business-dashboard-page'
 import { CommunityDashboardPage } from '@/components/community/community-dashboard-page'
@@ -87,6 +94,11 @@ export default function DashboardPage() {
 
 function TeamDashboardPage() {
   const { profile, isAdmin } = useAuth()
+  const [selectedStage, setSelectedStage] = React.useState<{
+    stage: string
+    label: string
+    count: number
+  } | null>(null)
 
   const actions = getActionsForRole(profile.role)
 
@@ -125,6 +137,12 @@ function TeamDashboardPage() {
     }
     return stages
   }, [businessData])
+  const stageBusinesses = React.useMemo(() => {
+    if (!selectedStage) return []
+    return businessData
+      .filter((business) => business.stage === selectedStage.stage)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [businessData, selectedStage])
 
   const greeting = getGreeting()
   const firstName = profile.full_name?.split(' ')[0] || 'there'
@@ -299,7 +317,12 @@ function TeamDashboardPage() {
             ) : (
               <div className="space-y-4">
                 {stageCounts.map((stage, idx) => (
-                  <div key={idx} className="flex items-center gap-3">
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setSelectedStage({ stage: stage.stage, label: stage.label, count: stage.count })}
+                    className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-surface-50"
+                  >
                     <span className="w-24 text-xs text-surface-500">{stage.label}</span>
                     <div className="flex-1">
                       <div className="h-2 rounded-full bg-surface-100">
@@ -310,7 +333,7 @@ function TeamDashboardPage() {
                       </div>
                     </div>
                     <span className="w-8 text-right text-xs font-medium text-surface-600">{stage.count}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -338,6 +361,63 @@ function TeamDashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={Boolean(selectedStage)} onOpenChange={(open) => !open && setSelectedStage(null)}>
+        <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedStage?.label || 'Pipeline stage'} businesses</DialogTitle>
+            <DialogDescription>
+              {selectedStage
+                ? `${selectedStage.count} businesses are currently in ${selectedStage.label.toLowerCase()}. Open any record to continue moving it forward.`
+                : 'See the businesses inside this stage.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {stageBusinesses.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50 px-4 py-8 text-center text-sm text-surface-500">
+                No businesses are currently sitting in this stage.
+              </div>
+            ) : (
+              stageBusinesses.map((business) => (
+                <div
+                  key={business.id}
+                  className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-semibold text-surface-900">{business.name}</p>
+                        <Badge variant="default">{selectedStage?.label || business.stage}</Badge>
+                        {business.category ? <Badge variant="outline">{business.category}</Badge> : null}
+                      </div>
+                      <div className="space-y-1 text-sm text-surface-600">
+                        {business.address ? <p>{business.address}</p> : null}
+                        {business.email || business.phone ? (
+                          <p>{[business.email, business.phone].filter(Boolean).join(' • ')}</p>
+                        ) : null}
+                        {business.avg_ticket ? <p>Average spend: {business.avg_ticket}</p> : null}
+                        {business.products_services?.length ? (
+                          <p>{business.products_services.slice(0, 3).join(', ')}</p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Link href={`/crm/businesses/${business.id}`}>
+                        <Button size="sm">
+                          Open record
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

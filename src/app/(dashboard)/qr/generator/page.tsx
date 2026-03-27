@@ -1,11 +1,13 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import NextImage from 'next/image'
+import { useSearchParams } from 'next/navigation'
 import {
   QrCode, Download, Settings, Palette,
   Check, ChevronDown, Sparkles, Tag, MapPin, Building2,
-  Heart, Users, FolderOpen, Megaphone, ExternalLink,
+  Heart, Users, FolderOpen, Megaphone, ExternalLink, ArrowLeft,
   Image as ImageIcon, Mail, Phone, Wifi, ContactRound, FileUp,
   MessageSquare, Globe, Layers, Loader2, FileText,
 } from 'lucide-react'
@@ -20,6 +22,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { BRANDS } from '@/lib/constants'
+import { buildStakeholderJoinUrl } from '@/lib/material-engine'
 import { exportPdfWithQrPlacements } from '@/lib/materials/pdf-export'
 import { getQrPlacements } from '@/lib/materials/qr-placement'
 import { generateShortCode } from '@/lib/utils'
@@ -33,8 +36,20 @@ import {
   type QrLogoEditSettings,
 } from '@/lib/qr/logo-processing'
 import { useAuth } from '@/lib/auth/context'
-import { useQrCodeInsert, useCampaigns, useCities, useProfiles, useBusinesses, useCauses, useMaterials } from '@/lib/supabase/hooks'
-import type { Material } from '@/lib/types/database'
+import {
+  useQrCodeInsert,
+  useCampaigns,
+  useCities,
+  useProfiles,
+  useBusinesses,
+  useCauses,
+  useMaterials,
+  useBusinessUpdate,
+  useQrCodes,
+  useStakeholders,
+  useStakeholderCodes,
+} from '@/lib/supabase/hooks'
+import type { Material, QrCode as QrCodeRecord, Stakeholder, StakeholderCode } from '@/lib/types/database'
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -86,11 +101,29 @@ function isPdfMaterial(material: Pick<Material, 'mime_type'>) {
   return material.mime_type === 'application/pdf' || material.mime_type?.includes('pdf')
 }
 
+function normalizeContextTags(...values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => (value || '').split(','))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ).join(', ')
+}
+
+function getQrMetadataString(metadata: Record<string, unknown> | null | undefined, key: string) {
+  const value = metadata?.[key]
+  return typeof value === 'string' ? value : ''
+}
+
 // ─── Component ──────────────────────────────────────────────
 
 export default function QRGeneratorPage() {
+  const searchParams = useSearchParams()
   const { profile } = useAuth()
   const { insert: insertQrCode, loading: savingQr, error: saveError } = useQrCodeInsert()
+  const { update: updateBusiness } = useBusinessUpdate()
 
   // Real data from Supabase
   const { data: campaignsData } = useCampaigns()
@@ -98,7 +131,9 @@ export default function QRGeneratorPage() {
   const { data: profilesData } = useProfiles()
   const { data: businessesData } = useBusinesses()
   const { data: causesData } = useCauses()
-
+  const { data: qrCodesData } = useQrCodes()
+  const { data: stakeholdersData } = useStakeholders()
+  const { data: stakeholderCodesData } = useStakeholderCodes()
   const { data: materialsData } = useMaterials()
 
   const campaignOptions = React.useMemo(() => campaignsData.map(c => ({ value: c.id, label: c.name })), [campaignsData])
@@ -106,6 +141,55 @@ export default function QRGeneratorPage() {
   const stakeholderOptions = React.useMemo(() => profilesData.map(p => ({ value: p.id, label: p.full_name })), [profilesData])
   const businessOptions = React.useMemo(() => businessesData.map(b => ({ value: b.id, label: b.name })), [businessesData])
   const causeOptions = React.useMemo(() => causesData.map(c => ({ value: c.id, label: c.name })), [causesData])
+  const sourceBusinessId = searchParams.get('businessId')
+  const sourceCauseId = searchParams.get('causeId')
+  const sourceBusiness = React.useMemo(
+    () => (sourceBusinessId ? businessesData.find((item) => item.id === sourceBusinessId) || null : null),
+    [businessesData, sourceBusinessId],
+  )
+  const sourceCause = React.useMemo(
+    () => (sourceCauseId ? causesData.find((item) => item.id === sourceCauseId) || null : null),
+    [causesData, sourceCauseId],
+  )
+  const sourceEntityName = sourceBusiness?.name || sourceCause?.name || ''
+  const sourceEntityType = sourceBusiness ? 'business' : sourceCause ? 'cause' : null
+  const sourceReturnHref = React.useMemo(() => {
+    const configured = searchParams.get('returnTo')
+    if (configured?.startsWith('/')) return configured
+    if (sourceBusinessId) return `/crm/businesses/${sourceBusinessId}`
+    if (sourceCauseId) return `/crm/causes/${sourceCauseId}`
+    return '/qr/mine'
+  }, [searchParams, sourceBusinessId, sourceCauseId])
+  const sourceStakeholder = React.useMemo<Stakeholder | null>(() => {
+    if (sourceBusinessId) {
+      return stakeholdersData.find((item) => item.business_id === sourceBusinessId) || null
+    }
+    if (sourceCauseId) {
+      return stakeholdersData.find((item) => item.cause_id === sourceCauseId) || null
+    }
+    return null
+  }, [sourceBusinessId, sourceCauseId, stakeholdersData])
+  const sourceCodes = React.useMemo<StakeholderCode | null>(() => {
+    if (!sourceStakeholder) return null
+    return stakeholderCodesData.find((item) => item.stakeholder_id === sourceStakeholder.id) || null
+  }, [sourceStakeholder, stakeholderCodesData])
+  const sourceExistingQr = React.useMemo<QrCodeRecord | null>(() => {
+    if (sourceBusiness?.linked_qr_code_id) {
+      return qrCodesData.find((item) => item.id === sourceBusiness.linked_qr_code_id) || null
+    }
+    if (sourceBusinessId) {
+      return qrCodesData.find((item) => item.business_id === sourceBusinessId) || null
+    }
+    if (sourceCauseId) {
+      return qrCodesData.find((item) => item.cause_id === sourceCauseId) || null
+    }
+    return null
+  }, [qrCodesData, sourceBusiness, sourceBusinessId, sourceCauseId])
+  const sourceJoinUrl = React.useMemo(() => {
+    if (!sourceStakeholder || !sourceCodes) return ''
+    return sourceCodes.join_url || buildStakeholderJoinUrl(sourceStakeholder.type, sourceCodes.connection_code)
+  }, [sourceCodes, sourceStakeholder])
+  const sourceStakeholderProfileId = sourceStakeholder?.owner_user_id || sourceStakeholder?.profile_id || ''
 
   // Materials with QR placement zones
   const materialsWithQrZone = React.useMemo(() =>
@@ -159,6 +243,62 @@ export default function QRGeneratorPage() {
   // File input ref
   const logoInputRef = React.useRef<HTMLInputElement>(null)
   const activeLogoUrl = logoEditedUrl || logoPreviewUrl
+  const contextPrefillRef = React.useRef<string>('')
+
+  const applySourceCodesToDraft = React.useCallback(() => {
+    if (!sourceStakeholder || !sourceCodes || !sourceJoinUrl) return
+    setDestType('url')
+    setDestination({ type: 'url', url: sourceJoinUrl })
+    setShowAssignments(true)
+    setStakeholder(sourceStakeholderProfileId)
+    setTags((current) => normalizeContextTags(current, sourceEntityType || undefined, sourceEntityName))
+
+    if (sourceBusiness) {
+      setBusiness(sourceBusiness.id)
+      setCity(sourceBusiness.city_id || '')
+      setBrand(sourceBusiness.brand)
+    }
+
+    if (sourceCause) {
+      setCause(sourceCause.id)
+      setCity(sourceCause.city_id || '')
+      setBrand(sourceCause.brand)
+    }
+
+    setName((current) => current.trim() || `${sourceEntityName} QR Code`)
+  }, [sourceCause, sourceBusiness, sourceCodes, sourceEntityName, sourceEntityType, sourceJoinUrl, sourceStakeholder, sourceStakeholderProfileId])
+
+  const applyExistingQrToDraft = React.useCallback((qr: QrCodeRecord) => {
+    const metadata = (qr.metadata as Record<string, unknown> | null) || null
+    setName(qr.name)
+    setBrand(qr.brand)
+    setDestType('url')
+    setDestination({ type: 'url', url: qr.destination_url })
+    setFgColor(qr.foreground_color)
+    setBgColor(qr.background_color)
+    setFrameText(qr.frame_text || '')
+    setCampaign(qr.campaign_id || '')
+    setCity(qr.city_id || sourceBusiness?.city_id || sourceCause?.city_id || '')
+    setStakeholder(qr.stakeholder_id || sourceStakeholderProfileId || '')
+    setBusiness(qr.business_id || sourceBusiness?.id || '')
+    setCause(qr.cause_id || sourceCause?.id || '')
+    setTags(normalizeContextTags(getQrMetadataString(metadata, 'tags'), sourceEntityType || undefined, sourceEntityName))
+    setDotStyle((metadata?.dot_style as DotStyle) || 'square')
+    setCornerStyle((metadata?.corner_style as CornerStyle) || 'square')
+    setGradientType(
+      metadata?.gradient_type === 'linear' || metadata?.gradient_type === 'radial'
+        ? metadata.gradient_type
+        : 'none',
+    )
+    const gradientColors = Array.isArray(metadata?.gradient_colors) ? metadata.gradient_colors : []
+    setGradientColor1(typeof gradientColors[0] === 'string' ? gradientColors[0] : '#ffffff')
+    setGradientColor2(typeof gradientColors[1] === 'string' ? gradientColors[1] : '#e2e8f0')
+    const sizeValue = metadata?.size
+    if (typeof sizeValue === 'number' || typeof sizeValue === 'string') {
+      setSize(String(sizeValue))
+    }
+    setShowAssignments(true)
+  }, [sourceBusiness, sourceCause, sourceEntityName, sourceEntityType, sourceStakeholderProfileId])
 
   // Handle destination type change
   function handleDestTypeChange(type: QRDestinationType) {
@@ -199,6 +339,63 @@ export default function QRGeneratorPage() {
       if (logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl)
     }
   }, [logoPreviewUrl])
+
+  React.useEffect(() => {
+    if (!sourceBusiness && !sourceCause) return
+
+    const sourceId = sourceBusiness?.id || sourceCause?.id
+    if (!sourceId) return
+
+    const prefillKey = [
+      sourceEntityType || 'context',
+      sourceId,
+      sourceExistingQr?.id || 'new',
+      sourceCodes?.id || 'no-codes',
+    ].join(':')
+
+    if (contextPrefillRef.current === prefillKey) return
+
+    if (sourceExistingQr) {
+      applyExistingQrToDraft(sourceExistingQr)
+    } else {
+      setName((current) => current.trim() || `${sourceEntityName} QR Code`)
+      setShowAssignments(true)
+      setTags((current) => normalizeContextTags(current, sourceEntityType || undefined, sourceEntityName))
+
+      if (sourceBusiness) {
+        setBusiness(sourceBusiness.id)
+        setCity(sourceBusiness.city_id || '')
+        setBrand(sourceBusiness.brand)
+      }
+
+      if (sourceCause) {
+        setCause(sourceCause.id)
+        setCity(sourceCause.city_id || '')
+        setBrand(sourceCause.brand)
+      }
+
+      if (sourceStakeholderProfileId) {
+        setStakeholder(sourceStakeholderProfileId)
+      }
+
+      if (sourceJoinUrl) {
+        setDestType('url')
+        setDestination({ type: 'url', url: sourceJoinUrl })
+      }
+    }
+
+    contextPrefillRef.current = prefillKey
+  }, [
+    applyExistingQrToDraft,
+    sourceBusiness,
+    sourceCause,
+    sourceCodes?.id,
+    sourceEntityName,
+    sourceEntityType,
+    sourceExistingQr,
+    sourceJoinUrl,
+    sourceStakeholderProfileId,
+  ])
 
   // Resolve encoded data
   const encodedData = React.useMemo(() => {
@@ -268,7 +465,7 @@ export default function QRGeneratorPage() {
 
       // Save to Supabase qr_codes table
       const redirectUrl = `https://localvip.com/q/${code}`
-      await insertQrCode({
+      const savedQr = await insertQrCode({
         name: name.trim(),
         short_code: code,
         destination_url: dataToEncode,
@@ -295,10 +492,20 @@ export default function QRGeneratorPage() {
           gradient_type: gradientType,
           gradient_colors: [gradientColor1, gradientColor2],
           size: finalSize,
+          tags,
           logo_name: logoFile?.name || null,
           logo_edit: logoFile ? logoEditSettings : null,
+          source_entity_type: sourceEntityType,
+          source_entity_id: sourceBusiness?.id || sourceCause?.id || null,
+          referral_code: sourceCodes?.referral_code || null,
+          connection_code: sourceCodes?.connection_code || null,
+          join_url: sourceJoinUrl || null,
         },
       })
+
+      if (savedQr && sourceBusiness && (!business || business === sourceBusiness.id)) {
+        await updateBusiness(sourceBusiness.id, { linked_qr_code_id: savedQr.id })
+      }
 
       setGenerated(true)
     } catch (err) {
@@ -409,11 +616,78 @@ export default function QRGeneratorPage() {
       <PageHeader
         title="QR Code Generator"
         description="Create trackable QR codes with custom styles, logos, and destinations"
-        breadcrumb={[
-          { label: 'QR Codes', href: '/qr/mine' },
-          { label: 'Generator' },
-        ]}
+        breadcrumb={
+          sourceBusiness
+            ? [
+                { label: 'CRM', href: '/crm/businesses' },
+                { label: 'Businesses', href: '/crm/businesses' },
+                { label: sourceBusiness.name, href: sourceReturnHref },
+                { label: 'QR Code Generator' },
+              ]
+            : sourceCause
+              ? [
+                  { label: 'CRM', href: '/crm/causes' },
+                  { label: 'Causes', href: '/crm/causes' },
+                  { label: sourceCause.name, href: sourceReturnHref },
+                  { label: 'QR Code Generator' },
+                ]
+              : [
+                  { label: 'QR Codes', href: '/qr/mine' },
+                  { label: 'Generator' },
+                ]
+        }
+        actions={
+          sourceEntityName ? (
+            <Link href={sourceReturnHref}>
+              <Button variant="outline" size="sm">
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to {sourceEntityName}
+              </Button>
+            </Link>
+          ) : undefined
+        }
       />
+
+      {sourceEntityName && (
+        <Card className="border-brand-200 bg-brand-50/40">
+          <CardContent className="flex flex-col gap-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-surface-900">
+                Opened from {sourceEntityName}
+              </p>
+              <p className="text-sm text-surface-600">
+                This generator is prefilled from the {sourceEntityType} record, and any QR you generate here will stay connected to that workflow.
+              </p>
+              {sourceExistingQr ? (
+                <p className="text-xs text-surface-500">
+                  The last saved QR settings for this record have already been loaded.
+                </p>
+              ) : sourceJoinUrl ? (
+                <p className="text-xs text-surface-500">
+                  Referral and connection codes are ready. You can apply them again at any time below.
+                </p>
+              ) : (
+                <p className="text-xs text-surface-500">
+                  This record is linked, but its referral / connection codes are still missing.
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href={sourceReturnHref}>
+                <Button variant="outline" size="sm">
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Return to record
+                </Button>
+              </Link>
+              {sourceCodes && sourceJoinUrl ? (
+                <Button variant="outline" size="sm" onClick={applySourceCodesToDraft}>
+                  Add {sourceEntityName}&apos;s referral code and connection code
+                </Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Main two-panel layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -464,6 +738,40 @@ export default function QRGeneratorPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {sourceEntityName && (
+                <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-surface-900">
+                        {sourceEntityName} destination setup
+                      </p>
+                      <p className="text-xs leading-5 text-surface-500">
+                        Pull the current referral code and connection code straight into this QR so you do not have to rebuild it manually.
+                      </p>
+                      {sourceCodes ? (
+                        <p className="text-xs text-surface-500">
+                          Referral: <span className="font-medium text-surface-700">{sourceCodes.referral_code}</span>
+                          {' • '}
+                          Connection: <span className="font-medium text-surface-700">{sourceCodes.connection_code}</span>
+                        </p>
+                      ) : (
+                        <p className="text-xs text-warning-700">
+                          Codes have not been added to this stakeholder yet.
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={applySourceCodesToDraft}
+                      disabled={!sourceCodes || !sourceJoinUrl}
+                    >
+                      Add {sourceEntityName}&apos;s referral code and connection code
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {/* Destination type selector */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {DESTINATION_TYPES.map((dt) => {

@@ -9,6 +9,7 @@ import {
   Mail,
   MapPin,
   Phone,
+  QrCode,
   Store,
   Globe,
   MessageSquare,
@@ -17,6 +18,7 @@ import {
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
@@ -85,6 +87,8 @@ export default function CauseDetailPage() {
     )
   }
 
+  const qrGeneratorHref = `/qr/generator?causeId=${cause.id}&returnTo=${encodeURIComponent(`/crm/causes/${cause.id}`)}`
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -95,6 +99,14 @@ export default function CauseDetailPage() {
           { label: 'Causes', href: '/crm/causes' },
           { label: cause.name },
         ]}
+        actions={(
+          <Link href={qrGeneratorHref}>
+            <Button size="sm">
+              <QrCode className="h-3.5 w-3.5" />
+              Generate QR Code
+            </Button>
+          </Link>
+        )}
       />
 
       <Card className="overflow-hidden border-pink-200">

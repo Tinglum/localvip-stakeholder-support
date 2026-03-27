@@ -4,7 +4,7 @@ import * as React from 'react'
 import {
   FileText, Download, Eye, Grid, List, Search,
   Upload, FolderOpen, File, Image as ImageIcon, Mail,
-  MessageSquare, Printer, QrCode, X, Loader2, Move, Trash2,
+  MessageSquare, Printer, QrCode, X, Loader2, Move, Trash2, PencilLine,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
+import { MaterialEditDialog } from '@/components/materials/material-edit-dialog'
 import { MaterialQrZonesDialog } from '@/components/materials/material-qr-zones-dialog'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
@@ -19,16 +20,28 @@ import { QrPlacementPicker } from '@/components/materials/qr-placement-picker'
 import { useAuth } from '@/lib/auth/context'
 import { deleteMaterial } from '@/lib/materials/delete-material'
 import {
+  AUTOMATION_TEMPLATE_STAKEHOLDER_TYPES,
+  getMaterialAutomationTemplateConfig,
+  withUpdatedMaterialAutomationTemplate,
+  type MaterialAutomationTemplateConfig,
+} from '@/lib/materials/automation-template'
+import {
+  getMaterialCustomTags,
+  getMaterialVisibilityRoleLabels,
+  getMaterialVisibilitySubtypeLabels,
+} from '@/lib/materials/material-targeting'
+import {
   getQrPlacements,
   hasQrPlacements,
   qrPlacementMetadata,
   type QrPlacement,
 } from '@/lib/materials/qr-placement'
 import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
+import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
 import { useMaterials, useMaterialInsert } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
-import type { Material } from '@/lib/types/database'
+import type { Material, MaterialLibraryFolder, StakeholderType } from '@/lib/types/database'
 
 // ─── Helpers ──────────────────────────────────────────────────
 
@@ -191,7 +204,7 @@ function UploadMaterialDialog({
   onClose: () => void
   onSuccess: () => void
 }) {
-  const { profile } = useAuth()
+  const { profile, isAdmin } = useAuth()
   const { insert, loading: insertLoading, error } = useMaterialInsert()
 
   const [title, setTitle] = React.useState('')
@@ -205,6 +218,12 @@ function UploadMaterialDialog({
   const [uploading, setUploading] = React.useState(false)
   const [dragOver, setDragOver] = React.useState(false)
   const [qrPlacements, setQrPlacements] = React.useState<QrPlacement[]>([])
+  const [templateEnabled, setTemplateEnabled] = React.useState(false)
+  const [templateLibraryFolder, setTemplateLibraryFolder] = React.useState<MaterialLibraryFolder>('share_with_customers')
+  const [templateStakeholderTypes, setTemplateStakeholderTypes] = React.useState<StakeholderType[]>(['business'])
+  const [templateAudienceTags, setTemplateAudienceTags] = React.useState('customers')
+  const [templateStatus, setTemplateStatus] = React.useState<'active' | 'inactive'>('active')
+  const [templateError, setTemplateError] = React.useState<string | null>(null)
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
@@ -225,6 +244,12 @@ function UploadMaterialDialog({
     setUploading(false)
     setDragOver(false)
     setQrPlacements([])
+    setTemplateEnabled(false)
+    setTemplateLibraryFolder('share_with_customers')
+    setTemplateStakeholderTypes(['business'])
+    setTemplateAudienceTags('customers')
+    setTemplateStatus('active')
+    setTemplateError(null)
   }
 
   function handleFileSelect(selectedFile: File | undefined) {
@@ -234,6 +259,7 @@ function UploadMaterialDialog({
     }
     setFile(selectedFile)
     setQrPlacements([])
+    setTemplateError(null)
     if (!title) {
       const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '')
       setTitle(nameWithoutExt)
@@ -267,6 +293,21 @@ function UploadMaterialDialog({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  function parseTemplateTags(value: string) {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  function toggleTemplateStakeholderType(stakeholderType: StakeholderType) {
+    setTemplateStakeholderTypes((current) =>
+      current.includes(stakeholderType)
+        ? current.filter((item) => item !== stakeholderType)
+        : [...current, stakeholderType],
+    )
+  }
+
   // Clean up preview URLs on unmount
   React.useEffect(() => {
     return () => {
@@ -298,6 +339,12 @@ function UploadMaterialDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setTemplateError(null)
+
+    if (templateEnabled && qrPlacements.length === 0) {
+      setTemplateError('Add at least one QR zone before using this material as an automation template.')
+      return
+    }
 
     let fileUrl: string | null = null
     let thumbnailUrl: string | null = null
@@ -325,6 +372,44 @@ function UploadMaterialDialog({
       Object.assign(metadata, qrPlacementMetadata(qrPlacements))
     }
 
+    const baseMaterial = {
+      id: '',
+      title,
+      description: description || null,
+      type,
+      brand,
+      file_url: fileUrl,
+      file_name: fileName,
+      file_size: fileSize,
+      mime_type: mimeType,
+      thumbnail_url: thumbnailUrl,
+      category: category || null,
+      use_case: useCase || null,
+      target_roles: [],
+      target_subtypes: [],
+      campaign_id: null,
+      city_id: null,
+      is_template: templateEnabled,
+      version: 1,
+      status: 'active',
+      created_by: profile.id,
+      metadata: Object.keys(metadata).length > 0 ? metadata : null,
+      created_at: '',
+      updated_at: '',
+    } as Material
+
+    const automationConfig: MaterialAutomationTemplateConfig = {
+      enabled: templateEnabled,
+      isActive: templateStatus === 'active',
+      stakeholderTypes: templateStakeholderTypes.length > 0 ? templateStakeholderTypes : ['business'],
+      audienceTags: parseTemplateTags(templateAudienceTags),
+      libraryFolder: templateLibraryFolder,
+    }
+
+    const finalMetadata = templateEnabled
+      ? withUpdatedMaterialAutomationTemplate(baseMaterial, automationConfig)
+      : (Object.keys(metadata).length > 0 ? metadata : null)
+
     const result = await insert({
       title,
       description: description || null,
@@ -340,11 +425,11 @@ function UploadMaterialDialog({
       target_roles: [],
       campaign_id: null,
       city_id: null,
-      is_template: false,
+      is_template: templateEnabled,
       version: 1,
       status: 'active',
       created_by: profile.id,
-      metadata: Object.keys(metadata).length > 0 ? metadata : null,
+      metadata: finalMetadata,
     })
     if (result) {
       reset()
@@ -442,6 +527,92 @@ function UploadMaterialDialog({
             />
           )}
 
+          {isAdmin ? (
+            <div className="rounded-lg border border-surface-200 bg-surface-50 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-surface-900">Use This As an Automation Template</p>
+                  <p className="mt-1 text-xs text-surface-500">
+                    This turns the uploaded material into a reusable stakeholder template. The saved QR zones become the automatic QR placement layout.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTemplateEnabled((current) => !current)}
+                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                    templateEnabled
+                      ? 'border-brand-500 bg-brand-50 text-brand-700'
+                      : 'border-surface-200 bg-white text-surface-600 hover:border-brand-300 hover:text-brand-700'
+                  }`}
+                >
+                  {templateEnabled ? 'Template Enabled' : 'Enable Template'}
+                </button>
+              </div>
+
+              {templateEnabled && (
+                <div className="mt-4 space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-surface-600">Delivery Folder</label>
+                      <select
+                        value={templateLibraryFolder}
+                        onChange={(e) => setTemplateLibraryFolder(e.target.value as MaterialLibraryFolder)}
+                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                      >
+                        {MATERIAL_LIBRARY_FOLDERS.map((folder) => (
+                          <option key={folder.value} value={folder.value}>{folder.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-surface-600">Template Status</label>
+                      <select
+                        value={templateStatus}
+                        onChange={(e) => setTemplateStatus(e.target.value as 'active' | 'inactive')}
+                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-surface-600">Stakeholder Types</label>
+                    <div className="flex flex-wrap gap-2">
+                      {AUTOMATION_TEMPLATE_STAKEHOLDER_TYPES.map((stakeholderType) => {
+                        const active = templateStakeholderTypes.includes(stakeholderType)
+                        return (
+                          <button
+                            key={stakeholderType}
+                            type="button"
+                            onClick={() => toggleTemplateStakeholderType(stakeholderType)}
+                            className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                              active
+                                ? 'border-brand-500 bg-brand-50 text-brand-700'
+                                : 'border-surface-200 bg-white text-surface-600 hover:border-brand-300 hover:text-brand-700'
+                            }`}
+                          >
+                            {stakeholderType.replace(/_/g, ' ')}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-surface-600">Automation Audience Tags</label>
+                    <Input
+                      value={templateAudienceTags}
+                      onChange={(e) => setTemplateAudienceTags(e.target.value)}
+                      placeholder="customers, parents, pta"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-600">Title *</label>
             <Input value={title} onChange={e => setTitle(e.target.value)} required placeholder="e.g. Business One-Pager" />
@@ -509,7 +680,7 @@ function UploadMaterialDialog({
               </select>
             </div>
           </div>
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {(templateError || error) && <p className="text-xs text-red-600">{templateError || error}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={loading || !title}>
@@ -535,7 +706,7 @@ function UploadMaterialDialog({
 // ─── Main page ────────────────────────────────────────────────
 
 export default function MaterialsLibraryPage() {
-  const { isAdmin } = useAuth()
+  const { profile, isAdmin } = useAuth()
   const { data: materials, loading, error, refetch } = useMaterials()
   const [search, setSearch] = React.useState('')
   const [typeFilter, setTypeFilter] = React.useState('')
@@ -544,6 +715,7 @@ export default function MaterialsLibraryPage() {
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [uploadOpen, setUploadOpen] = React.useState(false)
   const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
+  const [editingMaterial, setEditingMaterial] = React.useState<Material | null>(null)
   const [editingQrMaterial, setEditingQrMaterial] = React.useState<Material | null>(null)
   const [deletingId, setDeletingId] = React.useState<string | null>(null)
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
@@ -551,8 +723,12 @@ export default function MaterialsLibraryPage() {
 
   const filtered = React.useMemo(() => {
     return materials.filter(m => {
-      if (search && !m.title.toLowerCase().includes(search.toLowerCase()) &&
-          !(m.description || '').toLowerCase().includes(search.toLowerCase())) return false
+      const query = search.toLowerCase()
+      const customTags = getMaterialCustomTags(m).join(' ').toLowerCase()
+      if (search
+        && !m.title.toLowerCase().includes(query)
+        && !(m.description || '').toLowerCase().includes(query)
+        && !customTags.includes(query)) return false
       if (typeFilter && m.type !== typeFilter) return false
       if (brandFilter && m.brand !== brandFilter) return false
       if (useCaseFilter && m.use_case !== useCaseFilter) return false
@@ -605,6 +781,19 @@ export default function MaterialsLibraryPage() {
         open={!!previewMaterial}
         onOpenChange={(open) => {
           if (!open) setPreviewMaterial(null)
+        }}
+      />
+
+      <MaterialEditDialog
+        material={editingMaterial}
+        open={!!editingMaterial}
+        onOpenChange={(open) => {
+          if (!open) setEditingMaterial(null)
+        }}
+        onSaved={() => {
+          setActionMessage('Material updated.')
+          setEditingMaterial(null)
+          refetch()
         }}
       />
 
@@ -725,6 +914,11 @@ export default function MaterialsLibraryPage() {
           {filtered.map(material => {
             const qrZoneCount = getQrPlacements(material.metadata as Record<string, unknown> | null).length
             const hasQrZone = hasQrPlacements(material.metadata as Record<string, unknown> | null)
+            const automationTemplate = getMaterialAutomationTemplateConfig(material)
+            const visibilityLabels = getMaterialVisibilityRoleLabels(material)
+            const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
+            const customTags = getMaterialCustomTags(material)
+            const canEdit = isAdmin || material.created_by === profile.id
             return (
               <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
                 {/* Thumbnail */}
@@ -751,7 +945,25 @@ export default function MaterialsLibraryPage() {
                     <Badge variant="default">
                       {MATERIAL_TYPES.find(t => t.value === material.type)?.label ?? material.type}
                     </Badge>
+                    {automationTemplate.enabled && (
+                      <Badge variant={automationTemplate.isActive ? 'success' : 'warning'}>
+                        Template
+                      </Badge>
+                    )}
                   </div>
+                  {(visibilityLabels.length > 0 || subtypeLabels.length > 0 || customTags.length > 0) && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {visibilityLabels.slice(0, 3).map((label) => (
+                        <Badge key={label} variant="info">{label}</Badge>
+                      ))}
+                      {subtypeLabels.slice(0, 2).map((label) => (
+                        <Badge key={label} variant="success">{label}</Badge>
+                      ))}
+                      {customTags.slice(0, 2).map((tag) => (
+                        <Badge key={tag} variant="default">{tag}</Badge>
+                      ))}
+                    </div>
+                  )}
                   <h3 className="text-sm font-semibold text-surface-800 group-hover:text-brand-700 transition-colors">
                     {material.title}
                   </h3>
@@ -769,6 +981,16 @@ export default function MaterialsLibraryPage() {
                           onClick={() => setPreviewMaterial(material)}
                         >
                           <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Edit tags"
+                          onClick={() => setEditingMaterial(material)}
+                        >
+                          <PencilLine className="h-3.5 w-3.5" />
                         </Button>
                       )}
                       {isAdmin && material.file_url && isMaterialPreviewable(material.mime_type) && (
@@ -813,6 +1035,11 @@ export default function MaterialsLibraryPage() {
           {filtered.map(material => {
             const qrZoneCount = getQrPlacements(material.metadata as Record<string, unknown> | null).length
             const hasQrZone = hasQrPlacements(material.metadata as Record<string, unknown> | null)
+            const automationTemplate = getMaterialAutomationTemplateConfig(material)
+            const visibilityLabels = getMaterialVisibilityRoleLabels(material)
+            const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
+            const customTags = getMaterialCustomTags(material)
+            const canEdit = isAdmin || material.created_by === profile.id
             return (
               <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
                 <CardContent className="flex items-center gap-4 py-3">
@@ -825,6 +1052,11 @@ export default function MaterialsLibraryPage() {
                       <Badge variant={material.brand === 'hato' ? 'hato' : 'info'} className="shrink-0">
                         {BRANDS[material.brand]?.label ?? material.brand}
                       </Badge>
+                      {automationTemplate.enabled && (
+                        <Badge variant={automationTemplate.isActive ? 'success' : 'warning'} className="shrink-0">
+                          Template
+                        </Badge>
+                      )}
                       {hasQrZone && (
                         <span className="shrink-0 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 flex items-center gap-0.5">
                           <QrCode className="h-2.5 w-2.5" /> {qrZoneCount} QR {qrZoneCount === 1 ? 'zone' : 'zones'}
@@ -832,6 +1064,19 @@ export default function MaterialsLibraryPage() {
                       )}
                     </div>
                     <p className="text-xs text-surface-500 truncate">{material.description}</p>
+                    {(visibilityLabels.length > 0 || subtypeLabels.length > 0 || customTags.length > 0) && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {visibilityLabels.slice(0, 3).map((label) => (
+                          <Badge key={label} variant="info">{label}</Badge>
+                        ))}
+                        {subtypeLabels.slice(0, 2).map((label) => (
+                          <Badge key={label} variant="success">{label}</Badge>
+                        ))}
+                        {customTags.slice(0, 2).map((tag) => (
+                          <Badge key={tag} variant="default">{tag}</Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-4 text-xs text-surface-400">
                     <span>{material.use_case ? MATERIAL_USE_CASES.find(u => u.value === material.use_case)?.label : ''}</span>
@@ -846,6 +1091,16 @@ export default function MaterialsLibraryPage() {
                         onClick={() => setPreviewMaterial(material)}
                       >
                         <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Edit tags"
+                        onClick={() => setEditingMaterial(material)}
+                      >
+                        <PencilLine className="h-3.5 w-3.5" />
                       </Button>
                     )}
                     {isAdmin && material.file_url && isMaterialPreviewable(material.mime_type) && (

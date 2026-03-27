@@ -11,6 +11,10 @@ import {
   toDisplayUrl,
 } from '@/lib/material-engine'
 import { resolveBusinessOffer } from '@/lib/offers'
+import {
+  renderMaterialAssetTemplate,
+  syncMaterialAssetTemplatesForStakeholder,
+} from '@/lib/server/material-asset-template-engine'
 import type { createServiceClient } from '@/lib/supabase/server'
 import { generateShortCode } from '@/lib/utils'
 import type {
@@ -373,22 +377,32 @@ async function generateOneMaterial(
     errorCorrectionLevel: 'H',
   })
 
-  const svg = renderStructuredTemplateSvg(template, context, qrDataUrl)
   const fileBase = `${sanitizeFilenamePart(context.stakeholder.name)}-${sanitizeFilenamePart(template.name)}`
   let fileExtension = 'svg'
   let contentType = 'image/svg+xml'
   let materialType: Material['type'] = 'flyer'
-  let fileBuffer: Uint8Array = Buffer.from(svg, 'utf8')
+  let fileBuffer: Uint8Array
 
-  if (template.output_format === 'png') {
-    fileExtension = 'png'
-    contentType = 'image/png'
-    fileBuffer = new Uint8Array(await renderStructuredTemplatePng(template, context, qrDataUrl))
-  } else if (template.output_format === 'pdf') {
-    fileExtension = 'pdf'
-    contentType = 'application/pdf'
-    materialType = 'pdf'
-    fileBuffer = new Uint8Array(await renderStructuredTemplatePdf(template, context, qrDataUrl))
+  if (template.template_type === 'material_asset') {
+    const rendered = await renderMaterialAssetTemplate(supabase, template, qrCode, qrDataUrl)
+    fileExtension = rendered.fileExtension
+    contentType = rendered.contentType
+    materialType = rendered.materialType
+    fileBuffer = rendered.fileBuffer
+  } else {
+    const svg = renderStructuredTemplateSvg(template, context, qrDataUrl)
+    fileBuffer = Buffer.from(svg, 'utf8')
+
+    if (template.output_format === 'png') {
+      fileExtension = 'png'
+      contentType = 'image/png'
+      fileBuffer = new Uint8Array(await renderStructuredTemplatePng(template, context, qrDataUrl))
+    } else if (template.output_format === 'pdf') {
+      fileExtension = 'pdf'
+      contentType = 'application/pdf'
+      materialType = 'pdf'
+      fileBuffer = new Uint8Array(await renderStructuredTemplatePdf(template, context, qrDataUrl))
+    }
   }
 
   const filePath = `generated-materials/${context.stakeholder.id}/${fileBase}.${fileExtension}`
@@ -528,6 +542,7 @@ async function getTemplatesForStakeholder(
   stakeholderType: StakeholderType,
   templateId?: string,
 ) {
+  const syncedAssetTemplates = await syncMaterialAssetTemplatesForStakeholder(supabase, stakeholderType, templateId)
   let query = supabase
     .from('material_templates')
     .select('*')
@@ -538,7 +553,10 @@ async function getTemplatesForStakeholder(
   const { data, error } = await query.order('created_at', { ascending: true })
   if (error) throw error
 
-  return ((data || []) as MaterialTemplate[]).filter((template) =>
+  const combined = [...((data || []) as MaterialTemplate[]), ...syncedAssetTemplates]
+  const uniqueTemplates = combined.filter((template, index, array) => array.findIndex((item) => item.id === template.id) === index)
+
+  return uniqueTemplates.filter((template) =>
     template.stakeholder_types.length === 0
     || template.stakeholder_types.includes(stakeholderType)
     || (stakeholderType === 'cause' && template.stakeholder_types.includes('community'))

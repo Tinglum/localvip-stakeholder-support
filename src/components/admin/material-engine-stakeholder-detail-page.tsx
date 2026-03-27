@@ -11,6 +11,10 @@ import { Input } from '@/components/ui/input'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { PageHeader } from '@/components/ui/page-header'
 import {
+  getMaterialAutomationTemplateConfig,
+  materialSupportsAutomationTemplate,
+} from '@/lib/materials/automation-template'
+import {
   useAdminTasks,
   useGeneratedMaterials,
   useMaterials,
@@ -63,12 +67,29 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
   const matchingTemplates = React.useMemo(() => {
     if (!stakeholder) return []
     return templates.filter((template) =>
+      template.template_type !== 'material_asset'
+      && (
       template.stakeholder_types.length === 0
       || template.stakeholder_types.includes(stakeholder.type)
       || (stakeholder.type === 'school' && template.stakeholder_types.includes('community'))
       || (stakeholder.type === 'cause' && template.stakeholder_types.includes('community'))
+      )
     )
   }, [templates, stakeholder])
+
+  const matchingMaterialTemplates = React.useMemo(() => {
+    if (!stakeholder) return []
+
+    return materials.filter((material) => {
+      const config = getMaterialAutomationTemplateConfig(material)
+      if (!config.enabled || !config.isActive) return false
+      if (!materialSupportsAutomationTemplate(material)) return false
+
+      return config.stakeholderTypes.includes(stakeholder.type)
+        || (stakeholder.type === 'school' && config.stakeholderTypes.includes('community'))
+        || (stakeholder.type === 'cause' && config.stakeholderTypes.includes('community'))
+    })
+  }, [materials, stakeholder])
 
   async function refreshAll() {
     refetchCodes({ silent: true })
@@ -220,7 +241,7 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
         <Card>
           <CardContent className="p-5">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Matching Templates</p>
-            <p className="mt-2 text-3xl font-semibold text-surface-900">{matchingTemplates.length}</p>
+            <p className="mt-2 text-3xl font-semibold text-surface-900">{matchingTemplates.length + matchingMaterialTemplates.length}</p>
           </CardContent>
         </Card>
         <Card>
@@ -263,7 +284,7 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
                   Join URL: <span className="font-medium text-surface-900">{codes.join_url.replace(/^https?:\/\//, '')}</span>
                 </div>
               )}
-              {matchingTemplates.length === 0 && (
+              {matchingTemplates.length + matchingMaterialTemplates.length === 0 && (
                 <div className="rounded-2xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
                   Codes can still be saved now, but material generation will stay blocked until this stakeholder has at least one active matching template.
                 </div>
@@ -304,11 +325,17 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
         <CardHeader>
           <CardTitle>Matching Templates</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {matchingTemplates.map((template) => (
-            <div key={template.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-medium text-surface-900">{template.name}</p>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {[...matchingTemplates, ...matchingMaterialTemplates.map((material) => ({
+              id: `material-${material.id}`,
+              name: material.title,
+              library_folder: getMaterialAutomationTemplateConfig(material).libraryFolder,
+              audience_tags: getMaterialAutomationTemplateConfig(material).audienceTags,
+              stakeholder_types: getMaterialAutomationTemplateConfig(material).stakeholderTypes,
+            }))].map((template) => (
+              <div key={template.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-surface-900">{template.name}</p>
                 <Badge variant="default">{getMaterialLibraryFolderMeta(template.library_folder).label}</Badge>
               </div>
               <p className="mt-2 text-sm text-surface-500">

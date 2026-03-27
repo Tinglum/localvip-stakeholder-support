@@ -13,7 +13,22 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ProgressSteps } from '@/components/ui/progress-steps'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
@@ -132,6 +147,10 @@ export default function BusinessDetailPage() {
 
   // ── Stage change handler ──
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
+  const [linkCauseOpen, setLinkCauseOpen] = React.useState(false)
+  const [linkCampaignOpen, setLinkCampaignOpen] = React.useState(false)
+  const [pendingCauseId, setPendingCauseId] = React.useState(biz?.linked_cause_id || '__none')
+  const [pendingCampaignId, setPendingCampaignId] = React.useState(biz?.campaign_id || '__none')
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
     if (!biz) return
@@ -140,6 +159,29 @@ export default function BusinessDetailPage() {
     // Force a page reload to reflect change since useRecord doesn't have refetch
     window.location.reload()
   }, [biz, updateBusiness])
+
+  React.useEffect(() => {
+    setPendingCauseId(biz?.linked_cause_id || '__none')
+    setPendingCampaignId(biz?.campaign_id || '__none')
+  }, [biz?.campaign_id, biz?.linked_cause_id])
+
+  const handleCauseLinkSave = React.useCallback(async () => {
+    if (!biz) return
+    await updateBusiness(biz.id, {
+      linked_cause_id: pendingCauseId === '__none' ? null : pendingCauseId,
+    })
+    setLinkCauseOpen(false)
+    window.location.reload()
+  }, [biz, pendingCauseId, updateBusiness])
+
+  const handleCampaignLinkSave = React.useCallback(async () => {
+    if (!biz) return
+    await updateBusiness(biz.id, {
+      campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId,
+    })
+    setLinkCampaignOpen(false)
+    window.location.reload()
+  }, [biz, pendingCampaignId, updateBusiness])
 
   // ── Loading state ──
   if (bizLoading) {
@@ -182,6 +224,7 @@ export default function BusinessDetailPage() {
     { key: 'qr' as const, label: 'QR Codes' },
     { key: 'materials' as const, label: 'Materials' },
   ]
+  const qrGeneratorHref = `/qr/generator?businessId=${biz.id}&returnTo=${encodeURIComponent(`/crm/businesses/${biz.id}`)}`
 
   return (
     <div className="space-y-6">
@@ -304,31 +347,49 @@ export default function BusinessDetailPage() {
             <p className="text-xs text-surface-400">{biz.address || 'No address on file'}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Linked Cause</p>
-            {linkedCause ? (
-              <Link href={`/crm/causes/${linkedCause.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
-                {linkedCause.name}
-              </Link>
-            ) : (
-              <p className="text-sm text-surface-500">No school or cause linked yet.</p>
-            )}
-            <p className="text-xs text-surface-400">{linkedCause?.type || 'Link a cause to clarify the story.'}</p>
-          </CardContent>
+        <Card className="transition-colors hover:border-brand-200">
+          <button
+            type="button"
+            onClick={() => setLinkCauseOpen(true)}
+            className="block w-full text-left"
+          >
+            <CardContent className="space-y-2 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Linked Cause</p>
+                <span className="text-xs font-medium text-brand-700">{linkedCause ? 'Change' : 'Link now'}</span>
+              </div>
+              {linkedCause ? (
+                <span className="inline-block text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
+                  {linkedCause.name}
+                </span>
+              ) : (
+                <p className="text-sm text-surface-500">No school or cause linked yet.</p>
+              )}
+              <p className="text-xs text-surface-400">{linkedCause?.type || 'Click to link a cause and clarify the story.'}</p>
+            </CardContent>
+          </button>
         </Card>
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
-            {campaign ? (
-              <Link href={`/campaigns/${campaign.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
-                {campaign.name}
-              </Link>
-            ) : (
-              <p className="text-sm text-surface-500">No campaign linked yet.</p>
-            )}
-            <p className="text-xs text-surface-400">{campaign?.status || 'Useful for city launch tracking.'}</p>
-          </CardContent>
+        <Card className="transition-colors hover:border-brand-200">
+          <button
+            type="button"
+            onClick={() => setLinkCampaignOpen(true)}
+            className="block w-full text-left"
+          >
+            <CardContent className="space-y-2 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
+                <span className="text-xs font-medium text-brand-700">{campaign ? 'Change' : 'Link now'}</span>
+              </div>
+              {campaign ? (
+                <span className="inline-block text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
+                  {campaign.name}
+                </span>
+              ) : (
+                <p className="text-sm text-surface-500">No campaign linked yet.</p>
+              )}
+              <p className="text-xs text-surface-400">{campaign?.status || 'Click to link this business into a launch campaign.'}</p>
+            </CardContent>
+          </button>
         </Card>
       </div>
 
@@ -409,7 +470,7 @@ export default function BusinessDetailPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-surface-800">QR Codes</h3>
-            <Link href="/qr/generator">
+            <Link href={qrGeneratorHref}>
               <Button size="sm"><Plus className="h-3.5 w-3.5" /> Generate QR Code</Button>
             </Link>
           </div>
@@ -429,7 +490,7 @@ export default function BusinessDetailPage() {
                   <a href={linkedQr.redirect_url} target="_blank" rel="noopener noreferrer">
                     <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open Redirect</Button>
                   </a>
-                  <Link href="/qr/generator">
+                  <Link href={qrGeneratorHref}>
                     <Button size="sm"><QrCode className="h-3.5 w-3.5" /> Manage QR</Button>
                   </Link>
                 </div>
@@ -441,7 +502,7 @@ export default function BusinessDetailPage() {
                 <QrCode className="mb-3 h-10 w-10 text-surface-300" />
                 <p className="text-sm font-medium text-surface-700">No QR codes generated yet</p>
                 <p className="mt-1 text-xs text-surface-400">Create a trackable QR code to link customers to this business.</p>
-                <Link href="/qr/generator" className="mt-4">
+                <Link href={qrGeneratorHref} className="mt-4">
                   <Button size="sm">Generate First QR Code</Button>
                 </Link>
               </CardContent>
@@ -493,6 +554,76 @@ export default function BusinessDetailPage() {
           )}
         </div>
       )}
+
+      <Dialog open={linkCauseOpen} onOpenChange={setLinkCauseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{linkedCause ? 'Change linked cause' : 'Link a cause'}</DialogTitle>
+            <DialogDescription>
+              Connect this business to the school or cause that best fits the story you are building around it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-surface-700">Cause or school</label>
+              <Select value={pendingCauseId} onValueChange={setPendingCauseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a cause or school..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">No linked cause</SelectItem>
+                  {causes.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setLinkCauseOpen(false)}>Cancel</Button>
+            <Button onClick={handleCauseLinkSave} disabled={updateLoading}>
+              {updateLoading ? 'Saving...' : linkedCause ? 'Save cause link' : 'Link cause'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={linkCampaignOpen} onOpenChange={setLinkCampaignOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{campaign ? 'Change linked campaign' : 'Link a campaign'}</DialogTitle>
+            <DialogDescription>
+              Tie this business into the right campaign so progress, assets, and launch reporting stay connected.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-surface-700">Campaign</label>
+              <Select value={pendingCampaignId} onValueChange={setPendingCampaignId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a campaign..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">No linked campaign</SelectItem>
+                  {campaigns.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setLinkCampaignOpen(false)}>Cancel</Button>
+            <Button onClick={handleCampaignLinkSave} disabled={updateLoading}>
+              {updateLoading ? 'Saving...' : campaign ? 'Save campaign link' : 'Link campaign'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

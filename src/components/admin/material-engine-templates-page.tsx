@@ -1,342 +1,163 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle2, LayoutTemplate, Plus } from 'lucide-react'
+import Link from 'next/link'
+import { Eye, FolderOpen, QrCode, Upload } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
-import { Textarea } from '@/components/ui/textarea'
-import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
+import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
+import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import {
-  useAuth,
-} from '@/lib/auth/context'
-import {
-  useMaterialTemplateInsert,
-  useMaterialTemplates,
-  useMaterialTemplateUpdate,
-} from '@/lib/supabase/hooks'
-import type { MaterialTemplateOutputFormat, StakeholderType } from '@/lib/types/database'
-
-const STAKEHOLDER_OPTIONS: StakeholderType[] = ['business', 'school', 'cause', 'community', 'launch_partner', 'field', 'influencer']
-
-function parseList(value: string) {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
+  getMaterialAutomationAudienceTags,
+  getMaterialAutomationTemplateConfig,
+  materialSupportsAutomationTemplate,
+} from '@/lib/materials/automation-template'
+import { getMaterialLibraryFolderMeta } from '@/lib/material-engine'
+import { getQrPlacements } from '@/lib/materials/qr-placement'
+import { useMaterials } from '@/lib/supabase/hooks'
+import type { Material } from '@/lib/types/database'
 
 export function MaterialEngineTemplatesPage() {
-  const { profile } = useAuth()
-  const { data: templates, loading, refetch } = useMaterialTemplates()
-  const { insert, loading: inserting } = useMaterialTemplateInsert()
-  const { update, loading: updating } = useMaterialTemplateUpdate()
-  const [feedback, setFeedback] = React.useState<string | null>(null)
-  const [editingId, setEditingId] = React.useState<string | null>(null)
-  const [form, setForm] = React.useState({
-    name: '',
-    sourcePath: '',
-    outputFormat: 'svg' as MaterialTemplateOutputFormat,
-    stakeholderTypes: 'business',
-    audienceTags: 'customers',
-    libraryFolder: 'share_with_customers',
-    qrX: '760',
-    qrY: '930',
-    qrWidth: '220',
-    qrHeight: '220',
-    eyebrow: 'LocalVIP',
-    headline: '{{stakeholder_name}}',
-    subheadline: '{{capture_offer_headline}}',
-    body: '{{capture_offer_description}}',
-    cta: 'Scan to get started',
-    footer: '{{support_label}}',
-    qrCaption: 'Scan with your phone',
-  })
+  const { data: materials, loading } = useMaterials()
+  const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
 
-  const saving = inserting || updating
-
-  function startEditing(templateId: string) {
-    const template = templates.find((item) => item.id === templateId)
-    if (!template) return
-    const metadata = (template.metadata as Record<string, unknown> | null) || {}
-    const qr = (template.qr_position_json as Record<string, unknown>) || {}
-
-    setEditingId(template.id)
-    setForm({
-      name: template.name,
-      sourcePath: template.source_path || '',
-      outputFormat: template.output_format,
-      stakeholderTypes: template.stakeholder_types.join(', '),
-      audienceTags: template.audience_tags.join(', '),
-      libraryFolder: template.library_folder,
-      qrX: `${qr.x || 760}`,
-      qrY: `${qr.y || 930}`,
-      qrWidth: `${qr.width || 220}`,
-      qrHeight: `${qr.height || 220}`,
-      eyebrow: `${metadata.eyebrow || 'LocalVIP'}`,
-      headline: `${metadata.headline || '{{stakeholder_name}}'}`,
-      subheadline: `${metadata.subheadline || '{{capture_offer_headline}}'}`,
-      body: `${metadata.body || '{{capture_offer_description}}'}`,
-      cta: `${metadata.cta || 'Scan to get started'}`,
-      footer: `${metadata.footer || '{{support_label}}'}`,
-      qrCaption: `${metadata.qrCaption || 'Scan with your phone'}`,
-    })
-  }
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    setFeedback(null)
-
-    const payload = {
-      name: form.name,
-      source_path: form.sourcePath || null,
-      template_type: 'structured_svg',
-      output_format: form.outputFormat,
-      audience_tags: parseList(form.audienceTags),
-      stakeholder_types: parseList(form.stakeholderTypes) as StakeholderType[],
-      library_folder: form.libraryFolder,
-      qr_position_json: {
-        x: Number(form.qrX),
-        y: Number(form.qrY),
-        width: Number(form.qrWidth),
-        height: Number(form.qrHeight),
-        canvas_width: 1080,
-        canvas_height: 1440,
-      },
-      is_active: true,
-      created_by: profile.id,
-      metadata: {
-        eyebrow: form.eyebrow,
-        headline: form.headline,
-        subheadline: form.subheadline,
-        body: form.body,
-        cta: form.cta,
-        footer: form.footer,
-        qrCaption: form.qrCaption,
-        titlePattern: '{{stakeholder_name}} - {{template_name}}',
-        descriptionPattern: '{{capture_offer_headline}}',
-      },
-    }
-
-    const result = editingId
-      ? await update(editingId, payload as any)
-      : await insert(payload as any)
-
-    if (!result) return
-
-    setFeedback(editingId ? 'Template updated.' : 'Template created.')
-    setEditingId(null)
-    setForm({
-      name: '',
-      sourcePath: '',
-      outputFormat: 'svg',
-      stakeholderTypes: 'business',
-      audienceTags: 'customers',
-      libraryFolder: 'share_with_customers',
-      qrX: '760',
-      qrY: '930',
-      qrWidth: '220',
-      qrHeight: '220',
-      eyebrow: 'LocalVIP',
-      headline: '{{stakeholder_name}}',
-      subheadline: '{{capture_offer_headline}}',
-      body: '{{capture_offer_description}}',
-      cta: 'Scan to get started',
-      footer: '{{support_label}}',
-      qrCaption: 'Scan with your phone',
-    })
-    refetch({ silent: true })
-  }
+  const templateMaterials = React.useMemo(() => {
+    return materials
+      .filter((material) => {
+        const config = getMaterialAutomationTemplateConfig(material)
+        return config.enabled || material.is_template
+      })
+      .map((material) => ({
+        material,
+        config: getMaterialAutomationTemplateConfig(material),
+        qrZoneCount: getQrPlacements(material.metadata as Record<string, unknown> | null).length,
+        supportsAutomation: materialSupportsAutomationTemplate(material),
+      }))
+      .sort((left, right) => Number(right.config.enabled) - Number(left.config.enabled))
+  }, [materials])
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Material Templates"
-        description="Manage the reusable templates that the engine personalizes with stakeholder-specific QR codes and copy."
+        title="Automation Template Sources"
+        description="Reusable stakeholder templates now come directly from the Materials Library. Upload a real material, save its QR layout, then mark it as an automation template there."
+        actions={
+          <Link href="/materials/library">
+            <Button>
+              <Upload className="h-4 w-4" /> Open Materials Library
+            </Button>
+          </Link>
+        }
       />
 
-      {feedback && (
-        <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
-          {feedback}
-        </div>
-      )}
+      <MaterialPreviewDialog
+        material={previewMaterial}
+        open={!!previewMaterial}
+        onOpenChange={(open) => {
+          if (!open) setPreviewMaterial(null)
+        }}
+      />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr,1.1fr]">
+      <div className="grid gap-4 lg:grid-cols-3">
         <Card>
-          <CardHeader>
-            <CardTitle>{editingId ? 'Edit Template' : 'New Template'}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Template name</label>
-                <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Source path or background asset URL</label>
-                <Input value={form.sourcePath} onChange={(event) => setForm((current) => ({ ...current, sourcePath: event.target.value }))} placeholder="Optional background image URL" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Output format</label>
-                  <select
-                    value={form.outputFormat}
-                    onChange={(event) => setForm((current) => ({ ...current, outputFormat: event.target.value as MaterialTemplateOutputFormat }))}
-                    className="h-10 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  >
-                    <option value="svg">SVG</option>
-                    <option value="png">PNG</option>
-                    <option value="pdf">PDF</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Library folder</label>
-                  <select
-                    value={form.libraryFolder}
-                    onChange={(event) => setForm((current) => ({ ...current, libraryFolder: event.target.value }))}
-                    className="h-10 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  >
-                    {MATERIAL_LIBRARY_FOLDERS.map((folder) => (
-                      <option key={folder.value} value={folder.value}>{folder.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Stakeholder types</label>
-                  <Input value={form.stakeholderTypes} onChange={(event) => setForm((current) => ({ ...current, stakeholderTypes: event.target.value }))} placeholder="business, school" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Audience tags</label>
-                  <Input value={form.audienceTags} onChange={(event) => setForm((current) => ({ ...current, audienceTags: event.target.value }))} placeholder="customers, parents" />
-                </div>
-              </div>
-              <div className="grid grid-cols-4 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">QR X</label>
-                  <Input value={form.qrX} onChange={(event) => setForm((current) => ({ ...current, qrX: event.target.value }))} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">QR Y</label>
-                  <Input value={form.qrY} onChange={(event) => setForm((current) => ({ ...current, qrY: event.target.value }))} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">QR Width</label>
-                  <Input value={form.qrWidth} onChange={(event) => setForm((current) => ({ ...current, qrWidth: event.target.value }))} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">QR Height</label>
-                  <Input value={form.qrHeight} onChange={(event) => setForm((current) => ({ ...current, qrHeight: event.target.value }))} />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Eyebrow</label>
-                  <Input value={form.eyebrow} onChange={(event) => setForm((current) => ({ ...current, eyebrow: event.target.value }))} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">CTA</label>
-                  <Input value={form.cta} onChange={(event) => setForm((current) => ({ ...current, cta: event.target.value }))} />
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Headline</label>
-                <Textarea value={form.headline} onChange={(event) => setForm((current) => ({ ...current, headline: event.target.value }))} rows={2} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Subheadline</label>
-                <Textarea value={form.subheadline} onChange={(event) => setForm((current) => ({ ...current, subheadline: event.target.value }))} rows={2} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Body</label>
-                <Textarea value={form.body} onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))} rows={4} />
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Footer</label>
-                  <Textarea value={form.footer} onChange={(event) => setForm((current) => ({ ...current, footer: event.target.value }))} rows={2} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">QR caption</label>
-                  <Textarea value={form.qrCaption} onChange={(event) => setForm((current) => ({ ...current, qrCaption: event.target.value }))} rows={2} />
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <Button type="submit" disabled={saving}>
-                  <Plus className="h-4 w-4" /> {editingId ? 'Save Template' : 'Create Template'}
-                </Button>
-                {editingId && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setEditingId(null)}
-                  >
-                    Cancel Edit
-                  </Button>
-                )}
-              </div>
-            </form>
+          <CardContent className="p-5">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Template-ready materials</p>
+            <p className="mt-2 text-3xl font-semibold text-surface-900">{templateMaterials.length}</p>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader>
-            <CardTitle>Template Library</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loading ? (
-              <p className="text-sm text-surface-500">Loading templates...</p>
-            ) : templates.length === 0 ? (
-              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-8 text-center text-sm text-surface-500">
-                No templates yet.
-              </div>
-            ) : (
-              templates.map((template) => (
-                <div key={template.id} className="rounded-3xl border border-surface-200 bg-surface-0 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-surface-900">{template.name}</p>
-                        <Badge variant={template.is_active ? 'success' : 'default'}>
-                          {template.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                        <Badge variant="info">{template.output_format}</Badge>
-                      </div>
-                      <p className="mt-2 text-sm text-surface-500">
-                        {template.stakeholder_types.join(', ') || 'all stakeholders'}
-                      </p>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => startEditing(template.id)}>
-                      <LayoutTemplate className="h-4 w-4" /> Edit
-                    </Button>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {template.audience_tags.map((tag) => (
-                      <Badge key={tag} variant="default">{tag}</Badge>
-                    ))}
-                  </div>
-                  {template.output_format === 'pdf' && (
-                    <div className="mt-3 rounded-2xl border border-info-200 bg-info-50 px-3 py-2 text-xs text-info-700">
-                      PDF templates generate automatically and are delivered into the stakeholder library as downloadable PDF assets.
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
+          <CardContent className="p-5">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Active automation templates</p>
+            <p className="mt-2 text-3xl font-semibold text-surface-900">
+              {templateMaterials.filter((item) => item.config.enabled && item.config.isActive && item.supportsAutomation).length}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Blocked sources</p>
+            <p className="mt-2 text-3xl font-semibold text-surface-900">
+              {templateMaterials.filter((item) => item.config.enabled && !item.supportsAutomation).length}
+            </p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
-        <CardContent className="flex items-start gap-3 p-5">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 text-success-600" />
-          <div className="text-sm text-surface-600">
-            Structured SVG, PNG, and PDF templates are live end-to-end today. When codes are saved, the engine can generate all
-            three formats automatically and place the finished assets into the right stakeholder library.
+        <CardContent className="p-5 text-sm text-surface-600">
+          <p className="font-medium text-surface-900">How this works now</p>
+          <div className="mt-3 space-y-2">
+            <p>1. Upload the source material in <span className="font-medium">Materials Library</span>.</p>
+            <p>2. Save the QR zones with the existing QR chooser.</p>
+            <p>3. Mark the material as an automation template in its Edit dialog.</p>
+            <p>4. The engine uses that source asset directly when it generates personalized business or cause materials.</p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Template Source Materials</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? (
+            <p className="text-sm text-surface-500">Loading source materials...</p>
+          ) : templateMaterials.length === 0 ? (
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-8 text-center text-sm text-surface-500">
+              No source materials have been marked as automation templates yet.
+            </div>
+          ) : (
+            templateMaterials.map(({ material, config, qrZoneCount, supportsAutomation }) => (
+              <div key={material.id} className="rounded-3xl border border-surface-200 bg-surface-0 p-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="h-28 w-24 overflow-hidden rounded-2xl border border-surface-200 bg-surface-50">
+                      <MaterialPreviewFrame
+                        src={material.file_url || material.thumbnail_url}
+                        mimeType={material.mime_type}
+                        title={material.title}
+                        showPdfBadge
+                        className="h-full w-full"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-surface-900">{material.title}</p>
+                        <Badge variant={config.enabled && supportsAutomation ? 'success' : 'warning'}>
+                          {config.enabled && supportsAutomation ? 'active source' : 'needs attention'}
+                        </Badge>
+                        <Badge variant="info">{getMaterialLibraryFolderMeta(config.libraryFolder).label}</Badge>
+                      </div>
+                      <p className="text-sm text-surface-500">
+                        Stakeholders: {config.stakeholderTypes.join(', ') || 'none'}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {getMaterialAutomationAudienceTags(material).map((tag) => (
+                          <Badge key={tag} variant="default">{tag}</Badge>
+                        ))}
+                      </div>
+                      <div className="text-xs text-surface-500">
+                        {qrZoneCount} QR {qrZoneCount === 1 ? 'zone' : 'zones'}
+                        {!supportsAutomation && ' • Add at least one QR zone and a file URL'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => setPreviewMaterial(material)}>
+                      <Eye className="h-4 w-4" /> Preview
+                    </Button>
+                    <Link href="/materials/library">
+                      <Button variant="outline">
+                        <FolderOpen className="h-4 w-4" /> Manage in Materials
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
     </div>

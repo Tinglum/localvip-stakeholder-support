@@ -47,6 +47,7 @@ import {
 import {
   CANONICAL_STAKEHOLDER_ROLES,
   getStakeholderAccess,
+  getPersistedRoleForShell,
   getSubtypeOptionsForRole,
   normalizeSubtypeForRole,
 } from '@/lib/stakeholder-access'
@@ -99,7 +100,7 @@ export default function UserDetailPage() {
   const { data: tasks } = useTasks()
   const { data: outreach } = useOutreach()
   const { data: cityRequests } = useCityAccessRequests({ requester_id: userId })
-  const { update, loading: saving } = useProfileUpdate()
+  const { update, loading: saving, error: saveError } = useProfileUpdate()
   const { insert: insertAudit } = useAuditLogInsert()
 
   const [role, setRole] = React.useState<UserRole>('field')
@@ -162,6 +163,18 @@ export default function UserDetailPage() {
     () => businesses.find((item) => item.id === currentUser?.business_id),
     [businesses, currentUser?.business_id]
   )
+  const selectedCity = React.useMemo(
+    () => cities.find((item) => item.id === cityId),
+    [cities, cityId]
+  )
+  const selectedOrganization = React.useMemo(
+    () => organizations.find((item) => item.id === organizationId),
+    [organizations, organizationId]
+  )
+  const selectedBusiness = React.useMemo(
+    () => businesses.find((item) => item.id === businessId),
+    [businesses, businessId]
+  )
   const userTasks = React.useMemo(
     () => tasks.filter((item) => item.assigned_to === userId || item.created_by === userId).slice(0, 8),
     [tasks, userId]
@@ -170,28 +183,54 @@ export default function UserDetailPage() {
     () => outreach.filter((item) => item.performed_by === userId).slice(0, 8),
     [outreach, userId]
   )
+  const assignmentLabels = React.useMemo(() => {
+    const cityMap = new Map(cities.map((item) => [item.id, `${item.name}, ${item.state}`]))
+    const businessMap = new Map(businesses.map((item) => [item.id, item.name]))
+    const causeMap = new Map(causes.map((item) => [item.id, item.name]))
+    const campaignMap = new Map(campaigns.map((item) => [item.id, item.name]))
+
+    return assignments.map((assignment) => {
+      const label =
+        assignment.entity_type === 'city'
+          ? cityMap.get(assignment.entity_id)
+          : assignment.entity_type === 'business'
+            ? businessMap.get(assignment.entity_id)
+            : assignment.entity_type === 'cause'
+              ? causeMap.get(assignment.entity_id)
+              : campaignMap.get(assignment.entity_id)
+
+      return {
+        assignment,
+        label: label || assignment.entity_id,
+      }
+    })
+  }, [assignments, businesses, campaigns, causes, cities])
 
   async function handleSaveAccess() {
     if (!currentUser) return
 
     const nextSubtype = normalizeSubtypeForRole(role, subtype)
+    const persistedRole = getPersistedRoleForShell(getStakeholderAccess({ ...currentUser, role } as Profile).shell, nextSubtype)
+    const nextMetadata = { ...(currentUser.metadata || {}) } as Record<string, unknown>
+    if (role === 'business') {
+      nextMetadata.portal_role = 'business'
+    } else if ('portal_role' in nextMetadata) {
+      delete nextMetadata.portal_role
+    }
     const updates = {
-      role,
+      role: persistedRole,
       role_subtype: nextSubtype,
       brand_context: brand,
       status,
       city_id: cityId === 'none' ? null : cityId,
       organization_id: organizationId === 'none' ? null : organizationId,
       business_id: businessId === 'none' ? null : businessId,
-      metadata: {
-        ...(currentUser.metadata || {}),
-        portal_role: role === 'business' ? 'business' : undefined,
-      },
+      metadata: nextMetadata,
     }
 
     const updated = await update(userId, updates)
     if (!updated) {
-      setSaveMessage('Could not save access changes. Please try again.')
+      setSaveMessage(saveError || 'Could not save access changes. Please try again.')
       return
     }
 
@@ -212,7 +251,8 @@ export default function UserDetailPage() {
         business_id: currentUser.business_id || null,
       },
       new_values: {
-        role,
+        role: persistedRole,
+        shell: role,
         role_subtype: nextSubtype,
         brand_context: brand,
         status,
@@ -420,9 +460,9 @@ export default function UserDetailPage() {
             <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 text-sm text-surface-600">
               <p className="font-medium text-surface-900">Current scope</p>
               <ul className="mt-2 space-y-1.5">
-                <li>Business: {scopedBusiness ? scopedBusiness.name : 'None assigned'}</li>
-                <li>Organization: {organization?.name || 'None assigned'}</li>
-                <li>City: {city ? `${city.name}, ${city.state}` : 'None assigned'}</li>
+                <li>Business: {selectedBusiness ? selectedBusiness.name : 'None assigned'}</li>
+                <li>Organization: {selectedOrganization?.name || 'None assigned'}</li>
+                <li>City: {selectedCity ? `${selectedCity.name}, ${selectedCity.state}` : 'None assigned'}</li>
               </ul>
             </div>
 
@@ -439,12 +479,15 @@ export default function UserDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              {assignments.length > 0 ? assignments.map((assignment) => (
+              {assignmentLabels.length > 0 ? assignmentLabels.map(({ assignment, label }) => (
                 <div key={assignment.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-surface-900 capitalize">{assignment.entity_type}</p>
-                      <p className="mt-1 text-xs text-surface-500">{assignment.role || 'Stakeholder assignment'}</p>
+                      <p className="text-sm font-semibold text-surface-900">{label}</p>
+                      <p className="mt-1 text-xs text-surface-500 capitalize">
+                        {assignment.entity_type}
+                        {assignment.role ? ` • ${assignment.role}` : ''}
+                      </p>
                     </div>
                     <Badge variant={assignment.status === 'active' ? 'success' : 'default'} dot>
                       {assignment.status}

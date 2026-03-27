@@ -15,6 +15,7 @@ import {
   Loader2,
   Mail,
   MessageSquare,
+  PencilLine,
   Printer,
   QrCode,
   Search,
@@ -31,9 +32,16 @@ import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
+import { MaterialEditDialog } from '@/components/materials/material-edit-dialog'
 import { StakeholderGeneratedMaterialsPage } from '@/components/materials/stakeholder-generated-materials-page'
 import { useAuth } from '@/lib/auth/context'
 import { deleteMaterial } from '@/lib/materials/delete-material'
+import {
+  getMaterialCustomTags,
+  getMaterialVisibilityRoleLabels,
+  getMaterialVisibilitySubtypeLabels,
+  materialMatchesTargeting,
+} from '@/lib/materials/material-targeting'
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { formatDate } from '@/lib/utils'
@@ -349,6 +357,7 @@ function StandardMaterialsPage() {
   const [search, setSearch] = React.useState('')
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
+  const [editingMaterial, setEditingMaterial] = React.useState<Material | null>(null)
   const [deletingId, setDeletingId] = React.useState<string | null>(null)
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
   const [deleteError, setDeleteError] = React.useState<string | null>(null)
@@ -362,22 +371,22 @@ function StandardMaterialsPage() {
       if (isAdmin) return true
 
       if (shell === 'field') {
-        return material.target_roles.some((role) => ['field', 'intern', 'volunteer'].includes(role))
+        return materialMatchesTargeting(material, profile)
           || ['field_outreach', 'partner_outreach'].includes(material.category || '')
       }
 
       if (shell === 'launch_partner') {
-        return material.target_roles.some((role) => ['launch_partner', 'business_onboarding'].includes(role))
+        return materialMatchesTargeting(material, profile)
           || ['launch_partner', 'business_onboarding', 'partner_outreach'].includes(material.category || '')
       }
 
       if (shell === 'community') {
-        return material.target_roles.some((role) => ['community', 'school_leader', 'cause_leader'].includes(role))
+        return materialMatchesTargeting(material, profile)
           || material.category === 'community_mobilization'
       }
 
       if (shell === 'influencer') {
-        return material.target_roles.includes('influencer') || material.category === 'influencer_referral'
+        return materialMatchesTargeting(material, profile) || material.category === 'influencer_referral'
       }
 
       return false
@@ -391,6 +400,7 @@ function StandardMaterialsPage() {
       return material.title.toLowerCase().includes(query)
         || (material.description || '').toLowerCase().includes(query)
         || (material.file_name || '').toLowerCase().includes(query)
+        || getMaterialCustomTags(material).join(' ').toLowerCase().includes(query)
     })
   }, [materials, search])
 
@@ -452,6 +462,19 @@ function StandardMaterialsPage() {
         open={!!previewMaterial}
         onOpenChange={(open) => {
           if (!open) setPreviewMaterial(null)
+        }}
+      />
+
+      <MaterialEditDialog
+        material={editingMaterial}
+        open={!!editingMaterial}
+        onOpenChange={(open) => {
+          if (!open) setEditingMaterial(null)
+        }}
+        onSaved={() => {
+          setActionMessage('Material updated.')
+          setEditingMaterial(null)
+          refetch()
         }}
       />
 
@@ -557,6 +580,10 @@ function StandardMaterialsPage() {
             const assigned = material.created_by !== profile.id
             const previewSource = material.file_url || material.thumbnail_url
             const canDelete = isAdmin || material.created_by === profile.id
+            const canEdit = isAdmin || material.created_by === profile.id
+            const visibilityLabels = getMaterialVisibilityRoleLabels(material)
+            const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
+            const customTags = getMaterialCustomTags(material)
 
             return (
               <Card key={material.id} className="group overflow-hidden transition-shadow hover:shadow-card-hover">
@@ -583,6 +610,19 @@ function StandardMaterialsPage() {
                       {assigned ? 'Assigned' : 'Uploaded by you'}
                     </Badge>
                   </div>
+                  {(visibilityLabels.length > 0 || subtypeLabels.length > 0 || customTags.length > 0) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {visibilityLabels.slice(0, 3).map((label) => (
+                        <Badge key={label} variant="info">{label}</Badge>
+                      ))}
+                      {subtypeLabels.slice(0, 2).map((label) => (
+                        <Badge key={label} variant="success">{label}</Badge>
+                      ))}
+                      {customTags.slice(0, 2).map((tag) => (
+                        <Badge key={tag} variant="default">{tag}</Badge>
+                      ))}
+                    </div>
+                  )}
 
                   <div>
                     <h3 className="text-sm font-semibold text-surface-900">{material.title}</h3>
@@ -613,6 +653,16 @@ function StandardMaterialsPage() {
                         </a>
                       </Button>
                     )}
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Edit tags"
+                        onClick={() => setEditingMaterial(material)}
+                      >
+                        <PencilLine className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     {canDelete && (
                       <Button
                         variant="ghost"
@@ -637,6 +687,10 @@ function StandardMaterialsPage() {
             const assigned = material.created_by !== profile.id
             const previewSource = material.file_url || material.thumbnail_url
             const canDelete = isAdmin || material.created_by === profile.id
+            const canEdit = isAdmin || material.created_by === profile.id
+            const visibilityLabels = getMaterialVisibilityRoleLabels(material)
+            const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
+            const customTags = getMaterialCustomTags(material)
 
             return (
               <Card key={material.id} className="transition-shadow hover:shadow-card-hover">
@@ -664,6 +718,19 @@ function StandardMaterialsPage() {
                     <p className="mt-1 truncate text-xs text-surface-500">
                       {material.description || 'No description provided yet.'}
                     </p>
+                    {(visibilityLabels.length > 0 || subtypeLabels.length > 0 || customTags.length > 0) && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {visibilityLabels.slice(0, 3).map((label) => (
+                          <Badge key={label} variant="info">{label}</Badge>
+                        ))}
+                        {subtypeLabels.slice(0, 2).map((label) => (
+                          <Badge key={label} variant="success">{label}</Badge>
+                        ))}
+                        {customTags.slice(0, 2).map((tag) => (
+                          <Badge key={tag} variant="default">{tag}</Badge>
+                        ))}
+                      </div>
+                    )}
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-surface-400">
                       <span>{BRANDS[material.brand]?.label ?? material.brand}</span>
                       <span>{MATERIAL_TYPES.find(item => item.value === material.type)?.label ?? material.type}</span>
@@ -688,6 +755,16 @@ function StandardMaterialsPage() {
                         <a href={material.file_url} download>
                           <Download className="h-3.5 w-3.5" /> Download
                         </a>
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Edit tags"
+                        onClick={() => setEditingMaterial(material)}
+                      >
+                        <PencilLine className="h-3.5 w-3.5" />
                       </Button>
                     )}
                     {canDelete && (

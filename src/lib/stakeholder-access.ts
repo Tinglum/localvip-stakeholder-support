@@ -64,8 +64,25 @@ const BUSINESS_NAV_ITEMS: NavItem[] = [
   { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', minLevel: 0 },
 ]
 
+const SHARED_OPERATOR_CRM_ITEMS: NavItem = {
+  label: 'CRM',
+  href: '/crm',
+  icon: 'Building2',
+  minLevel: 0,
+  children: [
+    { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 0 },
+    { label: 'Schools / Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
+    { label: 'Contacts', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
+    { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 0 },
+    { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
+    { label: 'Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 0 },
+    { label: 'Tasks', href: '/crm/tasks', icon: 'CheckSquare', minLevel: 0 },
+  ],
+}
+
 const FIELD_NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
+  SHARED_OPERATOR_CRM_ITEMS,
   { label: 'My Businesses', href: '/workspace/businesses', icon: 'Store', minLevel: 0 },
   { label: 'My Schools / Causes', href: '/workspace/community', icon: 'Heart', minLevel: 0 },
   { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
@@ -77,6 +94,7 @@ const FIELD_NAV_ITEMS: NavItem[] = [
 
 const LAUNCH_PARTNER_NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
+  SHARED_OPERATOR_CRM_ITEMS,
   { label: 'My City', href: '/partner/city', icon: 'MapPin', minLevel: 0 },
   { label: 'Businesses', href: '/partner/businesses', icon: 'Store', minLevel: 0 },
   { label: 'Community', href: '/partner/community', icon: 'Heart', minLevel: 0 },
@@ -235,7 +253,7 @@ function getRoleLabel(shell: StakeholderShell, subtype: UserRoleSubtype) {
   return 'Influencer'
 }
 
-function getThemeRole(shell: StakeholderShell, subtype: UserRoleSubtype): UserRole {
+export function getPersistedRoleForShell(shell: StakeholderShell, subtype: UserRoleSubtype): UserRole {
   if (shell === 'admin') {
     return subtype === 'super' ? 'super_admin' : subtype === 'internal' ? 'internal_admin' : 'admin'
   }
@@ -294,7 +312,7 @@ export function getStakeholderAccess(profile: Profile): StakeholderAccess {
     shell,
     subtype,
     label: getRoleLabel(shell, subtype),
-    themeRole: getThemeRole(shell, subtype),
+    themeRole: getPersistedRoleForShell(shell, subtype),
     searchPlaceholder: getSearchPlaceholder(shell),
     navItems: getNavItems(shell),
     fallbackPath: '/dashboard',
@@ -303,6 +321,15 @@ export function getStakeholderAccess(profile: Profile): StakeholderAccess {
 
 export function canAccessPath(profile: Profile, pathname: string) {
   const { shell } = getStakeholderAccess(profile)
+  const operatorCrmPrefixes = [
+    '/crm/businesses',
+    '/crm/causes',
+    '/crm/contacts',
+    '/crm/cities',
+    '/crm/scripts',
+    '/crm/outreach',
+    '/crm/tasks',
+  ]
 
   if (shell === 'admin') return true
 
@@ -322,26 +349,16 @@ export function canAccessPath(profile: Profile, pathname: string) {
     if (
       pathname === '/dashboard'
       || pathname.startsWith('/workspace')
-      || pathname.startsWith('/crm/scripts')
-      || pathname.startsWith('/crm/outreach')
-      || pathname.startsWith('/crm/tasks')
       || pathname.startsWith('/materials/mine')
       || pathname.startsWith('/analytics/me')
     ) {
       return true
     }
 
-    return pathname.startsWith('/crm/businesses/') || pathname.startsWith('/crm/causes/')
+    return operatorCrmPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   }
 
   if (shell === 'launch_partner') {
-    if (
-      pathname.startsWith('/crm/businesses/')
-      || pathname.startsWith('/crm/causes/')
-    ) {
-      return true
-    }
-
     return [
       '/dashboard',
       '/partner/city',
@@ -349,6 +366,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
       '/partner/community',
       '/partner/requests',
       '/materials/mine',
+      ...operatorCrmPrefixes,
     ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   }
 
