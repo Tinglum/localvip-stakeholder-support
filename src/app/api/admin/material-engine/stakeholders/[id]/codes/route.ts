@@ -35,6 +35,7 @@ export async function POST(
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not save codes.'
-    return NextResponse.json({ error: message }, { status: 400 })
+    const status = /already in use/i.test(message) ? 409 : 400
+    return NextResponse.json({ error: message }, { status })
   }
 }

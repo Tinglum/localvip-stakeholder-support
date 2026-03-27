@@ -100,7 +100,12 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
       return
     }
 
-    setFeedback('Codes saved and materials generated.')
+    if (payload?.result?.generationStatus === 'failed') {
+      setFeedback('Codes saved.')
+      setError(payload?.result?.generationError || 'Codes saved, but material generation is still blocked.')
+    } else {
+      setFeedback('Codes saved and materials generated.')
+    }
     refreshAll()
   }
 
@@ -256,6 +261,11 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
               {codes?.join_url && (
                 <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
                   Join URL: <span className="font-medium text-surface-900">{codes.join_url.replace(/^https?:\/\//, '')}</span>
+                </div>
+              )}
+              {matchingTemplates.length === 0 && (
+                <div className="rounded-2xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+                  Codes can still be saved now, but material generation will stay blocked until this stakeholder has at least one active matching template.
                 </div>
               )}
               <div className="flex flex-wrap gap-3">

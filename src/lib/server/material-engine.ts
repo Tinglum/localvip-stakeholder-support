@@ -77,6 +77,8 @@ interface GenerationResult {
   codes: StakeholderCode
   generatedMaterials: GeneratedMaterial[]
   failures: Array<{ templateId: string; templateName: string; error: string }>
+  generationStatus?: 'generated' | 'failed'
+  generationError?: string | null
 }
 
 interface RuntimeCanvasModule {
@@ -185,7 +187,27 @@ export async function upsertStakeholderCodesAndGenerate(
   const connectionCode = normalizeStakeholderCode(payload.connectionCode)
 
   if (!referralCode || !connectionCode) {
-    throw new Error('Referral code and connection code are required.')
+    throw new Error('Referral code and connection code are required after cleanup. Use letters or numbers.')
+  }
+
+  const referralConflict = await findStakeholderCodeConflict(
+    supabase,
+    'referral_code',
+    referralCode,
+    stakeholderId,
+  )
+  if (referralConflict) {
+    throw new Error(`Referral code "${referralCode}" is already in use.`)
+  }
+
+  const connectionConflict = await findStakeholderCodeConflict(
+    supabase,
+    'connection_code',
+    connectionCode,
+    stakeholderId,
+  )
+  if (connectionConflict) {
+    throw new Error(`Connection code "${connectionCode}" is already in use.`)
   }
 
   const joinUrl = buildStakeholderJoinUrl(stakeholder.type, connectionCode)
@@ -200,7 +222,7 @@ export async function upsertStakeholderCodesAndGenerate(
       })
       .eq('id', existing.id)
 
-    if (error) throw error
+    if (error) throw new Error(getStakeholderCodeSaveErrorMessage(error, 'update'))
   } else {
     const { error } = await (supabase.from('stakeholder_codes') as any)
       .insert({
@@ -210,10 +232,47 @@ export async function upsertStakeholderCodesAndGenerate(
         join_url: joinUrl,
       })
 
-    if (error) throw error
+    if (error) throw new Error(getStakeholderCodeSaveErrorMessage(error, 'insert'))
   }
 
-  return generateMaterialsForStakeholder(supabase, stakeholderId, actorId)
+  const savedCodes = await getStakeholderCode(supabase, stakeholderId)
+  if (!savedCodes) throw new Error('Codes were saved but could not be reloaded.')
+
+  await updateAdminTaskStatus(supabase, stakeholder.id, 'ready_to_generate', {
+    referral_code: referralCode,
+    connection_code: connectionCode,
+    join_url: joinUrl,
+    codes_saved_at: new Date().toISOString(),
+  })
+
+  try {
+    const generation = await generateMaterialsForStakeholder(supabase, stakeholderId, actorId)
+    return {
+      ...generation,
+      codes: savedCodes,
+      generationStatus: 'generated' as const,
+      generationError: null,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Material generation failed.'
+    await updateAdminTaskStatus(supabase, stakeholder.id, 'failed', {
+      referral_code: referralCode,
+      connection_code: connectionCode,
+      join_url: joinUrl,
+      last_error: message,
+      codes_saved_at: new Date().toISOString(),
+      attempted_at: new Date().toISOString(),
+    })
+
+    return {
+      stakeholder,
+      codes: savedCodes,
+      generatedMaterials: [],
+      failures: [],
+      generationStatus: 'failed' as const,
+      generationError: message,
+    }
+  }
 }
 
 export async function generateMaterialsForStakeholder(
@@ -673,6 +732,46 @@ async function getStakeholderCode(supabase: ServiceSupabaseClient, stakeholderId
     .eq('stakeholder_id', stakeholderId)
     .maybeSingle()
   return (data || null) as StakeholderCode | null
+}
+
+async function findStakeholderCodeConflict(
+  supabase: ServiceSupabaseClient,
+  column: 'referral_code' | 'connection_code',
+  value: string,
+  stakeholderId: string,
+) {
+  const { data } = await supabase
+    .from('stakeholder_codes')
+    .select('stakeholder_id')
+    .ilike(column, value)
+    .maybeSingle()
+
+  const existingRow = (data || null) as { stakeholder_id: string } | null
+  if (!existingRow) return null
+  return existingRow.stakeholder_id === stakeholderId ? null : existingRow.stakeholder_id
+}
+
+function getStakeholderCodeSaveErrorMessage(error: unknown, action: 'insert' | 'update') {
+  if (error && typeof error === 'object') {
+    const value = error as { code?: string; message?: string; details?: string }
+    if (value.code === '23505') {
+      const detail = `${value.details || value.message || ''}`.toLowerCase()
+      if (detail.includes('referral_code')) {
+        return 'That referral code is already in use.'
+      }
+      if (detail.includes('connection_code')) {
+        return 'That connection code is already in use.'
+      }
+      return 'These codes must be unique. One of them is already in use.'
+    }
+    if (value.message) {
+      return value.message
+    }
+  }
+
+  return action === 'insert'
+    ? 'Could not save stakeholder codes.'
+    : 'Could not update stakeholder codes.'
 }
 
 async function getGeneratedMaterialByStakeholderTemplate(
