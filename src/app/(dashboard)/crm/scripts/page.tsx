@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowUpRight,
   Building2,
@@ -305,6 +305,8 @@ function StepCard({
 
 export default function OutreachScriptsPage() {
   const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const router = useRouter()
   const { profile } = useAuth()
   const isFieldUser = getStakeholderShell(profile) === 'field'
   const { data: businesses, loading: businessesLoading, error: businessesError } = useBusinesses()
@@ -547,16 +549,45 @@ export default function OutreachScriptsPage() {
     })
   }, [categoryFilter, cityFilter, causeFilter, deferredSearch, enrichedBusinesses, isFieldUser, stageFilter])
 
+  const updateBusinessQueryParam = React.useCallback(
+    (businessId: string | null) => {
+      const params = new URLSearchParams(searchParams.toString())
+      if (businessId) {
+        params.set('business', businessId)
+      } else {
+        params.delete('business')
+      }
+      const query = params.toString()
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    },
+    [pathname, router, searchParams]
+  )
+
+  const handleSelectBusiness = React.useCallback(
+    (businessId: string) => {
+      setSelectedBusinessId(businessId)
+      updateBusinessQueryParam(businessId)
+    },
+    [updateBusinessQueryParam]
+  )
+
   React.useEffect(() => {
     if (!filteredBusinesses.length) {
       setSelectedBusinessId(null)
+      updateBusinessQueryParam(null)
       return
     }
     const stillExists = filteredBusinesses.some((item) => item.id === selectedBusinessId)
     if (!stillExists) {
-      setSelectedBusinessId(filteredBusinesses[0].id)
+      const fallbackBusinessId = searchParams.get('business')
+      const nextBusinessId =
+        fallbackBusinessId && enrichedBusinesses.some((item) => item.id === fallbackBusinessId)
+          ? fallbackBusinessId
+          : filteredBusinesses[0].id
+      setSelectedBusinessId(nextBusinessId)
+      updateBusinessQueryParam(nextBusinessId)
     }
-  }, [filteredBusinesses, selectedBusinessId])
+  }, [enrichedBusinesses, filteredBusinesses, searchParams, selectedBusinessId, updateBusinessQueryParam])
 
   React.useEffect(() => {
     const requestedBusiness = searchParams.get('business')
@@ -1214,7 +1245,7 @@ export default function OutreachScriptsPage() {
                       <button
                         key={business.id}
                         type="button"
-                        onClick={() => setSelectedBusinessId(business.id)}
+                        onClick={() => handleSelectBusiness(business.id)}
                         className={cn(
                           'w-full rounded-card border text-left transition-all',
                           isSelected

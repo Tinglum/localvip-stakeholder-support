@@ -74,13 +74,6 @@ export default async function BusinessJoinPage({
               </div>
             </div>
 
-            <div className="mt-5 rounded-[1.5rem] border border-surface-200 bg-surface-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-surface-500">Modal-style capture</p>
-              <p className="mt-2 text-sm leading-6 text-surface-600">
-                This is the quick registration screen customers see after scanning.
-              </p>
-            </div>
-
             <div className="mt-5">
               <PublicBusinessJoinForm
                 slug={params.slug}

@@ -3,12 +3,32 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
-  Store, Heart, QrCode, FileText, Send, CheckSquare,
-  TrendingUp, ArrowRight, Plus, Users, Megaphone, Rocket,
-  AlertTriangle, Clock, BarChart3, Target, ScrollText, FileDown,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  CheckSquare,
+  FileDown,
+  FileText,
+  Heart,
+  Megaphone,
+  Plus,
+  QrCode,
+  Rocket,
+  ScrollText,
+  Send,
+  Store,
+  TrendingUp,
+  Users,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth/context'
-import { useCount, useOutreach, useBusinesses } from '@/lib/supabase/hooks'
+import {
+  useAdminTasks,
+  useBusinesses,
+  useCauses,
+  useCityAccessRequests,
+  useCount,
+  useOutreach,
+} from '@/lib/supabase/hooks'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,50 +40,32 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { StatCard } from '@/components/ui/stat-card'
+import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { BusinessDashboardPage } from '@/components/business/business-dashboard-page'
 import { CommunityDashboardPage } from '@/components/community/community-dashboard-page'
 import { FieldOutreachDashboardPage } from '@/components/field/field-outreach-dashboard-page'
 import { InfluencerDashboardPage } from '@/components/influencer/influencer-dashboard-page'
 import { LaunchPartnerDashboardPage } from '@/components/partner/launch-partner-dashboard-page'
-import { ROLES, ROLE_TOOLS, ROLE_THEMES } from '@/lib/constants'
+import { ROLES, ROLE_THEMES, ROLE_TOOLS } from '@/lib/constants'
 import { getStakeholderAccess } from '@/lib/stakeholder-access'
 import { formatDate } from '@/lib/utils'
 
-// Icon map for dynamic role tools
 const ICON_MAP: Record<string, React.ElementType> = {
-  Store, Heart, QrCode, FileText, Send, CheckSquare,
-  TrendingUp, Plus, Users, Megaphone, Rocket, BarChart3,
-  ScrollText, FileDown,
+  Store,
+  Heart,
+  QrCode,
+  FileText,
+  Send,
+  CheckSquare,
+  TrendingUp,
+  Plus,
+  Users,
+  Megaphone,
+  Rocket,
+  BarChart3,
+  ScrollText,
+  FileDown,
 }
-
-// ─── Priority actions by role ────────────────────────────────
-
-function getActionsForRole(role: string) {
-  switch (role) {
-    case 'super_admin':
-    case 'internal_admin':
-      return [
-        { label: 'Review pending stakeholder applications', href: '/admin/users', priority: 'high' as const },
-        { label: 'Check for duplicate business records', href: '/crm/businesses', priority: 'medium' as const },
-        { label: 'Review active campaigns', href: '/campaigns', priority: 'medium' as const },
-      ]
-    case 'school_leader':
-    case 'cause_leader':
-      return [
-        { label: 'Complete business follow-ups this week', href: '/crm/outreach', priority: 'high' as const },
-        { label: 'Download your updated HATO materials', href: '/materials/mine', priority: 'medium' as const },
-        { label: 'Generate QR codes for current campaign', href: '/qr/generator', priority: 'medium' as const },
-      ]
-    default:
-      return [
-        { label: 'Contact your assigned businesses', href: '/crm/outreach', priority: 'high' as const },
-        { label: 'Grab your outreach script', href: '/materials/mine', priority: 'medium' as const },
-        { label: 'Log your latest outreach activity', href: '/crm/outreach', priority: 'medium' as const },
-      ]
-  }
-}
-
-// ─── Component ───────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { profile } = useAuth()
@@ -100,48 +102,168 @@ function TeamDashboardPage() {
     count: number
   } | null>(null)
 
-  const actions = getActionsForRole(profile.role)
-
-  // Role-specific tools and theme
   const roleTools = ROLE_TOOLS[profile.role] || ROLE_TOOLS.volunteer
   const roleTheme = ROLE_THEMES[profile.role]
 
-  // Real counts from Supabase
   const businessCount = useCount('businesses')
   const causeCount = useCount('causes')
   const stakeholderCount = useCount('profiles')
   const qrCodeCount = useCount('qr_codes')
 
-  // Real outreach activities
   const { data: outreachData, loading: outreachLoading } = useOutreach()
   const recentOutreach = outreachData.slice(0, 5)
 
-  // Real business data for pipeline
   const { data: businessData, loading: businessLoading } = useBusinesses()
+  const { data: causeData } = useCauses()
+  const { data: adminTasks } = useAdminTasks()
+  const { data: cityRequests } = useCityAccessRequests()
+
+  const pendingCityRequests = React.useMemo(
+    () => cityRequests.filter((request) => request.status === 'pending'),
+    [cityRequests]
+  )
+  const materialTasksNeedingSetup = React.useMemo(
+    () => adminTasks.filter((task) => task.status === 'needs_setup' || task.status === 'failed'),
+    [adminTasks]
+  )
+  const materialTasksReadyToGenerate = React.useMemo(
+    () => adminTasks.filter((task) => task.status === 'ready_to_generate'),
+    [adminTasks]
+  )
+  const openBusinessOnboarding = React.useMemo(
+    () => businessData.filter((business) => ['lead', 'contacted', 'interested', 'in_progress'].includes(business.stage)),
+    [businessData]
+  )
+  const openCauseOnboarding = React.useMemo(
+    () => causeData.filter((cause) => ['lead', 'contacted', 'interested', 'in_progress'].includes(cause.stage)),
+    [causeData]
+  )
+  const immediateItems = React.useMemo(
+    () => {
+      const items = [
+        pendingCityRequests.length > 0
+          ? {
+              id: 'admin-city-requests',
+              title: 'Review pending city access requests',
+              detail: `${pendingCityRequests.length} city access request${pendingCityRequests.length === 1 ? '' : 's'} are waiting on an admin decision.`,
+              href: '/admin/users',
+              ctaLabel: 'Review requests',
+              priority: 'high' as const,
+              badge: 'Launch partner growth',
+            }
+          : null,
+        materialTasksNeedingSetup.length > 0
+          ? {
+              id: 'admin-material-setup',
+              title: 'Unblock stakeholder setup and failed generation',
+              detail: `${materialTasksNeedingSetup.length} material-engine task${materialTasksNeedingSetup.length === 1 ? '' : 's'} still need setup or failed regeneration.`,
+              href: '/admin/material-engine/tasks',
+              ctaLabel: 'Open tasks',
+              priority: 'high' as const,
+              badge: 'Material engine',
+            }
+          : null,
+        materialTasksReadyToGenerate.length > 0
+          ? {
+              id: 'admin-material-generate',
+              title: 'Generate ready stakeholder materials',
+              detail: `${materialTasksReadyToGenerate.length} stakeholder setup${materialTasksReadyToGenerate.length === 1 ? '' : 's'} are ready for codes and generated assets.`,
+              href: '/admin/material-engine/tasks',
+              ctaLabel: 'Generate assets',
+              priority: 'medium' as const,
+              badge: 'Automation',
+            }
+          : null,
+        openBusinessOnboarding.length > 0
+          ? {
+              id: 'admin-business-onboarding',
+              title: 'Move business onboarding forward',
+              detail: `${openBusinessOnboarding.length} businesses are still in the pipeline and need active movement.`,
+              href: '/onboarding/business',
+              ctaLabel: 'Open business onboarding',
+              priority: 'medium' as const,
+              badge: 'Businesses',
+            }
+          : null,
+        openCauseOnboarding.length > 0
+          ? {
+              id: 'admin-cause-onboarding',
+              title: 'Move cause onboarding forward',
+              detail: `${openCauseOnboarding.length} schools or causes still need active onboarding work.`,
+              href: '/onboarding/cause',
+              ctaLabel: 'Open cause onboarding',
+              priority: 'medium' as const,
+              badge: 'Community',
+            }
+          : null,
+      ]
+
+      return items.filter((item): item is NonNullable<(typeof items)[number]> => item !== null)
+    },
+    [
+      materialTasksNeedingSetup.length,
+      materialTasksReadyToGenerate.length,
+      openBusinessOnboarding.length,
+      openCauseOnboarding.length,
+      pendingCityRequests.length,
+    ]
+  )
+  const suggestedItems = React.useMemo(
+    () => [
+      {
+        id: 'admin-suggestion-inquiry',
+        title: 'Add a new inquiry',
+        detail: 'If the urgent queue is clear, seed the next business or cause into CRM so the pipeline keeps growing.',
+        href: '/crm/businesses',
+        ctaLabel: 'Open CRM',
+      },
+      {
+        id: 'admin-suggestion-oldest',
+        title: 'Follow up with the oldest item that needs a next step',
+        detail: 'Use onboarding and material tasks to find the oldest stakeholder still waiting on movement and push it forward.',
+        href: '/onboarding/business',
+        ctaLabel: 'Open onboarding',
+      },
+      {
+        id: 'admin-suggestion-audit',
+        title: 'Review audits and weak spots',
+        detail: 'Check users, campaigns, and audit history so the next blocker gets caught before it slows the team down.',
+        href: '/admin/audit',
+        ctaLabel: 'Open audit',
+      },
+    ],
+    []
+  )
+
   const stageCounts = React.useMemo(() => {
     const counts: Record<string, number> = {}
     for (const biz of businessData) {
       counts[biz.stage] = (counts[biz.stage] || 0) + 1
     }
+
     const total = businessData.length || 1
     const stages: { stage: string; label: string; count: number; color: string; pct: number }[] = [
-      { stage: 'lead', label: 'Lead', count: counts['lead'] || 0, color: 'bg-surface-300', pct: 0 },
-      { stage: 'contacted', label: 'Contacted', count: counts['contacted'] || 0, color: 'bg-brand-300', pct: 0 },
-      { stage: 'interested', label: 'Interested', count: counts['interested'] || 0, color: 'bg-brand-400', pct: 0 },
-      { stage: 'in_progress', label: 'In Progress', count: counts['in_progress'] || 0, color: 'bg-warning-500', pct: 0 },
-      { stage: 'onboarded', label: 'Onboarded', count: counts['onboarded'] || 0, color: 'bg-success-500', pct: 0 },
-      { stage: 'live', label: 'Live', count: counts['live'] || 0, color: 'bg-success-700', pct: 0 },
+      { stage: 'lead', label: 'Lead', count: counts.lead || 0, color: 'bg-surface-300', pct: 0 },
+      { stage: 'contacted', label: 'Contacted', count: counts.contacted || 0, color: 'bg-brand-300', pct: 0 },
+      { stage: 'interested', label: 'Interested', count: counts.interested || 0, color: 'bg-brand-400', pct: 0 },
+      { stage: 'in_progress', label: 'In Progress', count: counts.in_progress || 0, color: 'bg-warning-500', pct: 0 },
+      { stage: 'onboarded', label: 'Onboarded', count: counts.onboarded || 0, color: 'bg-success-500', pct: 0 },
+      { stage: 'live', label: 'Live', count: counts.live || 0, color: 'bg-success-700', pct: 0 },
     ]
-    for (const s of stages) {
-      s.pct = Math.round((s.count / total) * 100)
+
+    for (const stage of stages) {
+      stage.pct = Math.round((stage.count / total) * 100)
     }
+
     return stages
   }, [businessData])
+
   const stageBusinesses = React.useMemo(() => {
     if (!selectedStage) return []
+
     return businessData
       .filter((business) => business.stage === selectedStage.stage)
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((left, right) => left.name.localeCompare(right.name))
   }, [businessData, selectedStage])
 
   const greeting = getGreeting()
@@ -149,9 +271,8 @@ function TeamDashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header with role-themed greeting */}
       <div>
-        <div className="flex items-center gap-3 mb-1">
+        <div className="mb-1 flex items-center gap-3">
           <h1 className="text-display text-surface-900">
             {greeting}, {firstName}
           </h1>
@@ -163,76 +284,32 @@ function TeamDashboardPage() {
           </span>
         </div>
         <p className="mt-1 text-body text-surface-500">
-          {isAdmin
-            ? "Here's what needs your attention today."
-            : "Here's your progress and next steps."}
+          {isAdmin ? "Here's what still needs movement right now." : "Here's your progress and next steps."}
         </p>
       </div>
 
-      {/* Priority Actions */}
-      {actions.length > 0 && (
-        <Card className="border-l-4" style={{ borderLeftColor: roleTheme?.primary }}>
-          <CardContent className="py-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Target className="h-4 w-4" style={{ color: roleTheme?.primary }} />
-              <h3 className="text-sm font-semibold text-surface-800">Your Next Steps</h3>
-            </div>
-            <ul className="space-y-2">
-              {actions.map((action, idx) => (
-                <li key={idx}>
-                  <Link
-                    href={action.href}
-                    className="group flex items-center justify-between rounded-lg px-3 py-2 hover:bg-surface-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`h-2 w-2 rounded-full ${
-                        action.priority === 'high' ? 'bg-danger-500' :
-                        action.priority === 'medium' ? 'bg-warning-500' :
-                        'bg-surface-300'
-                      }`} />
-                      <span className="text-sm text-surface-700">{action.label}</span>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-surface-300 group-hover:text-brand-500 transition-colors" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+      <StakeholderActionQueue
+        title="Immediate next steps"
+        description="Only work that still needs movement stays here. Once it is done, it drops away and the dashboard suggests the next three smart operating moves."
+        items={immediateItems}
+        suggestions={suggestedItems}
+      />
 
-      {/* Stats — real counts from Supabase */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Total Businesses"
-          value={businessCount}
-          icon={<Store className="h-5 w-5" />}
-        />
-        <StatCard
-          label="Total Causes"
-          value={causeCount}
-          icon={<Heart className="h-5 w-5" />}
-        />
-        <StatCard
-          label="Stakeholders"
-          value={stakeholderCount}
-          icon={<Users className="h-5 w-5" />}
-        />
-        <StatCard
-          label="QR Codes"
-          value={qrCodeCount}
-          icon={<QrCode className="h-5 w-5" />}
-        />
+        <StatCard label="Total Businesses" value={businessCount} icon={<Store className="h-5 w-5" />} />
+        <StatCard label="Total Causes" value={causeCount} icon={<Heart className="h-5 w-5" />} />
+        <StatCard label="Stakeholders" value={stakeholderCount} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="QR Codes" value={qrCodeCount} icon={<QrCode className="h-5 w-5" />} />
       </div>
 
-      {/* Role-Specific Quick Actions */}
       <div>
         <h2 className="mb-3 text-sm font-semibold text-surface-800">Quick Actions</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {roleTools.map((tool, idx) => {
+          {roleTools.map((tool, index) => {
             const Icon = ICON_MAP[tool.icon] || FileText
+
             return (
-              <Link key={idx} href={tool.href}>
+              <Link key={index} href={tool.href}>
                 <Card className="group cursor-pointer transition-shadow hover:shadow-card-hover">
                   <CardContent className="flex items-start gap-3 py-4">
                     <div
@@ -242,12 +319,12 @@ function TeamDashboardPage() {
                       <Icon className="h-5 w-5" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-surface-800 group-hover:text-brand-700 transition-colors">
+                      <p className="text-sm font-medium text-surface-800 transition-colors group-hover:text-brand-700">
                         {tool.label}
                       </p>
                       <p className="mt-0.5 text-xs text-surface-400">{tool.description}</p>
                     </div>
-                    <ArrowRight className="mt-1 h-4 w-4 text-surface-300 group-hover:text-brand-500 transition-colors" />
+                    <ArrowRight className="mt-1 h-4 w-4 text-surface-300 transition-colors group-hover:text-brand-500" />
                   </CardContent>
                 </Card>
               </Link>
@@ -256,15 +333,15 @@ function TeamDashboardPage() {
         </div>
       </div>
 
-      {/* Recent Activity & Pipeline */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Recent Activity — real data from outreach_activities */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Recent Activity</CardTitle>
               <Link href="/crm/outreach">
-                <Button variant="ghost" size="sm">View all <ArrowRight className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="sm">
+                  View all <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
               </Link>
             </div>
           </CardHeader>
@@ -276,38 +353,51 @@ function TeamDashboardPage() {
             ) : (
               <div className="space-y-3">
                 {recentOutreach.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-50">
+                  <Link
+                    key={item.id}
+                    href={getOutreachActivityHref(item)}
+                    className="group flex items-center justify-between rounded-lg px-2 py-2 transition-colors hover:bg-surface-50"
+                  >
                     <div>
-                      <p className="text-sm text-surface-700">
-                        {item.type.replace('_', ' ').replace(/^\w/, c => c.toUpperCase())}
+                      <p className="text-sm text-surface-700 transition-colors group-hover:text-brand-700">
+                        {item.type.replace('_', ' ').replace(/^\w/, (value) => value.toUpperCase())}
                         {item.subject ? `: ${item.subject}` : ''}
                       </p>
                       <p className="text-xs text-surface-400">
-                        {item.entity_type} &middot; {formatDate(item.created_at)}
+                        {item.entity_type} / {formatDate(item.created_at)}
                       </p>
                     </div>
-                    <Badge variant={
-                      item.outcome === 'positive' ? 'success' :
-                      item.outcome === 'negative' ? 'danger' :
-                      item.outcome === 'neutral' ? 'warning' :
-                      'default'
-                    }>
-                      {item.outcome || item.type}
-                    </Badge>
-                  </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={
+                          item.outcome === 'positive'
+                            ? 'success'
+                            : item.outcome === 'negative'
+                              ? 'danger'
+                              : item.outcome === 'neutral'
+                                ? 'warning'
+                                : 'default'
+                        }
+                      >
+                        {item.outcome || item.type}
+                      </Badge>
+                      <ArrowRight className="h-3.5 w-3.5 text-surface-300 transition-colors group-hover:text-brand-500" />
+                    </div>
+                  </Link>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Pipeline Overview — real stage counts from businesses */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>{isAdmin ? 'Pipeline Overview' : 'Your Progress'}</CardTitle>
               <Link href={isAdmin ? '/crm/businesses' : '/analytics'}>
-                <Button variant="ghost" size="sm">Details <ArrowRight className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="sm">
+                  Details <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
               </Link>
             </div>
           </CardHeader>
@@ -316,9 +406,9 @@ function TeamDashboardPage() {
               <p className="text-sm text-surface-400">Loading pipeline...</p>
             ) : (
               <div className="space-y-4">
-                {stageCounts.map((stage, idx) => (
+                {stageCounts.map((stage, index) => (
                   <button
-                    key={idx}
+                    key={index}
                     type="button"
                     onClick={() => setSelectedStage({ stage: stage.stage, label: stage.label, count: stage.count })}
                     className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-surface-50"
@@ -341,16 +431,15 @@ function TeamDashboardPage() {
         </Card>
       </div>
 
-      {/* Duplicate Warnings (admin only) */}
-      {isAdmin && (
+      {isAdmin ? (
         <Card className="border-l-4 border-l-warning-500">
           <CardContent className="py-4">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="mb-2 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-warning-500" />
               <h3 className="text-sm font-semibold text-surface-800">Duplicate Alerts</h3>
               <Badge variant="warning">Possible duplicates</Badge>
             </div>
-            <p className="text-xs text-surface-500 mb-3">
+            <p className="mb-3 text-xs text-surface-500">
               Review your records periodically to keep the CRM clean.
             </p>
             <Link href="/crm/businesses">
@@ -360,7 +449,7 @@ function TeamDashboardPage() {
             </Link>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       <Dialog open={Boolean(selectedStage)} onOpenChange={(open) => !open && setSelectedStage(null)}>
         <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
@@ -394,7 +483,7 @@ function TeamDashboardPage() {
                       <div className="space-y-1 text-sm text-surface-600">
                         {business.address ? <p>{business.address}</p> : null}
                         {business.email || business.phone ? (
-                          <p>{[business.email, business.phone].filter(Boolean).join(' • ')}</p>
+                          <p>{[business.email, business.phone].filter(Boolean).join(' / ')}</p>
                         ) : null}
                         {business.avg_ticket ? <p>Average spend: {business.avg_ticket}</p> : null}
                         {business.products_services?.length ? (
@@ -422,9 +511,24 @@ function TeamDashboardPage() {
   )
 }
 
-function getGreeting(): string {
+function getGreeting() {
   const hour = new Date().getHours()
   if (hour < 12) return 'Good morning'
   if (hour < 17) return 'Good afternoon'
   return 'Good evening'
+}
+
+function getOutreachActivityHref(item: {
+  entity_type: string
+  entity_id: string
+  business_id: string | null
+  cause_id: string | null
+  contact_id: string | null
+}) {
+  if (item.business_id) return `/crm/businesses/${item.business_id}`
+  if (item.cause_id) return `/crm/causes/${item.cause_id}`
+  if (item.entity_type === 'business') return `/crm/businesses/${item.entity_id}`
+  if (item.entity_type === 'cause') return `/crm/causes/${item.entity_id}`
+  if (item.contact_id || item.entity_type === 'contact') return '/crm/contacts'
+  return '/crm/outreach'
 }

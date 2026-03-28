@@ -130,6 +130,7 @@ export async function upsertBusinessJoinContact(
     phone: string | null
     email: string | null
     supportsLocalCauses: boolean
+    wantsBusinessOffers: boolean
   },
 ) {
   const now = new Date().toISOString()
@@ -169,6 +170,7 @@ export async function upsertBusinessJoinContact(
     list_status: 'joined',
     offer_eligible: true,
     supports_local_causes: payload.supportsLocalCauses,
+    wants_business_offers: payload.wantsBusinessOffers,
     capture_source: 'business_join_qr',
   }
 

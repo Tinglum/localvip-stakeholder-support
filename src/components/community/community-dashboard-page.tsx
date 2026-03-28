@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
+import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
-import { useBusinesses, useCauses, useContacts } from '@/lib/supabase/hooks'
+import { useBusinesses, useCauses, useContacts, useGeneratedMaterials, useQrCodes, useStakeholders } from '@/lib/supabase/hooks'
 
 export function CommunityDashboardPage() {
   const { profile, roleLabel } = useAuth()
@@ -27,10 +28,96 @@ export function CommunityDashboardPage() {
     () => contacts.filter((contact) => contact.cause_id && contact.cause_id === scopedCause?.id),
     [contacts, scopedCause?.id]
   )
+  const { data: stakeholderRecords } = useStakeholders({ cause_id: scopedCause?.id || '__none__' })
+  const scopedStakeholder = React.useMemo(
+    () => stakeholderRecords.find((stakeholder) => stakeholder.cause_id === scopedCause?.id) || null,
+    [scopedCause?.id, stakeholderRecords]
+  )
+  const { data: qrCodes } = useQrCodes({ cause_id: scopedCause?.id || '__none__' })
+  const { data: generatedMaterials } = useGeneratedMaterials({ stakeholder_id: scopedStakeholder?.id || '__none__' })
 
   const supportingBusinesses = React.useMemo(
     () => businesses.filter((business) => business.linked_cause_id === scopedCause?.id),
     [businesses, scopedCause?.id]
+  )
+  const immediateItems = React.useMemo(() => {
+    const items = []
+
+    if (qrCodes.length === 0) {
+      items.push({
+        id: 'community-qr',
+        title: 'Set up your supporter QR',
+        detail: 'Your community needs one clean QR path so parents, supporters, and local families can actually join.',
+        href: '/community/share',
+        ctaLabel: 'Open share tools',
+        priority: 'high' as const,
+        badge: 'Supporter flow',
+      })
+    }
+
+    if (generatedMaterials.length === 0) {
+      items.push({
+        id: 'community-materials',
+        title: 'Make your supporter materials ready',
+        detail: 'Your flyers, supporter cards, and parent/PTA materials should be ready before you ask people to share.',
+        href: '/materials/mine',
+        ctaLabel: 'Open materials',
+        priority: 'high' as const,
+        badge: 'Materials',
+      })
+    }
+
+    if (supporterContacts.length < 10) {
+      items.push({
+        id: 'community-supporters',
+        title: 'Get your first 10 supporters',
+        detail: 'Start with the people who already care most about your school or cause and get them onto the supporter list.',
+        href: '/community/supporters',
+        ctaLabel: 'Open supporters',
+        priority: 'medium' as const,
+        badge: `${supporterContacts.length} supporters`,
+      })
+    }
+
+    if (supportingBusinesses.length === 0) {
+      items.push({
+        id: 'community-businesses',
+        title: 'Connect your first business',
+        detail: 'You need at least one supporting business so the community story becomes real, not theoretical.',
+        href: '/community/share',
+        ctaLabel: 'Open community tools',
+        priority: 'medium' as const,
+        badge: 'Business support',
+      })
+    }
+
+    return items
+  }, [generatedMaterials.length, qrCodes.length, supporterContacts.length, supportingBusinesses.length])
+  const suggestedItems = React.useMemo(
+    () => [
+      {
+        id: 'community-suggestion-event',
+        title: 'Share at your next event',
+        detail: 'Use your QR at the next school, church, or community gathering where people already care.',
+        href: '/community/share',
+        ctaLabel: 'Open share tools',
+      },
+      {
+        id: 'community-suggestion-message',
+        title: 'Send the parent / PTA message again',
+        detail: 'A short reminder in a parent group or newsletter often creates the next wave of supporters.',
+        href: '/community/share',
+        ctaLabel: 'Open message',
+      },
+      {
+        id: 'community-suggestion-business',
+        title: 'Follow up with the next business',
+        detail: 'Keep building the business side so the supporter story has real local momentum behind it.',
+        href: '/community/activity',
+        ctaLabel: 'Open activity',
+      },
+    ],
+    []
   )
 
   if (!scopedCause) {
@@ -69,27 +156,17 @@ export function CommunityDashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Total supporters" value={supporterContacts.length} icon={<Users className="h-5 w-5" />} />
         <StatCard label="Businesses supporting you" value={supportingBusinesses.length} icon={<Store className="h-5 w-5" />} />
-        <StatCard label="QR ready" value="Yes" icon={<QrCode className="h-5 w-5" />} />
+        <StatCard label="QR ready" value={qrCodes.length > 0 ? 'Yes' : 'No'} icon={<QrCode className="h-5 w-5" />} />
         <StatCard label="Funds generated" value="$0.00" icon={<Heart className="h-5 w-5" />} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Grow Your Supporters</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {[
-              'Share with parents and families who already care about your community.',
-              'Use your QR at school events, church gatherings, or local meetings.',
-              'Copy a short message into text groups and newsletters.',
-            ].map((item) => (
-              <div key={item} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700">
-                {item}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <StakeholderActionQueue
+          title="Immediate next steps"
+          description="Anything still needed for supporter growth stays here. Once it is done, it drops out and the page suggests the next three strongest moves."
+          items={immediateItems}
+          suggestions={suggestedItems}
+        />
 
         <Card>
           <CardHeader>

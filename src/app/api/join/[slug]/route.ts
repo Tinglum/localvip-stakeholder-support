@@ -14,12 +14,21 @@ const submissionSchema = z.object({
   phone: z.string().trim().optional().or(z.literal('')),
   email: z.string().trim().optional().or(z.literal('')),
   supportsLocalCauses: z.boolean().optional().default(false),
+  wantsBusinessOffers: z.boolean().optional().default(false),
 }).superRefine((value, context) => {
-  if (!value.phone && !value.email) {
+  if (!value.phone) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Add a phone number or email.',
+      message: 'Phone is required.',
       path: ['phone'],
+    })
+  }
+
+  if (!value.email) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Email is required.',
+      path: ['email'],
     })
   }
 
@@ -85,6 +94,7 @@ export async function POST(
       phone: parsed.data.phone || null,
       email: parsed.data.email || null,
       supportsLocalCauses: parsed.data.supportsLocalCauses,
+      wantsBusinessOffers: parsed.data.wantsBusinessOffers,
     })
 
     await (supabase
@@ -99,6 +109,7 @@ export async function POST(
           contact_id: contact.id,
           source: 'business_join_qr',
           supports_local_causes: parsed.data.supportsLocalCauses,
+          wants_business_offers: parsed.data.wantsBusinessOffers,
         },
       })
 

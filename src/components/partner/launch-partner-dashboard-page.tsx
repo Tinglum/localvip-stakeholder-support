@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
+import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import {
   buildBusinessQueueState,
@@ -171,6 +172,65 @@ export function LaunchPartnerDashboardPage() {
     () => nextActions.filter((item) => item.queue.blockedReason || item.queue.waitingOn),
     [nextActions]
   )
+  const immediateItems = React.useMemo(
+    () =>
+      nextActions
+        .filter((item) => item.queue.urgency === 'blocked' || item.queue.urgency === 'overdue' || item.queue.urgency === 'today')
+        .map((item) => ({
+          id: item.id,
+          title: item.name,
+          detail: item.queue.nextAction,
+          href: item.href,
+          ctaLabel: item.type === 'Business' ? 'Open businesses' : 'Open community',
+          priority:
+            item.queue.urgency === 'blocked' || item.queue.urgency === 'overdue'
+              ? ('high' as const)
+              : ('medium' as const),
+          badge: `${item.type} / ${item.city}`,
+          dueLabel: `Due: ${formatDueLabel(item.queue.nextActionDueDate)}`,
+        })),
+    [nextActions]
+  )
+  const oldestOpenItem = React.useMemo(
+    () =>
+      [...nextActions]
+        .filter((item) => item.queue.workflowStage !== 'live')
+        .sort((left, right) => {
+          const leftValue = left.queue.lastActivityAt || left.queue.nextActionDueDate || '9999-12-31'
+          const rightValue = right.queue.lastActivityAt || right.queue.nextActionDueDate || '9999-12-31'
+          return leftValue.localeCompare(rightValue)
+        })
+        .at(0),
+    [nextActions]
+  )
+  const suggestedItems = React.useMemo(
+    () => [
+      {
+        id: 'partner-suggestion-city',
+        title: 'Add a new inquiry',
+        detail: 'Look for the next business or school in your city that should be pulled into the launch pipeline.',
+        href: '/partner/city',
+        ctaLabel: 'Open city view',
+      },
+      {
+        id: 'partner-suggestion-follow-up',
+        title: oldestOpenItem ? `Follow up with ${oldestOpenItem.name}` : 'Follow up with the oldest open item',
+        detail: oldestOpenItem
+          ? 'This is the oldest claimed stakeholder that still needs a next step to move the city forward.'
+          : 'When the urgent queue is clear, use your oldest open stakeholder to create the next bit of momentum.',
+        href: oldestOpenItem?.href || '/partner/businesses',
+        ctaLabel: 'Open stakeholder',
+      },
+      {
+        id: 'partner-suggestion-expand',
+        title: 'Find a new growth gap',
+        detail: 'Scan city performance and identify the next weak spot in businesses, schools, or activation.',
+        href: '/partner/city',
+        ctaLabel: 'Review city',
+      },
+    ],
+    [oldestOpenItem]
+  )
 
   const avgHundredListCompletion = React.useMemo(() => {
     if (cityBusinesses.length === 0) return 0
@@ -254,52 +314,28 @@ export function LaunchPartnerDashboardPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>My Next Actions</CardTitle>
-              <CardDescription>The stakeholder steps that are specifically yours right now.</CardDescription>
-            </div>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/partner/city">
-                My City
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {nextActions.length === 0 ? (
+        {nextActions.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Immediate next steps</CardTitle>
+              <CardDescription>Claim businesses or community stakeholders from your city pages to turn this into a real queue.</CardDescription>
+            </CardHeader>
+            <CardContent>
               <EmptyState
                 icon={<Target className="h-6 w-6" />}
                 title="Nothing claimed yet"
                 description="Claim businesses or community stakeholders from your city pages to turn this into a real queue."
               />
-            ) : (
-              nextActions.map((item) => (
-                <div key={item.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-surface-900">{item.name}</p>
-                        <Badge variant={getUrgencyVariant(item.queue.urgency)}>{item.queue.urgencyLabel}</Badge>
-                        <Badge variant="outline">{item.type}</Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-surface-500">{item.city} / {item.queue.workflowLabel}</p>
-                    </div>
-                    <Button asChild variant="ghost" size="sm">
-                      <Link href={item.href}>
-                        Open
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </Button>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-surface-700">{item.queue.nextAction}</p>
-                  <p className="mt-2 text-xs text-surface-500">Due: {formatDueLabel(item.queue.nextActionDueDate)}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <StakeholderActionQueue
+            title="Immediate next steps"
+            description="This is the launch-partner queue for anything blocked, overdue, or due today. When those are clear, the dashboard points you to the next three smart moves."
+            items={immediateItems}
+            suggestions={suggestedItems}
+          />
+        )}
 
         <Card>
           <CardHeader>

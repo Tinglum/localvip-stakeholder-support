@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
+import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import {
   buildBusinessQueueState,
@@ -157,6 +158,65 @@ export function FieldOutreachDashboardPage() {
     () => nextActions.filter((item) => item.queue.blockedReason || item.queue.waitingOn),
     [nextActions]
   )
+  const immediateItems = React.useMemo(
+    () =>
+      nextActions
+        .filter((item) => item.queue.urgency === 'blocked' || item.queue.urgency === 'overdue' || item.queue.urgency === 'today')
+        .map((item) => ({
+          id: item.id,
+          title: item.name,
+          detail: item.queue.nextAction,
+          href: item.href,
+          ctaLabel: item.type === 'Business' ? 'Open business' : 'Open school / cause',
+          priority:
+            item.queue.urgency === 'blocked' || item.queue.urgency === 'overdue'
+              ? ('high' as const)
+              : ('medium' as const),
+          badge: `${item.type} / ${item.queue.workflowLabel}`,
+          dueLabel: `Due: ${formatDueLabel(item.queue.nextActionDueDate)}`,
+        })),
+    [nextActions]
+  )
+  const oldestOpenItem = React.useMemo(
+    () =>
+      [...nextActions]
+        .filter((item) => item.queue.workflowStage !== 'live')
+        .sort((left, right) => {
+          const leftValue = left.queue.lastActivityAt || left.queue.nextActionDueDate || '9999-12-31'
+          const rightValue = right.queue.lastActivityAt || right.queue.nextActionDueDate || '9999-12-31'
+          return leftValue.localeCompare(rightValue)
+        })
+        .at(0),
+    [nextActions]
+  )
+  const suggestedItems = React.useMemo(
+    () => [
+      {
+        id: 'field-suggestion-new-business',
+        title: 'Add a new inquiry',
+        detail: 'Find and claim another business in your approved city footprint so the pipeline keeps moving.',
+        href: '/workspace/businesses',
+        ctaLabel: 'Claim business',
+      },
+      {
+        id: 'field-suggestion-follow-up',
+        title: oldestOpenItem ? `Follow up with ${oldestOpenItem.name}` : 'Follow up with the oldest open stakeholder',
+        detail: oldestOpenItem
+          ? 'This is the oldest claimed stakeholder that still needs a next step to move forward.'
+          : 'When the urgent queue is clear, use your oldest open stakeholder to create new momentum.',
+        href: oldestOpenItem?.href || '/workspace/businesses',
+        ctaLabel: 'Open record',
+      },
+      {
+        id: 'field-suggestion-school',
+        title: 'Find a new school or cause',
+        detail: 'Balance your queue by claiming a school or cause that still needs activation help.',
+        href: '/workspace/community',
+        ctaLabel: 'Claim community',
+      },
+    ],
+    [oldestOpenItem]
+  )
 
   const loading = businessesLoading || causesLoading || tasksLoading || outreachLoading || scriptsLoading
   const myCityLabels = accessibleCityIds.map((cityId) => cityMap.get(cityId)).filter(Boolean) as string[]
@@ -230,52 +290,28 @@ export function FieldOutreachDashboardPage() {
       </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>My Next Actions</CardTitle>
-              <CardDescription>The next steps that are actually yours right now.</CardDescription>
-            </div>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/crm/tasks">
-                My Tasks
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {nextActions.length === 0 ? (
+        {nextActions.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Immediate next steps</CardTitle>
+              <CardDescription>Claim your first stakeholder to turn this into a real work queue.</CardDescription>
+            </CardHeader>
+            <CardContent>
               <EmptyState
                 icon={<Target className="h-6 w-6" />}
                 title="Claim your first stakeholder"
                 description="Once you claim a business or school / cause, the next actions will show up here."
               />
-            ) : (
-              nextActions.map((item) => (
-                <div key={item.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-surface-900">{item.name}</p>
-                        <Badge variant={getUrgencyVariant(item.queue.urgency)}>{item.queue.urgencyLabel}</Badge>
-                        <Badge variant="outline">{item.type}</Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-surface-500">{item.city} / {item.queue.workflowLabel}</p>
-                    </div>
-                    <Button asChild variant="ghost" size="sm">
-                      <Link href={item.href}>
-                        Open
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </Button>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-surface-700">{item.queue.nextAction}</p>
-                  <p className="mt-2 text-xs text-surface-500">Due: {formatDueLabel(item.queue.nextActionDueDate)}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <StakeholderActionQueue
+            title="Immediate next steps"
+            description="Anything blocked, overdue, or due today stays here until you move it. Once it is handled, it drops out of the overview."
+            items={immediateItems}
+            suggestions={suggestedItems}
+          />
+        )}
 
         <Card>
           <CardHeader>

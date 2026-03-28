@@ -5,8 +5,6 @@ import Link from 'next/link'
 import {
   ArrowRight,
   BarChart3,
-  CheckCircle2,
-  Circle,
   FileText,
   Heart,
   Store,
@@ -18,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
+import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import { getBusinessJoinCaptureData } from '@/lib/business-join'
 import { formatCashbackLabel, resolveBusinessOffer } from '@/lib/offers'
@@ -151,6 +150,50 @@ export function BusinessDashboardPage() {
         : 'Complete your first 100 customers to unlock the live cashback phase',
     },
   ]
+  const immediateItems = nextSteps
+    .filter((step) => !step.complete)
+    .map((step, index) => ({
+      id: `business-step-${index}`,
+      title: step.label,
+      detail: step.detail,
+      href: step.href,
+      ctaLabel: 'Open step',
+      priority: index === 0 ? 'high' as const : 'medium' as const,
+      badge: 'Business',
+    }))
+
+  const oldestUnjoinedContact = [...contacts]
+    .filter((contact) => getContactListStatus(contact) !== 'joined')
+    .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+    .at(0)
+
+  const suggestedItems = [
+    {
+      id: 'business-suggestion-new-inquiry',
+      title: 'Add a new inquiry',
+      detail: 'Keep the 100 List growing by adding another customer, regular, or supporter who already knows your business.',
+      href: '/portal/clients',
+      ctaLabel: 'Open My 100 List',
+    },
+    {
+      id: 'business-suggestion-follow-up',
+      title: oldestUnjoinedContact
+        ? `Follow up with ${getContactDisplayName(oldestUnjoinedContact)}`
+        : 'Follow up with your oldest open item',
+      detail: oldestUnjoinedContact
+        ? 'This is the oldest person in your list who still needs another push to move forward.'
+        : 'If you have anyone still waiting on a next touch, move that relationship first.',
+      href: '/portal/clients',
+      ctaLabel: 'Review open contacts',
+    },
+    {
+      id: 'business-suggestion-b2b',
+      title: 'Invite another business',
+      detail: 'Grow your network by inviting a nearby or complementary business into LocalVIP.',
+      href: '/portal/grow',
+      ctaLabel: 'Open growth tools',
+    },
+  ]
 
   const activityFeed = buildActivityFeed(contacts)
 
@@ -169,34 +212,12 @@ export function BusinessDashboardPage() {
       <Card className="overflow-hidden border-surface-200">
         <div className="bg-gradient-to-r from-amber-50 via-white to-lime-50 px-6 py-6">
           <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-semibold text-surface-900">Next Steps</p>
-                <p className="mt-1 max-w-2xl text-sm text-surface-600">
-                  Keep this simple: add your people, invite them, and make it easy for them to support your business.
-                </p>
-              </div>
-              <div className="space-y-2">
-                {nextSteps.map((step) => (
-                  <Link
-                    key={step.label}
-                    href={step.href}
-                    className="flex items-start gap-3 rounded-2xl border border-white/90 bg-white/85 px-4 py-3 shadow-sm transition-all hover:border-surface-200 hover:bg-white"
-                  >
-                    {step.complete ? (
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-600" />
-                    ) : (
-                      <Circle className="mt-0.5 h-4 w-4 shrink-0 text-surface-300" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-surface-900">{step.label}</p>
-                      <p className="mt-1 text-xs text-surface-500">{step.detail}</p>
-                    </div>
-                    <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-surface-300" />
-                  </Link>
-                ))}
-              </div>
-            </div>
+            <StakeholderActionQueue
+              title="Immediate next steps"
+              description="Keep this simple: finish what is still incomplete, and as soon as it is done it drops out of this overview."
+              items={immediateItems}
+              suggestions={suggestedItems}
+            />
 
             <div className="rounded-[1.75rem] border border-white/90 bg-white/90 p-5 shadow-sm">
               <div className="flex items-center justify-between">
