@@ -18,6 +18,7 @@ import { useAuth } from '@/lib/auth/context'
 import { MATERIAL_CATEGORIES, MATERIAL_USE_CASES } from '@/lib/constants'
 import {
   AUTOMATION_TEMPLATE_STAKEHOLDER_TYPES,
+  deriveMaterialAutomationStakeholderTypes,
   getMaterialAutomationTemplateConfig,
   materialSupportsAutomationTemplate,
   withUpdatedMaterialAutomationTemplate,
@@ -120,6 +121,13 @@ export function MaterialEditDialog({
 
     const supportsAutomation = materialSupportsAutomationTemplate(material)
     const nextAutomationEnabled = isAdmin && automationEnabled && supportsAutomation
+    const nextTargetSubtypes = subtypeTags.filter(Boolean) as Exclude<UserRoleSubtype, null>[]
+    const inferredStakeholderTypes = deriveMaterialAutomationStakeholderTypes({
+      ...material,
+      target_roles: roleTags,
+      target_subtypes: nextTargetSubtypes,
+      metadata: withUpdatedMaterialCustomTags(material, parseTags(customTags)),
+    })
 
     const updatedMaterial = await update(material.id, {
       title: title.trim(),
@@ -127,7 +135,7 @@ export function MaterialEditDialog({
       category: category || null,
       use_case: useCase || null,
       target_roles: roleTags,
-      target_subtypes: subtypeTags.filter(Boolean) as Exclude<UserRoleSubtype, null>[],
+      target_subtypes: nextTargetSubtypes,
       is_template: nextAutomationEnabled,
       metadata: withUpdatedMaterialAutomationTemplate(
         {
@@ -137,7 +145,7 @@ export function MaterialEditDialog({
         {
           enabled: nextAutomationEnabled,
           isActive: automationActive,
-          stakeholderTypes: automationStakeholderTypes.length > 0 ? automationStakeholderTypes : ['business'],
+          stakeholderTypes: automationStakeholderTypes.length > 0 ? automationStakeholderTypes : inferredStakeholderTypes,
           audienceTags: parseTags(automationAudienceTags),
           libraryFolder: automationLibraryFolder,
         },

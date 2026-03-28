@@ -733,6 +733,7 @@ async function getTemplatesForStakeholder(
     .from('material_templates')
     .select('*')
     .eq('is_active', true)
+    .neq('template_type', 'material_asset')
 
   if (templateId) query = query.eq('id', templateId)
 

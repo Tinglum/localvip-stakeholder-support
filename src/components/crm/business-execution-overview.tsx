@@ -109,6 +109,9 @@ export function BusinessExecutionOverview({
   const captureOffer = resolveBusinessOffer(biz, offers, 'capture')
   const cashbackOffer = resolveBusinessOffer(biz, offers, 'cashback')
   const generatedCount = generatedMaterials.filter((item) => item.generation_status === 'generated' && !!item.generated_file_url).length
+  const generationState = generatedCount > 0
+    ? 'generated'
+    : task?.status || 'idle'
   const joinedCount = contacts.filter((item) => item.list_status === 'joined' || !!item.joined_at).length
   const executionSteps = computeBusinessExecutionSteps({
     business: biz,
@@ -438,8 +441,8 @@ export function BusinessExecutionOverview({
               <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Material setup task</p>
                 <p className="mt-1 text-sm font-semibold text-surface-900">{task.title}</p>
-                <Badge variant={task.status === 'generated' ? 'success' : task.status === 'failed' ? 'danger' : 'warning'} className="mt-2">
-                  {task.status}
+                <Badge variant={generationState === 'generated' ? 'success' : generationState === 'failed' ? 'danger' : 'warning'} className="mt-2">
+                  {generationState}
                 </Badge>
               </div>
             ) : null}
@@ -504,7 +507,7 @@ export function BusinessExecutionOverview({
                     </div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3">
-                    <MiniStatus label="Generation" value={task?.status || 'idle'} />
+                    <MiniStatus label="Generation" value={generationState} />
                     <MiniStatus label="Generated files" value={`${generatedCount}`} />
                     <MiniStatus label="QR linked" value={qrCodes.length > 0 ? 'Yes' : 'No'} />
                   </div>

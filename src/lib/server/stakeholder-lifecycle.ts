@@ -281,6 +281,27 @@ export async function ensureBusinessStakeholderSetup(
       .single()
 
     stakeholder = (data || null) as Stakeholder | null
+  } else {
+    const { data } = await (supabase.from('stakeholders') as any)
+      .update({
+        type: 'business',
+        name: business.name,
+        city_id: business.city_id,
+        business_id: business.id,
+        cause_id: null,
+        organization_id: null,
+        status: stakeholder.status || 'pending',
+        metadata: {
+          ...((stakeholder.metadata as Record<string, unknown> | null) || {}),
+          normalized_from_business: true,
+          source: 'crm_business_create',
+        },
+      })
+      .eq('id', stakeholder.id)
+      .select()
+      .single()
+
+    stakeholder = (data || stakeholder) as Stakeholder
   }
 
   if (!stakeholder) throw new Error('Business stakeholder setup could not be created.')
@@ -327,6 +348,28 @@ export async function ensureCauseStakeholderSetup(
       .single()
 
     stakeholder = (data || null) as Stakeholder | null
+  } else {
+    const { data } = await (supabase.from('stakeholders') as any)
+      .update({
+        type: mapCauseToStakeholderType(cause),
+        name: cause.name,
+        city_id: cause.city_id,
+        cause_id: cause.id,
+        organization_id: cause.organization_id,
+        profile_id: cause.owner_id,
+        status: stakeholder.status || 'pending',
+        metadata: {
+          ...((stakeholder.metadata as Record<string, unknown> | null) || {}),
+          normalized_from_cause: true,
+          source: 'crm_cause_create',
+          cause_type: cause.type,
+        },
+      })
+      .eq('id', stakeholder.id)
+      .select()
+      .single()
+
+    stakeholder = (data || stakeholder) as Stakeholder
   }
 
   if (!stakeholder) throw new Error('Cause stakeholder setup could not be created.')
@@ -387,7 +430,27 @@ export async function ensureStakeholderSetupTask(
     .eq('task_type', 'stakeholder_setup')
     .maybeSingle()
 
-  if (existing) return existing
+  if (existing) {
+    const existingTask = existing as { id: string; payload_json?: Record<string, unknown> | null }
+    const existingPayload = (existingTask.payload_json || {})
+    const { data: updated, error: updateError } = await (supabase.from('admin_tasks') as any)
+      .update({
+        title: input.title,
+        payload_json: {
+          ...existingPayload,
+          stakeholder_type: input.stakeholderType,
+          linked_entity_id: input.linkedEntityId,
+          source: input.source,
+          checklist: ['Add referral code', 'Add connection code', 'Generate materials'],
+        },
+      })
+      .eq('id', existingTask.id)
+      .select()
+      .single()
+
+    if (updateError) throw updateError
+    return updated
+  }
 
   const { data, error } = await (supabase.from('admin_tasks') as any)
     .insert({
