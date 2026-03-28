@@ -1,5 +1,7 @@
+import type { CornerStyle, DotStyle } from '@/lib/qr/generate'
 import type { Business, Profile, QrCode } from '@/lib/types/database'
 import { getBusinessOfferTitle, getBusinessPortalData } from '@/lib/business-portal'
+import { BUSINESS_ACCENT_DARK_HEX, BUSINESS_ACCENT_HEX } from '@/lib/business-theme'
 import { normalizeDomain, slugify } from '@/lib/utils'
 
 export interface BusinessJoinCaptureData {
@@ -30,10 +32,25 @@ export interface BusinessJoinResource {
   qrCodeId: string
   frameText: string
   logoUrl: string | null
+  qrAppearance: BusinessJoinQrAppearance
   offerTitle: string
   offerDescription: string
   offerValue: string | null
   supportLabel: string
+}
+
+export type BusinessJoinQrGradientType = 'none' | 'linear' | 'radial'
+
+export interface BusinessJoinQrAppearance {
+  foregroundColor: string
+  backgroundColor: string
+  frameText: string
+  logoUrl: string | null
+  useBusinessLogo: boolean
+  dotStyle: DotStyle
+  cornerStyle: CornerStyle
+  gradientType: BusinessJoinQrGradientType
+  gradientColors: [string, string]
 }
 
 export function getAppBaseUrl() {
@@ -95,6 +112,67 @@ export function getBusinessJoinOfferValue(business: Business) {
 export function getBusinessJoinLogoUrl(business: Business) {
   const portal = getBusinessPortalData(business)
   return portal.logo_url || null
+}
+
+export function getDefaultBusinessJoinQrAppearance(business: Business): BusinessJoinQrAppearance {
+  return {
+    foregroundColor: BUSINESS_ACCENT_HEX,
+    backgroundColor: '#ffffff',
+    frameText: 'GET MY OFFER',
+    logoUrl: getBusinessJoinLogoUrl(business),
+    useBusinessLogo: true,
+    dotStyle: 'rounded',
+    cornerStyle: 'rounded',
+    gradientType: 'none',
+    gradientColors: [BUSINESS_ACCENT_HEX, BUSINESS_ACCENT_DARK_HEX],
+  }
+}
+
+export function getBusinessJoinQrAppearance(
+  business: Business,
+  qrCode?: Pick<QrCode, 'foreground_color' | 'background_color' | 'frame_text' | 'logo_url' | 'metadata'> | null,
+): BusinessJoinQrAppearance {
+  const defaults = getDefaultBusinessJoinQrAppearance(business)
+  const metadata = (qrCode?.metadata as Record<string, unknown> | null) || null
+  const rawAppearance = metadata?.qr_appearance
+  const appearance = rawAppearance && typeof rawAppearance === 'object'
+    ? rawAppearance as Record<string, unknown>
+    : {}
+  const useBusinessLogo = appearance.useBusinessLogo !== false
+  const rawGradientColors = Array.isArray(appearance.gradientColors) ? appearance.gradientColors : null
+
+  return {
+    foregroundColor: qrCode?.foreground_color || asString(appearance.foregroundColor) || defaults.foregroundColor,
+    backgroundColor: qrCode?.background_color || asString(appearance.backgroundColor) || defaults.backgroundColor,
+    frameText: qrCode?.frame_text || asString(appearance.frameText) || defaults.frameText,
+    logoUrl: useBusinessLogo ? getBusinessJoinLogoUrl(business) : (qrCode?.logo_url || null),
+    useBusinessLogo,
+    dotStyle: isDotStyle(appearance.dotStyle) ? appearance.dotStyle : defaults.dotStyle,
+    cornerStyle: isCornerStyle(appearance.cornerStyle) ? appearance.cornerStyle : defaults.cornerStyle,
+    gradientType: isGradientType(appearance.gradientType) ? appearance.gradientType : defaults.gradientType,
+    gradientColors: isGradientPair(rawGradientColors)
+      ? [rawGradientColors[0], rawGradientColors[1]]
+      : defaults.gradientColors,
+  }
+}
+
+export function mergeBusinessJoinQrAppearanceMetadata(
+  existingMetadata: Record<string, unknown> | null | undefined,
+  appearance: BusinessJoinQrAppearance,
+) {
+  return {
+    ...((existingMetadata as Record<string, unknown> | null) || {}),
+    qr_appearance: {
+      foregroundColor: appearance.foregroundColor,
+      backgroundColor: appearance.backgroundColor,
+      frameText: appearance.frameText,
+      useBusinessLogo: appearance.useBusinessLogo,
+      dotStyle: appearance.dotStyle,
+      cornerStyle: appearance.cornerStyle,
+      gradientType: appearance.gradientType,
+      gradientColors: appearance.gradientColors,
+    },
+  }
 }
 
 export function getBusinessSupportLabel(business: Business, linkedCauseName?: string | null) {
@@ -160,9 +238,11 @@ export function buildBusinessJoinResource(
       description: string | null
       valueLabel: string | null
     } | null
+    qrCode?: Pick<QrCode, 'foreground_color' | 'background_color' | 'frame_text' | 'logo_url' | 'metadata'> | null
   },
 ): BusinessJoinResource {
   const joinUrl = getBusinessJoinUrl(options.joinSlug)
+  const qrAppearance = getBusinessJoinQrAppearance(business, options.qrCode)
 
   return {
     businessId: business.id,
@@ -174,8 +254,9 @@ export function buildBusinessJoinResource(
     redirectUrl: options.redirectUrl,
     shortCode: options.shortCode,
     qrCodeId: options.qrCodeId,
-    frameText: 'GET MY OFFER',
-    logoUrl: getBusinessJoinLogoUrl(business),
+    frameText: qrAppearance.frameText,
+    logoUrl: qrAppearance.logoUrl,
+    qrAppearance,
     offerTitle: options.captureOffer?.headline || getBusinessOfferTitle(business),
     offerDescription: options.captureOffer?.description || getBusinessJoinOfferDescription(business),
     offerValue: options.captureOffer?.valueLabel || getBusinessJoinOfferValue(business),
@@ -216,4 +297,35 @@ function getNestedCapture(metadata: Record<string, unknown>) {
   return capture && typeof capture === 'object'
     ? capture as BusinessJoinCaptureData
     : {}
+}
+
+function asString(value: unknown) {
+  return typeof value === 'string' ? value : null
+}
+
+function isDotStyle(value: unknown): value is DotStyle {
+  return value === 'square'
+    || value === 'rounded'
+    || value === 'dots'
+    || value === 'classy'
+    || value === 'classy-rounded'
+    || value === 'extra-rounded'
+}
+
+function isCornerStyle(value: unknown): value is CornerStyle {
+  return value === 'square'
+    || value === 'rounded'
+    || value === 'dots'
+    || value === 'extra-rounded'
+}
+
+function isGradientType(value: unknown): value is BusinessJoinQrGradientType {
+  return value === 'none' || value === 'linear' || value === 'radial'
+}
+
+function isGradientPair(value: unknown): value is [string, string] {
+  return Array.isArray(value)
+    && value.length >= 2
+    && typeof value[0] === 'string'
+    && typeof value[1] === 'string'
 }

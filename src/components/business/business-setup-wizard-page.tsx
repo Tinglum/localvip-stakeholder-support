@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { ArrowRight, CheckCircle2, Image as ImageIcon, Loader2, Rocket, Store, Tag, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,6 +53,7 @@ function splitProducts(value: string) {
 
 export function BusinessSetupWizardPage() {
   const { profile } = useAuth()
+  const searchParams = useSearchParams()
   const supabase = React.useMemo(() => createClient(), [])
   const businessFilters = React.useMemo<Record<string, string>>(() => {
     const filters: Record<string, string> = {}
@@ -70,7 +72,11 @@ export function BusinessSetupWizardPage() {
   const { insert: insertOffer } = useOfferInsert()
   const { update: updateOffer } = useOfferUpdate()
 
-  const [step, setStep] = React.useState<StepKey>('profile')
+  const initialStep = React.useMemo<StepKey>(() => {
+    const requested = searchParams.get('step')
+    return isStepKey(requested) ? requested : 'profile'
+  }, [searchParams])
+  const [step, setStep] = React.useState<StepKey>(initialStep)
   const [saveState, setSaveState] = React.useState<SaveState>('idle')
   const [saveError, setSaveError] = React.useState<string | null>(null)
 
@@ -99,6 +105,10 @@ export function BusinessSetupWizardPage() {
   const captureOffer = business ? resolveBusinessOffer(business, offers, 'capture') : null
   const cashbackOffer = business ? resolveBusinessOffer(business, offers, 'cashback') : null
   const launchPhase = business ? getBusinessLaunchPhase(business, contacts) : 'setup'
+
+  React.useEffect(() => {
+    setStep(initialStep)
+  }, [initialStep])
 
   React.useEffect(() => {
     if (!business) return
@@ -362,6 +372,19 @@ export function BusinessSetupWizardPage() {
             <CardTitle>Setup Flow</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded-2xl border border-success-200 bg-success-50/80 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-success-700">Completed so far</p>
+              <p className="mt-2 text-sm text-success-900">
+                {STEPS.filter((item) =>
+                  item.key === 'profile' ? completeProfile
+                    : item.key === 'capture' ? completeCapture
+                      : item.key === 'cashback' ? completeCashback
+                        : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
+                          : true
+                ).length}
+                {' '}of {STEPS.length} setup items are finished.
+              </p>
+            </div>
             {STEPS.map((item, index) => {
               const complete =
                 item.key === 'profile' ? completeProfile
@@ -370,23 +393,38 @@ export function BusinessSetupWizardPage() {
                       : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
                         : true
 
+              const cardClass = complete
+                ? step === item.key
+                  ? 'border-success-400 bg-success-50 shadow-[0_0_0_1px_rgba(34,197,94,0.16)]'
+                  : 'border-success-200 bg-success-50/70 hover:border-success-300'
+                : step === item.key
+                  ? 'border-brand-500 bg-brand-50'
+                  : 'border-surface-200 bg-surface-0 hover:border-surface-300'
+
               return (
                 <button
                   key={item.key}
                   type="button"
                   onClick={() => setStep(item.key)}
-                  className={`w-full rounded-2xl border px-4 py-4 text-left transition-all ${step === item.key ? 'border-brand-500 bg-brand-50' : 'border-surface-200 bg-surface-0 hover:border-surface-300'}`}
+                  className={`w-full rounded-2xl border px-4 py-4 text-left transition-all ${cardClass}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm font-semibold text-surface-900">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs shadow-sm">{index + 1}</span>
+                        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs shadow-sm ${complete ? 'bg-success-600 text-white' : 'bg-white text-surface-700'}`}>
+                          {complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
+                        </span>
                         {item.icon}
                         {item.label}
                       </div>
                       <p className="text-xs leading-5 text-surface-500">{item.description}</p>
+                      {complete ? (
+                        <p className="text-xs font-medium text-success-700">Completed and saved.</p>
+                      ) : (
+                        <p className="text-xs font-medium text-amber-700">Still needs attention.</p>
+                      )}
                     </div>
-                    {complete ? <Badge variant="success">Ready</Badge> : <Badge variant="warning">Next</Badge>}
+                    {complete ? <Badge variant="success">Completed</Badge> : <Badge variant="warning">Next</Badge>}
                   </div>
                 </button>
               )
@@ -433,26 +471,42 @@ export function BusinessSetupWizardPage() {
               </CardHeader>
               <CardContent className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-3">
-                  <label className="block text-sm font-medium text-surface-700">Business logo</label>
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium text-surface-700">Business logo</label>
+                    <p className="text-sm leading-6 text-surface-500">
+                      This is the small brand image customers will recognize first. It shows up in your QR code, your business card, and other compact LocalVIP surfaces.
+                    </p>
+                    <p className="text-xs leading-5 text-surface-400">
+                      Best choice: a simple square logo with a clean background so it stays clear at small sizes.
+                    </p>
+                  </div>
                   <input type="file" accept="image/*" onChange={(event) => setLogoFile(event.target.files?.[0] || null)} />
                   <div className="flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-surface-300 bg-surface-50">
                     {logoFile || logoUrl ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={logoFile ? URL.createObjectURL(logoFile) : logoUrl || ''} alt="Logo preview" className="h-full w-full object-contain p-4" />
                     ) : (
-                      <p className="text-sm text-surface-400">Upload your logo</p>
+                      <p className="text-sm text-surface-400">Upload the logo customers already know</p>
                     )}
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <label className="block text-sm font-medium text-surface-700">Cover image</label>
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium text-surface-700">Cover image</label>
+                    <p className="text-sm leading-6 text-surface-500">
+                      This is the larger photo that sets the mood for your business. It is used on your business page and other full-width visual areas.
+                    </p>
+                    <p className="text-xs leading-5 text-surface-400">
+                      Best choice: a strong horizontal photo of your storefront, food, space, team, or experience.
+                    </p>
+                  </div>
                   <input type="file" accept="image/*" onChange={(event) => setCoverFile(event.target.files?.[0] || null)} />
                   <div className="flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-surface-300 bg-surface-50">
                     {coverFile || coverUrl ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={coverFile ? URL.createObjectURL(coverFile) : coverUrl || ''} alt="Cover preview" className="h-full w-full object-cover" />
                     ) : (
-                      <p className="text-sm text-surface-400">Upload your cover image</p>
+                      <p className="text-sm text-surface-400">Upload a photo that helps customers feel your business</p>
                     )}
                   </div>
                 </div>
@@ -467,18 +521,36 @@ export function BusinessSetupWizardPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  This offer is only used to collect your first 100 customers before you go live. It is not your LocalVIP cashback offer.
+                  <p className="font-semibold text-amber-900">Use this to get your first 100 customers before launch.</p>
+                  <p className="mt-2 leading-6">
+                    This is the offer customers see when they scan your QR code and join your list. Think of it as your
+                    early sign-up incentive, like a free cookie, free coffee, free soda, or a simple discount tied to purchase.
+                  </p>
+                  <p className="mt-2 leading-6">
+                    This is separate from your LocalVIP cashback. Cashback comes later when you are live. This section is only
+                    for the pre-launch customer capture offer.
+                  </p>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer headline</label>
+                  <p className="mb-2 text-sm leading-6 text-surface-500">
+                    The short promise customers should notice first. Keep it simple and specific.
+                  </p>
                   <Input value={captureHeadline} onChange={(event) => setCaptureHeadline(event.target.value)} placeholder="Free coffee with purchase" />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer description</label>
+                  <p className="mb-2 text-sm leading-6 text-surface-500">
+                    Explain what they get, when they get it, and any simple condition. This is the fuller version customers
+                    will read after the headline.
+                  </p>
                   <Textarea value={captureDescription} onChange={(event) => setCaptureDescription(event.target.value)} rows={4} placeholder="Tell customers exactly what they get when they join your list." />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer value label</label>
+                  <p className="mb-2 text-sm leading-6 text-surface-500">
+                    A short version of the offer used in tighter spaces, like cards, badges, and QR materials.
+                  </p>
                   <Input value={captureValue} onChange={(event) => setCaptureValue(event.target.value)} placeholder="Free cookie with purchase" />
                 </div>
               </CardContent>
@@ -492,7 +564,7 @@ export function BusinessSetupWizardPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-                  This is the percentage customers receive back when they shop with you through LocalVIP. Use cashback only here, not free-item language.
+                  This is the percentage customers receive back when they shop with you through LocalVIP.
                 </div>
                 <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
                   <div className="flex items-end justify-between gap-3">
@@ -566,4 +638,12 @@ function StatusPill({ label, ready }: { label: string; ready: boolean }) {
       <p className="mt-2 text-lg font-semibold text-surface-900">{ready ? 'Ready' : 'Needs work'}</p>
     </div>
   )
+}
+
+function isStepKey(value: string | null): value is StepKey {
+  return value === 'profile'
+    || value === 'branding'
+    || value === 'capture'
+    || value === 'cashback'
+    || value === 'activate'
 }

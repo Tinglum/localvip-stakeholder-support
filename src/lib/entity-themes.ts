@@ -14,15 +14,15 @@ interface EntityTheme {
 
 export const ENTITY_THEMES: Record<EntityThemeKind, EntityTheme> = {
   business: {
-    icon: 'bg-gradient-to-br from-amber-400 via-amber-500 to-lime-500 text-white',
-    surface: 'bg-gradient-to-br from-amber-50 via-white to-lime-50',
-    softSurface: 'bg-amber-50',
-    border: 'border-amber-200',
-    text: 'text-amber-900',
-    mutedText: 'text-amber-700',
-    badge: 'bg-amber-100 text-amber-800',
-    ring: 'ring-amber-100',
-    gradient: 'from-amber-500/15 via-amber-300/5 to-lime-400/15',
+    icon: 'bg-gradient-to-br from-[#d7e200] via-[#e5f000] to-[#b8c500] text-surface-950',
+    surface: 'bg-gradient-to-br from-[#fbfdd9] via-white to-[#f6fac1]',
+    softSurface: 'bg-[#f6fac1]',
+    border: 'border-[#d7e200]',
+    text: 'text-[#556100]',
+    mutedText: 'text-[#728000]',
+    badge: 'bg-[#f6fac1] text-[#556100]',
+    ring: 'ring-[#eef5a5]',
+    gradient: 'from-[#d7e200]/20 via-[#eef5a5]/10 to-[#b8c500]/20',
   },
   cause: {
     icon: 'bg-gradient-to-br from-pink-500 via-pink-500 to-rose-500 text-white',
@@ -51,4 +51,3 @@ export const ENTITY_THEMES: Record<EntityThemeKind, EntityTheme> = {
 export function getEntityTheme(kind: EntityThemeKind) {
   return ENTITY_THEMES[kind]
 }
-

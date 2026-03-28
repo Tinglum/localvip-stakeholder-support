@@ -3,13 +3,18 @@ import { createServiceClient } from '@/lib/supabase/server'
 import {
   buildBusinessJoinResource,
   canManageBusinessJoin,
+  getBusinessJoinLogoUrl,
+  getBusinessJoinQrAppearance,
   getBusinessJoinCaptureData,
   getBusinessJoinSlug,
   getBusinessRedirectUrl,
   isBusinessJoinQrCode,
   mergeBusinessJoinCaptureMetadata,
+  mergeBusinessJoinQrAppearanceMetadata,
+  type BusinessJoinQrAppearance,
 } from '@/lib/business-join'
 import { resolveBusinessOffer } from '@/lib/offers'
+import { BUSINESS_ACCENT_DARK_HEX, BUSINESS_ACCENT_HEX } from '@/lib/business-theme'
 import { generateShortCode, normalizePhone } from '@/lib/utils'
 
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>
@@ -97,6 +102,7 @@ export async function ensureBusinessJoinResource(
     shortCode: qrCode.short_code,
     redirectUrl: qrCode.redirect_url || getBusinessRedirectUrl(qrCode.short_code),
     qrCodeId: qrCode.id,
+    qrCode,
     linkedCauseName,
     captureOffer: {
       headline: captureOffer.headline,
@@ -215,6 +221,67 @@ export function userCanManageBusinessJoin(profile: Profile | null, business: Bus
   return canManageBusinessJoin(profile, business)
 }
 
+export async function updateBusinessJoinQrAppearance(
+  supabase: ServiceSupabaseClient,
+  business: Business,
+  actorId: string | null,
+  appearanceInput: Partial<BusinessJoinQrAppearance>,
+) {
+  const resource = await ensureBusinessJoinResource(supabase, business, actorId)
+  const { data } = await supabase
+    .from('qr_codes')
+    .select('*')
+    .eq('id', resource.qrCodeId)
+    .single()
+
+  if (!data) {
+    throw new Error('QR code could not be found.')
+  }
+
+  const qrCode = data as QrCode
+  const current = getBusinessJoinQrAppearance(business, qrCode)
+  const next: BusinessJoinQrAppearance = {
+    ...current,
+    ...appearanceInput,
+    useBusinessLogo: appearanceInput.useBusinessLogo ?? current.useBusinessLogo,
+    logoUrl: (appearanceInput.useBusinessLogo ?? current.useBusinessLogo)
+      ? getBusinessJoinLogoUrl(business)
+      : null,
+    gradientColors: isGradientColorPair(appearanceInput.gradientColors)
+      ? [appearanceInput.gradientColors[0], appearanceInput.gradientColors[1]]
+      : current.gradientColors,
+  }
+
+  const nextMetadata = mergeBusinessJoinQrAppearanceMetadata(
+    (qrCode.metadata as Record<string, unknown> | null) || {},
+    next,
+  )
+
+  await (supabase.from('qr_codes') as any)
+    .update({
+      foreground_color: next.foregroundColor,
+      background_color: next.backgroundColor,
+      frame_text: next.frameText,
+      logo_url: next.logoUrl,
+      metadata: nextMetadata,
+      version: (qrCode.version || 1) + 1,
+      created_by: qrCode.created_by || actorId,
+    })
+    .eq('id', qrCode.id)
+
+  const { data: refreshedBusiness } = await supabase
+    .from('businesses')
+    .select('*')
+    .eq('id', business.id)
+    .single()
+
+  return ensureBusinessJoinResource(
+    supabase,
+    (refreshedBusiness || business) as Business,
+    actorId,
+  )
+}
+
 async function createBusinessJoinQrCode(
   supabase: ServiceSupabaseClient,
   business: Business,
@@ -238,8 +305,8 @@ async function createBusinessJoinQrCode(
       destination_url: joinUrl,
       redirect_url: redirectUrl,
       brand: business.brand || 'localvip',
-      logo_url: null,
-      foreground_color: business.brand === 'hato' ? '#ec8012' : '#2563eb',
+      logo_url: getBusinessJoinLogoUrl(business),
+      foreground_color: BUSINESS_ACCENT_HEX,
       background_color: '#ffffff',
       frame_text: 'GET MY OFFER',
       campaign_id: business.campaign_id,
@@ -258,6 +325,13 @@ async function createBusinessJoinQrCode(
         customer_capture: true,
         join_slug: joinSlug,
         join_url: joinUrl,
+        qr_appearance: {
+          useBusinessLogo: true,
+          dotStyle: 'rounded',
+          cornerStyle: 'rounded',
+          gradientType: 'none',
+          gradientColors: [BUSINESS_ACCENT_HEX, BUSINESS_ACCENT_DARK_HEX],
+        },
         future_hooks: {
           sms_after_signup: false,
           email_confirmation: false,
@@ -293,15 +367,17 @@ async function syncExistingBusinessJoinQrCode(
   joinSlug: string,
   qrCode: QrCode,
 ) {
+  const currentAppearance = getBusinessJoinQrAppearance(business, qrCode)
   const redirectUrl = qrCode.redirect_url || getBusinessRedirectUrl(qrCode.short_code)
   const joinUrl = buildBusinessJoinResource(business, {
     joinSlug,
     shortCode: qrCode.short_code,
     redirectUrl,
     qrCodeId: qrCode.id,
+    qrCode,
   }).joinUrl
 
-  const nextMetadata = {
+  const nextMetadata = mergeBusinessJoinQrAppearanceMetadata({
     ...((qrCode.metadata as Record<string, unknown> | null) || {}),
     purpose: 'business_capture',
     customer_capture: true,
@@ -314,13 +390,16 @@ async function syncExistingBusinessJoinQrCode(
       school_cause_attribution: false,
       stakeholder_variants: false,
     },
-  }
+  }, currentAppearance)
 
   const { data } = await (supabase.from('qr_codes') as any)
     .update({
       destination_url: joinUrl,
       redirect_url: redirectUrl,
-      frame_text: qrCode.frame_text || 'GET MY OFFER',
+      foreground_color: currentAppearance.foregroundColor,
+      background_color: currentAppearance.backgroundColor,
+      frame_text: currentAppearance.frameText,
+      logo_url: currentAppearance.logoUrl,
       metadata: nextMetadata,
       created_by: qrCode.created_by || actorId,
     })
@@ -418,4 +497,11 @@ async function getBusinessOffers(supabase: ServiceSupabaseClient, businessId: st
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function isGradientColorPair(value: unknown): value is [string, string] {
+  return Array.isArray(value)
+    && value.length >= 2
+    && typeof value[0] === 'string'
+    && typeof value[1] === 'string'
 }

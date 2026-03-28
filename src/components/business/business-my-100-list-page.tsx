@@ -26,7 +26,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
+import { BusinessContactImportDialog } from '@/components/business/business-contact-import-dialog'
 import { useAuth } from '@/lib/auth/context'
+import {
+  BUSINESS_ACCENT_BADGE_CLASS,
+  BUSINESS_ACCENT_BUTTON_CLASS,
+  BUSINESS_ACCENT_OUTLINE_BUTTON_CLASS,
+  BUSINESS_ACCENT_SURFACE_CLASS,
+} from '@/lib/business-theme'
 import { resolveBusinessOffer } from '@/lib/offers'
 import {
   getContactDisplayName,
@@ -89,13 +96,11 @@ export function BusinessMy100ListPage() {
   const { remove } = useContactDelete()
 
   const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [bulkDialogOpen, setBulkDialogOpen] = React.useState(false)
   const [editingContact, setEditingContact] = React.useState<Contact | null>(null)
   const [form, setForm] = React.useState(INITIAL_FORM)
-  const [bulkInput, setBulkInput] = React.useState('')
   const [formError, setFormError] = React.useState<string | null>(null)
-  const [bulkError, setBulkError] = React.useState<string | null>(null)
   const [bulkMessage, setBulkMessage] = React.useState<string | null>(null)
-  const [bulkLoading, setBulkLoading] = React.useState(false)
   const [rowActionId, setRowActionId] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -210,58 +215,6 @@ export function BusinessMy100ListPage() {
     refetch()
   }
 
-  const handleBulkAdd = async () => {
-    setBulkError(null)
-    setBulkMessage(null)
-
-    const parsed = bulkInput
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [name = '', phone = '', email = '', tag = ''] = line.split(',').map((part) => part.trim())
-        const splitName = splitFullName(name)
-
-        return {
-          first_name: splitName.first_name,
-          last_name: splitName.last_name || '',
-          phone: phone || null,
-          email: email || null,
-          business_id: business.id,
-          owner_id: profile.id,
-          created_by_user_id: profile.id,
-          source: 'manual',
-          tag: tag || null,
-          list_status: 'added' as BusinessContactStatus,
-          invited_at: null,
-          joined_at: null,
-          status: 'active' as const,
-          metadata: tag ? { tag } : null,
-        }
-      })
-      .filter((record) => record.first_name && (record.phone || record.email))
-
-    if (parsed.length === 0) {
-      setBulkError('Paste one person per line as: Name, Phone, Email, Tag')
-      return
-    }
-
-    setBulkLoading(true)
-    for (const record of parsed) {
-      const result = await insert(record)
-      if (!result) {
-        setBulkLoading(false)
-        setBulkError('One of the contacts could not be added. Please try again.')
-        return
-      }
-    }
-    setBulkLoading(false)
-
-    setBulkInput('')
-    setBulkMessage(`${parsed.length} contacts added to your 100 list.`)
-    refetch()
-  }
-
   const handleStatusUpdate = async (contact: Contact, nextStatus: BusinessContactStatus) => {
     setRowActionId(contact.id)
 
@@ -349,6 +302,7 @@ export function BusinessMy100ListPage() {
               <Button
                 size="sm"
                 variant="outline"
+                className={BUSINESS_ACCENT_OUTLINE_BUTTON_CLASS}
                 disabled={rowBusy}
                 onClick={() => void handleStatusUpdate(contact, 'invited')}
               >
@@ -359,6 +313,7 @@ export function BusinessMy100ListPage() {
               <Button
                 size="sm"
                 variant="outline"
+                className={BUSINESS_ACCENT_OUTLINE_BUTTON_CLASS}
                 disabled={rowBusy}
                 onClick={() => void handleStatusUpdate(contact, 'joined')}
               >
@@ -389,21 +344,21 @@ export function BusinessMy100ListPage() {
         title="Build Your 100 List"
         description="These are people who already know, trust, and support your business."
         actions={
-          <Button onClick={() => handleOpenCreate()}>
+          <Button className={BUSINESS_ACCENT_BUTTON_CLASS} onClick={() => handleOpenCreate()}>
             <Plus className="h-4 w-4" /> Add Contact
           </Button>
         }
       />
 
-      <Card className="border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50">
+      <Card className={BUSINESS_ACCENT_SURFACE_CLASS}>
         <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Customer Capture Offer (Pre-launch)</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#728000]">Customer Capture Offer (Pre-launch)</p>
             <p className="mt-2 text-2xl font-bold text-surface-900">{captureOffer.headline}</p>
             <p className="mt-2 text-sm text-surface-600">{captureOffer.description}</p>
           </div>
           {captureOffer.value_label && (
-            <Badge variant="warning" className="w-fit">
+            <Badge className={`w-fit ${BUSINESS_ACCENT_BADGE_CLASS}`}>
               {captureOffer.value_label}
             </Badge>
           )}
@@ -412,18 +367,18 @@ export function BusinessMy100ListPage() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr,0.85fr]">
         <Card className="overflow-hidden border-surface-200">
-          <div className="bg-gradient-to-r from-amber-50 via-white to-lime-50 px-6 py-6">
+          <div className="bg-gradient-to-r from-[#fbfdd9] via-white to-[#f6fac1] px-6 py-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Progress</p>
                 <p className="mt-3 text-4xl font-bold text-surface-900">{totalAdded} / 100 added</p>
                 <p className="mt-2 max-w-xl text-sm text-surface-600">{milestone.description}</p>
               </div>
-              <Badge variant="warning">{milestone.label}</Badge>
+              <Badge className={BUSINESS_ACCENT_BADGE_CLASS}>{milestone.label}</Badge>
             </div>
             <div className="mt-5 h-3 overflow-hidden rounded-full bg-white shadow-inner">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-amber-500 via-brand-500 to-lime-500 transition-all"
+                className="h-full rounded-full bg-gradient-to-r from-[#e5f000] via-[#d7e200] to-[#b8c500] transition-all"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -454,12 +409,12 @@ export function BusinessMy100ListPage() {
             </p>
             <div className="flex flex-wrap gap-2">
               {SUGGESTED_TAGS.map((tag) => (
-                <Button key={tag} variant="outline" onClick={() => handleOpenCreate(tag)}>
+                <Button key={tag} variant="outline" className={BUSINESS_ACCENT_OUTLINE_BUTTON_CLASS} onClick={() => handleOpenCreate(tag)}>
                   <Plus className="h-3.5 w-3.5" /> {tag}
                 </Button>
               ))}
             </div>
-            <Button className="w-full sm:w-auto" onClick={() => handleOpenCreate()}>
+            <Button className={`w-full sm:w-auto ${BUSINESS_ACCENT_BUTTON_CLASS}`} onClick={() => handleOpenCreate()}>
               <Plus className="h-4 w-4" /> Add contact
             </Button>
           </CardContent>
@@ -471,19 +426,18 @@ export function BusinessMy100ListPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-surface-600">
-              Paste one person per line using: <span className="font-medium text-surface-800">Name, Phone, Email, Tag</span>
+              Import a sheet instead of typing contacts one by one. Paste directly from Excel or Google Sheets, or upload a CSV file, then preview and map the columns before importing.
             </p>
-            <Textarea
-              value={bulkInput}
-              onChange={(event) => setBulkInput(event.target.value)}
-              rows={7}
-              placeholder={'Jordan Smith, (404) 555-0131, jordan@email.com, Regular\nLisa Adams, , lisa@email.com, Friend'}
-            />
-            {bulkError && <p className="text-sm text-danger-600">{bulkError}</p>}
             {bulkMessage && <p className="text-sm text-success-600">{bulkMessage}</p>}
-            <Button onClick={() => void handleBulkAdd()} disabled={bulkLoading || !bulkInput.trim()}>
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+              <p className="text-sm font-semibold text-surface-900">Expected headers</p>
+              <p className="mt-2 text-sm leading-6 text-surface-600">
+                Name, Phone, Email, and Tag work best. If your sheet has First Name and Last Name instead of one Name column, the importer can combine them automatically.
+              </p>
+            </div>
+            <Button className={BUSINESS_ACCENT_BUTTON_CLASS} onClick={() => setBulkDialogOpen(true)}>
               <Upload className="h-4 w-4" />
-              {bulkLoading ? 'Adding...' : 'Bulk add contacts'}
+              Open import tool
             </Button>
           </CardContent>
         </Card>
@@ -503,7 +457,7 @@ export function BusinessMy100ListPage() {
                 key={tag}
                 type="button"
                 onClick={() => handleOpenCreate(tag)}
-                className="rounded-full border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+                className="rounded-full border border-[#d7e200] bg-[#fbfdd9] px-3 py-1.5 text-sm text-[#556100] transition-colors hover:border-[#c7d400] hover:bg-[#f6fac1]"
               >
                 {tag}
               </button>
@@ -573,7 +527,7 @@ export function BusinessMy100ListPage() {
                     key={tag}
                     type="button"
                     onClick={() => setForm((current) => ({ ...current, tag }))}
-                    className="rounded-full border border-surface-200 bg-surface-50 px-2.5 py-1 text-xs text-surface-600 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+                    className="rounded-full border border-[#d7e200] bg-[#fbfdd9] px-2.5 py-1 text-xs text-[#556100] transition-colors hover:border-[#c7d400] hover:bg-[#f6fac1]"
                   >
                     {tag}
                   </button>
@@ -582,8 +536,8 @@ export function BusinessMy100ListPage() {
             </div>
             {formError && <p className="text-sm text-danger-600">{formError}</p>}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={inserting || updating}>
+              <Button type="button" variant="outline" className={BUSINESS_ACCENT_OUTLINE_BUTTON_CLASS} onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" className={BUSINESS_ACCENT_BUTTON_CLASS} disabled={inserting || updating}>
                 <CheckCircle2 className="h-4 w-4" />
                 {editingContact ? 'Save changes' : 'Add contact'}
               </Button>
@@ -591,6 +545,17 @@ export function BusinessMy100ListPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <BusinessContactImportDialog
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        businessId={business.id}
+        profileId={profile.id}
+        onImported={(count) => {
+          setBulkMessage(`${count} contacts added to your 100 list.`)
+          refetch()
+        }}
+      />
     </div>
   )
 }

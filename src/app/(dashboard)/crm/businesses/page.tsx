@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
-import { useBusinesses, useBusinessInsert, useCities } from '@/lib/supabase/hooks'
+import { useBusinesses, useCities } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
 import type { Business, City, OnboardingStage } from '@/lib/types/database'
 
@@ -91,11 +91,12 @@ export default function BusinessesPage() {
   const [formCityId, setFormCityId] = React.useState('')
   const [formBrand, setFormBrand] = React.useState<'localvip' | 'hato'>('localvip')
   const [formStage, setFormStage] = React.useState<OnboardingStage>('lead')
+  const [inserting, setInserting] = React.useState(false)
+  const [insertError, setInsertError] = React.useState<string | null>(null)
 
   // Data hooks
   const { data: businesses, loading, refetch } = useBusinesses()
   const { data: cities } = useCities()
-  const { insert, loading: inserting, error: insertError } = useBusinessInsert()
 
   // Build a city lookup map
   const cityMap = React.useMemo(() => {
@@ -150,10 +151,13 @@ export default function BusinessesPage() {
     setFormCityId('')
     setFormBrand('localvip')
     setFormStage('lead')
+    setInsertError(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setInsertError(null)
+    setInserting(true)
 
     const record: Partial<Business> = {
       name: formName,
@@ -169,11 +173,34 @@ export default function BusinessesPage() {
       status: 'active',
     }
 
-    const result = await insert(record)
-    if (result) {
+    try {
+      const response = await fetch('/api/crm/businesses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(record),
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        setInsertError(
+          (payload && typeof payload.error === 'string' && payload.error)
+          || 'Business could not be created.',
+        )
+        return
+      }
+
       setAddOpen(false)
       resetForm()
       refetch()
+      if (payload?.id) {
+        router.push(`/crm/businesses/${payload.id}`)
+      }
+    } catch {
+      setInsertError('Business could not be created. Please try again.')
+    } finally {
+      setInserting(false)
     }
   }
 
