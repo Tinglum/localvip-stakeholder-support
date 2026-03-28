@@ -36,3 +36,6 @@ next-env.d.ts
 
 # supabase
 supabase/.temp
+
+# local nested repo copies / scratch folders
+LocalVIP010626-main/
