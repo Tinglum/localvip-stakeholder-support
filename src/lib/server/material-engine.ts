@@ -308,8 +308,26 @@ export async function generateMaterialsForStakeholder(
       results.push(generated)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Material generation failed.'
-      failures.push({ templateId: template.id, templateName: template.name, error: message })
-      await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, message)
+      try {
+        const generated = await generateEmergencyFallbackMaterial(
+          supabase,
+          context,
+          qrCode,
+          template,
+          actorId,
+          message,
+        )
+        results.push(generated)
+        failures.push({
+          templateId: template.id,
+          templateName: template.name,
+          error: `${message} A simplified fallback asset was generated instead.`,
+        })
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : message
+        failures.push({ templateId: template.id, templateName: template.name, error: fallbackMessage })
+        await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, fallbackMessage)
+      }
     }
   }
 
@@ -500,6 +518,165 @@ async function generateOneMaterial(
     .single()
 
   if (generatedError) throw generatedError
+
+  await syncLinkedStakeholderAssets(supabase, context.stakeholder, {
+    qrCodeId: qrCode.id,
+    materialId,
+    generatedMaterialId: (generatedData as GeneratedMaterial).id,
+  })
+
+  return generatedData as GeneratedMaterial
+}
+
+async function generateEmergencyFallbackMaterial(
+  supabase: ServiceSupabaseClient,
+  context: StakeholderMaterialContext,
+  qrCode: QrCode,
+  template: MaterialTemplate,
+  actorId: string | null,
+  primaryError: string,
+) {
+  const copy = getTemplateCopy(template)
+  const valueMap = getTemplateValueMap(context)
+  const qrDataUrl = await QRCode.toDataURL(qrCode.redirect_url || context.joinUrl, {
+    width: 1024,
+    margin: 1,
+    color: {
+      dark: context.brand === 'hato' ? '#ec8012' : '#2563eb',
+      light: '#ffffff',
+    },
+    errorCorrectionLevel: 'H',
+  })
+
+  const emergencyTemplate: MaterialTemplate = {
+    ...template,
+    output_format: 'svg',
+    metadata: {
+      ...(template.metadata || {}),
+      eyebrow: copy.eyebrow,
+      headline: copy.headline,
+      subheadline: copy.subheadline,
+      body: copy.body,
+      cta: copy.cta,
+      footer: copy.footer,
+    },
+  }
+
+  const svg = renderStructuredTemplateSvg(emergencyTemplate, context, qrDataUrl)
+  const fileBase = `${sanitizeFilenamePart(context.stakeholder.name)}-${sanitizeFilenamePart(template.name)}-fallback`
+  const filePath = `generated-materials/${context.stakeholder.id}/${fileBase}.svg`
+  const fileBuffer = Buffer.from(svg, 'utf8')
+
+  const uploadResult = await supabase.storage
+    .from('materials')
+    .upload(filePath, fileBuffer, {
+      upsert: true,
+      contentType: 'image/svg+xml',
+    })
+
+  if (uploadResult.error) throw new Error(uploadResult.error.message)
+
+  const { data: urlData } = supabase.storage.from('materials').getPublicUrl(filePath)
+  const generatedFileUrl = urlData.publicUrl
+  const existingGenerated = await getGeneratedMaterialByStakeholderTemplate(supabase, context.stakeholder.id, template.id)
+  const ownerProfileId = await resolveStakeholderLibraryProfileId(supabase, context.stakeholder)
+  const title = fillTemplateText(copy.titlePattern, {
+    ...valueMap,
+    template_name: template.name,
+  })
+  const description = fillTemplateText(copy.descriptionPattern, {
+    ...valueMap,
+    template_name: template.name,
+  })
+
+  const materialPayload = {
+    title,
+    description: description || null,
+    type: 'flyer' as Material['type'],
+    brand: context.brand,
+    file_url: generatedFileUrl,
+    file_name: `${fileBase}.svg`,
+    file_size: fileBuffer.byteLength,
+    mime_type: 'image/svg+xml',
+    thumbnail_url: generatedFileUrl,
+    category: getMaterialCategoryForFolder(template.library_folder),
+    use_case: 'general',
+    target_roles: getTargetRolesForStakeholderType(context.stakeholder.type),
+    target_subtypes: [],
+    campaign_id: null,
+    city_id: context.stakeholder.city_id,
+    is_template: false,
+    version: 1,
+    status: 'active' as Material['status'],
+    created_by: actorId || context.stakeholder.owner_user_id || ownerProfileId || context.stakeholder.profile_id,
+    metadata: {
+      generated_by_engine: true,
+      generation_mode: 'emergency_fallback',
+      stakeholder_id: context.stakeholder.id,
+      template_id: template.id,
+      library_folder: template.library_folder,
+      audience_tags: template.audience_tags,
+      qr_code_id: qrCode.id,
+      join_url: context.joinUrl,
+      primary_error: primaryError,
+    },
+  }
+
+  let materialId = existingGenerated?.material_id || null
+  if (materialId) {
+    const { error } = await (supabase.from('materials') as any)
+      .update(materialPayload)
+      .eq('id', materialId)
+    if (error) throw error
+  } else {
+    const { data, error } = await (supabase.from('materials') as any)
+      .insert(materialPayload)
+      .select()
+      .single()
+    if (error) throw error
+    materialId = (data as Material).id
+  }
+
+  if (ownerProfileId && materialId) {
+    await ensureMaterialAssignment(supabase, materialId, ownerProfileId, actorId)
+  }
+
+  const { data: generatedData, error: generatedError } = await (supabase.from('generated_materials') as any)
+    .upsert(
+      {
+        stakeholder_id: context.stakeholder.id,
+        template_id: template.id,
+        material_id: materialId,
+        generated_file_url: generatedFileUrl,
+        generated_file_name: `${fileBase}.svg`,
+        library_folder: template.library_folder,
+        tags: template.audience_tags,
+        generation_status: 'generated',
+        generation_error: null,
+        generated_at: new Date().toISOString(),
+        metadata: {
+          qr_code_id: qrCode.id,
+          redirect_url: qrCode.redirect_url,
+          join_url: context.joinUrl,
+          display_url: context.displayUrl,
+          output_format: 'svg',
+          generation_mode: 'emergency_fallback',
+          primary_error: primaryError,
+        },
+      },
+      { onConflict: 'stakeholder_id,template_id' },
+    )
+    .select()
+    .single()
+
+  if (generatedError) throw generatedError
+
+  await syncLinkedStakeholderAssets(supabase, context.stakeholder, {
+    qrCodeId: qrCode.id,
+    materialId,
+    generatedMaterialId: (generatedData as GeneratedMaterial).id,
+  })
+
   return generatedData as GeneratedMaterial
 }
 
@@ -738,7 +915,8 @@ async function ensureStakeholderQrCode(
   actorId: string | null,
 ) {
   const purpose = getQrPurposeForStakeholderType(context.stakeholder.type)
-  const existing = await getStakeholderQrCode(supabase, context.stakeholder.id, purpose)
+  const stakeholderProfileId = await resolveStakeholderQrProfileId(supabase, context.stakeholder)
+  const existing = await getStakeholderQrCode(supabase, context.stakeholder, purpose, stakeholderProfileId)
   const redirectShortCode = await ensureUniqueShortCode(supabase, context.codes.referral_code, existing?.short_code || null)
   const redirectUrl = `${getMaterialEngineBaseUrl()}/r/${redirectShortCode}`
 
@@ -754,7 +932,7 @@ async function ensureStakeholderQrCode(
     frame_text: context.stakeholder.type === 'business' ? 'GET MY OFFER' : 'SCAN TO JOIN',
     campaign_id: context.business?.campaign_id || context.cause?.campaign_id || null,
     city_id: context.stakeholder.city_id,
-    stakeholder_id: context.stakeholder.id,
+    stakeholder_id: stakeholderProfileId,
     business_id: context.stakeholder.business_id,
     cause_id: context.stakeholder.cause_id,
     collection_id: null,
@@ -766,6 +944,8 @@ async function ensureStakeholderQrCode(
     metadata: {
       purpose,
       stakeholder_id: context.stakeholder.id,
+      stakeholder_record_id: context.stakeholder.id,
+      stakeholder_profile_id: stakeholderProfileId,
       stakeholder_type: context.stakeholder.type,
       connection_code: context.codes.connection_code,
       join_url: context.joinUrl,
@@ -799,7 +979,13 @@ async function ensureStakeholderQrCode(
 
   const { data, error } = await supabase.from('qr_codes').select('*').eq('id', qrCodeId!).single()
   if (error || !data) throw new Error('QR code could not be loaded after save.')
-  return data as QrCode
+  const qrCode = data as QrCode
+  await syncLinkedStakeholderAssets(supabase, context.stakeholder, {
+    qrCodeId: qrCode.id,
+    materialId: null,
+    generatedMaterialId: null,
+  })
+  return qrCode
 }
 
 async function ensureRedirectRow(
@@ -849,6 +1035,47 @@ async function ensureMaterialAssignment(
     stakeholder_id: stakeholderProfileId,
     assigned_by: actorId,
   })
+}
+
+async function syncLinkedStakeholderAssets(
+  supabase: ServiceSupabaseClient,
+  stakeholder: Stakeholder,
+  input: {
+    qrCodeId: string | null
+    materialId: string | null
+    generatedMaterialId: string | null
+  },
+) {
+  if (stakeholder.business_id) {
+    const patch: Record<string, unknown> = {}
+    if (input.qrCodeId) patch.linked_qr_code_id = input.qrCodeId
+    if (input.materialId) patch.linked_material_id = input.materialId
+
+    if (Object.keys(patch).length > 0) {
+      await (supabase.from('businesses') as any)
+        .update(patch)
+        .eq('id', stakeholder.business_id)
+    }
+  }
+
+  if (stakeholder.cause_id && input.qrCodeId) {
+    const { data } = await supabase
+      .from('causes')
+      .select('metadata')
+      .eq('id', stakeholder.cause_id)
+      .single()
+
+    const metadata = ((data as { metadata?: Record<string, unknown> | null } | null)?.metadata || {}) as Record<string, unknown>
+    await (supabase.from('causes') as any)
+      .update({
+        metadata: {
+          ...metadata,
+          linked_qr_code_id: input.qrCodeId,
+          linked_generated_material_id: input.generatedMaterialId,
+        },
+      })
+      .eq('id', stakeholder.cause_id)
+  }
 }
 
 async function updateAdminTaskStatus(
@@ -933,19 +1160,52 @@ async function getGeneratedMaterialByStakeholderTemplate(
 
 async function getStakeholderQrCode(
   supabase: ServiceSupabaseClient,
-  stakeholderId: string,
+  stakeholder: Stakeholder,
   purpose: string,
+  stakeholderProfileId: string | null,
 ) {
-  const { data } = await supabase
-    .from('qr_codes')
-    .select('*')
-    .eq('stakeholder_id', stakeholderId)
-    .order('created_at', { ascending: false })
-    .limit(20)
+  const candidates: QrCode[] = []
 
-  return ((data || []) as QrCode[]).find((item) => {
+  if (stakeholder.business_id) {
+    const { data } = await supabase
+      .from('qr_codes')
+      .select('*')
+      .eq('business_id', stakeholder.business_id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    candidates.push(...((data || []) as QrCode[]))
+  }
+
+  if (stakeholder.cause_id) {
+    const { data } = await supabase
+      .from('qr_codes')
+      .select('*')
+      .eq('cause_id', stakeholder.cause_id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    candidates.push(...((data || []) as QrCode[]))
+  }
+
+  if (stakeholderProfileId) {
+    const { data } = await supabase
+      .from('qr_codes')
+      .select('*')
+      .eq('stakeholder_id', stakeholderProfileId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    candidates.push(...((data || []) as QrCode[]))
+  }
+
+  const unique = candidates.filter((item, index, array) => array.findIndex((entry) => entry.id === item.id) === index)
+
+  return unique.find((item) => {
     const metadata = (item.metadata as Record<string, unknown> | null) || {}
     return metadata.purpose === purpose
+      && (
+        metadata.stakeholder_record_id === stakeholder.id
+        || item.business_id === stakeholder.business_id
+        || item.cause_id === stakeholder.cause_id
+      )
   }) || null
 }
 
@@ -1018,6 +1278,13 @@ async function resolveStakeholderLibraryProfileId(
   }
 
   return null
+}
+
+async function resolveStakeholderQrProfileId(
+  supabase: ServiceSupabaseClient,
+  stakeholder: Stakeholder,
+) {
+  return resolveStakeholderLibraryProfileId(supabase, stakeholder)
 }
 
 async function ensureUniqueShortCode(

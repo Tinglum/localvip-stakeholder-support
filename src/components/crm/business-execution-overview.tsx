@@ -146,6 +146,7 @@ export function BusinessExecutionOverview({
   const [outreachSubject, setOutreachSubject] = React.useState('')
   const [outreachBody, setOutreachBody] = React.useState('')
   const [outreachOutcome, setOutreachOutcome] = React.useState('')
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'outreach'>('materials')
 
   React.useEffect(() => {
     setReferralCode(codes?.referral_code || '')
@@ -199,8 +200,18 @@ export function BusinessExecutionOverview({
         referralCode,
         connectionCode,
       })
+      const generationStatus = body?.result?.generationStatus
       const generationError = body?.result?.generationError
-      setEngineMessage(generationError ? 'Codes saved. Materials still generated with fallback logic.' : 'Codes saved and materials generated.')
+      const generatedMaterialsCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
+      const fallbackGenerated = Array.isArray(body?.result?.failures) && body.result.failures.length > 0 && generatedMaterialsCount > 0
+
+      if (generationStatus === 'failed' || generatedMaterialsCount === 0) {
+        setEngineError(generationError || 'Codes saved, but materials could not be generated.')
+      } else if (fallbackGenerated) {
+        setEngineMessage('Codes saved. Materials generated with fallback layouts where needed.')
+      } else {
+        setEngineMessage('Codes saved and materials generated.')
+      }
       await refetchExecution()
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
@@ -214,8 +225,16 @@ export function BusinessExecutionOverview({
     setEngineMessage(null)
     setEngineError(null)
     try {
-      await callExecutionAction({ action: 'generate_materials' })
-      setEngineMessage('Materials generated.')
+      const body = await callExecutionAction({ action: 'generate_materials' })
+      const generatedMaterialsCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
+      const fallbackGenerated = Array.isArray(body?.result?.failures) && body.result.failures.length > 0 && generatedMaterialsCount > 0
+      if (generatedMaterialsCount === 0) {
+        setEngineError(body?.result?.generationError || 'Materials could not be generated.')
+      } else if (fallbackGenerated) {
+        setEngineMessage('Materials generated with fallback layouts where needed.')
+      } else {
+        setEngineMessage('Materials generated.')
+      }
       await refetchExecution()
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Materials could not be generated.')
@@ -318,6 +337,18 @@ export function BusinessExecutionOverview({
     refetchOutreach({ silent: true })
   }
 
+  function openWorkspaceTab(tab: 'materials' | 'offers' | 'outreach') {
+    setActiveWorkspaceTab(tab)
+    if (typeof window !== 'undefined') {
+      requestAnimationFrame(() => {
+        document.getElementById('business-workspace-tabs')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-4">
@@ -360,10 +391,18 @@ export function BusinessExecutionOverview({
                         Complete
                       </Button>
                     ) : (
-                      <Button size="sm" variant="outline" asChild>
-                        <Link href={item.key === 'materials_qr' ? '#material-engine' : item.key === 'launch_decision' ? '#offers' : '#outreach'}>
-                          Open area
-                        </Link>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openWorkspaceTab(
+                          item.key === 'materials_qr'
+                            ? 'materials'
+                            : item.key === 'launch_decision'
+                              ? 'offers'
+                              : 'outreach',
+                        )}
+                      >
+                        Open area
                       </Button>
                     )
                   ) : null}
@@ -408,179 +447,215 @@ export function BusinessExecutionOverview({
         </Card>
       </div>
 
-      <div id="material-engine" className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Codes and material engine</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Referral code</label>
-                <Input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} placeholder="main-street-bakery" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Connection code</label>
-                <Input value={connectionCode} onChange={(event) => setConnectionCode(event.target.value)} placeholder="main-street-bakery" />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Join URL</label>
-              <div className="flex gap-2">
-                <Input value={joinUrl} readOnly />
-                {joinUrl ? (
-                  <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(joinUrl)}>
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <MiniStatus label="Generation" value={task?.status || 'idle'} />
-              <MiniStatus label="Generated files" value={`${generatedCount}`} />
-              <MiniStatus label="QR linked" value={qrCodes.length > 0 ? 'Yes' : 'No'} />
-            </div>
-            {engineError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{engineError}</div> : null}
-            {engineMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{engineMessage}</div> : null}
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => void handleSaveCodes()} disabled={engineBusy !== null || !referralCode.trim() || !connectionCode.trim()}>
-                {engineBusy === 'codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Save codes + generate
-              </Button>
-              <Button variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
-                {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                Generate materials
-              </Button>
-              {joinUrl ? (
-                <Button variant="outline" asChild>
-                  <Link href={joinUrl} target="_blank">
-                    <ExternalLink className="h-4 w-4" />
-                    Open join page
-                  </Link>
-                </Button>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Generated materials</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {generatedMaterials.length === 0 ? (
-              <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-8 text-center text-sm text-surface-500">
-                Materials will appear here as soon as generation runs.
-              </div>
-            ) : (
-              generatedMaterials.map((item: GeneratedMaterial) => (
-                <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-surface-900">{item.generated_file_name || 'Generated asset'}</p>
-                      <p className="text-xs text-surface-500">{item.library_folder.replace(/_/g, ' ')}</p>
-                    </div>
-                    <Badge variant={item.generation_status === 'generated' ? 'success' : 'danger'}>
-                      {item.generation_status}
-                    </Badge>
-                  </div>
-                  {item.generation_error ? <p className="mt-2 text-xs text-danger-600">{item.generation_error}</p> : null}
-                  {item.generated_file_url ? (
-                    <div className="mt-3">
-                      <Link href={item.generated_file_url} target="_blank" className="text-sm font-medium text-brand-700 hover:underline">
-                        Open file
-                      </Link>
-                    </div>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div id="offers" className="grid gap-6 xl:grid-cols-[1fr,0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>100-list offer</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Headline</label>
-              <Input value={captureHeadline} onChange={(event) => setCaptureHeadline(event.target.value)} />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
-              <Textarea value={captureDescription} onChange={(event) => setCaptureDescription(event.target.value)} rows={4} />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Value label</label>
-              <Input value={captureValue} onChange={(event) => setCaptureValue(event.target.value)} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Cashback and launch readiness</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Cashback percent</label>
-              <Input type="number" min={5} max={25} value={cashbackPercent} onChange={(event) => setCashbackPercent(Number(event.target.value || 10))} />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <MiniStatus label="Capture ready" value={captureHeadline.trim() ? 'Yes' : 'No'} />
-              <MiniStatus label="Cashback ready" value={cashbackPercent >= 5 && cashbackPercent <= 25 ? 'Yes' : 'No'} />
-              <MiniStatus label="Live phase" value={biz.launch_phase || 'setup'} />
-            </div>
-            {offerError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{offerError}</div> : null}
-            {offerMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{offerMessage}</div> : null}
-            <Button onClick={() => void handleSaveOffers()} disabled={offerSaving || updateLoading}>
-              {offerSaving || updateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-              Save offer settings
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card id="outreach">
-        <CardHeader>
-          <CardTitle>Outreach log</CardTitle>
+      <Card id="business-workspace-tabs">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-1">
+            <CardTitle>Business workspace</CardTitle>
+            <p className="text-sm text-surface-500">Use these tabs to manage materials, offers, and outreach without crowding the main record.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <WorkspaceTabButton
+              active={activeWorkspaceTab === 'materials'}
+              label="Codes + Materials"
+              meta={`${generatedCount} generated`}
+              onClick={() => setActiveWorkspaceTab('materials')}
+            />
+            <WorkspaceTabButton
+              active={activeWorkspaceTab === 'offers'}
+              label="Offers + Cashback"
+              meta={`${cashbackPercent}% cashback`}
+              onClick={() => setActiveWorkspaceTab('offers')}
+            />
+            <WorkspaceTabButton
+              active={activeWorkspaceTab === 'outreach'}
+              label="Outreach Log"
+              meta={`${outreach.length} logged`}
+              onClick={() => setActiveWorkspaceTab('outreach')}
+            />
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <Input value={outreachSubject} onChange={(event) => setOutreachSubject(event.target.value)} placeholder="Subject" />
-            <Input value={outreachOutcome} onChange={(event) => setOutreachOutcome(event.target.value)} placeholder="Outcome" />
-            <div className="flex gap-2">
-              <Button className="w-full" onClick={() => void handleLogOutreach()} disabled={savingOutreach || !outreachBody.trim()}>
-                {savingOutreach ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-                Log outreach
-              </Button>
-            </div>
-          </div>
-          <Textarea value={outreachBody} onChange={(event) => setOutreachBody(event.target.value)} rows={3} placeholder="What happened in the last conversation, message, or visit?" />
-          <div className="space-y-3">
-            {outreach.length === 0 ? (
-              <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-6 text-sm text-surface-500">
-                No outreach has been logged yet.
-              </div>
-            ) : (
-              outreach.slice(0, 8).map((item) => (
-                <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-surface-900">{item.subject || item.type.replace(/_/g, ' ')}</p>
-                    <p className="text-xs text-surface-500">{formatDateTime(item.created_at)}</p>
+        <CardContent>
+          {activeWorkspaceTab === 'materials' ? (
+            <div id="material-engine" className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Codes and material engine</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-surface-700">Referral code</label>
+                      <Input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} placeholder="main-street-bakery" />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-surface-700">Connection code</label>
+                      <Input value={connectionCode} onChange={(event) => setConnectionCode(event.target.value)} placeholder="main-street-bakery" />
+                    </div>
                   </div>
-                  <p className="mt-2 text-sm text-surface-600">{item.body}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {item.outcome ? <Badge variant="info">{item.outcome}</Badge> : null}
-                    <Badge variant="outline">{profileMap.get(item.performed_by)?.full_name || 'Team member'}</Badge>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Join URL</label>
+                    <div className="flex gap-2">
+                      <Input value={joinUrl} readOnly />
+                      {joinUrl ? (
+                        <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(joinUrl)}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <MiniStatus label="Generation" value={task?.status || 'idle'} />
+                    <MiniStatus label="Generated files" value={`${generatedCount}`} />
+                    <MiniStatus label="QR linked" value={qrCodes.length > 0 ? 'Yes' : 'No'} />
+                  </div>
+                  {engineError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{engineError}</div> : null}
+                  {engineMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{engineMessage}</div> : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => void handleSaveCodes()} disabled={engineBusy !== null || !referralCode.trim() || !connectionCode.trim()}>
+                      {engineBusy === 'codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      Save codes + generate
+                    </Button>
+                    <Button variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
+                      {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                      Generate materials
+                    </Button>
+                    {joinUrl ? (
+                      <Button variant="outline" asChild>
+                        <Link href={joinUrl} target="_blank">
+                          <ExternalLink className="h-4 w-4" />
+                          Open join page
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Generated materials</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {generatedMaterials.length === 0 ? (
+                    <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-8 text-center text-sm text-surface-500">
+                      Materials will appear here as soon as generation runs.
+                    </div>
+                  ) : (
+                    generatedMaterials.map((item: GeneratedMaterial) => (
+                      <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-900">{item.generated_file_name || 'Generated asset'}</p>
+                            <p className="text-xs text-surface-500">{item.library_folder.replace(/_/g, ' ')}</p>
+                          </div>
+                          <Badge variant={item.generation_status === 'generated' ? 'success' : 'danger'}>
+                            {item.generation_status}
+                          </Badge>
+                        </div>
+                        {item.generation_error ? <p className="mt-2 text-xs text-danger-600">{item.generation_error}</p> : null}
+                        {item.generated_file_url ? (
+                          <div className="mt-3">
+                            <Link href={item.generated_file_url} target="_blank" className="text-sm font-medium text-brand-700 hover:underline">
+                              Open file
+                            </Link>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {activeWorkspaceTab === 'offers' ? (
+            <div id="offers" className="grid gap-6 xl:grid-cols-[1fr,0.9fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle>100-list offer</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Headline</label>
+                    <Input value={captureHeadline} onChange={(event) => setCaptureHeadline(event.target.value)} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
+                    <Textarea value={captureDescription} onChange={(event) => setCaptureDescription(event.target.value)} rows={4} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Value label</label>
+                    <Input value={captureValue} onChange={(event) => setCaptureValue(event.target.value)} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Cashback and launch readiness</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Cashback percent</label>
+                    <Input type="number" min={5} max={25} value={cashbackPercent} onChange={(event) => setCashbackPercent(Number(event.target.value || 10))} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <MiniStatus label="Capture ready" value={captureHeadline.trim() ? 'Yes' : 'No'} />
+                    <MiniStatus label="Cashback ready" value={cashbackPercent >= 5 && cashbackPercent <= 25 ? 'Yes' : 'No'} />
+                    <MiniStatus label="Live phase" value={biz.launch_phase || 'setup'} />
+                  </div>
+                  {offerError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{offerError}</div> : null}
+                  {offerMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{offerMessage}</div> : null}
+                  <Button onClick={() => void handleSaveOffers()} disabled={offerSaving || updateLoading}>
+                    {offerSaving || updateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                    Save offer settings
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {activeWorkspaceTab === 'outreach' ? (
+            <Card id="outreach">
+              <CardHeader>
+                <CardTitle>Outreach log</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Input value={outreachSubject} onChange={(event) => setOutreachSubject(event.target.value)} placeholder="Subject" />
+                  <Input value={outreachOutcome} onChange={(event) => setOutreachOutcome(event.target.value)} placeholder="Outcome" />
+                  <div className="flex gap-2">
+                    <Button className="w-full" onClick={() => void handleLogOutreach()} disabled={savingOutreach || !outreachBody.trim()}>
+                      {savingOutreach ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+                      Log outreach
+                    </Button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+                <Textarea value={outreachBody} onChange={(event) => setOutreachBody(event.target.value)} rows={3} placeholder="What happened in the last conversation, message, or visit?" />
+                <div className="space-y-3">
+                  {outreach.length === 0 ? (
+                    <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-6 text-sm text-surface-500">
+                      No outreach has been logged yet.
+                    </div>
+                  ) : (
+                    outreach.slice(0, 8).map((item) => (
+                      <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-surface-900">{item.subject || item.type.replace(/_/g, ' ')}</p>
+                          <p className="text-xs text-surface-500">{formatDateTime(item.created_at)}</p>
+                        </div>
+                        <p className="mt-2 text-sm text-surface-600">{item.body}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {item.outcome ? <Badge variant="info">{item.outcome}</Badge> : null}
+                          <Badge variant="outline">{profileMap.get(item.performed_by)?.full_name || 'Team member'}</Badge>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </CardContent>
       </Card>
     </div>
@@ -607,5 +682,33 @@ function MiniStatus({ label, value }: { label: string; value: string }) {
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-1 text-sm font-semibold text-surface-900">{value}</p>
     </div>
+  )
+}
+
+function WorkspaceTabButton({
+  active,
+  label,
+  meta,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  meta: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'rounded-2xl border px-4 py-3 text-left transition',
+        active
+          ? 'border-brand-300 bg-brand-50 shadow-sm'
+          : 'border-surface-200 bg-surface-0 hover:border-surface-300 hover:bg-surface-50',
+      ].join(' ')}
+    >
+      <p className="text-sm font-semibold text-surface-900">{label}</p>
+      <p className="mt-1 text-xs text-surface-500">{meta}</p>
+    </button>
   )
 }
