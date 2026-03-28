@@ -349,6 +349,16 @@ export function BusinessSetupWizardPage() {
           : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
             : true
   ).length
+  const completionRatio = completedStepsCount / STEPS.length
+  const activeStepMeta = STEPS.find((item) => item.key === step) || STEPS[0]
+
+  function getStepCompletion(key: StepKey) {
+    if (key === 'profile') return completeProfile
+    if (key === 'capture') return completeCapture
+    if (key === 'cashback') return completeCashback
+    if (key === 'activate') return readyToActivate && launchPhase !== 'setup'
+    return true
+  }
 
   async function activatePortal() {
     await persistChanges()
@@ -373,43 +383,74 @@ export function BusinessSetupWizardPage() {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[280px,1fr]">
+      <div className="grid gap-6 xl:grid-cols-[320px,1fr]">
         <Card>
           <CardHeader>
             <CardTitle>Setup Flow</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-2xl border border-success-300 bg-gradient-to-r from-success-50 via-white to-success-50 px-4 py-4 shadow-sm">
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-success-600 text-white shadow-sm">
-                  <CheckCircle2 className="h-5 w-5" />
-                </span>
+          <CardContent className="space-y-5">
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-success-700">Completed so far</p>
-                  <p className="text-sm font-semibold text-success-950">
-                    {completedStepsCount} of {STEPS.length} setup items are completed.
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Progress</p>
+                  <p className="text-sm font-semibold text-surface-950">
+                    {completedStepsCount} of {STEPS.length} setup steps finished
                   </p>
-                  <p className="text-xs leading-5 text-success-700">
-                    Green cards are already finished and saved. You can still open them any time to review or update them.
+                  <p className="text-xs leading-5 text-surface-500">
+                    Completed steps stay available, so you can reopen them any time to review or change them.
                   </p>
                 </div>
+                <div className="rounded-2xl bg-white px-3 py-2 text-right shadow-sm ring-1 ring-surface-200">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-surface-400">Complete</p>
+                  <p className="text-lg font-semibold text-surface-950">{Math.round(completionRatio * 100)}%</p>
+                </div>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface-200">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-success-500 to-brand-500 transition-all"
+                  style={{ width: `${Math.max(completionRatio * 100, completedStepsCount ? 12 : 0)}%` }}
+                />
               </div>
             </div>
             {STEPS.map((item, index) => {
-              const complete =
-                item.key === 'profile' ? completeProfile
-                  : item.key === 'capture' ? completeCapture
-                    : item.key === 'cashback' ? completeCashback
-                      : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
-                        : true
+              const complete = getStepCompletion(item.key)
+              const isActive = step === item.key
+              const previousIncomplete = STEPS.slice(0, index).some((previousStep) => !getStepCompletion(previousStep.key))
+              const isLocked = !complete && !isActive && previousIncomplete
 
               const cardClass = complete
-                ? step === item.key
-                  ? 'border-success-500 bg-gradient-to-br from-success-50 via-success-100/70 to-white shadow-[0_0_0_1px_rgba(34,197,94,0.16)]'
-                  : 'border-success-300 bg-gradient-to-br from-success-50 via-success-100/50 to-white hover:border-success-400'
-                : step === item.key
-                  ? 'border-brand-500 bg-brand-50'
-                  : 'border-surface-200 bg-surface-0 hover:border-surface-300'
+                ? isActive
+                  ? 'border-success-400 bg-success-50 shadow-[0_0_0_1px_rgba(34,197,94,0.08)]'
+                  : 'border-success-200 bg-white hover:border-success-300'
+                : isActive
+                  ? 'border-brand-500 bg-brand-50 shadow-[0_0_0_1px_rgba(59,130,246,0.08)]'
+                  : isLocked
+                    ? 'border-surface-200 bg-surface-50'
+                    : 'border-surface-200 bg-white hover:border-surface-300'
+
+              const badgeClass = complete
+                ? 'border-success-200 bg-success-100 text-success-800'
+                : isActive
+                  ? 'border-brand-200 bg-brand-100 text-brand-800'
+                  : isLocked
+                    ? 'border-surface-200 bg-surface-100 text-surface-500'
+                    : 'border-amber-200 bg-amber-100 text-amber-800'
+
+              const markerClass = complete
+                ? 'border-success-600 bg-success-600 text-white'
+                : isActive
+                  ? 'border-brand-500 bg-brand-500 text-white'
+                  : isLocked
+                    ? 'border-surface-300 bg-white text-surface-400'
+                    : 'border-surface-300 bg-white text-surface-700'
+
+              const helperCopy = complete
+                ? 'Finished and saved'
+                : isActive
+                  ? 'Open now'
+                  : isLocked
+                    ? 'Complete the step above first'
+                    : 'Up next'
 
               return (
                 <button
@@ -418,34 +459,49 @@ export function BusinessSetupWizardPage() {
                   onClick={() => setStep(item.key)}
                   className={`w-full rounded-2xl border px-4 py-4 text-left transition-all ${cardClass}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-2">
-                      <div className={`flex items-center gap-2 text-sm font-semibold ${complete ? 'text-success-950' : 'text-surface-900'}`}>
-                        <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs shadow-sm ${complete ? 'bg-success-600 text-white' : 'bg-white text-surface-700'}`}>
-                          {complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
-                        </span>
-                        {item.icon}
-                        {item.label}
-                      </div>
-                      <p className={`text-xs leading-5 ${complete ? 'text-success-900' : 'text-surface-500'}`}>{item.description}</p>
-                      {complete ? (
-                        <div className="space-y-1">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-success-700">Completed and saved</p>
-                          <p className="text-xs leading-5 text-success-800">This step is finished. Open it any time if you want to review or change it.</p>
-                        </div>
-                      ) : (
-                        <p className="text-xs font-medium text-amber-700">Still needs attention.</p>
-                      )}
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center pt-0.5">
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold shadow-sm ${markerClass}`}>
+                        {complete ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+                      </span>
+                      {index < STEPS.length - 1 ? (
+                        <span className={`mt-2 h-10 w-px ${complete ? 'bg-success-200' : 'bg-surface-200'}`} />
+                      ) : null}
                     </div>
-                    {complete ? (
-                      <div className="flex flex-col items-end gap-2">
-                        <Badge className="border-success-200 bg-success-600 text-white hover:bg-success-600">Completed</Badge>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-success-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-success-800">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Finished
+
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className={`flex items-center gap-2 text-sm font-semibold ${complete ? 'text-success-950' : 'text-surface-950'}`}>
+                            <span className={complete ? 'text-success-700' : isActive ? 'text-brand-700' : 'text-surface-500'}>
+                              {item.icon}
+                            </span>
+                            <span>{item.label}</span>
+                          </div>
+                          <p className="text-xs leading-5 text-surface-500">{item.description}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${badgeClass}`}>
+                          {complete ? 'Done' : isActive ? 'Current' : isLocked ? 'Locked' : 'Next'}
                         </span>
                       </div>
-                    ) : <Badge variant="warning">Next</Badge>}
+
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className={complete ? 'font-medium text-success-700' : isActive ? 'font-medium text-brand-700' : 'text-surface-500'}>
+                          {helperCopy}
+                        </span>
+                        {complete ? (
+                          <span className="inline-flex items-center gap-1 text-success-700">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Reopen anytime
+                          </span>
+                        ) : isActive ? (
+                          <span className="inline-flex items-center gap-1 text-brand-700">
+                            Continue below
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                 </button>
               )
@@ -455,6 +511,32 @@ export function BusinessSetupWizardPage() {
         </Card>
 
         <div className="space-y-6">
+          <Card className="border-surface-200 bg-gradient-to-r from-white via-surface-50 to-white">
+            <CardContent className="flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-sm font-semibold text-surface-950">
+                  <span className={`flex h-8 w-8 items-center justify-center rounded-full border shadow-sm ${
+                    getStepCompletion(step)
+                      ? 'border-success-600 bg-success-600 text-white'
+                      : 'border-brand-500 bg-brand-500 text-white'
+                  }`}>
+                    {getStepCompletion(step) ? <CheckCircle2 className="h-4 w-4" /> : activeStepMeta.icon}
+                  </span>
+                  {activeStepMeta.label}
+                </div>
+                <p className="text-sm text-surface-600">{activeStepMeta.description}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge className={getStepCompletion(step) ? 'border-success-200 bg-success-100 text-success-800' : 'border-brand-200 bg-brand-100 text-brand-800'}>
+                  {getStepCompletion(step) ? 'Completed' : 'Editing now'}
+                </Badge>
+                <span className="text-xs text-surface-500">
+                  Step {STEPS.findIndex((item) => item.key === step) + 1} of {STEPS.length}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
           {step === 'profile' && (
             <Card>
               <CardHeader>
