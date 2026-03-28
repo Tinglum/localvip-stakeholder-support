@@ -175,6 +175,23 @@ export async function createStakeholderRecord(
   return data as Stakeholder
 }
 
+export async function ensureAutomatedStakeholderMaterials(
+  supabase: ServiceSupabaseClient,
+  stakeholderId: string,
+  actorId: string | null,
+) {
+  const stakeholder = await getStakeholderById(supabase, stakeholderId)
+  if (!stakeholder) throw new Error('Stakeholder not found.')
+
+  const existingCodes = await getStakeholderCode(supabase, stakeholderId)
+  const defaultCodes = await buildDefaultStakeholderCodes(supabase, stakeholder, existingCodes)
+
+  return upsertStakeholderCodesAndGenerate(supabase, stakeholderId, actorId, {
+    referralCode: defaultCodes.referralCode,
+    connectionCode: defaultCodes.connectionCode,
+  })
+}
+
 export async function upsertStakeholderCodesAndGenerate(
   supabase: ServiceSupabaseClient,
   stakeholderId: string,
@@ -1228,6 +1245,52 @@ async function ensureMaterialsBucket(supabase: ServiceSupabaseClient) {
   }
 
   materialsBucketPrepared = true
+}
+
+async function buildDefaultStakeholderCodes(
+  supabase: ServiceSupabaseClient,
+  stakeholder: Stakeholder,
+  existingCodes: StakeholderCode | null,
+) {
+  const baseSeed = normalizeStakeholderCode(stakeholder.name)
+    || normalizeStakeholderCode(`${stakeholder.type}-${generateShortCode(6)}`)
+    || `lv-${generateShortCode(6).toLowerCase()}`
+
+  const referralCode = existingCodes?.referral_code || await ensureUniqueStakeholderCodeValue(
+    supabase,
+    'referral_code',
+    baseSeed,
+    stakeholder.id,
+  )
+  const connectionCode = existingCodes?.connection_code || await ensureUniqueStakeholderCodeValue(
+    supabase,
+    'connection_code',
+    baseSeed,
+    stakeholder.id,
+  )
+
+  return { referralCode, connectionCode }
+}
+
+async function ensureUniqueStakeholderCodeValue(
+  supabase: ServiceSupabaseClient,
+  column: 'referral_code' | 'connection_code',
+  preferredSeed: string,
+  stakeholderId: string,
+) {
+  const preferred = normalizeStakeholderCode(preferredSeed) || `lv-${generateShortCode(6).toLowerCase()}`
+  const preferredConflict = await findStakeholderCodeConflict(supabase, column, preferred, stakeholderId)
+  if (!preferredConflict) return preferred
+
+  const base = preferred.slice(0, 40) || 'lv'
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = normalizeStakeholderCode(`${base}-${generateShortCode(4).toLowerCase()}`)
+    if (!candidate) continue
+    const conflict = await findStakeholderCodeConflict(supabase, column, candidate, stakeholderId)
+    if (!conflict) return candidate
+  }
+
+  return normalizeStakeholderCode(`lv-${generateShortCode(8).toLowerCase()}`) || preferred
 }
 
 async function getBusinessById(supabase: ServiceSupabaseClient, id: string) {

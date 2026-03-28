@@ -12,6 +12,7 @@ import type {
 } from '@/lib/types/database'
 import type { createServiceClient } from '@/lib/supabase/server'
 import type { StakeholderShell } from '@/lib/stakeholder-access'
+import { ensureAutomatedStakeholderMaterials } from '@/lib/server/material-engine'
 
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>
 type OperatorShell = Extract<StakeholderShell, 'admin' | 'field' | 'launch_partner'>
@@ -73,11 +74,15 @@ export async function createBusinessLifecycle(
 
   const business = data as Business
 
-  await Promise.all([
+  const [, , stakeholder] = await Promise.all([
     ensureBusinessClaimAssignment(supabase, business, input.actorId, input.shell),
     ensureBusinessOnboardingFlow(supabase, business, input.actorId),
     ensureBusinessStakeholderSetup(supabase, business, input.actorId),
   ])
+
+  if (stakeholder) {
+    await ensureAutomatedStakeholderMaterials(supabase, stakeholder.id, input.actorId)
+  }
 
   return business
 }
@@ -101,11 +106,15 @@ export async function createCauseLifecycle(
 
   const cause = data as Cause
 
-  await Promise.all([
+  const [, , stakeholder] = await Promise.all([
     ensureCauseClaimAssignment(supabase, cause, input.actorId, input.shell),
     ensureCauseOnboardingFlow(supabase, cause, input.actorId),
     ensureCauseStakeholderSetup(supabase, cause, input.actorId),
   ])
+
+  if (stakeholder) {
+    await ensureAutomatedStakeholderMaterials(supabase, stakeholder.id, input.actorId)
+  }
 
   return cause
 }
