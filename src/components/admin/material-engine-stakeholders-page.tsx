@@ -250,7 +250,7 @@ export function MaterialEngineStakeholdersPage() {
                     {owner && <p>Owner: <span className="text-surface-700">{owner.full_name}</span></p>}
                     {linkedBusiness && <p>Business: <span className="text-surface-700">{linkedBusiness.name}</span></p>}
                     {linkedCause && <p>Cause: <span className="text-surface-700">{linkedCause.name}</span></p>}
-                    {code && <p>Join URL: <span className="text-surface-700">{code.join_url.replace(/^https?:\/\//, '')}</span></p>}
+                    {code?.join_url && <p>Join URL: <span className="text-surface-700">{code.join_url.replace(/^https?:\/\//, '')}</span></p>}
                   </div>
 
                   <Link href={`/admin/stakeholders/${stakeholder.id}`}>

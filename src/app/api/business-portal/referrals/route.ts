@@ -5,6 +5,7 @@ import { getProfileForUser } from '@/lib/server/business-capture'
 import {
   getBusinessReferralCandidates,
   trackBusinessReferralInvite,
+  updateBusinessReferralStatus,
   userCanManageBusinessReferrals,
 } from '@/lib/server/business-referrals'
 import type { Business, Profile } from '@/lib/types/database'
@@ -24,6 +25,13 @@ const postSchema = z.object({
   notes: z.string().trim().max(1200).optional().or(z.literal('')).nullable(),
   fitReason: z.string().trim().max(500).optional().or(z.literal('')).nullable(),
   relationshipNote: z.string().trim().max(500).optional().or(z.literal('')).nullable(),
+})
+
+const patchSchema = z.object({
+  sourceBusinessId: z.string().uuid('A business is required.'),
+  referralId: z.string().uuid('A referral is required.'),
+  status: z.enum(['not_contacted', 'contacted', 'responded', 'interested', 'onboarded']),
+  note: z.string().trim().max(1200).optional().or(z.literal('')).nullable(),
 })
 
 type AuthorizedContext =
@@ -128,4 +136,40 @@ export async function POST(request: NextRequest) {
       (result.referral?.metadata as Record<string, unknown> | null)?.created_new_business_lead,
     ),
   })
+}
+
+export async function PATCH(request: NextRequest) {
+  const context = await getAuthorizedContext(request)
+  if ('error' in context) return context.error
+
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
+  }
+
+  const parsed = patchSchema.safeParse(body)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return NextResponse.json({ error: issue?.message || 'Invalid referral update.' }, { status: 400 })
+  }
+
+  if (parsed.data.sourceBusinessId !== context.business.id) {
+    return NextResponse.json({ error: 'Business mismatch.' }, { status: 400 })
+  }
+
+  try {
+    const referral = await updateBusinessReferralStatus(
+      context.supabase,
+      context.profile,
+      context.business,
+      parsed.data,
+    )
+
+    return NextResponse.json({ success: true, referral })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not update this referral.'
+    return NextResponse.json({ error: message }, { status: 400 })
+  }
 }

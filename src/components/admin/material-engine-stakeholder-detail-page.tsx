@@ -18,7 +18,6 @@ import {
   useAdminTasks,
   useGeneratedMaterials,
   useMaterials,
-  useMaterialTemplates,
   useRecord,
   useStakeholderCodes,
 } from '@/lib/supabase/hooks'
@@ -39,7 +38,6 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
   const { data: taskRows, refetch: refetchTasks } = useAdminTasks({ stakeholder_id: stakeholderId })
   const { data: generatedRows, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholderId })
   const { data: materials, refetch: refetchMaterials } = useMaterials()
-  const { data: templates } = useMaterialTemplates()
   const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
   const [savingCodes, setSavingCodes] = React.useState(false)
   const [generating, setGenerating] = React.useState(false)
@@ -60,22 +58,8 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
     return generatedRows.map((generated) => ({
       generated,
       material: materials.find((material) => material.id === generated.material_id) || null,
-      template: templates.find((template) => template.id === generated.template_id) || null,
     }))
-  }, [generatedRows, materials, templates])
-
-  const matchingTemplates = React.useMemo(() => {
-    if (!stakeholder) return []
-    return templates.filter((template) =>
-      template.template_type !== 'material_asset'
-      && (
-      template.stakeholder_types.length === 0
-      || template.stakeholder_types.includes(stakeholder.type)
-      || (stakeholder.type === 'school' && template.stakeholder_types.includes('community'))
-      || (stakeholder.type === 'cause' && template.stakeholder_types.includes('community'))
-      )
-    )
-  }, [templates, stakeholder])
+  }, [generatedRows, materials])
 
   const matchingMaterialTemplates = React.useMemo(() => {
     if (!stakeholder) return []
@@ -240,8 +224,8 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
         </Card>
         <Card>
           <CardContent className="p-5">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Matching Templates</p>
-            <p className="mt-2 text-3xl font-semibold text-surface-900">{matchingTemplates.length + matchingMaterialTemplates.length}</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Automation Sources</p>
+            <p className="mt-2 text-3xl font-semibold text-surface-900">{matchingMaterialTemplates.length}</p>
           </CardContent>
         </Card>
         <Card>
@@ -284,9 +268,9 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
                   Join URL: <span className="font-medium text-surface-900">{codes.join_url.replace(/^https?:\/\//, '')}</span>
                 </div>
               )}
-              {matchingTemplates.length + matchingMaterialTemplates.length === 0 && (
-                <div className="rounded-2xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
-                  Codes can still be saved now, but material generation will stay blocked until this stakeholder has at least one active matching template.
+              {matchingMaterialTemplates.length === 0 && (
+                <div className="rounded-2xl border border-info-200 bg-info-50 px-4 py-3 text-sm text-info-700">
+                  No saved source materials match this stakeholder yet. Generation will still succeed by using the built-in fallback layout until a real material template is added in Materials.
                 </div>
               )}
               <div className="flex flex-wrap gap-3">
@@ -323,16 +307,16 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
 
       <Card>
         <CardHeader>
-          <CardTitle>Matching Templates</CardTitle>
+          <CardTitle>Template Source Materials</CardTitle>
         </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {[...matchingTemplates, ...matchingMaterialTemplates.map((material) => ({
+            {matchingMaterialTemplates.map((material) => ({
               id: `material-${material.id}`,
               name: material.title,
               library_folder: getMaterialAutomationTemplateConfig(material).libraryFolder,
               audience_tags: getMaterialAutomationTemplateConfig(material).audienceTags,
               stakeholder_types: getMaterialAutomationTemplateConfig(material).stakeholderTypes,
-            }))].map((template) => (
+            })).map((template) => (
               <div key={template.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium text-surface-900">{template.name}</p>
@@ -341,8 +325,13 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
               <p className="mt-2 text-sm text-surface-500">
                 {template.audience_tags.join(', ') || 'No audience tags yet'}
               </p>
-            </div>
-          ))}
+              </div>
+            ))}
+            {matchingMaterialTemplates.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50 px-4 py-8 text-sm text-surface-500">
+                No source materials are linked yet. The fallback auto-layout will be used until a saved material template is available in the Materials Library.
+              </div>
+            )}
         </CardContent>
       </Card>
 
@@ -354,7 +343,7 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
           {linkedGenerated.length === 0 ? (
             <p className="text-sm text-surface-500">No materials generated yet for this stakeholder.</p>
           ) : (
-            linkedGenerated.map(({ generated, material, template }) => (
+            linkedGenerated.map(({ generated, material }) => (
               <div key={generated.id} className="rounded-3xl border border-surface-200 bg-surface-0 p-4">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div className="flex items-center gap-4">
@@ -374,7 +363,7 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
                     </div>
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-surface-900">{material?.title || template?.name || 'Generated material'}</p>
+                        <p className="font-semibold text-surface-900">{material?.title || 'Generated material'}</p>
                         <Badge variant={badgeForStatus(generated.generation_status) as 'default' | 'info' | 'success' | 'warning' | 'danger'}>
                           {generated.generation_status}
                         </Badge>

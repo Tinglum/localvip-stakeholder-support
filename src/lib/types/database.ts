@@ -66,7 +66,7 @@ export type OutreachScriptStatus =
 export type QrCodeFormat = 'png' | 'svg'
 export type OfferType = 'capture' | 'cashback'
 export type OfferStatus = 'draft' | 'active' | 'paused' | 'archived'
-export type BusinessReferralStatus = 'draft' | 'sent' | 'responded' | 'converted' | 'closed'
+export type BusinessReferralStatus = 'not_contacted' | 'contacted' | 'responded' | 'interested' | 'onboarded'
 export type CityAccessRequestStatus = 'pending' | 'approved' | 'declined'
 export type StakeholderType =
   | 'business'
@@ -443,6 +443,7 @@ export interface StakeholderAssignment {
   entity_type: 'business' | 'cause' | 'campaign' | 'city'
   entity_id: string
   role: string | null
+  ownership_status?: 'active_owner' | 'supporting' | 'released'
   assigned_by: string | null
   status: EntityStatus
   claimed_at?: string | null
@@ -472,9 +473,9 @@ export interface Stakeholder {
 export interface StakeholderCode {
   id: string
   stakeholder_id: string
-  referral_code: string
-  connection_code: string
-  join_url: string
+  referral_code: string | null
+  connection_code: string | null
+  join_url: string | null
   created_at: string
   updated_at: string
 }
@@ -753,6 +754,7 @@ export interface QrCodeCollection {
   brand: Brand
   created_by: string
   status: EntityStatus
+  metadata?: Record<string, unknown> | null
   created_at: string
 }
 

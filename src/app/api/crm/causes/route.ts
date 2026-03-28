@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
-import { createBusinessLifecycle } from '@/lib/server/stakeholder-lifecycle'
-import type { Brand, Business, OnboardingStage } from '@/lib/types/database'
+import { createCauseLifecycle } from '@/lib/server/stakeholder-lifecycle'
+import type { Brand, Cause, OnboardingStage } from '@/lib/types/database'
 
 export async function POST(request: NextRequest) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
@@ -9,42 +9,47 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {
-    return NextResponse.json({ error: 'A business payload is required.' }, { status: 400 })
+    return NextResponse.json({ error: 'A cause payload is required.' }, { status: 400 })
   }
 
   const name = asOptionalString(body.name)
   if (!name) {
-    return NextResponse.json({ error: 'Business name is required.' }, { status: 400 })
+    return NextResponse.json({ error: 'Organization name is required.' }, { status: 400 })
   }
 
   try {
-    const business = await createBusinessLifecycle(context.supabase, {
+    const cause = await createCauseLifecycle(context.supabase, {
       actorId: context.profile.id,
       shell: context.shell as 'admin' | 'field' | 'launch_partner',
-      business: {
+      cause: {
         name,
+        type: isCauseType(body.type) ? body.type : 'school',
+        brand: isBrand(body.brand) ? body.brand : 'localvip',
+        stage: isOnboardingStage(body.stage) ? body.stage : 'lead',
+        status: 'active',
+        owner_id: context.profile.id,
         email: asOptionalString(body.email),
         phone: asOptionalString(body.phone),
         website: asOptionalString(body.website),
-        category: asOptionalString(body.category),
-        source: asOptionalString(body.source),
         city_id: asOptionalString(body.city_id),
-        brand: isBrand(body.brand) ? body.brand : 'localvip',
-        stage: isOnboardingStage(body.stage) ? body.stage : 'lead',
-        owner_id: context.profile.id,
-        owner_user_id: null,
-        status: 'active',
+        source: asOptionalString(body.source),
+        source_detail: asOptionalString(body.source_detail) || 'Added from CRM',
+        address: null,
+        organization_id: null,
+        campaign_id: null,
+        duplicate_of: null,
+        external_id: null,
         metadata: {
-          created_from: 'crm_business_create',
+          created_from: 'crm_cause_create',
           created_by_shell: context.shell,
           created_by: context.profile.id,
         },
       },
     })
 
-    return NextResponse.json(business)
+    return NextResponse.json(cause)
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Business could not be created.'
+    const message = error instanceof Error ? error.message : 'Cause could not be created.'
     const status = /active owner/i.test(message) ? 409 : 400
     return NextResponse.json({ error: message }, { status })
   }
@@ -69,4 +74,12 @@ function isOnboardingStage(value: unknown): value is OnboardingStage {
     || value === 'live'
     || value === 'paused'
     || value === 'declined'
+}
+
+function isCauseType(value: unknown): value is Cause['type'] {
+  return value === 'school'
+    || value === 'nonprofit'
+    || value === 'church'
+    || value === 'community'
+    || value === 'other'
 }

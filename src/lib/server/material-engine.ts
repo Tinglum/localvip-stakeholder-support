@@ -299,14 +299,6 @@ export async function generateMaterialsForStakeholder(
   const qrCode = await ensureStakeholderQrCode(supabase, context, actorId)
   const templates = await getTemplatesForStakeholder(supabase, stakeholder.type, options?.templateId)
 
-  if (!templates.length) {
-    await updateAdminTaskStatus(supabase, stakeholder.id, 'failed', {
-      last_error: 'No active templates matched this stakeholder.',
-      attempted_at: new Date().toISOString(),
-    })
-    throw new Error('No active templates matched this stakeholder.')
-  }
-
   const results: GeneratedMaterial[] = []
   const failures: Array<{ templateId: string; templateName: string; error: string }> = []
 
@@ -555,13 +547,146 @@ async function getTemplatesForStakeholder(
 
   const combined = [...((data || []) as MaterialTemplate[]), ...syncedAssetTemplates]
   const uniqueTemplates = combined.filter((template, index, array) => array.findIndex((item) => item.id === template.id) === index)
-
-  return uniqueTemplates.filter((template) =>
+  const filteredTemplates = uniqueTemplates.filter((template) =>
     template.stakeholder_types.length === 0
     || template.stakeholder_types.includes(stakeholderType)
     || (stakeholderType === 'cause' && template.stakeholder_types.includes('community'))
     || (stakeholderType === 'school' && template.stakeholder_types.includes('community'))
   )
+
+  if (filteredTemplates.length > 0) {
+    return filteredTemplates
+  }
+
+  const fallbackTemplate = await ensureFallbackTemplateForStakeholderType(supabase, stakeholderType)
+  return [fallbackTemplate]
+}
+
+async function ensureFallbackTemplateForStakeholderType(
+  supabase: ServiceSupabaseClient,
+  stakeholderType: StakeholderType,
+) {
+  const fallbackName = `${stakeholderType}-default-auto-template`
+  const { data: existing } = await supabase
+    .from('material_templates')
+    .select('*')
+    .eq('name', fallbackName)
+    .limit(1)
+
+  const existingTemplate = ((existing || []) as MaterialTemplate[])[0]
+  if (existingTemplate) return existingTemplate
+
+  const fallbackMap: Record<StakeholderType, {
+    audienceTags: string[]
+    libraryFolder: MaterialTemplate['library_folder']
+    eyebrow: string
+    headline: string
+    subheadline: string
+    body: string
+    cta: string
+    footer: string
+  }> = {
+    business: {
+      audienceTags: ['customers'],
+      libraryFolder: 'share_with_customers',
+      eyebrow: 'LocalVIP',
+      headline: '{{stakeholder_name}}',
+      subheadline: '{{capture_offer_headline}}',
+      body: '{{capture_offer_description}}',
+      cta: 'Scan to get your offer',
+      footer: '{{support_label}}',
+    },
+    school: {
+      audienceTags: ['parents'],
+      libraryFolder: 'share_with_parents',
+      eyebrow: 'Support Local',
+      headline: 'Support {{stakeholder_name}}',
+      subheadline: 'Simple support starts here',
+      body: '{{capture_offer_description}}',
+      cta: 'Scan to support',
+      footer: '{{support_label}}',
+    },
+    cause: {
+      audienceTags: ['parents'],
+      libraryFolder: 'share_with_parents',
+      eyebrow: 'Support Local',
+      headline: 'Support {{stakeholder_name}}',
+      subheadline: 'Simple support starts here',
+      body: '{{capture_offer_description}}',
+      cta: 'Scan to support',
+      footer: '{{support_label}}',
+    },
+    community: {
+      audienceTags: ['parents'],
+      libraryFolder: 'share_with_parents',
+      eyebrow: 'Support Local',
+      headline: 'Support {{stakeholder_name}}',
+      subheadline: 'Simple support starts here',
+      body: '{{capture_offer_description}}',
+      cta: 'Scan to support',
+      footer: '{{support_label}}',
+    },
+    field: {
+      audienceTags: ['outreach'],
+      libraryFolder: 'share_with_businesses',
+      eyebrow: 'LocalVIP Field Kit',
+      headline: '{{stakeholder_name}}',
+      subheadline: 'Use this to move local outreach forward',
+      body: '{{support_label}}',
+      cta: 'Scan to connect',
+      footer: '{{display_url}}',
+    },
+    influencer: {
+      audienceTags: ['parents'],
+      libraryFolder: 'share_with_parents',
+      eyebrow: 'Share LocalVIP',
+      headline: '{{stakeholder_name}}',
+      subheadline: 'Invite more people into something local',
+      body: '{{support_label}}',
+      cta: 'Scan to join',
+      footer: '{{display_url}}',
+    },
+    launch_partner: {
+      audienceTags: ['businesses'],
+      libraryFolder: 'share_with_businesses',
+      eyebrow: 'LocalVIP',
+      headline: '{{stakeholder_name}}',
+      subheadline: 'Grow your launch footprint',
+      body: '{{support_label}}',
+      cta: 'Scan to connect',
+      footer: '{{display_url}}',
+    },
+  }
+
+  const selected = fallbackMap[stakeholderType] || fallbackMap.business
+  const { data, error } = await (supabase.from('material_templates') as any)
+    .insert({
+      name: fallbackName,
+      source_path: null,
+      template_type: 'structured',
+      output_format: 'pdf',
+      audience_tags: selected.audienceTags,
+      stakeholder_types: stakeholderType === 'school' ? ['school', 'community'] : stakeholderType === 'cause' ? ['cause', 'community'] : [stakeholderType],
+      library_folder: selected.libraryFolder,
+      qr_position_json: DEFAULT_QR_POSITION,
+      is_active: true,
+      created_by: null,
+      metadata: {
+        eyebrow: selected.eyebrow,
+        headline: selected.headline,
+        subheadline: selected.subheadline,
+        body: selected.body,
+        cta: selected.cta,
+        footer: selected.footer,
+        titlePattern: '{{stakeholder_name}} - Default Auto Material',
+        descriptionPattern: '{{capture_offer_headline}}',
+      },
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as MaterialTemplate
 }
 
 async function buildStakeholderMaterialContext(
@@ -583,7 +708,7 @@ async function buildStakeholderMaterialContext(
   const brand = (business?.brand || cause?.brand || profile?.brand_context || 'localvip') as 'localvip' | 'hato'
   const ownerName = profile?.full_name || business?.name || cause?.name || stakeholder.name
   const cityName = city?.name || 'your city'
-  const joinUrl = codes.join_url || buildStakeholderJoinUrl(stakeholder.type, codes.connection_code)
+  const joinUrl = codes.join_url || (codes.connection_code ? buildStakeholderJoinUrl(stakeholder.type, codes.connection_code) : '')
 
   return {
     stakeholder,
@@ -897,12 +1022,12 @@ async function resolveStakeholderLibraryProfileId(
 
 async function ensureUniqueShortCode(
   supabase: ServiceSupabaseClient,
-  preferredCode: string,
+  preferredCode: string | null,
   existingCode: string | null,
 ) {
   if (existingCode) return existingCode
 
-  const preferred = normalizeStakeholderCode(preferredCode)
+  const preferred = normalizeStakeholderCode(preferredCode || '')
   if (preferred) {
     const { data } = await supabase.from('redirects').select('id').eq('short_code', preferred).maybeSingle()
     if (!data) return preferred

@@ -25,18 +25,24 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ONBOARDING_STAGES } from '@/lib/constants'
+import { computeBusinessExecutionSteps } from '@/lib/business-execution'
 import { getEntityTheme } from '@/lib/entity-themes'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatDateTime } from '@/lib/utils'
 import {
   useBusinesses,
   useBusinessUpdate,
   useCampaigns,
   useCauses,
   useCities,
+  useGeneratedMaterials,
   useOnboardingFlows,
   useOnboardingSteps,
+  useOffers,
   useOutreach,
   useProfiles,
+  useQrCodes,
+  useStakeholders,
+  useStakeholderCodes,
   useStakeholderAssignments,
   useTasks,
 } from '@/lib/supabase/hooks'
@@ -72,48 +78,6 @@ function getStageBadgeVariant(stage: string) {
     default:
       return 'default' as const
   }
-}
-
-function fallbackSteps(stage: OnboardingStage) {
-  const completedCount = (() => {
-    switch (stage) {
-      case 'lead':
-        return 0
-      case 'contacted':
-        return 1
-      case 'interested':
-        return 2
-      case 'in_progress':
-        return 3
-      case 'onboarded':
-      case 'live':
-        return 4
-      default:
-        return 0
-    }
-  })()
-
-  return ['Initial connection', 'Owner conversation', 'Materials + QR', 'Launch decision'].map((label, index) => ({
-    id: `${label}-${index}`,
-    label,
-    completed: index < completedCount,
-    current: index === completedCount && completedCount < 4,
-  }))
-}
-
-function normalizeSteps(stage: OnboardingStage, flow: OnboardingFlow | undefined, steps: OnboardingStep[]) {
-  if (!flow || steps.length === 0) {
-    return fallbackSteps(stage)
-  }
-
-  const firstPendingIndex = steps.findIndex(step => !step.is_completed)
-
-  return steps.map((step, index) => ({
-    id: step.id,
-    label: step.title,
-    completed: step.is_completed,
-    current: !step.is_completed && (firstPendingIndex === -1 ? index === steps.length - 1 : index === firstPendingIndex),
-  }))
 }
 
 function StageChanger({
@@ -178,8 +142,13 @@ export default function BusinessOnboardingPage() {
   const { data: campaigns } = useCampaigns()
   const { data: profiles } = useProfiles()
   const { data: assignments } = useStakeholderAssignments()
-  const { data: flows } = useOnboardingFlows()
-  const { data: steps } = useOnboardingSteps()
+  const { data: stakeholders, refetch: refetchStakeholders } = useStakeholders()
+  const { data: stakeholderCodes, refetch: refetchStakeholderCodes } = useStakeholderCodes()
+  const { data: generatedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials()
+  const { data: flows, refetch: refetchFlows } = useOnboardingFlows()
+  const { data: steps, refetch: refetchSteps } = useOnboardingSteps()
+  const { data: offers, refetch: refetchOffers } = useOffers()
+  const { data: qrCodes, refetch: refetchQrCodes } = useQrCodes()
   const { data: tasks } = useTasks()
   const { data: outreach } = useOutreach()
 
@@ -217,6 +186,53 @@ export default function BusinessOnboardingPage() {
     })
     return map
   }, [steps])
+
+  const stakeholderByBusiness = React.useMemo(() => {
+    const map = new Map<string, typeof stakeholders[number]>()
+    stakeholders
+      .filter((stakeholder) => !!stakeholder.business_id)
+      .forEach((stakeholder) => {
+        if (stakeholder.business_id) map.set(stakeholder.business_id, stakeholder)
+      })
+    return map
+  }, [stakeholders])
+
+  const codesByStakeholder = React.useMemo(() => {
+    const map = new Map<string, typeof stakeholderCodes[number]>()
+    stakeholderCodes.forEach((code) => map.set(code.stakeholder_id, code))
+    return map
+  }, [stakeholderCodes])
+
+  const generatedByStakeholder = React.useMemo(() => {
+    const map = new Map<string, typeof generatedMaterials>()
+    generatedMaterials.forEach((item) => {
+      const current = map.get(item.stakeholder_id) || []
+      current.push(item)
+      map.set(item.stakeholder_id, current)
+    })
+    return map
+  }, [generatedMaterials])
+
+  const offersByBusiness = React.useMemo(() => {
+    const map = new Map<string, typeof offers>()
+    offers.forEach((offer) => {
+      const current = map.get(offer.business_id) || []
+      current.push(offer)
+      map.set(offer.business_id, current)
+    })
+    return map
+  }, [offers])
+
+  const qrByBusiness = React.useMemo(() => {
+    const map = new Map<string, typeof qrCodes>()
+    qrCodes.forEach((item) => {
+      if (!item.business_id) return
+      const current = map.get(item.business_id) || []
+      current.push(item)
+      map.set(item.business_id, current)
+    })
+    return map
+  }, [qrCodes])
 
   const openTasksByBusiness = React.useMemo(() => {
     const map = new Map<string, Task[]>()
@@ -261,6 +277,51 @@ export default function BusinessOnboardingPage() {
 
     return { live, onboarding, followUps, assigned }
   }, [assignmentsByBusiness, businesses, outreach])
+
+  const [busyStepId, setBusyStepId] = React.useState<string | null>(null)
+  const [actionError, setActionError] = React.useState<string | null>(null)
+  const [actionMessage, setActionMessage] = React.useState<string | null>(null)
+
+  const refreshExecutionBoards = React.useCallback(() => {
+    refetch({ silent: true })
+    refetchStakeholders({ silent: true })
+    refetchStakeholderCodes({ silent: true })
+    refetchGeneratedMaterials({ silent: true })
+    refetchFlows({ silent: true })
+    refetchSteps({ silent: true })
+    refetchOffers({ silent: true })
+    refetchQrCodes({ silent: true })
+  }, [refetch, refetchFlows, refetchGeneratedMaterials, refetchOffers, refetchQrCodes, refetchStakeholderCodes, refetchStakeholders, refetchSteps])
+
+  async function handleCompleteStep(businessId: string, stepId: string) {
+    setBusyStepId(stepId)
+    setActionError(null)
+    setActionMessage(null)
+
+    try {
+      const response = await fetch(`/api/crm/businesses/${businessId}/execution`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'complete_step',
+          stepId,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setActionError(payload.error || 'The onboarding step could not be completed.')
+        return
+      }
+
+      setActionMessage('Onboarding step completed.')
+      refreshExecutionBoards()
+    } catch {
+      setActionError('The onboarding step could not be completed.')
+    } finally {
+      setBusyStepId(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -398,6 +459,18 @@ export default function BusinessOnboardingPage() {
         </Card>
       </div>
 
+      {actionError ? (
+        <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          {actionError}
+        </div>
+      ) : null}
+
+      {actionMessage ? (
+        <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
+          {actionMessage}
+        </div>
+      ) : null}
+
       <div className="space-y-8">
         {groupedBusinesses.map(group => (
           <section key={group.stage} className="space-y-4">
@@ -411,7 +484,18 @@ export default function BusinessOnboardingPage() {
             <div className="grid gap-4 xl:grid-cols-2">
               {group.items.map(business => {
                 const flow = flowByBusiness.get(business.id)
-                const businessSteps = normalizeSteps(business.stage, flow, stepsByFlow.get(flow?.id || '') || [])
+                const stakeholder = stakeholderByBusiness.get(business.id) || null
+                const codes = stakeholder ? codesByStakeholder.get(stakeholder.id) || null : null
+                const generated = stakeholder ? generatedByStakeholder.get(stakeholder.id) || [] : []
+                const businessSteps = computeBusinessExecutionSteps({
+                  business,
+                  steps: stepsByFlow.get(flow?.id || '') || [],
+                  codes,
+                  generatedMaterials: generated,
+                  qrCodes: qrByBusiness.get(business.id) || [],
+                  offers: offersByBusiness.get(business.id) || [],
+                  outreachCount: (outreachByBusiness.get(business.id) || []).length,
+                })
                 const owner = business.owner_id ? profileMap.get(business.owner_id) : null
                 const helperAssignments = (assignmentsByBusiness.get(business.id) || [])
                   .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
@@ -498,18 +582,58 @@ export default function BusinessOnboardingPage() {
                           <div className="grid gap-2 sm:grid-cols-2">
                             {businessSteps.map(step => (
                               <div
-                                key={step.id}
+                                key={step.step.id}
                                 className={`rounded-xl border px-3 py-2 text-sm ${
-                                  step.completed
+                                  step.state === 'completed'
                                     ? 'border-success-200 bg-success-50 text-success-700'
-                                    : step.current
+                                    : step.state === 'active'
                                     ? `border-amber-200 ${businessTheme.softSurface} ${businessTheme.mutedText}`
                                     : 'border-surface-200 bg-surface-50 text-surface-500'
                                 }`}
                               >
-                                <div className="flex items-center gap-2">
-                                  {step.completed ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
-                                  <span className="font-medium">{step.label}</span>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      {step.state === 'completed' ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+                                      <span className="font-medium">{step.label}</span>
+                                    </div>
+                                    {step.state === 'completed' && step.step.completed_at ? (
+                                      <p className="text-xs">
+                                        Completed {formatDateTime(step.step.completed_at)}
+                                        {step.step.completed_by ? ` by ${profileMap.get(step.step.completed_by)?.full_name || 'a team member'}` : ''}
+                                      </p>
+                                    ) : step.blocker ? (
+                                      <p className="text-xs">{step.blocker}</p>
+                                    ) : (
+                                      <p className="text-xs">
+                                        {step.readyToComplete ? 'Ready to complete now.' : step.state === 'locked' ? 'Finish the earlier steps first.' : 'Open the next action area.'}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-2">
+                                    <Badge variant={step.state === 'completed' ? 'success' : step.state === 'active' ? 'warning' : 'default'}>
+                                      {step.state}
+                                    </Badge>
+                                    {step.state === 'active' ? (
+                                      step.readyToComplete ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => void handleCompleteStep(business.id, step.step.id)}
+                                          disabled={busyStepId === step.step.id}
+                                        >
+                                          {busyStepId === step.step.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                          Complete
+                                        </Button>
+                                      ) : (
+                                        <Link href={`/crm/businesses/${business.id}`}>
+                                          <Button size="sm" variant="outline">
+                                            Open CRM
+                                          </Button>
+                                        </Link>
+                                      )
+                                    ) : null}
+                                  </div>
                                 </div>
                               </div>
                             ))}

@@ -269,6 +269,8 @@ export function useQrCodes(filters?: Record<string, string>) {
 export function useQrCodeCollections(filters?: Record<string, string>) {
   return useSupabaseQuery<QrCodeCollection>('qr_code_collections', { filters })
 }
+export function useQrCodeCollectionInsert() { return useSupabaseInsert<QrCodeCollection>('qr_code_collections') }
+export function useQrCodeCollectionUpdate() { return useSupabaseUpdate<QrCodeCollection>('qr_code_collections') }
 export function useQrCodeInsert() { return useSupabaseInsert<QrCode>('qr_codes') }
 export function useQrCodeDelete() { return useSupabaseDelete('qr_codes') }
 
@@ -295,6 +297,8 @@ export function useNoteInsert() { return useSupabaseInsert<Note>('notes') }
 export function useOnboardingFlows(filters?: Record<string, string>) {
   return useSupabaseQuery<OnboardingFlow>('onboarding_flows', { filters })
 }
+export function useOnboardingFlowInsert() { return useSupabaseInsert<OnboardingFlow>('onboarding_flows') }
+export function useOnboardingFlowUpdate() { return useSupabaseUpdate<OnboardingFlow>('onboarding_flows') }
 
 export function useOnboardingSteps(filters?: Record<string, string>) {
   return useSupabaseQuery<OnboardingStep>('onboarding_steps', {
@@ -303,6 +307,8 @@ export function useOnboardingSteps(filters?: Record<string, string>) {
     orderAsc: true,
   })
 }
+export function useOnboardingStepInsert() { return useSupabaseInsert<OnboardingStep>('onboarding_steps') }
+export function useOnboardingStepUpdate() { return useSupabaseUpdate<OnboardingStep>('onboarding_steps') }
 
 // ─── Count hooks ────────────────────────────────────────────
 

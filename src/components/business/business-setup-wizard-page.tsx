@@ -342,6 +342,13 @@ export function BusinessSetupWizardPage() {
   const completeCapture = !!captureHeadline.trim()
   const completeCashback = cashbackPercent >= 5 && cashbackPercent <= 25
   const readyToActivate = completeProfile && completeCapture && completeCashback
+  const completedStepsCount = STEPS.filter((item) =>
+    item.key === 'profile' ? completeProfile
+      : item.key === 'capture' ? completeCapture
+        : item.key === 'cashback' ? completeCashback
+          : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
+            : true
+  ).length
 
   async function activatePortal() {
     await persistChanges()
@@ -372,18 +379,21 @@ export function BusinessSetupWizardPage() {
             <CardTitle>Setup Flow</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-2xl border border-success-200 bg-success-50/80 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-success-700">Completed so far</p>
-              <p className="mt-2 text-sm text-success-900">
-                {STEPS.filter((item) =>
-                  item.key === 'profile' ? completeProfile
-                    : item.key === 'capture' ? completeCapture
-                      : item.key === 'cashback' ? completeCashback
-                        : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
-                          : true
-                ).length}
-                {' '}of {STEPS.length} setup items are finished.
-              </p>
+            <div className="rounded-2xl border border-success-300 bg-gradient-to-r from-success-50 via-white to-success-50 px-4 py-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-success-600 text-white shadow-sm">
+                  <CheckCircle2 className="h-5 w-5" />
+                </span>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-success-700">Completed so far</p>
+                  <p className="text-sm font-semibold text-success-950">
+                    {completedStepsCount} of {STEPS.length} setup items are completed.
+                  </p>
+                  <p className="text-xs leading-5 text-success-700">
+                    Green cards are already finished and saved. You can still open them any time to review or update them.
+                  </p>
+                </div>
+              </div>
             </div>
             {STEPS.map((item, index) => {
               const complete =
@@ -395,8 +405,8 @@ export function BusinessSetupWizardPage() {
 
               const cardClass = complete
                 ? step === item.key
-                  ? 'border-success-400 bg-success-50 shadow-[0_0_0_1px_rgba(34,197,94,0.16)]'
-                  : 'border-success-200 bg-success-50/70 hover:border-success-300'
+                  ? 'border-success-500 bg-gradient-to-br from-success-50 via-success-100/70 to-white shadow-[0_0_0_1px_rgba(34,197,94,0.16)]'
+                  : 'border-success-300 bg-gradient-to-br from-success-50 via-success-100/50 to-white hover:border-success-400'
                 : step === item.key
                   ? 'border-brand-500 bg-brand-50'
                   : 'border-surface-200 bg-surface-0 hover:border-surface-300'
@@ -410,21 +420,32 @@ export function BusinessSetupWizardPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-surface-900">
-                        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs shadow-sm ${complete ? 'bg-success-600 text-white' : 'bg-white text-surface-700'}`}>
+                      <div className={`flex items-center gap-2 text-sm font-semibold ${complete ? 'text-success-950' : 'text-surface-900'}`}>
+                        <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs shadow-sm ${complete ? 'bg-success-600 text-white' : 'bg-white text-surface-700'}`}>
                           {complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
                         </span>
                         {item.icon}
                         {item.label}
                       </div>
-                      <p className="text-xs leading-5 text-surface-500">{item.description}</p>
+                      <p className={`text-xs leading-5 ${complete ? 'text-success-900' : 'text-surface-500'}`}>{item.description}</p>
                       {complete ? (
-                        <p className="text-xs font-medium text-success-700">Completed and saved.</p>
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-success-700">Completed and saved</p>
+                          <p className="text-xs leading-5 text-success-800">This step is finished. Open it any time if you want to review or change it.</p>
+                        </div>
                       ) : (
                         <p className="text-xs font-medium text-amber-700">Still needs attention.</p>
                       )}
                     </div>
-                    {complete ? <Badge variant="success">Completed</Badge> : <Badge variant="warning">Next</Badge>}
+                    {complete ? (
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge className="border-success-200 bg-success-600 text-white hover:bg-success-600">Completed</Badge>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-success-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-success-800">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Finished
+                        </span>
+                      </div>
+                    ) : <Badge variant="warning">Next</Badge>}
                   </div>
                 </button>
               )
@@ -474,10 +495,10 @@ export function BusinessSetupWizardPage() {
                   <div className="space-y-1">
                     <label className="block text-sm font-medium text-surface-700">Business logo</label>
                     <p className="text-sm leading-6 text-surface-500">
-                      This is the small brand image customers will recognize first. It shows up in your QR code, your business card, and other compact LocalVIP surfaces.
+                      This is your main brand mark. We use it in the middle of your QR code and in smaller places where people should recognize your business right away.
                     </p>
                     <p className="text-xs leading-5 text-surface-400">
-                      Best choice: a simple square logo with a clean background so it stays clear at small sizes.
+                      Best choice: a square logo with a simple shape and a clean or transparent background, so it still looks sharp when it is shown small.
                     </p>
                   </div>
                   <input type="file" accept="image/*" onChange={(event) => setLogoFile(event.target.files?.[0] || null)} />
@@ -486,7 +507,7 @@ export function BusinessSetupWizardPage() {
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={logoFile ? URL.createObjectURL(logoFile) : logoUrl || ''} alt="Logo preview" className="h-full w-full object-contain p-4" />
                     ) : (
-                      <p className="text-sm text-surface-400">Upload the logo customers already know</p>
+                      <p className="text-sm text-surface-400">Upload the logo you want people to recognize first</p>
                     )}
                   </div>
                 </div>
@@ -494,10 +515,10 @@ export function BusinessSetupWizardPage() {
                   <div className="space-y-1">
                     <label className="block text-sm font-medium text-surface-700">Cover image</label>
                     <p className="text-sm leading-6 text-surface-500">
-                      This is the larger photo that sets the mood for your business. It is used on your business page and other full-width visual areas.
+                      This is the larger photo customers see first on your business page. Use it to show the feel of your business, like your food, your space, your storefront, or your experience.
                     </p>
                     <p className="text-xs leading-5 text-surface-400">
-                      Best choice: a strong horizontal photo of your storefront, food, space, team, or experience.
+                      Best choice: a wide photo that feels inviting and easy to understand at a glance.
                     </p>
                   </div>
                   <input type="file" accept="image/*" onChange={(event) => setCoverFile(event.target.files?.[0] || null)} />
@@ -506,7 +527,7 @@ export function BusinessSetupWizardPage() {
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={coverFile ? URL.createObjectURL(coverFile) : coverUrl || ''} alt="Cover preview" className="h-full w-full object-cover" />
                     ) : (
-                      <p className="text-sm text-surface-400">Upload a photo that helps customers feel your business</p>
+                      <p className="text-sm text-surface-400">Upload the main photo that should represent your business</p>
                     )}
                   </div>
                 </div>
@@ -521,35 +542,32 @@ export function BusinessSetupWizardPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  <p className="font-semibold text-amber-900">Use this to get your first 100 customers before launch.</p>
+                  <p className="font-semibold text-amber-900">This is the offer people get when they join your list before launch.</p>
                   <p className="mt-2 leading-6">
-                    This is the offer customers see when they scan your QR code and join your list. Think of it as your
-                    early sign-up incentive, like a free cookie, free coffee, free soda, or a simple discount tied to purchase.
+                    Customers will see this after they scan your QR code. Make it simple, specific, and easy to say yes to right away, like a free cookie with purchase, a free coffee, a free soda, or a small discount.
                   </p>
                   <p className="mt-2 leading-6">
-                    This is separate from your LocalVIP cashback. Cashback comes later when you are live. This section is only
-                    for the pre-launch customer capture offer.
+                    The job of this offer is to help you collect your first 100 customers before you go live. This is separate from your LocalVIP cashback offer.
                   </p>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer headline</label>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
-                    The short promise customers should notice first. Keep it simple and specific.
+                    This is the first line customers notice. Keep it short, clear, and specific, like “Free cookie with any coffee.”
                   </p>
                   <Input value={captureHeadline} onChange={(event) => setCaptureHeadline(event.target.value)} placeholder="Free coffee with purchase" />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer description</label>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
-                    Explain what they get, when they get it, and any simple condition. This is the fuller version customers
-                    will read after the headline.
+                    Explain exactly what they get and any simple condition that comes with it, like “with purchase” or “one per customer.” This is the fuller explanation under the headline.
                   </p>
                   <Textarea value={captureDescription} onChange={(event) => setCaptureDescription(event.target.value)} rows={4} placeholder="Tell customers exactly what they get when they join your list." />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer value label</label>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
-                    A short version of the offer used in tighter spaces, like cards, badges, and QR materials.
+                    This is the shorter version we use in tighter spaces, like QR cards, badges, and smaller materials. Keep it compact and easy to scan quickly.
                   </p>
                   <Input value={captureValue} onChange={(event) => setCaptureValue(event.target.value)} placeholder="Free cookie with purchase" />
                 </div>

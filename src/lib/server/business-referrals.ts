@@ -45,6 +45,12 @@ export interface TrackBusinessReferralInput {
   relationshipNote?: string | null
 }
 
+export interface UpdateBusinessReferralStatusInput {
+  referralId: string
+  status: BusinessReferral['status']
+  note?: string | null
+}
+
 export async function getBusinessReferralCandidates(
   supabase: ServiceSupabaseClient,
   sourceBusiness: Business,
@@ -97,6 +103,7 @@ export async function trackBusinessReferralInvite(
   const targetContact = await findOrCreateTargetContact(supabase, sourceBusiness, actorProfile, targetBusiness, payload)
   const outreachActivity = await createOutreachActivity(supabase, sourceBusiness, targetBusiness, targetContact, actorProfile, payload)
   const note = await createBusinessNote(supabase, sourceBusiness, targetBusiness, actorProfile, payload, targetContact)
+  const createdAt = new Date().toISOString()
 
   const { data: referral } = (await (supabase
     .from('business_referrals') as any)
@@ -113,7 +120,7 @@ export async function trackBusinessReferralInvite(
       target_contact_phone: targetContact?.phone || normalizePhoneOrNull(payload.targetPhone),
       channel: payload.channel,
       message_snapshot: clean(payload.message) || null,
-      status: 'sent',
+      status: 'contacted',
       notes: clean(payload.notes) || null,
       converted_business_id: null,
       metadata: {
@@ -125,6 +132,15 @@ export async function trackBusinessReferralInvite(
         script_tier: payload.tier,
         fit_reason: clean(payload.fitReason) || null,
         relationship_note: clean(payload.relationshipNote) || null,
+        history: [
+          {
+            type: 'created',
+            status: 'contacted',
+            note: clean(payload.notes) || 'Initial business intro tracked.',
+            at: createdAt,
+            by: actorProfile.id,
+          },
+        ],
       },
     })
     .select()
@@ -137,6 +153,54 @@ export async function trackBusinessReferralInvite(
     outreachActivity,
     note,
   }
+}
+
+export async function updateBusinessReferralStatus(
+  supabase: ServiceSupabaseClient,
+  actorProfile: Profile,
+  sourceBusiness: Business,
+  payload: UpdateBusinessReferralStatusInput,
+) {
+  const { data } = await supabase
+    .from('business_referrals')
+    .select('*')
+    .eq('id', payload.referralId)
+    .eq('source_business_id', sourceBusiness.id)
+    .single()
+
+  const referral = (data || null) as BusinessReferral | null
+  if (!referral) throw new Error('Referral not found.')
+
+  const metadata = (referral.metadata as Record<string, unknown> | null) || {}
+  const history = Array.isArray(metadata.history) ? [...metadata.history] : []
+  history.push({
+    type: 'status_change',
+    status: payload.status,
+    note: clean(payload.note) || null,
+    at: new Date().toISOString(),
+    by: actorProfile.id,
+  })
+
+  const { data: updated, error } = await (supabase.from('business_referrals') as any)
+    .update({
+      status: payload.status,
+      notes: clean(payload.note) || referral.notes,
+      converted_business_id: payload.status === 'onboarded' ? referral.target_business_id || referral.converted_business_id : referral.converted_business_id,
+      metadata: {
+        ...metadata,
+        history,
+        last_status_changed_at: new Date().toISOString(),
+        last_status_changed_by: actorProfile.id,
+      },
+    })
+    .eq('id', referral.id)
+    .select()
+    .single()
+
+  if (error) throw error
+
+  await createReferralStatusNote(supabase, sourceBusiness, referral, actorProfile, payload)
+  return updated as BusinessReferral
 }
 
 export function userCanManageBusinessReferrals(profile: Profile | null, business: Business | null) {
@@ -459,4 +523,31 @@ function isNewBusinessLead(targetBusiness: Business, sourceBusiness: Business, p
   return metadata?.created_via === 'business_growth_portal'
     && metadata?.referred_by_business_id === sourceBusiness.id
     && normalizeBusinessName(targetBusiness.name) === normalizeBusinessName(payload.targetBusinessName)
+}
+
+async function createReferralStatusNote(
+  supabase: ServiceSupabaseClient,
+  sourceBusiness: Business,
+  referral: BusinessReferral,
+  actorProfile: Profile,
+  payload: UpdateBusinessReferralStatusInput,
+) {
+  const noteText = [
+    `Business referral status changed to ${payload.status}.`,
+    clean(payload.note) ? `Update: ${clean(payload.note)}` : '',
+    `Source business: ${sourceBusiness.name}.`,
+  ].filter(Boolean).join('\n')
+
+  await (supabase.from('notes') as any).insert({
+    content: noteText,
+    entity_type: 'business',
+    entity_id: referral.target_business_id || sourceBusiness.id,
+    created_by: actorProfile.id,
+    is_internal: true,
+    metadata: {
+      source: 'business_growth_portal',
+      referral_id: referral.id,
+      referral_status: payload.status,
+    },
+  })
 }

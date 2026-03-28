@@ -42,7 +42,7 @@ import {
   type BusinessReferralScriptType,
 } from '@/lib/business-referral-script-engine'
 import type { OutreachScriptTier } from '@/lib/types/database'
-import { cn, normalizeBusinessName } from '@/lib/utils'
+import { cn, formatDateTime, normalizeBusinessName } from '@/lib/utils'
 
 interface BusinessReferralCandidate {
   id: string
@@ -108,6 +108,16 @@ function badgeVariantForStage(stage: string): 'default' | 'info' | 'warning' | '
   if (stage === 'contacted') return 'info'
   return 'default'
 }
+
+const REFERRAL_STATUS_OPTIONS = [
+  { value: 'not_contacted', label: 'Not contacted', variant: 'default' as const },
+  { value: 'contacted', label: 'Contacted', variant: 'info' as const },
+  { value: 'responded', label: 'Responded', variant: 'info' as const },
+  { value: 'interested', label: 'Interested', variant: 'warning' as const },
+  { value: 'onboarded', label: 'Onboarded', variant: 'success' as const },
+] as const
+
+type ReferralStatusValue = (typeof REFERRAL_STATUS_OPTIONS)[number]['value']
 
 function humanizeStage(value: string | null | undefined) {
   const normalized = clean(value)
@@ -246,6 +256,7 @@ export function BusinessGrowPage() {
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
+  const [statusUpdatingId, setStatusUpdatingId] = React.useState<string | null>(null)
 
   const lastAutoMessageRef = React.useRef('')
 
@@ -498,6 +509,39 @@ export function BusinessGrowPage() {
       setSubmitError('Could not track this invite.')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleStatusUpdate(referralId: string, status: ReferralStatusValue) {
+    setStatusUpdatingId(referralId)
+    setSubmitError(null)
+    setActionMessage(null)
+
+    try {
+      const response = await fetch('/api/business-portal/referrals', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceBusinessId: scopedBusiness.id,
+          referralId,
+          status,
+          note: `Status updated to ${status.replace(/_/g, ' ')}.`,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setSubmitError(payload.error || 'Could not update this invite.')
+        return
+      }
+
+      setActionMessage(`Invite status updated to ${status.replace(/_/g, ' ')}.`)
+      refetch({ silent: true })
+      void loadCandidates()
+    } catch {
+      setSubmitError('Could not update this invite.')
+    } finally {
+      setStatusUpdatingId(null)
     }
   }
 
@@ -929,6 +973,8 @@ export function BusinessGrowPage() {
               const createdNewLead = metadata?.created_new_business_lead === true
               const scriptTier = typeof metadata?.script_tier === 'string' ? metadata.script_tier : null
               const scriptTypeLabel = BUSINESS_REFERRAL_SCRIPT_TYPE_OPTIONS.find((option) => option.value === metadata?.script_type)?.label
+              const history = Array.isArray(metadata?.history) ? metadata.history as Array<Record<string, unknown>> : []
+              const currentStatus = REFERRAL_STATUS_OPTIONS.find((option) => option.value === referral.status)
 
               return (
                 <div key={referral.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
@@ -939,8 +985,8 @@ export function BusinessGrowPage() {
                         <Badge variant={createdNewLead ? 'warning' : 'info'}>
                           {createdNewLead ? 'New CRM lead' : 'Existing CRM business'}
                         </Badge>
-                        <Badge variant={referral.status === 'converted' ? 'success' : referral.status === 'responded' ? 'info' : 'default'}>
-                          {referral.status}
+                        <Badge variant={currentStatus?.variant || 'default'}>
+                          {currentStatus?.label || referral.status}
                         </Badge>
                       </div>
                       <p className="text-xs text-surface-500">
@@ -970,6 +1016,48 @@ export function BusinessGrowPage() {
                       {referral.message_snapshot}
                     </div>
                   ) : null}
+
+                  <div className="mt-4 rounded-xl border border-surface-200 bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Move status</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {REFERRAL_STATUS_OPTIONS.map((option) => (
+                        <Button
+                          key={option.value}
+                          type="button"
+                          variant={referral.status === option.value ? 'default' : 'outline'}
+                          size="sm"
+                          disabled={statusUpdatingId === referral.id}
+                          onClick={() => void handleStatusUpdate(referral.id, option.value)}
+                        >
+                          {statusUpdatingId === referral.id && referral.status !== option.value ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : null}
+                          {option.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-surface-200 bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Timeline</p>
+                    <div className="mt-3 space-y-3">
+                      {history.length > 0 ? history.slice().reverse().map((entry, index) => (
+                        <div key={`${referral.id}-history-${index}`} className="border-l-2 border-surface-200 pl-3">
+                          <p className="text-sm font-medium text-surface-900">
+                            {typeof entry.status === 'string' ? entry.status.replace(/_/g, ' ') : 'Updated'}
+                          </p>
+                          {typeof entry.note === 'string' && entry.note ? (
+                            <p className="mt-1 text-sm text-surface-600">{entry.note}</p>
+                          ) : null}
+                          <p className="mt-1 text-xs text-surface-400">
+                            {typeof entry.at === 'string' ? formatDateTime(entry.at) : formatDateTime(referral.created_at)}
+                          </p>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-surface-500">No timeline updates yet.</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )
             })

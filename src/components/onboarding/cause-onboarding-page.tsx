@@ -42,7 +42,6 @@ import {
   useAdminTaskInsert,
   useAdminTasks,
   useBusinesses,
-  useCauseInsert,
   useCauseUpdate,
   useCauses,
   useCampaigns,
@@ -54,8 +53,8 @@ import {
   useProfiles,
   useQrCodes,
   useStakeholderAssignments,
+  useStakeholderCodeInsert,
   useStakeholderCodes,
-  useStakeholderInsert,
   useStakeholders,
   useTasks,
 } from '@/lib/supabase/hooks'
@@ -234,9 +233,9 @@ export default function CauseOnboardingPage() {
   const { data: generatedMaterials, refetch: refetchGenerated } = useGeneratedMaterials()
   const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks()
   const { data: qrCodes, refetch: refetchQrCodes } = useQrCodes()
-  const { insert: insertCause, loading: insertingCause } = useCauseInsert()
-  const { insert: insertStakeholder, loading: creatingStakeholder } = useStakeholderInsert()
+  const [insertingCause, setInsertingCause] = React.useState(false)
   const { insert: insertAdminTask, loading: creatingAdminTask } = useAdminTaskInsert()
+  const { insert: insertStakeholderCode } = useStakeholderCodeInsert()
 
   const [addOpen, setAddOpen] = React.useState(false)
   const [form, setForm] = React.useState<CauseForm>(INITIAL_FORM)
@@ -423,24 +422,19 @@ export default function CauseOnboardingPage() {
       let stakeholder = stakeholderByCause.get(cause.id) || null
 
       if (!stakeholder) {
-        stakeholder = await insertStakeholder({
-          type: mapCauseToStakeholderType(cause),
-          name: cause.name,
-          city_id: cause.city_id,
-          owner_user_id: cause.owner_id,
-          profile_id: cause.owner_id,
-          business_id: null,
-          cause_id: cause.id,
-          organization_id: cause.organization_id,
-          status: 'pending',
-          metadata: {
-            source: 'cause_onboarding',
-            cause_type: cause.type,
-          },
+        throw new Error('The stakeholder setup record is missing. Recreate this cause from the CRM or refresh after server setup completes.')
+      }
+
+      if (!codesByStakeholder.get(stakeholder.id)) {
+        const createdCode = await insertStakeholderCode({
+          stakeholder_id: stakeholder.id,
+          referral_code: null,
+          connection_code: null,
+          join_url: null,
         })
 
-        if (!stakeholder) {
-          throw new Error('Could not create the material setup record right now.')
+        if (!createdCode) {
+          throw new Error('The setup record exists, but the empty code record could not be added.')
         }
       }
 
@@ -482,40 +476,39 @@ export default function CauseOnboardingPage() {
     setSubmitError(null)
     setFeedback(null)
 
-    const createdCause = await insertCause({
-      name: form.name.trim(),
-      type: form.type,
-      brand: form.brand,
-      stage: form.stage,
-      status: 'active',
-      owner_id: profile.id,
-      email: form.email.trim() || null,
-      phone: form.phone.trim() || null,
-      website: form.website.trim() || null,
-      city_id: form.city_id || null,
-      source: form.source.trim() || null,
-      source_detail: 'Added from cause onboarding',
-      address: null,
-      organization_id: null,
-      campaign_id: null,
-      duplicate_of: null,
-      external_id: null,
-      metadata: {
-        created_from: 'cause_onboarding',
-      },
-    })
+    setInsertingCause(true)
 
-    if (!createdCause) {
-      setSubmitError('Failed to create cause. Please try again.')
-      return
+    try {
+      const response = await fetch('/api/crm/causes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          type: form.type,
+          brand: form.brand,
+          stage: form.stage,
+          email: form.email.trim() || null,
+          phone: form.phone.trim() || null,
+          website: form.website.trim() || null,
+          city_id: form.city_id || null,
+          source: form.source.trim() || null,
+          source_detail: 'Added from cause onboarding',
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({ error: 'Failed to create cause. Please try again.' }))
+      if (!response.ok) {
+        setSubmitError(payload.error || 'Failed to create cause. Please try again.')
+        return
+      }
+
+      setAddOpen(false)
+      setForm(INITIAL_FORM)
+      setFeedback(`${payload.name || form.name.trim()} added and ready for QR/material setup.`)
+      await refreshAll()
+    } finally {
+      setInsertingCause(false)
     }
-
-    setAddOpen(false)
-    setForm(INITIAL_FORM)
-    setFeedback(`${createdCause.name} added.`)
-    await refetch({ silent: true })
-    await ensureStakeholderSetup(createdCause)
-    setFeedback(`${createdCause.name} added and ready for QR/material setup.`)
   }
 
   if (loading) {
@@ -742,7 +735,7 @@ export default function CauseOnboardingPage() {
                     taskStatus={adminTask?.status || null}
                     qrCount={causeQrCodes.length}
                     qrGeneratorHref={qrGeneratorHref}
-                    setupLoading={setupLoadingCauseId === cause.id || creatingStakeholder || creatingAdminTask}
+                    setupLoading={setupLoadingCauseId === cause.id || creatingAdminTask}
                     setupMessage={setupStatusByCause[cause.id] || null}
                     onCreateSetup={() => void ensureStakeholderSetup(cause)}
                     onStageChanged={refetch}

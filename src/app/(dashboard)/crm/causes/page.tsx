@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ONBOARDING_STAGES, BRANDS } from '@/lib/constants'
-import { useCauses, useCauseInsert, useCities } from '@/lib/supabase/hooks'
+import { useCauses, useCities } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
 import type { Cause, OnboardingStage, Brand } from '@/lib/types/database'
 
@@ -94,8 +94,8 @@ export default function CausesPage() {
   }, [filters])
 
   const { data: causes, loading, error, refetch } = useCauses(supabaseFilters)
-  const { insert, loading: inserting } = useCauseInsert()
   const { data: cities } = useCities()
+  const [inserting, setInserting] = React.useState(false)
 
   // Build city lookup for display
   const cityMap = React.useMemo(() => {
@@ -124,28 +124,41 @@ export default function CausesPage() {
     e.preventDefault()
     setSubmitError(null)
 
-    const record: Partial<Cause> = {
-      name: form.name.trim(),
-      type: form.type,
-      brand: form.brand,
-      stage: form.stage,
-      status: 'active',
-      owner_id: profile.id,
-      email: form.email.trim() || null,
-      phone: form.phone.trim() || null,
-      website: form.website.trim() || null,
-      city_id: form.city_id || null,
-      source: form.source.trim() || null,
-    }
+    setInserting(true)
 
-    const result = await insert(record)
+    try {
+      const response = await fetch('/api/crm/causes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          type: form.type,
+          brand: form.brand,
+          stage: form.stage,
+          email: form.email.trim() || null,
+          phone: form.phone.trim() || null,
+          website: form.website.trim() || null,
+          city_id: form.city_id || null,
+          source: form.source.trim() || null,
+          source_detail: 'Added from CRM causes page',
+        }),
+      })
 
-    if (result) {
+      const payload = await response.json().catch(() => ({ error: 'Failed to create cause. Please try again.' }))
+
+      if (!response.ok) {
+        setSubmitError(payload.error || 'Failed to create cause. Please try again.')
+        return
+      }
+
       setAddOpen(false)
       setForm(INITIAL_FORM)
       refetch()
-    } else {
-      setSubmitError('Failed to create cause. Please try again.')
+      if (payload?.id) {
+        router.push(`/crm/causes/${payload.id}`)
+      }
+    } finally {
+      setInserting(false)
     }
   }
 

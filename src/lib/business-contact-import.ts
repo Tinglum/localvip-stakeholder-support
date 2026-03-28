@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx'
 import { splitFullName } from '@/lib/business-portal'
 
 export const IMPORT_IGNORE = '__ignore__'
@@ -29,6 +30,16 @@ export interface ContactImportPreviewRow {
   tag: string
   isReady: boolean
   issue: string | null
+}
+
+function normalizeMatrix(matrix: unknown[][]): string[][] {
+  return matrix.map((row) =>
+    row.map((cell) => {
+      if (cell === null || cell === undefined) return ''
+      if (typeof cell === 'string') return cell.trim()
+      return String(cell).trim()
+    })
+  )
 }
 
 function countDelimiter(line: string, delimiter: string) {
@@ -173,6 +184,50 @@ export function parseContactSheet(text: string): ParsedContactSheet {
     headers,
     rows,
     delimiter,
+  }
+}
+
+export async function parseContactSpreadsheetFile(file: File): Promise<ParsedContactSheet> {
+  const lowerName = file.name.toLowerCase()
+
+  if (lowerName.endsWith('.csv') || lowerName.endsWith('.tsv') || lowerName.endsWith('.txt')) {
+    const text = await file.text()
+    return parseContactSheet(text)
+  }
+
+  const arrayBuffer = await file.arrayBuffer()
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+  const firstSheetName = workbook.SheetNames[0]
+
+  if (!firstSheetName) {
+    return { headers: [], rows: [], delimiter: 'comma' }
+  }
+
+  const sheet = workbook.Sheets[firstSheetName]
+  const matrix = normalizeMatrix(
+    XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      blankrows: false,
+      raw: false,
+      defval: '',
+    }) as unknown[][]
+  )
+
+  if (!matrix.length) {
+    return { headers: [], rows: [], delimiter: 'comma' }
+  }
+
+  const [headerRow, ...bodyRows] = matrix
+  const headerCount = headerRow.length
+  const headers = headerRow.map((header, index) => header || `Column ${index + 1}`)
+  const rows = bodyRows
+    .filter((row) => row.some((value) => value.trim().length > 0))
+    .map((row) => Array.from({ length: headerCount }, (_, index) => row[index] || ''))
+
+  return {
+    headers,
+    rows,
+    delimiter: 'comma',
   }
 }
 

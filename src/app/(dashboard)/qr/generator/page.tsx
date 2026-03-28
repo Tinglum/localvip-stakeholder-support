@@ -19,6 +19,14 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { BRANDS } from '@/lib/constants'
@@ -46,10 +54,12 @@ import {
   useMaterials,
   useBusinessUpdate,
   useQrCodes,
+  useQrCodeCollectionInsert,
+  useQrCodeCollections,
   useStakeholders,
   useStakeholderCodes,
 } from '@/lib/supabase/hooks'
-import type { Material, QrCode as QrCodeRecord, Stakeholder, StakeholderCode } from '@/lib/types/database'
+import type { Material, QrCode as QrCodeRecord, QrCodeCollection, Stakeholder, StakeholderCode } from '@/lib/types/database'
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -117,6 +127,145 @@ function getQrMetadataString(metadata: Record<string, unknown> | null | undefine
   return typeof value === 'string' ? value : ''
 }
 
+interface SavedQrTemplateLayout {
+  size: number
+  foregroundColor: string
+  backgroundColor: string
+  dotStyle: DotStyle
+  cornerStyle: CornerStyle
+  frameText: string
+  gradientType: 'none' | 'linear' | 'radial'
+  gradientColors: [string, string]
+}
+
+function readSavedQrTemplateLayout(collection: QrCodeCollection): SavedQrTemplateLayout | null {
+  const metadata = (collection.metadata as Record<string, unknown> | null) || null
+  if (metadata?.template_kind !== 'layout_template') return null
+  const layout = (metadata.layout as Record<string, unknown> | null) || null
+  if (!layout) return null
+
+  const dotStyle = layout.dotStyle
+  const cornerStyle = layout.cornerStyle
+  const gradientType = layout.gradientType
+  const gradientColors = Array.isArray(layout.gradientColors) ? layout.gradientColors : []
+
+  return {
+    size: typeof layout.size === 'number' ? layout.size : 512,
+    foregroundColor: typeof layout.foregroundColor === 'string' ? layout.foregroundColor : '#000000',
+    backgroundColor: typeof layout.backgroundColor === 'string' ? layout.backgroundColor : '#ffffff',
+    dotStyle: dotStyle === 'square' || dotStyle === 'rounded' || dotStyle === 'dots' || dotStyle === 'classy' || dotStyle === 'classy-rounded' || dotStyle === 'extra-rounded' ? dotStyle : 'square',
+    cornerStyle: cornerStyle === 'square' || cornerStyle === 'rounded' || cornerStyle === 'dots' || cornerStyle === 'extra-rounded' ? cornerStyle : 'square',
+    frameText: typeof layout.frameText === 'string' ? layout.frameText : '',
+    gradientType: gradientType === 'linear' || gradientType === 'radial' ? gradientType : 'none',
+    gradientColors: [
+      typeof gradientColors[0] === 'string' ? gradientColors[0] : '#ffffff',
+      typeof gradientColors[1] === 'string' ? gradientColors[1] : '#e2e8f0',
+    ],
+  }
+}
+
+function buildSavedQrTemplateLayout(input: {
+  size: string
+  foregroundColor: string
+  backgroundColor: string
+  dotStyle: DotStyle
+  cornerStyle: CornerStyle
+  frameText: string
+  gradientType: 'none' | 'linear' | 'radial'
+  gradientColors: [string, string]
+}): SavedQrTemplateLayout {
+  return {
+    size: Number.parseInt(input.size, 10) || 512,
+    foregroundColor: input.foregroundColor,
+    backgroundColor: input.backgroundColor,
+    dotStyle: input.dotStyle,
+    cornerStyle: input.cornerStyle,
+    frameText: input.frameText,
+    gradientType: input.gradientType,
+    gradientColors: input.gradientColors,
+  }
+}
+
+function SavedQrTemplateCard({
+  collection,
+  layout,
+  active,
+  onApply,
+}: {
+  collection: QrCodeCollection
+  layout: SavedQrTemplateLayout
+  active: boolean
+  onApply: (collection: QrCodeCollection, layout: SavedQrTemplateLayout) => void
+}) {
+  const [previewUrl, setPreviewUrl] = React.useState('')
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    async function buildPreview() {
+      const nextPreview = await generateStyledQR({
+        data: 'https://localvip.com/template-preview',
+        size: 220,
+        foregroundColor: layout.foregroundColor,
+        backgroundColor: layout.gradientType !== 'none' ? 'transparent' : layout.backgroundColor,
+        errorCorrectionLevel: 'H',
+        dotStyle: layout.dotStyle,
+        cornerStyle: layout.cornerStyle,
+        frameText: layout.frameText,
+        gradientType: layout.gradientType,
+        gradientColors: layout.gradientColors,
+      })
+
+      if (!cancelled) {
+        setPreviewUrl(nextPreview)
+      }
+    }
+
+    void buildPreview()
+
+    return () => {
+      cancelled = true
+    }
+  }, [layout])
+
+  return (
+    <button
+      type="button"
+      onClick={() => onApply(collection, layout)}
+      className={`rounded-3xl border p-4 text-left transition-colors ${
+        active
+          ? 'border-brand-400 bg-brand-50 shadow-sm'
+          : 'border-surface-200 bg-white hover:border-surface-300 hover:bg-surface-50'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-surface-900">{collection.name}</p>
+          <p className="mt-1 text-xs text-surface-500">{collection.description || 'Saved QR layout template'}</p>
+        </div>
+        <Badge variant={active ? 'info' : 'outline'}>{active ? 'Selected' : 'Saved template'}</Badge>
+      </div>
+      <div className="mt-4 flex items-center justify-center rounded-2xl border border-surface-200 bg-surface-50 p-4">
+        {previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={previewUrl} alt={`${collection.name} preview`} className="h-44 w-44 object-contain" />
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-surface-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Building preview...
+          </div>
+        )}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-surface-500">
+        <div>Dots: <span className="font-medium text-surface-700">{layout.dotStyle}</span></div>
+        <div>Corners: <span className="font-medium text-surface-700">{layout.cornerStyle}</span></div>
+        <div>Size: <span className="font-medium text-surface-700">{layout.size}px</span></div>
+        <div>Frame: <span className="font-medium text-surface-700">{layout.frameText || 'None'}</span></div>
+      </div>
+    </button>
+  )
+}
+
 // ─── Component ──────────────────────────────────────────────
 
 export default function QRGeneratorPage() {
@@ -132,6 +281,8 @@ export default function QRGeneratorPage() {
   const { data: businessesData } = useBusinesses()
   const { data: causesData } = useCauses()
   const { data: qrCodesData } = useQrCodes()
+  const { data: qrCollectionsData, refetch: refetchQrCollections } = useQrCodeCollections()
+  const { insert: insertQrCollection, loading: savingQrTemplate, error: qrTemplateSaveError } = useQrCodeCollectionInsert()
   const { data: stakeholdersData } = useStakeholders()
   const { data: stakeholderCodesData } = useStakeholderCodes()
   const { data: materialsData } = useMaterials()
@@ -187,7 +338,9 @@ export default function QRGeneratorPage() {
   }, [qrCodesData, sourceBusiness, sourceBusinessId, sourceCauseId])
   const sourceJoinUrl = React.useMemo(() => {
     if (!sourceStakeholder || !sourceCodes) return ''
-    return sourceCodes.join_url || buildStakeholderJoinUrl(sourceStakeholder.type, sourceCodes.connection_code)
+    if (sourceCodes.join_url) return sourceCodes.join_url
+    if (!sourceCodes.connection_code) return ''
+    return buildStakeholderJoinUrl(sourceStakeholder.type, sourceCodes.connection_code)
   }, [sourceCodes, sourceStakeholder])
   const sourceStakeholderProfileId = sourceStakeholder?.owner_user_id || sourceStakeholder?.profile_id || ''
 
@@ -297,6 +450,7 @@ export default function QRGeneratorPage() {
     if (typeof sizeValue === 'number' || typeof sizeValue === 'string') {
       setSize(String(sizeValue))
     }
+    setSelectedTemplateCollectionId(qr.collection_id || getQrMetadataString(metadata, 'template_collection_id') || null)
     setShowAssignments(true)
   }, [sourceBusiness, sourceCause, sourceEntityName, sourceEntityType, sourceStakeholderProfileId])
 
@@ -484,7 +638,7 @@ export default function QRGeneratorPage() {
         status: 'active',
         created_by: profile.id,
         logo_url: null,
-        collection_id: null,
+        collection_id: selectedTemplateCollectionId,
         destination_preset: null,
         metadata: {
           dot_style: dotStyle,
@@ -500,6 +654,7 @@ export default function QRGeneratorPage() {
           referral_code: sourceCodes?.referral_code || null,
           connection_code: sourceCodes?.connection_code || null,
           join_url: sourceJoinUrl || null,
+          template_collection_id: selectedTemplateCollectionId,
         },
       })
 
@@ -532,10 +687,87 @@ export default function QRGeneratorPage() {
     downloadSVG(svg, `${name || 'qr-code'}.svg`)
   }
 
+  function handleApplySavedTemplate(collection: QrCodeCollection, layout: SavedQrTemplateLayout) {
+    setSelectedTemplateCollectionId(collection.id)
+    setSize(String(layout.size))
+    setFgColor(layout.foregroundColor)
+    setBgColor(layout.backgroundColor)
+    setDotStyle(layout.dotStyle)
+    setCornerStyle(layout.cornerStyle)
+    setFrameText(layout.frameText)
+    setGradientType(layout.gradientType)
+    setGradientColor1(layout.gradientColors[0])
+    setGradientColor2(layout.gradientColors[1])
+    setTemplateGalleryOpen(false)
+    setTemplateMessage(`Applied template "${collection.name}".`)
+    setTemplateError(null)
+  }
+
+  async function handleSaveCurrentTemplate() {
+    if (!templateName.trim()) {
+      setTemplateError('Template name is required.')
+      return
+    }
+
+    setTemplateError(null)
+    setTemplateMessage(null)
+
+    const created = await insertQrCollection({
+      name: templateName.trim(),
+      description: templateDescription.trim() || null,
+      brand: brand as 'localvip' | 'hato',
+      created_by: profile.id,
+      status: 'active',
+      metadata: {
+        template_kind: 'layout_template',
+        layout: buildSavedQrTemplateLayout({
+          size,
+          foregroundColor: fgColor,
+          backgroundColor: bgColor,
+          dotStyle,
+          cornerStyle,
+          frameText,
+          gradientType,
+          gradientColors: [gradientColor1, gradientColor2],
+        }),
+        source_entity_type: sourceEntityType,
+      },
+    })
+
+    if (!created) {
+      setTemplateError(qrTemplateSaveError || 'The QR template could not be saved.')
+      return
+    }
+
+    setSelectedTemplateCollectionId(created.id)
+    setTemplateName('')
+    setTemplateDescription('')
+    setSaveTemplateOpen(false)
+    setTemplateMessage(`Saved "${created.name}" to the template gallery.`)
+    refetchQrCollections({ silent: true })
+  }
+
   // ─── Place QR on Material (canvas compositing) ──────────
   const [compositingMaterialId, setCompositingMaterialId] = React.useState<string | null>(null)
   const [materialExportMessage, setMaterialExportMessage] = React.useState<string | null>(null)
   const [materialExportError, setMaterialExportError] = React.useState<string | null>(null)
+  const [templateGalleryOpen, setTemplateGalleryOpen] = React.useState(false)
+  const [saveTemplateOpen, setSaveTemplateOpen] = React.useState(false)
+  const [templateName, setTemplateName] = React.useState('')
+  const [templateDescription, setTemplateDescription] = React.useState('')
+  const [templateMessage, setTemplateMessage] = React.useState<string | null>(null)
+  const [templateError, setTemplateError] = React.useState<string | null>(null)
+  const [selectedTemplateCollectionId, setSelectedTemplateCollectionId] = React.useState<string | null>(null)
+
+  const savedTemplates = React.useMemo(
+    () => qrCollectionsData
+      .map((collection) => ({
+        collection,
+        layout: readSavedQrTemplateLayout(collection),
+      }))
+      .filter((item): item is { collection: QrCodeCollection; layout: SavedQrTemplateLayout } => !!item.layout),
+    [qrCollectionsData],
+  )
 
   async function handlePlaceOnMaterial(material: Material) {
     if (!previewUrl) return
@@ -725,6 +957,48 @@ export default function QRGeneratorPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Layers className="h-4 w-4 text-surface-400" />
+                Saved QR Templates
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 text-sm text-surface-600">
+                Save the look of a QR once, then reuse that layout with any business, cause, or campaign destination.
+              </div>
+              {selectedTemplateCollectionId ? (
+                <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
+                  Using template:{' '}
+                  <span className="font-semibold">
+                    {savedTemplates.find((item) => item.collection.id === selectedTemplateCollectionId)?.collection.name || 'Saved layout'}
+                  </span>
+                </div>
+              ) : null}
+              {templateError ? (
+                <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+                  {templateError}
+                </div>
+              ) : null}
+              {templateMessage ? (
+                <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
+                  {templateMessage}
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={() => setTemplateGalleryOpen(true)}>
+                  <FolderOpen className="h-4 w-4" />
+                  Open Template Gallery
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setSaveTemplateOpen(true)}>
+                  <Layers className="h-4 w-4" />
+                  Save as Template
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -1340,6 +1614,51 @@ export default function QRGeneratorPage() {
                   </Button>
                 </div>
 
+                <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setTemplateError(null)
+                      setTemplateMessage(null)
+                      setTemplateGalleryOpen(true)
+                    }}
+                  >
+                    <FolderOpen className="h-3.5 w-3.5" />
+                    Open Template Gallery
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setTemplateError(null)
+                      setTemplateMessage(null)
+                      setTemplateName((current) => current || `${name || sourceEntityName || 'QR'} Template`)
+                      setTemplateDescription((current) => current || `Saved layout for ${name || sourceEntityName || 'this QR code'}.`)
+                      setSaveTemplateOpen(true)
+                    }}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Save as Template
+                  </Button>
+                </div>
+
+                {templateError && (
+                  <div className="w-full rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700">
+                    {templateError}
+                  </div>
+                )}
+                {templateMessage && (
+                  <div className="w-full rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-xs text-success-700">
+                    {templateMessage}
+                  </div>
+                )}
+                {selectedTemplateCollectionId && (
+                  <div className="w-full rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-700">
+                    Template applied from your saved gallery. New QR codes from this screen will stay linked to that template.
+                  </div>
+                )}
+
                 {/* Place on Material */}
                 {materialsWithQrZone.length > 0 && previewUrl && (
                   <div className="w-full border-t border-surface-100 pt-3">
@@ -1427,6 +1746,86 @@ export default function QRGeneratorPage() {
         </div>
       </div>
 
+      <Dialog open={templateGalleryOpen} onOpenChange={setTemplateGalleryOpen}>
+        <DialogContent className="max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>QR Template Gallery</DialogTitle>
+            <DialogDescription>
+              Choose a saved QR layout and apply it to the QR you are building right now.
+            </DialogDescription>
+          </DialogHeader>
+          {savedTemplates.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50 px-4 py-10 text-center text-sm text-surface-500">
+              No saved QR templates yet. Save your current layout first.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {savedTemplates.map((item) => (
+                <SavedQrTemplateCard
+                  key={item.collection.id}
+                  collection={item.collection}
+                  layout={item.layout}
+                  active={selectedTemplateCollectionId === item.collection.id}
+                  onApply={handleApplySavedTemplate}
+                />
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTemplateGalleryOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Save as QR Template</DialogTitle>
+            <DialogDescription>
+              Save this QR layout so you can reuse the same look with different destinations later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-surface-700">Template name</label>
+              <Input
+                value={templateName}
+                onChange={(event) => setTemplateName(event.target.value)}
+                placeholder="e.g. Business Yellow Poster"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
+              <Textarea
+                value={templateDescription}
+                onChange={(event) => setTemplateDescription(event.target.value)}
+                rows={3}
+                placeholder="Optional note about where this layout is used."
+              />
+            </div>
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 text-sm text-surface-600">
+              This saves the QR layout only: colors, styles, frame text, and size. The actual destination stays tied to the current QR you are building.
+            </div>
+            {templateError ? (
+              <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+                {templateError}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveTemplateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSaveCurrentTemplate()} disabled={savingQrTemplate || !templateName.trim()}>
+              {savingQrTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
+              Save Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Success state */}
       {generated && (
         <Card className="border-2 border-success-500 bg-success-50/30">
@@ -1468,6 +1867,7 @@ export default function QRGeneratorPage() {
           </CardContent>
         </Card>
       )}
+
     </div>
   )
 }

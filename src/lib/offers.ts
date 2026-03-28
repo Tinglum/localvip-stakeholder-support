@@ -17,9 +17,19 @@ export interface ResolvedBusinessOffer {
   isFallback: boolean
 }
 
+const STANDARD_CASHBACK_DESCRIPTION = 'This is the percentage customers receive back when they shop with you through LocalVIP.'
+
+function normalizeCashbackDescription(value: string | null | undefined) {
+  const normalized = (value || '').trim()
+  if (!normalized) return STANDARD_CASHBACK_DESCRIPTION
+  if (normalized.startsWith(STANDARD_CASHBACK_DESCRIPTION)) return STANDARD_CASHBACK_DESCRIPTION
+  return normalized
+}
+
 function toResolved(offer: Offer): ResolvedBusinessOffer {
   return {
     ...offer,
+    description: offer.offer_type === 'cashback' ? normalizeCashbackDescription(offer.description) : offer.description,
     isFallback: false,
   }
 }
@@ -54,15 +64,15 @@ export function resolveBusinessOffer(
 
   const cashbackPercent = getBusinessCashbackPercent(business)
 
-  return {
-    id: null,
-    business_id: business.id,
-    offer_type: 'cashback',
-    status: 'draft',
-    headline: portal.cashback_offer_title || 'Standard LocalVIP Cashback',
-    description: portal.cashback_offer_description || 'This is the percentage customers receive back when they shop with you through LocalVIP.',
-    value_type: 'cashback_percent',
-    value_label: `${cashbackPercent}% cashback`,
+    return {
+      id: null,
+      business_id: business.id,
+      offer_type: 'cashback',
+      status: 'draft',
+      headline: portal.cashback_offer_title || 'Standard LocalVIP Cashback',
+      description: normalizeCashbackDescription(portal.cashback_offer_description),
+      value_type: 'cashback_percent',
+      value_label: `${cashbackPercent}% cashback`,
     cashback_percent: cashbackPercent,
     starts_at: null,
     ends_at: null,

@@ -218,6 +218,167 @@ export function BusinessJoinQrCard({
     downloadSVG(svg, `${resource.joinSlug}-offer-qr.svg`)
   }
 
+  function handlePrintPoster() {
+    if (!resource || !qrPreviewUrl) return
+
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=980,height=1320')
+    if (!printWindow) return
+
+    const cityLabel = [business.address].filter(Boolean).join(' ')
+    const offerDescription = resource.offerValue || resource.offerTitle || 'Scan to claim your offer'
+    const instructions = 'Scan the QR, enter your details, and show your phone at checkout.'
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${business.name} Poster</title>
+          <style>
+            @page { size: auto; margin: 18mm; }
+            body {
+              margin: 0;
+              font-family: Arial, sans-serif;
+              color: #182033;
+              background: #ffffff;
+            }
+            .poster {
+              border: 6px solid ${BUSINESS_ACCENT_HEX};
+              border-radius: 28px;
+              overflow: hidden;
+            }
+            .hero {
+              background: linear-gradient(135deg, #fbfdd9 0%, #f6ff96 100%);
+              padding: 42px 40px 28px;
+              text-align: center;
+            }
+            .eyebrow {
+              letter-spacing: 0.28em;
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+              color: #556100;
+            }
+            .title {
+              margin: 14px 0 10px;
+              font-size: 42px;
+              line-height: 1.05;
+              font-weight: 800;
+            }
+            .subtitle {
+              font-size: 20px;
+              line-height: 1.5;
+              color: #3c4658;
+            }
+            .body {
+              display: grid;
+              grid-template-columns: 1fr 280px;
+              gap: 32px;
+              padding: 36px 40px 40px;
+              align-items: center;
+            }
+            .offer {
+              border: 2px solid #e8ecf4;
+              border-radius: 24px;
+              padding: 24px;
+              margin-bottom: 22px;
+            }
+            .offer-label {
+              letter-spacing: 0.2em;
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+              color: #556100;
+            }
+            .offer-value {
+              margin-top: 12px;
+              font-size: 30px;
+              line-height: 1.15;
+              font-weight: 800;
+            }
+            .offer-copy {
+              margin-top: 10px;
+              font-size: 18px;
+              line-height: 1.55;
+              color: #425065;
+            }
+            .instructions {
+              font-size: 18px;
+              line-height: 1.7;
+            }
+            .qr-box {
+              border: 2px dashed #d4dbe7;
+              border-radius: 28px;
+              padding: 18px;
+              text-align: center;
+            }
+            .qr-box img {
+              width: 100%;
+              max-width: 240px;
+              height: auto;
+              display: block;
+              margin: 0 auto;
+            }
+            .cta {
+              margin-top: 16px;
+              padding: 14px 16px;
+              border-radius: 16px;
+              background: ${BUSINESS_ACCENT_HEX};
+              color: #182033;
+              font-size: 18px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.08em;
+            }
+            .footer {
+              padding: 0 40px 36px;
+              font-size: 15px;
+              color: #5b6779;
+              text-align: center;
+            }
+            .url {
+              margin-top: 10px;
+              font-size: 13px;
+              word-break: break-all;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="poster">
+            <div class="hero">
+              <div class="eyebrow">Customer Capture Offer</div>
+              <div class="title">${business.name}</div>
+              <div class="subtitle">${cityLabel || 'Scan to claim this local offer today.'}</div>
+            </div>
+            <div class="body">
+              <div>
+                <div class="offer">
+                  <div class="offer-label">Show this at checkout</div>
+                  <div class="offer-value">${resource.offerTitle}</div>
+                  <div class="offer-copy">${offerDescription}</div>
+                </div>
+                <div class="instructions">${instructions}</div>
+              </div>
+              <div class="qr-box">
+                <img src="${qrPreviewUrl}" alt="${business.name} QR code" />
+                <div class="cta">${resource.qrAppearance.frameText || 'Get my offer'}</div>
+              </div>
+            </div>
+            <div class="footer">
+              Scan, register, and keep the claim screen open until your offer is redeemed.
+              <div class="url">${resource.displayUrl}</div>
+            </div>
+          </div>
+          <script>
+            window.onload = function () {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
+
   async function handleSaveAppearance() {
     if (!appearanceDraft || !resource) return
 
@@ -389,7 +550,7 @@ export function BusinessJoinQrCard({
                 <Download className="h-4 w-4" />
                 Download SVG
               </Button>
-              <Button variant="outline" className={BUSINESS_ACCENT_OUTLINE_BUTTON_CLASS} disabled>
+              <Button variant="outline" className={BUSINESS_ACCENT_OUTLINE_BUTTON_CLASS} onClick={handlePrintPoster} disabled={!resource || !qrPreviewUrl}>
                 <Printer className="h-4 w-4" />
                 Print Poster
               </Button>

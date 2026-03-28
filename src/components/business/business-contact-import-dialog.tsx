@@ -21,6 +21,7 @@ import {
   type BusinessContactImportField,
   type ContactImportMapping,
   IMPORT_IGNORE,
+  parseContactSpreadsheetFile,
   parseContactSheet,
 } from '@/lib/business-contact-import'
 
@@ -131,9 +132,34 @@ export function BusinessContactImportDialog({
     const file = event.target.files?.[0]
     if (!file) return
 
-    const text = await file.text()
-    setRawInput(text)
-    buildPreview(text, file.name)
+    try {
+      const parsedSheet = await parseContactSpreadsheetFile(file)
+      setParseError(null)
+      setImportError(null)
+      setSourceLabel(file.name)
+
+      if (!parsedSheet.headers.length || !parsedSheet.rows.length) {
+        setParsedHeaders([])
+        setParsedRows([])
+        setMapping({
+          name: IMPORT_IGNORE,
+          first_name: IMPORT_IGNORE,
+          last_name: IMPORT_IGNORE,
+          phone: IMPORT_IGNORE,
+          email: IMPORT_IGNORE,
+          tag: IMPORT_IGNORE,
+        })
+        setParseError('Add a header row plus at least one contact row to preview this import.')
+        return
+      }
+
+      setParsedHeaders(parsedSheet.headers)
+      setParsedRows(parsedSheet.rows)
+      setMapping(autoMapContactColumns(parsedSheet.headers))
+      setRawInput('')
+    } catch {
+      setParseError('That file could not be read. Try Excel, CSV, TSV, or paste your sheet directly.')
+    }
   }
 
   const handlePreview = () => {
@@ -216,19 +242,19 @@ export function BusinessContactImportDialog({
               <div className="flex flex-wrap items-center gap-3">
                 <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
                   <Upload className="h-4 w-4" />
-                  Upload CSV
+                  Upload file
                 </Button>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"
+                  accept=".xlsx,.xls,.csv,.tsv,.txt,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values"
                   className="hidden"
                   onChange={handleFileChange}
                 />
                 {sourceLabel && <span className="text-sm text-surface-500">{sourceLabel}</span>}
               </div>
               <p className="mt-3 text-sm leading-6 text-surface-500">
-                Best input format: headers named <span className="font-medium text-surface-800">Name</span>, <span className="font-medium text-surface-800">Phone</span>, <span className="font-medium text-surface-800">Email</span>, and <span className="font-medium text-surface-800">Tag</span>. If your sheet uses <span className="font-medium text-surface-800">First Name</span> and <span className="font-medium text-surface-800">Last Name</span> instead of a single name column, we can handle that too.
+                Upload an Excel, CSV, TSV, or text file here, or paste rows directly from Excel or Google Sheets below. Best headers are <span className="font-medium text-surface-800">Name</span>, <span className="font-medium text-surface-800">Phone</span>, <span className="font-medium text-surface-800">Email</span>, and <span className="font-medium text-surface-800">Tag</span>. If your sheet uses <span className="font-medium text-surface-800">First Name</span> and <span className="font-medium text-surface-800">Last Name</span> instead of one name column, we handle that too.
               </p>
             </div>
 
