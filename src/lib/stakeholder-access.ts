@@ -60,6 +60,7 @@ const BUSINESS_NAV_ITEMS: NavItem[] = [
   { label: 'My Business', href: '/portal/business', icon: 'Store', minLevel: 0 },
   { label: 'My 100 List', href: '/portal/clients', icon: 'Users', minLevel: 0 },
   { label: 'Grow with Other Businesses', href: '/portal/grow', icon: 'Megaphone', minLevel: 0 },
+  { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', minLevel: 0 },
   { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
   { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', minLevel: 0 },
 ]
@@ -340,6 +341,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
       '/portal/business',
       '/portal/clients',
       '/portal/grow',
+      '/portal/templates',
       '/portal/activity',
       '/materials/mine',
     ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))

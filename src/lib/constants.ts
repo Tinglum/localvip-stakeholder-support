@@ -87,6 +87,7 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'Share', href: '/community/share', icon: 'Megaphone', description: 'Grow your supporter base' },
     { label: 'Activity', href: '/community/activity', icon: 'BarChart3', description: 'Track supporter growth' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Community mobilization materials' },
+    { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', description: 'Browse and add templates' },
   ],
   business: [
     { label: 'Setup', href: '/portal/setup', icon: 'Rocket', description: 'Complete your business setup' },
@@ -94,6 +95,7 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'My 100 List', href: '/portal/clients', icon: 'Users', description: 'Build your supporter list' },
     { label: 'Grow with Other Businesses', href: '/portal/grow', icon: 'Megaphone', description: 'Invite nearby businesses' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Customer-facing materials only' },
+    { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', description: 'Browse and add templates' },
     { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', description: 'Track invites and joins' },
   ],
   field: [

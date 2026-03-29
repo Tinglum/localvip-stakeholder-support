@@ -314,7 +314,12 @@ export async function generateMaterialsForStakeholder(
 
   const context = await buildStakeholderMaterialContext(supabase, stakeholder, codes)
   const qrCode = await ensureStakeholderQrCode(supabase, context, actorId)
-  const templates = await getTemplatesForStakeholder(supabase, stakeholder.type, options?.templateId)
+  const templates = await getTemplatesForStakeholder(supabase, stakeholder.type, options?.templateId, {
+    tier: 'auto',
+    cityId: stakeholder.city_id,
+    campaignId: context.business?.campaign_id || context.cause?.campaign_id || null,
+    businessCategory: context.business?.category || null,
+  })
 
   const results: GeneratedMaterial[] = []
   const failures: Array<{ templateId: string; templateName: string; error: string }> = []
@@ -521,6 +526,8 @@ async function generateOneMaterial(
         generation_status: 'generated',
         generation_error: null,
         generated_at: new Date().toISOString(),
+        template_version: template.version || 1,
+        is_outdated: false,
         metadata: {
           qr_code_id: qrCode.id,
           redirect_url: qrCode.redirect_url,
@@ -727,13 +734,21 @@ async function getTemplatesForStakeholder(
   supabase: ServiceSupabaseClient,
   stakeholderType: StakeholderType,
   templateId?: string,
+  options?: {
+    tier?: 'auto' | 'assignable' | 'selfserve'
+    cityId?: string | null
+    campaignId?: string | null
+    businessCategory?: string | null
+  },
 ) {
+  const tier = options?.tier || 'auto'
   const syncedAssetTemplates = await syncMaterialAssetTemplatesForStakeholder(supabase, stakeholderType, templateId)
   let query = supabase
     .from('material_templates')
     .select('*')
     .eq('is_active', true)
     .neq('template_type', 'material_asset')
+    .contains('tiers', [tier])
 
   if (templateId) query = query.eq('id', templateId)
 
@@ -742,19 +757,36 @@ async function getTemplatesForStakeholder(
 
   const combined = [...((data || []) as MaterialTemplate[]), ...syncedAssetTemplates]
   const uniqueTemplates = combined.filter((template, index, array) => array.findIndex((item) => item.id === template.id) === index)
-  const filteredTemplates = uniqueTemplates.filter((template) =>
-    template.stakeholder_types.length === 0
-    || template.stakeholder_types.includes(stakeholderType)
-    || (stakeholderType === 'cause' && template.stakeholder_types.includes('community'))
-    || (stakeholderType === 'school' && template.stakeholder_types.includes('community'))
-  )
 
-  if (filteredTemplates.length > 0) {
-    return filteredTemplates
+  // Filter by stakeholder type — require explicit match, no empty = all
+  const typeFiltered = uniqueTemplates.filter((template) => {
+    if (template.stakeholder_types.length === 0) return true
+    if (template.stakeholder_types.includes(stakeholderType)) return true
+    if (stakeholderType === 'cause' && template.stakeholder_types.includes('community')) return true
+    if (stakeholderType === 'school' && template.stakeholder_types.includes('community')) return true
+    return false
+  })
+
+  // Filter by scope (city, campaign, category) for auto-generation
+  const scopeFiltered = tier === 'auto' ? typeFiltered.filter((template) => {
+    if (template.scope_global) return true
+    const cityMatch = !template.scope_cities?.length || (options?.cityId && template.scope_cities.includes(options.cityId))
+    const campaignMatch = !template.scope_campaigns?.length || (options?.campaignId && template.scope_campaigns.includes(options.campaignId))
+    const categoryMatch = !template.scope_categories?.length || (options?.businessCategory && template.scope_categories.includes(options.businessCategory))
+    return cityMatch && campaignMatch && categoryMatch
+  }) : typeFiltered
+
+  if (scopeFiltered.length > 0) {
+    return scopeFiltered
   }
 
-  const fallbackTemplate = await ensureFallbackTemplateForStakeholderType(supabase, stakeholderType)
-  return [fallbackTemplate]
+  // Only fall back for auto tier
+  if (tier === 'auto') {
+    const fallbackTemplate = await ensureFallbackTemplateForStakeholderType(supabase, stakeholderType)
+    return [fallbackTemplate]
+  }
+
+  return []
 }
 
 async function ensureFallbackTemplateForStakeholderType(
@@ -865,6 +897,12 @@ async function ensureFallbackTemplateForStakeholderType(
       library_folder: selected.libraryFolder,
       qr_position_json: DEFAULT_QR_POSITION,
       is_active: true,
+      tiers: ['auto'],
+      version: 1,
+      scope_global: true,
+      scope_cities: [],
+      scope_campaigns: [],
+      scope_categories: [],
       created_by: null,
       metadata: {
         eyebrow: selected.eyebrow,

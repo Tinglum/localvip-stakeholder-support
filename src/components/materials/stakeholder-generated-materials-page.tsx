@@ -1,12 +1,14 @@
 'use client'
 
 import * as React from 'react'
-import { Download, Eye, FolderOpen, Search } from 'lucide-react'
+import { AlertTriangle, Download, Eye, FolderOpen, RefreshCw, Search } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { MaterialEditDialog } from '@/components/materials/material-edit-dialog'
 import { PageHeader } from '@/components/ui/page-header'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
@@ -42,12 +44,14 @@ function resolveCurrentStakeholder(profile: ReturnType<typeof useAuth>['profile'
 export function StakeholderGeneratedMaterialsPage() {
   const { profile, shell, isAdmin } = useAuth()
   const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
-  const { data: generatedMaterials, loading: generatedLoading } = useGeneratedMaterials()
+  const { data: generatedMaterials, loading: generatedLoading, refetch: refetchGenerated } = useGeneratedMaterials()
   const { data: materials, loading: materialsLoading, refetch } = useMaterials()
   const [search, setSearch] = React.useState('')
   const [selectedFolder, setSelectedFolder] = React.useState<MaterialLibraryFolder | 'all'>('all')
   const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
   const [editingMaterial, setEditingMaterial] = React.useState<Material | null>(null)
+  const [updatingId, setUpdatingId] = React.useState<string | null>(null)
+  const [confirmUpdate, setConfirmUpdate] = React.useState<{ generated: GeneratedMaterial; material: Material } | null>(null)
 
   const stakeholder = React.useMemo(
     () => resolveCurrentStakeholder(profile, stakeholders),
@@ -89,6 +93,32 @@ export function StakeholderGeneratedMaterialsPage() {
     }
     return map
   }, [filtered])
+
+  const outdatedCount = linkedGenerated.filter(({ generated }) => generated.is_outdated).length
+
+  async function handleAcceptUpdate(generatedId: string) {
+    setUpdatingId(generatedId)
+    setConfirmUpdate(null)
+    try {
+      const res = await fetch('/api/portal/accept-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generatedMaterialId: generatedId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update material.')
+        return
+      }
+      toast.success('Material updated to the latest version.')
+      refetchGenerated({ silent: true })
+      refetch({ silent: true })
+    } catch {
+      toast.error('Something went wrong. Please try again.')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
 
   const loading = stakeholdersLoading || generatedLoading || materialsLoading
 
@@ -151,6 +181,24 @@ export function StakeholderGeneratedMaterialsPage() {
         }}
       />
 
+      <Dialog open={!!confirmUpdate} onOpenChange={(open) => { if (!open) setConfirmUpdate(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Material</DialogTitle>
+            <DialogDescription>
+              A newer version of the template for &ldquo;{confirmUpdate?.material.title}&rdquo; is available.
+              Accepting will regenerate this material with the latest template design while keeping your QR code.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmUpdate(null)}>Cancel</Button>
+            <Button onClick={() => confirmUpdate && handleAcceptUpdate(confirmUpdate.generated.id)}>
+              Accept Update
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Card className="overflow-hidden border-surface-200">
         <div className="bg-gradient-to-r from-brand-50 via-white to-lime-50 px-6 py-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -169,6 +217,20 @@ export function StakeholderGeneratedMaterialsPage() {
           </div>
         </div>
       </Card>
+
+      {outdatedCount > 0 && (
+        <div className="flex items-center gap-3 rounded-2xl border border-warning-200 bg-warning-50 px-5 py-4">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-warning-600" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-warning-800">
+              {outdatedCount} material{outdatedCount !== 1 ? 's have' : ' has'} an update available
+            </p>
+            <p className="mt-0.5 text-xs text-warning-600">
+              A newer version of the template is available. Review and accept the update to get the latest design.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1 max-w-sm">
@@ -240,6 +302,9 @@ export function StakeholderGeneratedMaterialsPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="success">{getAudienceLabel(customTags.length > 0 ? customTags : generated.tags)}</Badge>
                             <Badge variant="info">{folderMeta.label}</Badge>
+                            {generated.is_outdated && (
+                              <Badge variant="warning">Update available</Badge>
+                            )}
                           </div>
                           {(visibilityLabels.length > 0 || subtypeLabels.length > 0 || customTags.length > 0) && (
                             <div className="flex flex-wrap gap-1.5">
@@ -265,6 +330,17 @@ export function StakeholderGeneratedMaterialsPage() {
                             <span>Ready</span>
                           </div>
                           <div className="flex gap-2">
+                            {generated.is_outdated && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setConfirmUpdate({ generated, material: material! })}
+                                disabled={updatingId === generated.id}
+                              >
+                                <RefreshCw className={`h-3.5 w-3.5 ${updatingId === generated.id ? 'animate-spin' : ''}`} />
+                                {updatingId === generated.id ? 'Updating...' : 'Accept Update'}
+                              </Button>
+                            )}
                             <Button variant="outline" size="sm" onClick={() => setPreviewMaterial(material)}>
                               <Eye className="h-3.5 w-3.5" /> Preview
                             </Button>

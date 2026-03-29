@@ -480,6 +480,8 @@ export interface StakeholderCode {
   updated_at: string
 }
 
+export type TemplateTier = 'auto' | 'assignable' | 'selfserve'
+
 export interface MaterialTemplate {
   id: string
   name: string
@@ -491,6 +493,12 @@ export interface MaterialTemplate {
   library_folder: MaterialLibraryFolder
   qr_position_json: Record<string, unknown>
   is_active: boolean
+  tiers: TemplateTier[]
+  version: number
+  scope_global: boolean
+  scope_cities: string[]
+  scope_campaigns: string[]
+  scope_categories: string[]
   created_by: string | null
   metadata: Record<string, unknown> | null
   created_at: string
@@ -509,6 +517,9 @@ export interface GeneratedMaterial {
   generation_status: GeneratedMaterialStatus
   generation_error: string | null
   generated_at: string | null
+  template_version: number
+  is_outdated: boolean
+  user_accepted: boolean
   updated_at: string
   metadata: Record<string, unknown> | null
 }

@@ -75,7 +75,15 @@
       "Bash(taskkill //PID 253596 //F)",
       "Bash(npx kill-port:*)",
       "Bash(taskkill //F //FI \"WINDOWTITLE eq next*\")",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(python3 -c \":*)",
+      "Bash(ls /c/Python*/python.exe /c/Users/kenne/AppData/Local/Programs/Python/*/python.exe)",
+      "Bash(command -v node)",
+      "Bash(FPATH=\"/c/Users/kenne/.claude/projects/C--Users-kenne-Downloads-OnboardingLocalvip/1bc24205-5ee3-40f0-abaa-1f41328b189b.jsonl\")",
+      "Bash(ls /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/portal/)",
+      "Bash(grep -r \"setInterval\\\\|setTimeout\\\\|cron\\\\|queue\\\\|BullMQ\\\\|Inngest\\\\|trigger\" /c/Users/kenne/Downloads/OnboardingLocalvip/src --include=*.ts --include=*.tsx -l)",
+      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip -name *.sql -o -name *migration* -o -name *schema*)",
+      "Bash(grep -r \"webhook\\\\|queue\\\\|trigger\\\\|edge function\\\\|cron\\\\|scheduled\" /c/Users/kenne/Downloads/OnboardingLocalvip/src --include=*.ts --include=*.json)"
     ]
   }
 }

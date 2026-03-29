@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowLeft, Download, Eye, QrCode, RefreshCw, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Download, Eye, QrCode, RefreshCw, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -234,6 +234,11 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
             <p className="mt-2 text-3xl font-semibold text-surface-900">
               {generatedRows.filter((item) => item.generation_status === 'generated').length}
             </p>
+            {generatedRows.filter((item) => item.is_outdated).length > 0 && (
+              <p className="mt-1 text-xs text-warning-600">
+                {generatedRows.filter((item) => item.is_outdated).length} outdated
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -367,6 +372,12 @@ export function MaterialEngineStakeholderDetailPage({ stakeholderId }: { stakeho
                         <Badge variant={badgeForStatus(generated.generation_status) as 'default' | 'info' | 'success' | 'warning' | 'danger'}>
                           {generated.generation_status}
                         </Badge>
+                        {generated.is_outdated && (
+                          <Badge variant="warning">
+                            <AlertTriangle className="mr-1 h-3 w-3" /> Outdated
+                          </Badge>
+                        )}
+                        <span className="text-xs text-surface-400">v{generated.template_version}</span>
                       </div>
                       <p className="text-sm text-surface-500">
                         {getMaterialLibraryFolderMeta(generated.library_folder).label}
