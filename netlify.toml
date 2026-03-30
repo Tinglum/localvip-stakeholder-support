@@ -5,6 +5,10 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Include native binary modules in serverless functions
+[functions]
+  included_files = ["node_modules/@napi-rs/canvas/**"]
+
 # Plugin runs on Netlify's Linux servers but fails locally on Windows
 [[plugins]]
   package = "@netlify/plugin-nextjs"

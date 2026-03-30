@@ -10,6 +10,8 @@ const nextConfig = {
     ],
   },
   trailingSlash: false,
+  // Ensure native modules are bundled for serverless (Netlify)
+  serverExternalPackages: ['@napi-rs/canvas', 'pdfjs-dist'],
 }
 
 module.exports = nextConfig
