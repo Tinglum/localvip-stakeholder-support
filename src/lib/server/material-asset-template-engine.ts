@@ -202,7 +202,16 @@ async function renderImageSourceMaterial(
   qrDataUrl: string,
   placements: QrPlacement[],
 ) {
-  const { createCanvas, loadImage } = getRuntimeCanvasModule()
+  let canvasModule: RuntimeCanvasModule
+  try {
+    canvasModule = getRuntimeCanvasModule()
+  } catch {
+    throw new Error(
+      `Image-based material "${material.title}" requires @napi-rs/canvas which is not available in this environment. `
+      + `Upload the source material as a PDF instead — PDF rendering works everywhere.`
+    )
+  }
+  const { createCanvas, loadImage } = canvasModule
   const sourceBytes = await fetchFileBytes(material.file_url!)
   const sourceImage = await loadImage(sourceBytes)
   const qrImage = await loadImage(qrDataUrl)
@@ -210,7 +219,15 @@ async function renderImageSourceMaterial(
   const context = canvas.getContext('2d')
 
   context.drawImage(sourceImage, 0, 0, sourceImage.width, sourceImage.height)
-  drawQrPlacementsOnCanvas(context, qrImage, placements, canvas.width, canvas.height, 1)
+
+  placements
+    .filter((p) => p.page === 1)
+    .forEach((placement) => {
+      const qrSize = (placement.size / 100) * canvas.width
+      const qrX = (placement.x / 100) * canvas.width - qrSize / 2
+      const qrY = (placement.y / 100) * canvas.height - qrSize / 2
+      context.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
+    })
 
   return new Uint8Array(canvas.toBuffer('image/png'))
 }
@@ -220,87 +237,53 @@ async function renderPdfSourceMaterial(
   qrDataUrl: string,
   placements: QrPlacement[],
 ) {
-  const pdfjs = await loadPdfJsServerModule()
-  const { createCanvas, loadImage, PDFDocument } = getRuntimeCanvasModule()
+  const { PDFDocument } = await import('pdf-lib')
   const sourceBytes = await fetchFileBytes(material.file_url!)
-  const qrImage = await loadImage(qrDataUrl)
-  const pdfDocument = await pdfjs.getDocument({ data: sourceBytes, disableWorker: true } as any).promise
-  const output = new PDFDocument({
-    title: material.title,
-    author: 'LocalVIP Material Engine',
-    creator: 'LocalVIP Material Engine',
-    producer: 'LocalVIP Material Engine',
-    rasterDPI: 144,
-    encodingQuality: 101,
-    compressionLevel: 6,
-  })
+  const pdfDoc = await PDFDocument.load(sourceBytes)
 
-  try {
-    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
-      const page = await pdfDocument.getPage(pageNumber)
-      const baseViewport = page.getViewport({ scale: 1 })
-      const scale = renderScaleForPage(baseViewport.width, baseViewport.height)
-      const viewport = page.getViewport({ scale })
-      const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height))
-      const context = canvas.getContext('2d')
-      const canvasFactory = buildNodeCanvasFactory(createCanvas)
+  // Convert the QR data URL to a PNG image embeddable in the PDF
+  const qrPngBytes = dataUrlToBytes(qrDataUrl)
+  const qrImage = await pdfDoc.embedPng(qrPngBytes)
 
-      await page.render({
-        canvasContext: context,
-        viewport,
-        canvasFactory,
-      } as any).promise
+  const pages = pdfDoc.getPages()
+  for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+    const page = pages[pageIndex]
+    const pageNumber = pageIndex + 1
+    const { width: pageWidth, height: pageHeight } = page.getSize()
 
-      drawQrPlacementsOnCanvas(context, qrImage, placements, canvas.width, canvas.height, pageNumber)
+    const pagePlacements = placements.filter((p) => p.page === pageNumber)
+    for (const placement of pagePlacements) {
+      const qrSize = (placement.size / 100) * pageWidth
+      const qrX = (placement.x / 100) * pageWidth - qrSize / 2
+      // pdf-lib uses bottom-left origin, so flip Y
+      const qrY = pageHeight - ((placement.y / 100) * pageHeight) - qrSize / 2
 
-      const pageImage = await loadImage(canvas.toBuffer('image/png'))
-      const pdfContext = output.beginPage(baseViewport.width, baseViewport.height)
-      pdfContext.drawImage(pageImage, 0, 0, baseViewport.width, baseViewport.height)
-      output.endPage()
+      page.drawImage(qrImage, {
+        x: qrX,
+        y: qrY,
+        width: qrSize,
+        height: qrSize,
+      })
     }
-  } finally {
-    await pdfDocument.destroy()
   }
 
-  return new Uint8Array(output.close())
+  pdfDoc.setTitle(material.title)
+  pdfDoc.setAuthor('LocalVIP Material Engine')
+  pdfDoc.setCreator('LocalVIP Material Engine')
+  pdfDoc.setProducer('LocalVIP Material Engine')
+
+  return new Uint8Array(await pdfDoc.save())
 }
 
-function drawQrPlacementsOnCanvas(
-  context: any,
-  qrImage: { width: number; height: number },
-  placements: QrPlacement[],
-  canvasWidth: number,
-  canvasHeight: number,
-  pageNumber: number,
-) {
-  placements
-    .filter((placement) => placement.page === pageNumber)
-    .forEach((placement) => {
-      const qrSize = (placement.size / 100) * canvasWidth
-      const qrX = (placement.x / 100) * canvasWidth - qrSize / 2
-      const qrY = (placement.y / 100) * canvasHeight - qrSize / 2
-      context.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
-    })
-}
-
-function buildNodeCanvasFactory(createCanvas: RuntimeCanvasModule['createCanvas']) {
-  return {
-    create: (width: number, height: number) => {
-      const canvas = createCanvas(width, height)
-      const context = canvas.getContext('2d')
-      return { canvas, context }
-    },
-    reset: (canvasAndContext: { canvas: { width: number; height: number } }, width: number, height: number) => {
-      canvasAndContext.canvas.width = width
-      canvasAndContext.canvas.height = height
-    },
-    destroy: (_canvasAndContext: unknown) => undefined,
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const separatorIndex = dataUrl.indexOf(',')
+  if (separatorIndex === -1) throw new Error('Invalid data URL for QR image.')
+  const header = dataUrl.slice(0, separatorIndex)
+  const dataPart = dataUrl.slice(separatorIndex + 1)
+  if (header.includes(';base64')) {
+    return new Uint8Array(Buffer.from(dataPart, 'base64'))
   }
-}
-
-function renderScaleForPage(width: number, height: number) {
-  const longestSide = Math.max(width, height)
-  return Math.min(3, Math.max(2, 2200 / longestSide))
+  return new Uint8Array(Buffer.from(decodeURIComponent(dataPart), 'utf8'))
 }
 
 async function fetchFileBytes(url: string) {
@@ -335,19 +318,4 @@ function decodeDataUrl(value: string) {
 function getRuntimeCanvasModule(): RuntimeCanvasModule {
   const runtimeRequire = eval('require') as (id: string) => unknown
   return runtimeRequire('@napi-rs/canvas') as RuntimeCanvasModule
-}
-
-async function loadPdfJsServerModule() {
-  const canvasModule = getRuntimeCanvasModule()
-  if (canvasModule.DOMMatrix && typeof (globalThis as any).DOMMatrix === 'undefined') {
-    ;(globalThis as any).DOMMatrix = canvasModule.DOMMatrix
-  }
-  if (canvasModule.ImageData && typeof (globalThis as any).ImageData === 'undefined') {
-    ;(globalThis as any).ImageData = canvasModule.ImageData
-  }
-  if (canvasModule.Path2D && typeof (globalThis as any).Path2D === 'undefined') {
-    ;(globalThis as any).Path2D = canvasModule.Path2D
-  }
-
-  return import('pdfjs-dist/legacy/build/pdf.mjs')
 }

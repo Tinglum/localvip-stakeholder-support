@@ -34,6 +34,7 @@
     "date-fns": "^3.6.0",
     "lucide-react": "^0.400.0",
     "next": "^14.2.0",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.5.207",
     "qr-code-styling": "^1.9.2",
     "qrcode": "^1.5.4",
