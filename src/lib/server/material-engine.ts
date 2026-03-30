@@ -1013,7 +1013,14 @@ async function ensureStakeholderQrCode(
   const purpose = getQrPurposeForStakeholderType(context.stakeholder.type)
   const stakeholderProfileId = await resolveStakeholderQrProfileId(supabase, context.stakeholder)
   const existing = await getStakeholderQrCode(supabase, context.stakeholder, purpose, stakeholderProfileId)
-  const redirectShortCode = await ensureUniqueShortCode(supabase, context.codes.referral_code, existing?.short_code || null)
+  // Always use connection code as the redirect short code so the QR URL matches the join URL
+  const connectionCode = normalizeStakeholderCode(context.codes.connection_code || '')
+  const existingMatchesConnection = existing?.short_code === connectionCode
+  const redirectShortCode = await ensureUniqueShortCode(
+    supabase,
+    context.codes.connection_code,
+    existingMatchesConnection ? existing?.short_code || null : null,
+  )
   const redirectUrl = `${getMaterialEngineBaseUrl()}/r/${redirectShortCode}`
 
   const payload = {
