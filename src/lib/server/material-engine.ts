@@ -35,6 +35,14 @@ import type {
 
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>
 
+/** Extract a meaningful error message from any thrown value (Error, Supabase PostgrestError, or unknown). */
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object' && 'message' in error) return String((error as any).message)
+  if (typeof error === 'string') return error
+  return fallback
+}
+
 interface StakeholderMaterialContext {
   stakeholder: Stakeholder
   codes: StakeholderCode
@@ -275,7 +283,7 @@ export async function upsertStakeholderCodesAndGenerate(
       generationError: null,
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Material generation failed.'
+    const message = extractErrorMessage(error, 'Material generation failed (unknown error).')
     await updateAdminTaskStatus(supabase, stakeholder.id, 'failed', {
       referral_code: referralCode,
       connection_code: connectionCode,
@@ -285,14 +293,8 @@ export async function upsertStakeholderCodesAndGenerate(
       attempted_at: new Date().toISOString(),
     })
 
-    return {
-      stakeholder,
-      codes: savedCodes,
-      generatedMaterials: [],
-      failures: [],
-      generationStatus: 'failed' as const,
-      generationError: message,
-    }
+    // Re-throw so the caller (API route) gets the detailed message
+    throw new Error(`Codes saved, but material generation failed: ${message}`)
   }
 }
 
@@ -321,6 +323,17 @@ export async function generateMaterialsForStakeholder(
     businessCategory: context.business?.category || null,
   })
 
+  if (templates.length === 0) {
+    const msg = options?.templateId
+      ? `No active template found with id "${options.templateId}" for stakeholder type "${stakeholder.type}".`
+      : `No active auto-generation templates found for stakeholder type "${stakeholder.type}". Create one in the Template Engine.`
+    await updateAdminTaskStatus(supabase, stakeholder.id, 'failed', {
+      error: msg,
+      attempted_at: new Date().toISOString(),
+    })
+    throw new Error(msg)
+  }
+
   const results: GeneratedMaterial[] = []
   const failures: Array<{ templateId: string; templateName: string; error: string }> = []
 
@@ -329,7 +342,7 @@ export async function generateMaterialsForStakeholder(
       const generated = await generateOneMaterial(supabase, context, qrCode, template, actorId)
       results.push(generated)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Material generation failed.'
+      const message = extractErrorMessage(error, `Generation failed for template "${template.name}"`)
       try {
         const generated = await generateEmergencyFallbackMaterial(
           supabase,
@@ -343,26 +356,40 @@ export async function generateMaterialsForStakeholder(
         failures.push({
           templateId: template.id,
           templateName: template.name,
-          error: `${message} A simplified fallback asset was generated instead.`,
+          error: `${message} — A simplified SVG fallback was generated instead.`,
         })
       } catch (fallbackError) {
-        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : message
-        failures.push({ templateId: template.id, templateName: template.name, error: fallbackMessage })
-        await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, fallbackMessage)
+        const fallbackMessage = extractErrorMessage(fallbackError, message)
+        failures.push({
+          templateId: template.id,
+          templateName: template.name,
+          error: `Primary: ${message} | Fallback also failed: ${fallbackMessage}`,
+        })
+        await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, `Primary: ${message} | Fallback: ${fallbackMessage}`)
       }
     }
   }
 
+  const status = failures.length > 0 && results.length === 0 ? 'failed' : 'generated'
+
   await updateAdminTaskStatus(
     supabase,
     stakeholder.id,
-    failures.length > 0 && results.length === 0 ? 'failed' : 'generated',
+    status,
     {
       generated_count: results.length,
+      failure_count: failures.length,
       failures,
       generated_at: new Date().toISOString(),
     },
   )
+
+  if (status === 'failed') {
+    throw new Error(
+      `Material generation failed for all ${failures.length} template(s). `
+      + failures.map((f) => `[${f.templateName}]: ${f.error}`).join(' | ')
+    )
+  }
 
   return {
     stakeholder,
@@ -744,35 +771,23 @@ async function getTemplatesForStakeholder(
   const tier = options?.tier || 'auto'
   const syncedAssetTemplates = await syncMaterialAssetTemplatesForStakeholder(supabase, stakeholderType, templateId)
 
-  // Try with tier filter first; fall back to unfiltered if `tiers` column is missing (migration not yet applied)
-  let data: unknown[] | null = null
-  let tieredQuery = supabase
+  let query = supabase
     .from('material_templates')
     .select('*')
     .eq('is_active', true)
     .neq('template_type', 'material_asset')
     .contains('tiers', [tier])
 
-  if (templateId) tieredQuery = tieredQuery.eq('id', templateId)
+  if (templateId) query = query.eq('id', templateId)
 
-  const tieredResult = await tieredQuery.order('created_at', { ascending: true })
+  const { data, error } = await query.order('created_at', { ascending: true })
 
-  if (tieredResult.error) {
-    // Column may not exist yet — fall back to query without tier filter
-    console.warn('Template tier query failed, falling back to unfiltered:', tieredResult.error.message)
-    let fallbackQuery = supabase
-      .from('material_templates')
-      .select('*')
-      .eq('is_active', true)
-      .neq('template_type', 'material_asset')
-
-    if (templateId) fallbackQuery = fallbackQuery.eq('id', templateId)
-
-    const fallbackResult = await fallbackQuery.order('created_at', { ascending: true })
-    if (fallbackResult.error) throw fallbackResult.error
-    data = fallbackResult.data
-  } else {
-    data = tieredResult.data
+  if (error) {
+    throw new Error(
+      `Template query failed: ${error.message}. `
+      + `This likely means the migration "20260329100000_template_tiers_and_versioning.sql" has not been applied. `
+      + `Run it in the Supabase SQL Editor.`
+    )
   }
 
   const combined = [...((data || []) as MaterialTemplate[]), ...syncedAssetTemplates]
@@ -906,62 +921,44 @@ async function ensureFallbackTemplateForStakeholderType(
   }
 
   const selected = fallbackMap[stakeholderType] || fallbackMap.business
-  const basePayload: Record<string, unknown> = {
-    name: fallbackName,
-    source_path: null,
-    template_type: 'structured',
-    output_format: 'pdf',
-    audience_tags: selected.audienceTags,
-    stakeholder_types: stakeholderType === 'school' ? ['school', 'community'] : stakeholderType === 'cause' ? ['cause', 'community'] : [stakeholderType],
-    library_folder: selected.libraryFolder,
-    qr_position_json: DEFAULT_QR_POSITION,
-    is_active: true,
-    created_by: null,
-    metadata: {
-      eyebrow: selected.eyebrow,
-      headline: selected.headline,
-      subheadline: selected.subheadline,
-      body: selected.body,
-      cta: selected.cta,
-      footer: selected.footer,
-      titlePattern: '{{stakeholder_name}} - Default Auto Material',
-      descriptionPattern: '{{capture_offer_headline}}',
-    },
-  }
-
-  // Try inserting with tier/version columns first; fall back without them if migration not applied
-  let data: unknown = null
-  let error: unknown = null
-
-  const fullPayload = {
-    ...basePayload,
-    tiers: ['auto'],
-    version: 1,
-    scope_global: true,
-    scope_cities: [],
-    scope_campaigns: [],
-    scope_categories: [],
-  }
-
-  const fullResult = await (supabase.from('material_templates') as any)
-    .insert(fullPayload)
+  const { data, error } = await (supabase.from('material_templates') as any)
+    .insert({
+      name: fallbackName,
+      source_path: null,
+      template_type: 'structured',
+      output_format: 'pdf',
+      audience_tags: selected.audienceTags,
+      stakeholder_types: stakeholderType === 'school' ? ['school', 'community'] : stakeholderType === 'cause' ? ['cause', 'community'] : [stakeholderType],
+      library_folder: selected.libraryFolder,
+      qr_position_json: DEFAULT_QR_POSITION,
+      is_active: true,
+      tiers: ['auto'],
+      version: 1,
+      scope_global: true,
+      scope_cities: [],
+      scope_campaigns: [],
+      scope_categories: [],
+      created_by: null,
+      metadata: {
+        eyebrow: selected.eyebrow,
+        headline: selected.headline,
+        subheadline: selected.subheadline,
+        body: selected.body,
+        cta: selected.cta,
+        footer: selected.footer,
+        titlePattern: '{{stakeholder_name}} - Default Auto Material',
+        descriptionPattern: '{{capture_offer_headline}}',
+      },
+    })
     .select()
     .single()
 
-  if (fullResult.error && /column|tiers|scope_global|version/i.test(fullResult.error.message || '')) {
-    // Tier columns not available — insert without them
-    const fallbackResult = await (supabase.from('material_templates') as any)
-      .insert(basePayload)
-      .select()
-      .single()
-    data = fallbackResult.data
-    error = fallbackResult.error
-  } else {
-    data = fullResult.data
-    error = fullResult.error
+  if (error) {
+    throw new Error(
+      `Failed to create fallback template "${fallbackName}": ${error.message}. `
+      + `Ensure the migration "20260329100000_template_tiers_and_versioning.sql" has been applied.`
+    )
   }
-
-  if (error) throw error
   return data as MaterialTemplate
 }
 
