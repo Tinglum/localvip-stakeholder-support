@@ -343,30 +343,8 @@ export async function generateMaterialsForStakeholder(
       results.push(generated)
     } catch (error) {
       const message = extractErrorMessage(error, `Generation failed for template "${template.name}"`)
-      try {
-        const generated = await generateEmergencyFallbackMaterial(
-          supabase,
-          context,
-          qrCode,
-          template,
-          actorId,
-          message,
-        )
-        results.push(generated)
-        failures.push({
-          templateId: template.id,
-          templateName: template.name,
-          error: `${message} — A simplified SVG fallback was generated instead.`,
-        })
-      } catch (fallbackError) {
-        const fallbackMessage = extractErrorMessage(fallbackError, message)
-        failures.push({
-          templateId: template.id,
-          templateName: template.name,
-          error: `Primary: ${message} | Fallback also failed: ${fallbackMessage}`,
-        })
-        await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, `Primary: ${message} | Fallback: ${fallbackMessage}`)
-      }
+      failures.push({ templateId: template.id, templateName: template.name, error: message })
+      await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, message)
     }
   }
 
@@ -443,24 +421,46 @@ async function generateOneMaterial(
   let fileBuffer: Uint8Array
 
   if (template.template_type === 'material_asset') {
-    const rendered = await renderMaterialAssetTemplate(supabase, template, qrCode, qrDataUrl)
-    fileExtension = rendered.fileExtension
-    contentType = rendered.contentType
-    materialType = rendered.materialType
-    fileBuffer = rendered.fileBuffer
+    try {
+      const rendered = await renderMaterialAssetTemplate(supabase, template, qrCode, qrDataUrl)
+      fileExtension = rendered.fileExtension
+      contentType = rendered.contentType
+      materialType = rendered.materialType
+      fileBuffer = rendered.fileBuffer
+    } catch (assetError) {
+      throw new Error(
+        `Material asset rendering failed for "${template.name}": ${extractErrorMessage(assetError, 'unknown error')}. `
+        + `This usually means @napi-rs/canvas is not available in this environment (e.g. Netlify serverless). `
+        + `Convert the template to SVG output format or use a server that supports native modules.`
+      )
+    }
   } else {
     const svg = renderStructuredTemplateSvg(template, context, qrDataUrl)
     fileBuffer = Buffer.from(svg, 'utf8')
 
     if (template.output_format === 'png') {
-      fileExtension = 'png'
-      contentType = 'image/png'
-      fileBuffer = new Uint8Array(await renderStructuredTemplatePng(template, context, qrDataUrl))
+      try {
+        fileExtension = 'png'
+        contentType = 'image/png'
+        fileBuffer = new Uint8Array(await renderStructuredTemplatePng(template, context, qrDataUrl))
+      } catch (pngError) {
+        throw new Error(
+          `PNG rendering failed for "${template.name}": ${extractErrorMessage(pngError, 'unknown error')}. `
+          + `@napi-rs/canvas may not be available. Change template output_format to "svg" or deploy to a server with native module support.`
+        )
+      }
     } else if (template.output_format === 'pdf') {
-      fileExtension = 'pdf'
-      contentType = 'application/pdf'
-      materialType = 'pdf'
-      fileBuffer = new Uint8Array(await renderStructuredTemplatePdf(template, context, qrDataUrl))
+      try {
+        fileExtension = 'pdf'
+        contentType = 'application/pdf'
+        materialType = 'pdf'
+        fileBuffer = new Uint8Array(await renderStructuredTemplatePdf(template, context, qrDataUrl))
+      } catch (pdfError) {
+        throw new Error(
+          `PDF rendering failed for "${template.name}": ${extractErrorMessage(pdfError, 'unknown error')}. `
+          + `@napi-rs/canvas may not be available. Change template output_format to "svg" or deploy to a server with native module support.`
+        )
+      }
     }
   }
 
@@ -926,7 +926,7 @@ async function ensureFallbackTemplateForStakeholderType(
       name: fallbackName,
       source_path: null,
       template_type: 'structured',
-      output_format: 'pdf',
+      output_format: 'svg',
       audience_tags: selected.audienceTags,
       stakeholder_types: stakeholderType === 'school' ? ['school', 'community'] : stakeholderType === 'cause' ? ['cause', 'community'] : [stakeholderType],
       library_folder: selected.libraryFolder,
