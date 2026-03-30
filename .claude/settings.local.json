@@ -83,7 +83,12 @@
       "Bash(ls /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/portal/)",
       "Bash(grep -r \"setInterval\\\\|setTimeout\\\\|cron\\\\|queue\\\\|BullMQ\\\\|Inngest\\\\|trigger\" /c/Users/kenne/Downloads/OnboardingLocalvip/src --include=*.ts --include=*.tsx -l)",
       "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip -name *.sql -o -name *migration* -o -name *schema*)",
-      "Bash(grep -r \"webhook\\\\|queue\\\\|trigger\\\\|edge function\\\\|cron\\\\|scheduled\" /c/Users/kenne/Downloads/OnboardingLocalvip/src --include=*.ts --include=*.json)"
+      "Bash(grep -r \"webhook\\\\|queue\\\\|trigger\\\\|edge function\\\\|cron\\\\|scheduled\" /c/Users/kenne/Downloads/OnboardingLocalvip/src --include=*.ts --include=*.json)",
+      "Bash(ls -la \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip\\\\src\\\\app\\\\\\(dashboard\\)\\\\crm\\\\businesses\\\\[id]\"\")",
+      "Bash(find \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip\\\\src\\\\app\\\\\\(dashboard\\)\\\\crm\\\\businesses\\\\[id]\" -type f)",
+      "Bash(grep -n \"activeTab === ''materials''\" \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip\\\\src\\\\app\\\\\\(dashboard\\)\\\\crm\\\\businesses\\\\[id]\\\\page.tsx\")",
+      "Bash(xargs grep:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

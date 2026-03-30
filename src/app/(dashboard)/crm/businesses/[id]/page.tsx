@@ -39,6 +39,7 @@ import {
   useRecord,
   useCauses,
   useCities,
+  useGeneratedMaterials,
   useMaterials,
   useOutreach, useOutreachInsert,
   useTasks, useTaskInsert, useTaskUpdate,
@@ -47,6 +48,7 @@ import {
   useProfiles,
   useQrCodes,
   useStakeholderAssignments,
+  useStakeholders,
 } from '@/lib/supabase/hooks'
 import type {
   Business,
@@ -126,6 +128,8 @@ export default function BusinessDetailPage() {
   const { data: campaigns } = useCampaigns()
   const { data: qrCodes } = useQrCodes()
   const { data: materials } = useMaterials()
+  const { data: allStakeholders } = useStakeholders()
+  const { data: allGeneratedMaterials } = useGeneratedMaterials()
   const { data: assignments } = useStakeholderAssignments({ entity_id: id })
   const { data: outreach, loading: outreachLoading, refetch: refetchOutreach } = useOutreach({ entity_id: id })
   const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ entity_id: id })
@@ -145,6 +149,17 @@ export default function BusinessDetailPage() {
   const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
   const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
   const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
+  const businessStakeholder = allStakeholders.find(s => s.business_id === id) || null
+  const businessGeneratedMaterials = React.useMemo(() => {
+    if (!businessStakeholder) return []
+    return allGeneratedMaterials
+      .filter(gm => gm.stakeholder_id === businessStakeholder.id && gm.generation_status === 'generated')
+      .map(gm => ({
+        generated: gm,
+        material: materials.find(m => m.id === gm.material_id) || null,
+      }))
+      .filter(item => item.material)
+  }, [allGeneratedMaterials, businessStakeholder, materials])
   const helperAssignments = React.useMemo(() => assignments
     .filter(assignment => assignment.entity_type === 'business' && assignment.entity_id === id && assignment.status === 'active')
     .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
@@ -524,31 +539,67 @@ export default function BusinessDetailPage() {
               <Button variant="outline" size="sm"><FileText className="h-3.5 w-3.5" /> Browse Library</Button>
             </Link>
           </div>
-          {linkedMaterial ? (
-            <Card>
-              <CardContent className="space-y-3 py-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-surface-900">{linkedMaterial.title}</p>
-                    <p className="mt-1 text-xs text-surface-500">{linkedMaterial.file_name || linkedMaterial.type}</p>
+          {/* Generated materials from the material engine */}
+          {businessGeneratedMaterials.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-medium text-surface-500 uppercase tracking-wide">Generated Materials</h4>
+              {businessGeneratedMaterials.map(({ generated, material }) => (
+                <Card key={generated.id}>
+                  <CardContent className="space-y-3 py-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-surface-900">{material!.title}</p>
+                        <p className="mt-1 text-xs text-surface-500">{generated.generated_file_name || material!.type}</p>
+                      </div>
+                      <Badge variant="success" dot>generated</Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {generated.generated_file_url && (
+                        <a href={generated.generated_file_url} target="_blank" rel="noopener noreferrer">
+                          <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open</Button>
+                        </a>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Linked material (legacy single-material field) */}
+          {linkedMaterial && (
+            <div className="space-y-3">
+              {businessGeneratedMaterials.length > 0 && (
+                <h4 className="text-xs font-medium text-surface-500 uppercase tracking-wide">Linked Material</h4>
+              )}
+              <Card>
+                <CardContent className="space-y-3 py-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-surface-900">{linkedMaterial.title}</p>
+                      <p className="mt-1 text-xs text-surface-500">{linkedMaterial.file_name || linkedMaterial.type}</p>
+                    </div>
+                    <Badge variant={linkedMaterial.status === 'active' ? 'success' : 'default'} dot>
+                      {linkedMaterial.status}
+                    </Badge>
                   </div>
-                  <Badge variant={linkedMaterial.status === 'active' ? 'success' : 'default'} dot>
-                    {linkedMaterial.status}
-                  </Badge>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {linkedMaterial.file_url && (
-                    <a href={linkedMaterial.file_url} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open Material</Button>
-                    </a>
-                  )}
-                  <Link href="/materials/library">
-                    <Button size="sm"><FileText className="h-3.5 w-3.5" /> Manage Materials</Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {linkedMaterial.file_url && (
+                      <a href={linkedMaterial.file_url} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open Material</Button>
+                      </a>
+                    )}
+                    <Link href="/materials/library">
+                      <Button size="sm"><FileText className="h-3.5 w-3.5" /> Manage Materials</Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Empty state — only if nothing at all */}
+          {businessGeneratedMaterials.length === 0 && !linkedMaterial && (
             <Card>
               <CardContent className="flex flex-col items-center py-8 text-center">
                 <FileText className="mb-3 h-10 w-10 text-surface-300" />

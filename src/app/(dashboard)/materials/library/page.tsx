@@ -5,6 +5,7 @@ import {
   FileText, Download, Eye, Grid, List, Search,
   Upload, FolderOpen, File, Image as ImageIcon, Mail,
   MessageSquare, Printer, QrCode, X, Loader2, Move, Trash2, PencilLine,
+  CheckSquare, Square, Copy,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -708,6 +709,9 @@ function UploadMaterialDialog({
 export default function MaterialsLibraryPage() {
   const { profile, isAdmin } = useAuth()
   const { data: materials, loading, error, refetch } = useMaterials()
+  const { insert: insertMaterial } = useMaterialInsert()
+  const useMaterialInsertRef = React.useRef({ insert: insertMaterial })
+  useMaterialInsertRef.current.insert = insertMaterial
   const [search, setSearch] = React.useState('')
   const [typeFilter, setTypeFilter] = React.useState('')
   const [brandFilter, setBrandFilter] = React.useState('')
@@ -720,9 +724,17 @@ export default function MaterialsLibraryPage() {
   const [deletingId, setDeletingId] = React.useState<string | null>(null)
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
   const [deleteError, setDeleteError] = React.useState<string | null>(null)
+  const [showGenerated, setShowGenerated] = React.useState(false)
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = React.useState(false)
+  const [bulkCopying, setBulkCopying] = React.useState(false)
 
   const filtered = React.useMemo(() => {
     return materials.filter(m => {
+      // Default: show only templates. Toggle shows generated (non-template) files.
+      if (!showGenerated && !m.is_template) return false
+      if (showGenerated && m.is_template) return false
+
       const query = search.toLowerCase()
       const customTags = getMaterialCustomTags(m).join(' ').toLowerCase()
       if (search
@@ -734,7 +746,108 @@ export default function MaterialsLibraryPage() {
       if (useCaseFilter && m.use_case !== useCaseFilter) return false
       return true
     })
-  }, [materials, search, typeFilter, brandFilter, useCaseFilter])
+  }, [materials, search, typeFilter, brandFilter, useCaseFilter, showGenerated])
+
+  // Clear selection when filters change
+  React.useEffect(() => { setSelectedIds(new Set()) }, [showGenerated, search, typeFilter, brandFilter, useCaseFilter])
+
+  const allSelected = filtered.length > 0 && filtered.every(m => selectedIds.has(m.id))
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map(m => m.id)))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    if (!confirm(`Delete ${selectedIds.size} material${selectedIds.size > 1 ? 's' : ''}? This cannot be undone.`)) return
+
+    setBulkDeleting(true)
+    setActionMessage(null)
+    setDeleteError(null)
+
+    let successCount = 0
+    let failCount = 0
+
+    for (const id of selectedIds) {
+      const material = materials.find(m => m.id === id)
+      if (!material) continue
+      const result = await deleteMaterial(material, { manageReferences: isAdmin })
+      if (result.success) successCount++
+      else failCount++
+    }
+
+    setBulkDeleting(false)
+    setSelectedIds(new Set())
+
+    if (failCount > 0) {
+      setDeleteError(`Deleted ${successCount}, failed ${failCount}.`)
+    } else {
+      setActionMessage(`${successCount} material${successCount !== 1 ? 's' : ''} deleted.`)
+    }
+    refetch()
+  }
+
+  async function handleBulkCopy() {
+    if (selectedIds.size === 0) return
+    setBulkCopying(true)
+    setActionMessage(null)
+    setDeleteError(null)
+
+    const { insert } = useMaterialInsertRef.current
+    let successCount = 0
+    let failCount = 0
+
+    for (const id of selectedIds) {
+      const material = materials.find(m => m.id === id)
+      if (!material) continue
+      const result = await insert({
+        title: `${material.title} (copy)`,
+        description: material.description,
+        type: material.type,
+        brand: material.brand,
+        category: material.category,
+        use_case: material.use_case,
+        file_url: material.file_url,
+        file_name: material.file_name,
+        file_size: material.file_size,
+        mime_type: material.mime_type,
+        thumbnail_url: material.thumbnail_url,
+        target_roles: material.target_roles,
+        campaign_id: material.campaign_id,
+        city_id: material.city_id,
+        is_template: material.is_template,
+        version: 1,
+        status: material.status,
+        created_by: profile.id,
+        metadata: material.metadata,
+      })
+      if (result) successCount++
+      else failCount++
+    }
+
+    setBulkCopying(false)
+    setSelectedIds(new Set())
+
+    if (failCount > 0) {
+      setDeleteError(`Copied ${successCount}, failed ${failCount}.`)
+    } else {
+      setActionMessage(`${successCount} material${successCount !== 1 ? 's' : ''} copied.`)
+    }
+    refetch()
+  }
 
   async function handleDelete(material: Material) {
     if (!confirm('Delete this material? Any linked business or outreach references will be cleared.')) return
@@ -809,6 +922,71 @@ export default function MaterialsLibraryPage() {
         }}
       />
 
+      {/* Templates / Generated toggle */}
+      <div className="mb-4 flex items-center gap-3">
+        <button
+          onClick={() => setShowGenerated(false)}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            !showGenerated
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+          }`}
+        >
+          Templates
+        </button>
+        <button
+          onClick={() => setShowGenerated(true)}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            showGenerated
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+          }`}
+        >
+          Generated Files
+        </button>
+      </div>
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2.5">
+          <span className="text-sm font-medium text-brand-700">
+            {selectedIds.size} selected
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkCopy}
+                disabled={bulkCopying}
+              >
+                {bulkCopying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                Duplicate
+              </Button>
+            )}
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="text-danger-600 border-danger-300 hover:bg-danger-50"
+              >
+                {bulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Delete
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -849,7 +1027,17 @@ export default function MaterialsLibraryPage() {
             <option key={u.value} value={u.value}>{u.label}</option>
           ))}
         </select>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-2">
+          {isAdmin && filtered.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-surface-500 hover:bg-surface-100 hover:text-surface-700 transition-colors"
+              title={allSelected ? 'Deselect all' : 'Select all'}
+            >
+              {allSelected ? <CheckSquare className="h-4 w-4 text-brand-600" /> : <Square className="h-4 w-4" />}
+              {allSelected ? 'Deselect all' : 'Select all'}
+            </button>
+          )}
           <button
             onClick={() => setViewMode('grid')}
             className={`rounded-md p-1.5 ${viewMode === 'grid' ? 'bg-surface-200 text-surface-700' : 'text-surface-400 hover:text-surface-600'}`}
@@ -920,9 +1108,19 @@ export default function MaterialsLibraryPage() {
             const customTags = getMaterialCustomTags(material)
             const canEdit = isAdmin || material.created_by === profile.id
             return (
-              <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
+              <Card key={material.id} className={`group transition-shadow hover:shadow-card-hover ${selectedIds.has(material.id) ? 'ring-2 ring-brand-500' : ''}`}>
                 {/* Thumbnail */}
                 <div className="flex h-36 items-center justify-center border-b border-surface-100 bg-surface-50 relative overflow-hidden">
+                  {isAdmin && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleSelect(material.id) }}
+                      className="absolute top-2 left-2 z-10 rounded bg-white/80 p-0.5 shadow-sm hover:bg-white transition-colors"
+                    >
+                      {selectedIds.has(material.id)
+                        ? <CheckSquare className="h-4 w-4 text-brand-600" />
+                        : <Square className="h-4 w-4 text-surface-400" />}
+                    </button>
+                  )}
                   <MaterialPreviewFrame
                     src={material.file_url || material.thumbnail_url}
                     mimeType={material.mime_type}
@@ -1041,8 +1239,18 @@ export default function MaterialsLibraryPage() {
             const customTags = getMaterialCustomTags(material)
             const canEdit = isAdmin || material.created_by === profile.id
             return (
-              <Card key={material.id} className="group transition-shadow hover:shadow-card-hover">
+              <Card key={material.id} className={`group transition-shadow hover:shadow-card-hover ${selectedIds.has(material.id) ? 'ring-2 ring-brand-500' : ''}`}>
                 <CardContent className="flex items-center gap-4 py-3">
+                  {isAdmin && (
+                    <button
+                      onClick={() => toggleSelect(material.id)}
+                      className="shrink-0"
+                    >
+                      {selectedIds.has(material.id)
+                        ? <CheckSquare className="h-4 w-4 text-brand-600" />
+                        : <Square className="h-4 w-4 text-surface-400" />}
+                    </button>
+                  )}
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-100 text-surface-400">
                     {TYPE_ICONS[material.type]}
                   </div>
