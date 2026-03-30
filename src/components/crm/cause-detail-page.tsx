@@ -321,7 +321,7 @@ export default function CauseDetailPage() {
             <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700">
               <p className="font-medium text-surface-900">{cause.name}</p>
               <p className="mt-1 text-xs text-surface-500">
-                If this is a legitimate record, clear the flag. If it's truly a duplicate, archive it so it's excluded from your active pipeline.
+                If this is a legitimate record, clear the flag. If it&apos;s truly a duplicate, archive it so it&apos;s excluded from your active pipeline.
               </p>
             </div>
           </div>
