@@ -50,25 +50,26 @@ function getTemplateCity(template: MaterialTemplate): string | null {
 export function TemplateLibraryPage() {
   const { profile } = useAuth()
 
-  // Resolve stakeholder for the current user
-  const stakeholderFilters = React.useMemo<Record<string, string>>(() => {
-    const filters: Record<string, string> = {}
-    filters.owner_user_id = profile.id
-    return filters
-  }, [profile.id])
+  // Resolve stakeholder for the current user — match broadly like the materials page
+  const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
 
-  const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders(stakeholderFilters)
-
-  // Pick the first matching stakeholder (business owners typically have one)
   const stakeholder = React.useMemo(() => {
     if (stakeholders.length === 0) return null
-    // Prefer business type, then cause/school, then any
+    // Find any stakeholder linked to the current user
+    const match = stakeholders.find((s) => {
+      if (s.profile_id === profile.id || s.owner_user_id === profile.id) return true
+      if (profile.business_id && s.business_id === profile.business_id) return true
+      if (profile.organization_id && s.organization_id === profile.organization_id) return true
+      return false
+    })
+    if (match) return match
+    // Fallback: prefer business type
     return (
       stakeholders.find((s) => s.type === 'business') ||
       stakeholders.find((s) => ['cause', 'school'].includes(s.type)) ||
-      stakeholders[0]
+      null
     )
-  }, [stakeholders])
+  }, [stakeholders, profile])
 
   // Fetch all active selfserve templates
   const { data: allTemplates, loading: templatesLoading } = useMaterialTemplates({
