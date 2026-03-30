@@ -1013,14 +1013,8 @@ async function ensureStakeholderQrCode(
   const purpose = getQrPurposeForStakeholderType(context.stakeholder.type)
   const stakeholderProfileId = await resolveStakeholderQrProfileId(supabase, context.stakeholder)
   const existing = await getStakeholderQrCode(supabase, context.stakeholder, purpose, stakeholderProfileId)
-  // Always use connection code as the redirect short code so the QR URL matches the join URL
-  const connectionCode = normalizeStakeholderCode(context.codes.connection_code || '')
-  const existingMatchesConnection = existing?.short_code === connectionCode
-  const redirectShortCode = await ensureUniqueShortCode(
-    supabase,
-    context.codes.connection_code,
-    existingMatchesConnection ? existing?.short_code || null : null,
-  )
+  // Use connection code directly as the redirect short code
+  const redirectShortCode = normalizeStakeholderCode(context.codes.connection_code || '') || await ensureUniqueShortCode(supabase, context.codes.connection_code, null)
   const redirectUrl = `${getMaterialEngineBaseUrl()}/r/${redirectShortCode}`
 
   const payload = {
@@ -1063,9 +1057,18 @@ async function ensureStakeholderQrCode(
   }
 
   let qrCodeId = existing?.id || null
+  const oldShortCode = existing?.short_code || null
+
   if (qrCodeId) {
     const { error } = await (supabase.from('qr_codes') as any).update(payload).eq('id', qrCodeId)
     if (error) throw error
+
+    // Clean up old redirect if the short code changed
+    if (oldShortCode && oldShortCode !== redirectShortCode) {
+      await (supabase.from('redirects') as any)
+        .update({ status: 'inactive' })
+        .eq('short_code', oldShortCode)
+    }
   } else {
     const { data, error } = await (supabase.from('qr_codes') as any).insert(payload).select().single()
     if (error) throw error
@@ -1083,6 +1086,14 @@ async function ensureStakeholderQrCode(
   const { data, error } = await supabase.from('qr_codes').select('*').eq('id', qrCodeId!).single()
   if (error || !data) throw new Error('QR code could not be loaded after save.')
   const qrCode = data as QrCode
+
+  // Verify the QR code was saved with the correct redirect URL
+  if (qrCode.short_code !== redirectShortCode) {
+    throw new Error(
+      `QR code short_code mismatch: expected "${redirectShortCode}" but got "${qrCode.short_code}". `
+      + `The QR code record may not have been updated correctly.`
+    )
+  }
   await syncLinkedStakeholderAssets(supabase, context.stakeholder, {
     qrCodeId: qrCode.id,
     materialId: null,
