@@ -743,17 +743,37 @@ async function getTemplatesForStakeholder(
 ) {
   const tier = options?.tier || 'auto'
   const syncedAssetTemplates = await syncMaterialAssetTemplatesForStakeholder(supabase, stakeholderType, templateId)
-  let query = supabase
+
+  // Try with tier filter first; fall back to unfiltered if `tiers` column is missing (migration not yet applied)
+  let data: unknown[] | null = null
+  let tieredQuery = supabase
     .from('material_templates')
     .select('*')
     .eq('is_active', true)
     .neq('template_type', 'material_asset')
     .contains('tiers', [tier])
 
-  if (templateId) query = query.eq('id', templateId)
+  if (templateId) tieredQuery = tieredQuery.eq('id', templateId)
 
-  const { data, error } = await query.order('created_at', { ascending: true })
-  if (error) throw error
+  const tieredResult = await tieredQuery.order('created_at', { ascending: true })
+
+  if (tieredResult.error) {
+    // Column may not exist yet — fall back to query without tier filter
+    console.warn('Template tier query failed, falling back to unfiltered:', tieredResult.error.message)
+    let fallbackQuery = supabase
+      .from('material_templates')
+      .select('*')
+      .eq('is_active', true)
+      .neq('template_type', 'material_asset')
+
+    if (templateId) fallbackQuery = fallbackQuery.eq('id', templateId)
+
+    const fallbackResult = await fallbackQuery.order('created_at', { ascending: true })
+    if (fallbackResult.error) throw fallbackResult.error
+    data = fallbackResult.data
+  } else {
+    data = tieredResult.data
+  }
 
   const combined = [...((data || []) as MaterialTemplate[]), ...syncedAssetTemplates]
   const uniqueTemplates = combined.filter((template, index, array) => array.findIndex((item) => item.id === template.id) === index)
@@ -886,37 +906,60 @@ async function ensureFallbackTemplateForStakeholderType(
   }
 
   const selected = fallbackMap[stakeholderType] || fallbackMap.business
-  const { data, error } = await (supabase.from('material_templates') as any)
-    .insert({
-      name: fallbackName,
-      source_path: null,
-      template_type: 'structured',
-      output_format: 'pdf',
-      audience_tags: selected.audienceTags,
-      stakeholder_types: stakeholderType === 'school' ? ['school', 'community'] : stakeholderType === 'cause' ? ['cause', 'community'] : [stakeholderType],
-      library_folder: selected.libraryFolder,
-      qr_position_json: DEFAULT_QR_POSITION,
-      is_active: true,
-      tiers: ['auto'],
-      version: 1,
-      scope_global: true,
-      scope_cities: [],
-      scope_campaigns: [],
-      scope_categories: [],
-      created_by: null,
-      metadata: {
-        eyebrow: selected.eyebrow,
-        headline: selected.headline,
-        subheadline: selected.subheadline,
-        body: selected.body,
-        cta: selected.cta,
-        footer: selected.footer,
-        titlePattern: '{{stakeholder_name}} - Default Auto Material',
-        descriptionPattern: '{{capture_offer_headline}}',
-      },
-    })
+  const basePayload: Record<string, unknown> = {
+    name: fallbackName,
+    source_path: null,
+    template_type: 'structured',
+    output_format: 'pdf',
+    audience_tags: selected.audienceTags,
+    stakeholder_types: stakeholderType === 'school' ? ['school', 'community'] : stakeholderType === 'cause' ? ['cause', 'community'] : [stakeholderType],
+    library_folder: selected.libraryFolder,
+    qr_position_json: DEFAULT_QR_POSITION,
+    is_active: true,
+    created_by: null,
+    metadata: {
+      eyebrow: selected.eyebrow,
+      headline: selected.headline,
+      subheadline: selected.subheadline,
+      body: selected.body,
+      cta: selected.cta,
+      footer: selected.footer,
+      titlePattern: '{{stakeholder_name}} - Default Auto Material',
+      descriptionPattern: '{{capture_offer_headline}}',
+    },
+  }
+
+  // Try inserting with tier/version columns first; fall back without them if migration not applied
+  let data: unknown = null
+  let error: unknown = null
+
+  const fullPayload = {
+    ...basePayload,
+    tiers: ['auto'],
+    version: 1,
+    scope_global: true,
+    scope_cities: [],
+    scope_campaigns: [],
+    scope_categories: [],
+  }
+
+  const fullResult = await (supabase.from('material_templates') as any)
+    .insert(fullPayload)
     .select()
     .single()
+
+  if (fullResult.error && /column|tiers|scope_global|version/i.test(fullResult.error.message || '')) {
+    // Tier columns not available — insert without them
+    const fallbackResult = await (supabase.from('material_templates') as any)
+      .insert(basePayload)
+      .select()
+      .single()
+    data = fallbackResult.data
+    error = fallbackResult.error
+  } else {
+    data = fullResult.data
+    error = fullResult.error
+  }
 
   if (error) throw error
   return data as MaterialTemplate

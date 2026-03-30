@@ -219,7 +219,9 @@ export async function POST(
       businessStage: nextBusinessStage,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'The business action could not be completed.'
+    const message = error instanceof Error ? error.message
+      : (error && typeof error === 'object' && 'message' in error) ? String((error as any).message)
+      : 'The business action could not be completed.'
     const status = /already in use/i.test(message) ? 409 : 400
     return NextResponse.json({ error: message }, { status })
   }
