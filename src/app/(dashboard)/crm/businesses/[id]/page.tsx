@@ -169,6 +169,8 @@ export default function BusinessDetailPage() {
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
   const [linkCauseOpen, setLinkCauseOpen] = React.useState(false)
   const [linkCampaignOpen, setLinkCampaignOpen] = React.useState(false)
+  const [reviewDupOpen, setReviewDupOpen] = React.useState(false)
+  const [reviewDupLoading, setReviewDupLoading] = React.useState(false)
   const [pendingCauseId, setPendingCauseId] = React.useState(biz?.linked_cause_id || '__none')
   const [pendingCampaignId, setPendingCampaignId] = React.useState(biz?.campaign_id || '__none')
 
@@ -184,6 +186,22 @@ export default function BusinessDetailPage() {
     setPendingCauseId(biz?.linked_cause_id || '__none')
     setPendingCampaignId(biz?.campaign_id || '__none')
   }, [biz?.campaign_id, biz?.linked_cause_id])
+
+  const handleNotDuplicate = async () => {
+    if (!biz) return
+    setReviewDupLoading(true)
+    await updateBusiness(biz.id, { duplicate_of: null })
+    setReviewDupOpen(false)
+    window.location.reload()
+  }
+
+  const handleArchiveAsDuplicate = async () => {
+    if (!biz) return
+    setReviewDupLoading(true)
+    await updateBusiness(biz.id, { status: 'archived' })
+    setReviewDupOpen(false)
+    window.location.reload()
+  }
 
   const handleCauseLinkSave = React.useCallback(async () => {
     if (!biz) return
@@ -258,7 +276,7 @@ export default function BusinessDetailPage() {
               This record may be a duplicate. Review and merge if needed.
             </p>
           </div>
-          <Button variant="outline" size="sm">Review</Button>
+          <Button variant="outline" size="sm" onClick={() => setReviewDupOpen(true)}>Review</Button>
         </div>
       )}
 
@@ -676,6 +694,37 @@ export default function BusinessDetailPage() {
             <Button variant="outline" onClick={() => setLinkCampaignOpen(false)}>Cancel</Button>
             <Button onClick={handleCampaignLinkSave} disabled={updateLoading}>
               {updateLoading ? 'Saving...' : campaign ? 'Save campaign link' : 'Link campaign'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Review Dialog */}
+      <Dialog open={reviewDupOpen} onOpenChange={setReviewDupOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Review Duplicate Flag</DialogTitle>
+            <DialogDescription>
+              This record was flagged as a potential duplicate. Choose how to resolve it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700">
+              <p className="font-medium text-surface-900">{biz.name}</p>
+              <p className="mt-1 text-xs text-surface-500">
+                If this is a legitimate record, clear the flag. If it's truly a duplicate, archive it so it's excluded from your active pipeline.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setReviewDupOpen(false)} disabled={reviewDupLoading}>
+              Cancel
+            </Button>
+            <Button variant="outline" onClick={handleNotDuplicate} disabled={reviewDupLoading}>
+              {reviewDupLoading ? 'Saving...' : 'Not a Duplicate'}
+            </Button>
+            <Button variant="danger" onClick={handleArchiveAsDuplicate} disabled={reviewDupLoading}>
+              {reviewDupLoading ? 'Archiving...' : 'Archive as Duplicate'}
             </Button>
           </DialogFooter>
         </DialogContent>

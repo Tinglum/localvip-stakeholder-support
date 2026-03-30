@@ -83,6 +83,7 @@ export default function CausesPage() {
   const [filters, setFilters] = React.useState<Record<string, string>>({})
   const [form, setForm] = React.useState<CauseForm>(INITIAL_FORM)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
+  const [dupWarning, setDupWarning] = React.useState<string | null>(null)
 
   // Build Supabase-compatible filters (only non-empty values)
   const supabaseFilters = React.useMemo(() => {
@@ -116,8 +117,17 @@ export default function CausesPage() {
     return causes.filter(c => c.city_id === filters.city)
   }, [causes, filters.city])
 
+  const normalizeName = (name: string) =>
+    name.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+
   const handleFormChange = (field: keyof CauseForm, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
+    if (field === 'name') {
+      if (!value.trim()) { setDupWarning(null); return }
+      const normalized = normalizeName(value)
+      const match = causes.find(c => normalizeName(c.name) === normalized)
+      setDupWarning(match ? `"${match.name}" already exists in your pipeline.` : null)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -269,7 +279,7 @@ export default function CausesPage() {
       />
 
       {/* Add Cause Dialog */}
-      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setForm(INITIAL_FORM); setSubmitError(null) } }}>
+      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setForm(INITIAL_FORM); setSubmitError(null); setDupWarning(null) } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add a New Cause</DialogTitle>
@@ -284,6 +294,12 @@ export default function CausesPage() {
                 value={form.name}
                 onChange={(e) => handleFormChange('name', e.target.value)}
               />
+              {dupWarning && (
+                <p className="flex items-center gap-1 text-xs text-warning-600">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {dupWarning} You can still save if this is a separate record.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

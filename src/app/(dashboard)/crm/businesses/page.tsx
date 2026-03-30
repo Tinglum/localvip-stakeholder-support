@@ -93,6 +93,7 @@ export default function BusinessesPage() {
   const [formStage, setFormStage] = React.useState<OnboardingStage>('lead')
   const [inserting, setInserting] = React.useState(false)
   const [insertError, setInsertError] = React.useState<string | null>(null)
+  const [dupWarning, setDupWarning] = React.useState<string | null>(null)
 
   // Data hooks
   const { data: businesses, loading, refetch } = useBusinesses()
@@ -152,6 +153,18 @@ export default function BusinessesPage() {
     setFormBrand('localvip')
     setFormStage('lead')
     setInsertError(null)
+    setDupWarning(null)
+  }
+
+  const normalizeName = (name: string) =>
+    name.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+
+  const handleNameChange = (value: string) => {
+    setFormName(value)
+    if (!value.trim()) { setDupWarning(null); return }
+    const normalized = normalizeName(value)
+    const match = businesses.find(b => normalizeName(b.name) === normalized)
+    setDupWarning(match ? `"${match.name}" already exists in your pipeline.` : null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -331,8 +344,14 @@ export default function BusinessesPage() {
                 placeholder="e.g. Sunrise Coffee Shop"
                 required
                 value={formName}
-                onChange={(e) => setFormName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
               />
+              {dupWarning && (
+                <p className="flex items-center gap-1 text-xs text-warning-600">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {dupWarning} You can still save if this is a different location.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

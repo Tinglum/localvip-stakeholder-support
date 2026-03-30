@@ -4,6 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import {
+  AlertTriangle,
   Heart,
   Loader2,
   Mail,
@@ -20,10 +21,19 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import {
   useBusinesses,
+  useCauseUpdate,
   useCauses,
   useCities,
   useNotes,
@@ -60,6 +70,9 @@ export default function CauseDetailPage() {
   const { data: businesses } = useBusinesses()
   const { data: outreach } = useOutreach()
   const { data: notes } = useNotes()
+  const { update: updateCause } = useCauseUpdate()
+  const [reviewDupOpen, setReviewDupOpen] = React.useState(false)
+  const [reviewDupLoading, setReviewDupLoading] = React.useState(false)
 
   const cause = causes.find(item => item.id === causeId) as Cause | undefined
   const city = cities.find(item => item.id === cause?.city_id)
@@ -89,8 +102,35 @@ export default function CauseDetailPage() {
 
   const qrGeneratorHref = `/qr/generator?causeId=${cause.id}&returnTo=${encodeURIComponent(`/crm/causes/${cause.id}`)}`
 
+  async function handleNotDuplicate() {
+    setReviewDupLoading(true)
+    await updateCause(causeId, { duplicate_of: null })
+    setReviewDupOpen(false)
+    window.location.reload()
+  }
+
+  async function handleArchiveAsDuplicate() {
+    setReviewDupLoading(true)
+    await updateCause(causeId, { status: 'archived' })
+    setReviewDupOpen(false)
+    window.location.reload()
+  }
+
   return (
     <div className="space-y-6">
+      {cause.duplicate_of && (
+        <div className="flex items-center gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-warning-600" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-warning-800">Potential duplicate detected</p>
+            <p className="text-xs text-warning-600">
+              This record may be a duplicate. Review and resolve it below.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setReviewDupOpen(true)}>Review</Button>
+        </div>
+      )}
+
       <PageHeader
         title={cause.name}
         description="Cause profile, local business connections, and recent CRM activity."
@@ -268,6 +308,36 @@ export default function CauseDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={reviewDupOpen} onOpenChange={setReviewDupOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Review Duplicate Flag</DialogTitle>
+            <DialogDescription>
+              This record was flagged as a potential duplicate. Choose how to resolve it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700">
+              <p className="font-medium text-surface-900">{cause.name}</p>
+              <p className="mt-1 text-xs text-surface-500">
+                If this is a legitimate record, clear the flag. If it's truly a duplicate, archive it so it's excluded from your active pipeline.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setReviewDupOpen(false)} disabled={reviewDupLoading}>
+              Cancel
+            </Button>
+            <Button variant="outline" onClick={handleNotDuplicate} disabled={reviewDupLoading}>
+              {reviewDupLoading ? 'Saving...' : 'Not a Duplicate'}
+            </Button>
+            <Button variant="danger" onClick={handleArchiveAsDuplicate} disabled={reviewDupLoading}>
+              {reviewDupLoading ? 'Archiving...' : 'Archive as Duplicate'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

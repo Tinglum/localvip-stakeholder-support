@@ -7,6 +7,7 @@ import {
   Briefcase,
   Heart,
   Loader2,
+  LogIn,
   Mail,
   MapPin,
   Megaphone,
@@ -30,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { BRANDS } from '@/lib/constants'
+import { useAuth } from '@/lib/auth/context'
 import {
   useAuditLogInsert,
   useBusinesses,
@@ -90,6 +92,7 @@ function getSubtypeLabel(subtype: UserRoleSubtype) {
 export default function UserDetailPage() {
   const params = useParams()
   const userId = params.id as string
+  const { isAdmin } = useAuth()
   const { data: user, loading } = useRecord<Profile>('profiles', userId)
   const { data: cities } = useCities()
   const { data: organizations } = useOrganizations()
@@ -112,6 +115,7 @@ export default function UserDetailPage() {
   const [businessId, setBusinessId] = React.useState<string>('none')
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
   const [viewUser, setViewUser] = React.useState<Profile | null>(null)
+  const [impersonating, setImpersonating] = React.useState(false)
 
   React.useEffect(() => {
     setViewUser(user || null)
@@ -269,6 +273,22 @@ export default function UserDetailPage() {
     setSaveMessage('Access updated successfully.')
   }
 
+  async function handleLoginAs() {
+    setImpersonating(true)
+    const response = await fetch('/api/admin/impersonate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    })
+    const payload = await response.json().catch(() => ({ error: 'Request failed.' }))
+    setImpersonating(false)
+    if (!response.ok) {
+      setSaveMessage(payload.error || 'Could not generate login link.')
+      return
+    }
+    window.open(payload.link, '_blank', 'noopener,noreferrer')
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -298,6 +318,14 @@ export default function UserDetailPage() {
           { label: 'Users', href: '/admin/users' },
           { label: currentUser.full_name },
         ]}
+        actions={
+          isAdmin ? (
+            <Button variant="outline" onClick={handleLoginAs} disabled={impersonating}>
+              <LogIn className="h-4 w-4" />
+              {impersonating ? 'Generating link...' : 'Log in as'}
+            </Button>
+          ) : undefined
+        }
       />
 
       <Card className="overflow-hidden border-surface-200">
