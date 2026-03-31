@@ -249,6 +249,16 @@ export interface Database {
         Insert: Omit<EntityTag, 'id'>
         Update: Partial<Omit<EntityTag, 'id'>>
       }
+      notifications: {
+        Row: Notification
+        Insert: Omit<Notification, 'id' | 'created_at'>
+        Update: Partial<Omit<Notification, 'id'>>
+      }
+      template_rules: {
+        Row: TemplateRule
+        Insert: Omit<TemplateRule, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<TemplateRule, 'id'>>
+      }
       audit_logs: {
         Row: AuditLog
         Insert: Omit<AuditLog, 'id' | 'created_at'>
@@ -372,6 +382,8 @@ export interface Business {
   linked_cause_id: string | null
   linked_material_id: string | null
   linked_qr_code_id: string | null
+  logo_url: string | null
+  cover_photo_url: string | null
   linked_qr_collection_id: string | null
   duplicate_of: string | null
   external_id: string | null
@@ -520,8 +532,42 @@ export interface GeneratedMaterial {
   template_version: number
   is_outdated: boolean
   user_accepted: boolean
+  version_number: number
+  is_active: boolean
   updated_at: string
   metadata: Record<string, unknown> | null
+}
+
+export interface Notification {
+  id: string
+  user_id: string
+  title: string
+  message: string
+  type: 'info' | 'success' | 'warning' | 'error'
+  entity_type: string | null
+  entity_id: string | null
+  is_read: boolean
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+export type TemplateRuleType = 'include' | 'exclude'
+
+export interface TemplateRule {
+  id: string
+  name: string
+  stakeholder_type: string | null
+  city_id: string | null
+  campaign_id: string | null
+  audience_tag: string | null
+  template_id: string
+  rule_type: TemplateRuleType
+  priority: number
+  is_active: boolean
+  created_by: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
 }
 
 export interface AdminTask {

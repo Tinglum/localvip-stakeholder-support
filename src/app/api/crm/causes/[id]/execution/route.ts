@@ -9,6 +9,8 @@ import {
 import {
   generateMaterialsForStakeholder,
   upsertStakeholderCodesAndGenerate,
+  regenerateAllForStakeholder,
+  restoreGeneratedMaterialVersion,
 } from '@/lib/server/material-engine'
 import { computeCauseExecutionSteps, computeCauseStageFromSteps } from '@/lib/cause-execution'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
@@ -26,6 +28,13 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('complete_step'),
     stepId: z.string().uuid('A step is required.'),
+  }),
+  z.object({
+    action: z.literal('regenerate_all'),
+  }),
+  z.object({
+    action: z.literal('restore_version'),
+    generatedMaterialId: z.string().uuid('Generated material ID required.'),
   }),
 ])
 
@@ -136,6 +145,16 @@ export async function POST(
 
     if (parsed.data.action === 'generate_materials') {
       const result = await generateMaterialsForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      return NextResponse.json({ success: true, result })
+    }
+
+    if (parsed.data.action === 'regenerate_all') {
+      const result = await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      return NextResponse.json({ success: true, result })
+    }
+
+    if (parsed.data.action === 'restore_version') {
+      const result = await restoreGeneratedMaterialVersion(context.supabase, parsed.data.generatedMaterialId)
       return NextResponse.json({ success: true, result })
     }
 

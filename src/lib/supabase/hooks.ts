@@ -6,7 +6,7 @@ import type {
   Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material, Organization,
   StakeholderAssignment, OnboardingFlow, OnboardingStep, OutreachScript, MaterialAssignment, QrCodeCollection,
   Offer, BusinessReferral, CityAccessRequest, AuditLog, Stakeholder, StakeholderCode, MaterialTemplate,
-  GeneratedMaterial, AdminTask,
+  GeneratedMaterial, AdminTask, Notification, TemplateRule,
 } from '@/lib/types/database'
 
 // ─── Generic fetch hook ─────────────────────────────────────
@@ -288,6 +288,18 @@ export function useStakeholderAssignmentInsert() { return useSupabaseInsert<Stak
 export function useStakeholderAssignmentUpdate() { return useSupabaseUpdate<StakeholderAssignment>('stakeholder_assignments') }
 export function useStakeholderAssignmentDelete() { return useSupabaseDelete('stakeholder_assignments') }
 export function useAuditLogInsert() { return useSupabaseInsert<AuditLog>('audit_logs') }
+
+export function useNotifications(filters?: Record<string, string>) {
+  return useSupabaseQuery<Notification>('notifications', { filters })
+}
+export function useNotificationUpdate() { return useSupabaseUpdate<Notification>('notifications') }
+
+export function useTemplateRules(filters?: Record<string, string>) {
+  return useSupabaseQuery<TemplateRule>('template_rules', { filters, orderBy: 'priority' })
+}
+export function useTemplateRuleInsert() { return useSupabaseInsert<TemplateRule>('template_rules') }
+export function useTemplateRuleUpdate() { return useSupabaseUpdate<TemplateRule>('template_rules') }
+export function useTemplateRuleDelete() { return useSupabaseDelete('template_rules') }
 
 export function useNotes(filters?: Record<string, string>) {
   return useSupabaseQuery<Note>('notes', { filters })

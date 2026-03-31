@@ -9,6 +9,8 @@ import {
 import {
   generateMaterialsForStakeholder,
   upsertStakeholderCodesAndGenerate,
+  regenerateAllForStakeholder,
+  restoreGeneratedMaterialVersion,
 } from '@/lib/server/material-engine'
 import { computeBusinessExecutionSteps, computeBusinessStageFromSteps } from '@/lib/business-execution'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
@@ -26,6 +28,18 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('complete_step'),
     stepId: z.string().uuid('A step is required.'),
+  }),
+  z.object({
+    action: z.literal('regenerate_all'),
+  }),
+  z.object({
+    action: z.literal('restore_version'),
+    generatedMaterialId: z.string().uuid('Generated material ID required.'),
+  }),
+  z.object({
+    action: z.literal('upload_media'),
+    mediaType: z.enum(['logo', 'cover_photo']),
+    fileUrl: z.string().url('File URL required.'),
   }),
 ])
 
@@ -137,6 +151,36 @@ export async function POST(
     if (parsed.data.action === 'generate_materials') {
       const result = await generateMaterialsForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
       return NextResponse.json({ success: true, result })
+    }
+
+    if (parsed.data.action === 'regenerate_all') {
+      const result = await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      return NextResponse.json({ success: true, result })
+    }
+
+    if (parsed.data.action === 'restore_version') {
+      const result = await restoreGeneratedMaterialVersion(context.supabase, parsed.data.generatedMaterialId)
+      return NextResponse.json({ success: true, result })
+    }
+
+    if (parsed.data.action === 'upload_media') {
+      const patch: Partial<Business> = parsed.data.mediaType === 'logo'
+        ? { logo_url: parsed.data.fileUrl }
+        : { cover_photo_url: parsed.data.fileUrl }
+
+      const { error: updateError } = await (context.supabase.from('businesses') as any)
+        .update(patch)
+        .eq('id', context.business.id)
+      if (updateError) throw updateError
+
+      // Auto-regenerate materials when branding changes
+      try {
+        await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      } catch {
+        // Regeneration failure is non-fatal for media upload
+      }
+
+      return NextResponse.json({ success: true, mediaType: parsed.data.mediaType, fileUrl: parsed.data.fileUrl })
     }
 
     const completeStepAction = parsed.data

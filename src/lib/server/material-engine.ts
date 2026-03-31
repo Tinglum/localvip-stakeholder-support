@@ -369,6 +369,9 @@ export async function generateMaterialsForStakeholder(
     )
   }
 
+  // Send notification to stakeholder owner
+  await createMaterialNotification(supabase, stakeholder, results.length)
+
   return {
     stakeholder,
     codes,
@@ -404,7 +407,7 @@ async function generateOneMaterial(
   template: MaterialTemplate,
   actorId: string | null,
 ) {
-  const qrDataUrl = await QRCode.toDataURL(qrCode.redirect_url || context.joinUrl, {
+  const rawQrDataUrl = await QRCode.toDataURL(qrCode.redirect_url || context.joinUrl, {
     width: 1024,
     margin: 1,
     color: {
@@ -413,6 +416,12 @@ async function generateOneMaterial(
     },
     errorCorrectionLevel: 'H',
   })
+
+  // Embed business logo into QR center if available
+  const logoUrl = context.business?.logo_url || null
+  const qrDataUrl = logoUrl
+    ? await embedLogoIntoQr(rawQrDataUrl, logoUrl)
+    : rawQrDataUrl
 
   const fileBase = `${sanitizeFilenamePart(context.stakeholder.name)}-${sanitizeFilenamePart(template.name)}`
   let fileExtension = 'svg'
@@ -477,7 +486,21 @@ async function generateOneMaterial(
 
   const { data: urlData } = supabase.storage.from('materials').getPublicUrl(filePath)
   const generatedFileUrl = urlData.publicUrl
-  const existingGenerated = await getGeneratedMaterialByStakeholderTemplate(supabase, context.stakeholder.id, template.id)
+  // Archive existing versions for this stakeholder+template
+  const existingVersions = await getActiveGeneratedMaterials(supabase, context.stakeholder.id, template.id)
+  const nextVersion = existingVersions.length > 0
+    ? Math.max(...existingVersions.map(v => v.version_number || 1)) + 1
+    : 1
+
+  if (existingVersions.length > 0) {
+    for (const old of existingVersions) {
+      await (supabase.from('generated_materials') as any)
+        .update({ is_active: false, is_outdated: true })
+        .eq('id', old.id)
+    }
+  }
+
+  const existingGenerated = existingVersions[0] || null
   const ownerProfileId = await resolveStakeholderLibraryProfileId(supabase, context.stakeholder)
   const title = fillTemplateText(getTemplateCopy(template).titlePattern, {
     ...getTemplateValueMap(context),
@@ -505,7 +528,7 @@ async function generateOneMaterial(
     campaign_id: null,
     city_id: context.stakeholder.city_id,
     is_template: false,
-    version: 1,
+    version: nextVersion,
     status: 'active' as Material['status'],
     created_by: actorId || context.stakeholder.owner_user_id || ownerProfileId || context.stakeholder.profile_id,
     metadata: {
@@ -541,30 +564,29 @@ async function generateOneMaterial(
   }
 
   const { data: generatedData, error: generatedError } = await (supabase.from('generated_materials') as any)
-    .upsert(
-      {
-        stakeholder_id: context.stakeholder.id,
-        template_id: template.id,
-        material_id: materialId,
-        generated_file_url: generatedFileUrl,
-        generated_file_name: `${fileBase}.${fileExtension}`,
-        library_folder: template.library_folder,
-        tags: template.audience_tags,
-        generation_status: 'generated',
-        generation_error: null,
-        generated_at: new Date().toISOString(),
-        template_version: template.version || 1,
-        is_outdated: false,
-        metadata: {
-          qr_code_id: qrCode.id,
-          redirect_url: qrCode.redirect_url,
-          join_url: context.joinUrl,
-          display_url: context.displayUrl,
-          output_format: template.output_format,
-        },
+    .insert({
+      stakeholder_id: context.stakeholder.id,
+      template_id: template.id,
+      material_id: materialId,
+      generated_file_url: generatedFileUrl,
+      generated_file_name: `${fileBase}.${fileExtension}`,
+      library_folder: template.library_folder,
+      tags: template.audience_tags,
+      generation_status: 'generated',
+      generation_error: null,
+      generated_at: new Date().toISOString(),
+      template_version: template.version || 1,
+      is_outdated: false,
+      version_number: nextVersion,
+      is_active: true,
+      metadata: {
+        qr_code_id: qrCode.id,
+        redirect_url: qrCode.redirect_url,
+        join_url: context.joinUrl,
+        display_url: context.displayUrl,
+        output_format: template.output_format,
       },
-      { onConflict: 'stakeholder_id,template_id' },
-    )
+    })
     .select()
     .single()
 
@@ -629,7 +651,8 @@ async function generateEmergencyFallbackMaterial(
 
   const { data: urlData } = supabase.storage.from('materials').getPublicUrl(filePath)
   const generatedFileUrl = urlData.publicUrl
-  const existingGenerated = await getGeneratedMaterialByStakeholderTemplate(supabase, context.stakeholder.id, template.id)
+  const existingFallbackVersions = await getActiveGeneratedMaterials(supabase, context.stakeholder.id, template.id)
+  const existingGenerated = existingFallbackVersions[0] || null
   const ownerProfileId = await resolveStakeholderLibraryProfileId(supabase, context.stakeholder)
   const title = fillTemplateText(copy.titlePattern, {
     ...valueMap,
@@ -692,31 +715,43 @@ async function generateEmergencyFallbackMaterial(
     await ensureMaterialAssignment(supabase, materialId, ownerProfileId, actorId)
   }
 
+  // Archive old versions for fallback too
+  const oldFallback = await getActiveGeneratedMaterials(supabase, context.stakeholder.id, template.id)
+  const fallbackVersion = oldFallback.length > 0
+    ? Math.max(...oldFallback.map(v => v.version_number || 1)) + 1
+    : 1
+  if (oldFallback.length > 0) {
+    for (const old of oldFallback) {
+      await (supabase.from('generated_materials') as any)
+        .update({ is_active: false, is_outdated: true })
+        .eq('id', old.id)
+    }
+  }
+
   const { data: generatedData, error: generatedError } = await (supabase.from('generated_materials') as any)
-    .upsert(
-      {
-        stakeholder_id: context.stakeholder.id,
-        template_id: template.id,
-        material_id: materialId,
-        generated_file_url: generatedFileUrl,
-        generated_file_name: `${fileBase}.svg`,
-        library_folder: template.library_folder,
-        tags: template.audience_tags,
-        generation_status: 'generated',
-        generation_error: null,
-        generated_at: new Date().toISOString(),
-        metadata: {
-          qr_code_id: qrCode.id,
-          redirect_url: qrCode.redirect_url,
-          join_url: context.joinUrl,
-          display_url: context.displayUrl,
-          output_format: 'svg',
-          generation_mode: 'emergency_fallback',
-          primary_error: primaryError,
-        },
+    .insert({
+      stakeholder_id: context.stakeholder.id,
+      template_id: template.id,
+      material_id: materialId,
+      generated_file_url: generatedFileUrl,
+      generated_file_name: `${fileBase}.svg`,
+      library_folder: template.library_folder,
+      tags: template.audience_tags,
+      generation_status: 'generated',
+      generation_error: null,
+      generated_at: new Date().toISOString(),
+      version_number: fallbackVersion,
+      is_active: true,
+      metadata: {
+        qr_code_id: qrCode.id,
+        redirect_url: qrCode.redirect_url,
+        join_url: context.joinUrl,
+        display_url: context.displayUrl,
+        output_format: 'svg',
+        generation_mode: 'emergency_fallback',
+        primary_error: primaryError,
       },
-      { onConflict: 'stakeholder_id,template_id' },
-    )
+    })
     .select()
     .single()
 
@@ -802,17 +837,26 @@ async function getTemplatesForStakeholder(
     return false
   })
 
-  // Filter by scope (city, campaign, category) for auto-generation
+  // Hierarchical scope: Global → City → Campaign (union of all matching levels)
   const scopeFiltered = tier === 'auto' ? typeFiltered.filter((template) => {
+    // Global templates always apply
     if (template.scope_global) return true
-    const cityMatch = !template.scope_cities?.length || (options?.cityId && template.scope_cities.includes(options.cityId))
-    const campaignMatch = !template.scope_campaigns?.length || (options?.campaignId && template.scope_campaigns.includes(options.campaignId))
-    const categoryMatch = !template.scope_categories?.length || (options?.businessCategory && template.scope_categories.includes(options.businessCategory))
-    return cityMatch && campaignMatch && categoryMatch
+    // City-level templates apply if city matches
+    const cityMatch = options?.cityId && template.scope_cities?.length && template.scope_cities.includes(options.cityId)
+    // Campaign-level templates apply if campaign matches
+    const campaignMatch = options?.campaignId && template.scope_campaigns?.length && template.scope_campaigns.includes(options.campaignId)
+    // Category-level templates apply if category matches
+    const categoryMatch = options?.businessCategory && template.scope_categories?.length && template.scope_categories.includes(options.businessCategory)
+    // Unscoped templates (no scope set) are treated as global
+    const noScope = !template.scope_cities?.length && !template.scope_campaigns?.length && !template.scope_categories?.length
+    return cityMatch || campaignMatch || categoryMatch || noScope
   }) : typeFiltered
 
-  if (scopeFiltered.length > 0) {
-    return scopeFiltered
+  // Apply template rules from the rules engine
+  const rulesFiltered = await applyTemplateRules(supabase, scopeFiltered, stakeholderType, options?.cityId, options?.campaignId)
+
+  if (rulesFiltered.length > 0) {
+    return rulesFiltered
   }
 
   // Only fall back for auto tier
@@ -1023,7 +1067,7 @@ async function ensureStakeholderQrCode(
     destination_url: context.joinUrl,
     redirect_url: redirectUrl,
     brand: context.brand,
-    logo_url: null,
+    logo_url: context.business?.logo_url || null,
     foreground_color: context.brand === 'hato' ? '#ec8012' : '#2563eb',
     background_color: '#ffffff',
     frame_text: context.stakeholder.type === 'business' ? 'GET MY OFFER' : 'SCAN TO JOIN',
@@ -1887,6 +1931,185 @@ function drawCoverImage(
 function getRuntimeCanvasModule(): RuntimeCanvasModule {
   const runtimeRequire = eval('require') as (id: string) => unknown
   return runtimeRequire('@napi-rs/canvas') as RuntimeCanvasModule
+}
+
+async function embedLogoIntoQr(qrDataUrl: string, logoUrl: string): Promise<string> {
+  try {
+    const { createCanvas, loadImage } = getRuntimeCanvasModule()
+    const qrImage = await loadImage(qrDataUrl)
+    const qrSize = qrImage.width || 1024
+    const canvas = createCanvas(qrSize, qrSize)
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(qrImage, 0, 0, qrSize, qrSize)
+
+    // Logo occupies ~22% of QR center (safe with H error correction)
+    const logoSize = Math.round(qrSize * 0.22)
+    const logoX = Math.round((qrSize - logoSize) / 2)
+    const logoY = Math.round((qrSize - logoSize) / 2)
+    const padding = Math.round(logoSize * 0.12)
+
+    // White background circle for logo
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.arc(qrSize / 2, qrSize / 2, (logoSize / 2) + padding, 0, Math.PI * 2)
+    ctx.fill()
+
+    try {
+      const logoImage = await loadImage(logoUrl)
+      ctx.save()
+      ctx.beginPath()
+      ctx.arc(qrSize / 2, qrSize / 2, logoSize / 2, 0, Math.PI * 2)
+      ctx.clip()
+      ctx.drawImage(logoImage, logoX, logoY, logoSize, logoSize)
+      ctx.restore()
+    } catch {
+      // If logo can't be loaded, return QR without logo
+      return qrDataUrl
+    }
+
+    const buffer = canvas.toBuffer('image/png')
+    return `data:image/png;base64,${Buffer.from(buffer).toString('base64')}`
+  } catch {
+    // Canvas not available, return QR without logo
+    return qrDataUrl
+  }
+}
+
+async function getActiveGeneratedMaterials(
+  supabase: ServiceSupabaseClient,
+  stakeholderId: string,
+  templateId: string,
+) {
+  const { data } = await supabase
+    .from('generated_materials')
+    .select('*')
+    .eq('stakeholder_id', stakeholderId)
+    .eq('template_id', templateId)
+    .eq('is_active', true)
+    .order('version_number', { ascending: false })
+  return (data || []) as GeneratedMaterial[]
+}
+
+async function createMaterialNotification(
+  supabase: ServiceSupabaseClient,
+  stakeholder: Stakeholder,
+  materialCount: number,
+) {
+  const userId = stakeholder.owner_user_id || stakeholder.profile_id
+  if (!userId) return
+
+  await (supabase.from('notifications') as any).insert({
+    user_id: userId,
+    title: 'New materials ready',
+    message: `${materialCount} new material${materialCount === 1 ? '' : 's'} ready for use for ${stakeholder.name}.`,
+    type: 'success',
+    entity_type: stakeholder.business_id ? 'business' : stakeholder.cause_id ? 'cause' : 'stakeholder',
+    entity_id: stakeholder.business_id || stakeholder.cause_id || stakeholder.id,
+    metadata: {
+      stakeholder_id: stakeholder.id,
+      material_count: materialCount,
+    },
+  })
+}
+
+async function applyTemplateRules(
+  supabase: ServiceSupabaseClient,
+  templates: MaterialTemplate[],
+  stakeholderType: StakeholderType,
+  cityId?: string | null,
+  campaignId?: string | null,
+): Promise<MaterialTemplate[]> {
+  const { data: rules } = await supabase
+    .from('template_rules')
+    .select('*')
+    .eq('is_active', true)
+    .order('priority', { ascending: false })
+
+  if (!rules || rules.length === 0) return templates
+
+  const typedRules = rules as Array<{
+    stakeholder_type: string | null
+    city_id: string | null
+    campaign_id: string | null
+    template_id: string
+    rule_type: string
+    priority: number
+  }>
+
+  const matchingRules = typedRules.filter((rule) => {
+    if (rule.stakeholder_type && rule.stakeholder_type !== stakeholderType) return false
+    if (rule.city_id && rule.city_id !== cityId) return false
+    if (rule.campaign_id && rule.campaign_id !== campaignId) return false
+    return true
+  })
+
+  if (matchingRules.length === 0) return templates
+
+  const excludeIds = new Set(
+    matchingRules.filter((r) => r.rule_type === 'exclude').map((r) => r.template_id)
+  )
+  const includeIds = new Set(
+    matchingRules.filter((r) => r.rule_type === 'include').map((r) => r.template_id)
+  )
+
+  // Remove excluded templates
+  let filtered = templates.filter((t) => !excludeIds.has(t.id))
+
+  // If include rules exist, ensure included templates are present
+  if (includeIds.size > 0) {
+    const existingIds = new Set(filtered.map((t) => t.id))
+    const missingIds = Array.from(includeIds).filter((id) => !existingIds.has(id))
+    if (missingIds.length > 0) {
+      const { data: missing } = await supabase
+        .from('material_templates')
+        .select('*')
+        .in('id', missingIds)
+        .eq('is_active', true)
+      if (missing) {
+        filtered = [...filtered, ...(missing as MaterialTemplate[])]
+      }
+    }
+  }
+
+  return filtered
+}
+
+/** Regenerate all active materials for a stakeholder (triggered by branding/code/offer changes). */
+export async function regenerateAllForStakeholder(
+  supabase: ServiceSupabaseClient,
+  stakeholderId: string,
+  actorId: string | null,
+): Promise<GenerationResult> {
+  return generateMaterialsForStakeholder(supabase, stakeholderId, actorId)
+}
+
+/** Restore an archived version to active, deactivating the current active. */
+export async function restoreGeneratedMaterialVersion(
+  supabase: ServiceSupabaseClient,
+  generatedMaterialId: string,
+) {
+  const { data, error } = await supabase
+    .from('generated_materials')
+    .select('*')
+    .eq('id', generatedMaterialId)
+    .single()
+
+  if (error || !data) throw new Error('Generated material version not found.')
+  const target = data as GeneratedMaterial
+
+  // Deactivate current active version for same stakeholder+template
+  await (supabase.from('generated_materials') as any)
+    .update({ is_active: false, is_outdated: true })
+    .eq('stakeholder_id', target.stakeholder_id)
+    .eq('template_id', target.template_id)
+    .eq('is_active', true)
+
+  // Activate the target version
+  await (supabase.from('generated_materials') as any)
+    .update({ is_active: true, is_outdated: false })
+    .eq('id', generatedMaterialId)
+
+  return target
 }
 
 function escapeXml(value: string) {

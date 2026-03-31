@@ -4,15 +4,21 @@ import * as React from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle,
+  Archive,
   ArrowRight,
+  Camera,
   CheckCircle2,
   Copy,
   ExternalLink,
   FileText,
+  History,
+  Image,
   Loader2,
   MessageSquare,
   QrCode,
+  RefreshCw,
   Sparkles,
+  Upload,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -149,7 +155,14 @@ export function BusinessExecutionOverview({
   const [outreachSubject, setOutreachSubject] = React.useState('')
   const [outreachBody, setOutreachBody] = React.useState('')
   const [outreachOutcome, setOutreachOutcome] = React.useState('')
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'outreach'>('materials')
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'outreach' | 'branding'>('materials')
+  const [showArchive, setShowArchive] = React.useState(false)
+  const [regenBusy, setRegenBusy] = React.useState(false)
+  const [regenMessage, setRegenMessage] = React.useState<string | null>(null)
+  const [uploadBusy, setUploadBusy] = React.useState<'logo' | 'cover' | null>(null)
+  const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
+  const logoInputRef = React.useRef<HTMLInputElement>(null)
+  const coverInputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
     setReferralCode(codes?.referral_code || '')
@@ -340,7 +353,52 @@ export function BusinessExecutionOverview({
     refetchOutreach({ silent: true })
   }
 
-  function openWorkspaceTab(tab: 'materials' | 'offers' | 'outreach') {
+  async function handleRegenerateAll() {
+    setRegenBusy(true)
+    setRegenMessage(null)
+    try {
+      await callExecutionAction({ action: 'regenerate_all' })
+      setRegenMessage('All materials regenerated.')
+      await refetchExecution()
+    } catch (error) {
+      setRegenMessage(error instanceof Error ? error.message : 'Regeneration failed.')
+    } finally {
+      setRegenBusy(false)
+    }
+  }
+
+  async function handleRestoreVersion(generatedMaterialId: string) {
+    try {
+      await callExecutionAction({ action: 'restore_version', generatedMaterialId })
+      await refetchExecution()
+    } catch {
+      // silent
+    }
+  }
+
+  async function handleUploadMedia(mediaType: 'logo' | 'cover_photo', file: File) {
+    setUploadBusy(mediaType === 'logo' ? 'logo' : 'cover')
+    setUploadMessage(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('mediaType', mediaType)
+      const response = await fetch(`/api/crm/businesses/${biz.id}/media`, {
+        method: 'POST',
+        body: formData,
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Upload failed.')
+      setUploadMessage(`${mediaType === 'logo' ? 'Logo' : 'Cover photo'} uploaded${body.regenerated ? ' and materials regenerated' : ''}.`)
+      await refetchExecution()
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : 'Upload failed.')
+    } finally {
+      setUploadBusy(null)
+    }
+  }
+
+  function openWorkspaceTab(tab: 'materials' | 'offers' | 'outreach' | 'branding') {
     setActiveWorkspaceTab(tab)
     if (typeof window !== 'undefined') {
       requestAnimationFrame(() => {
@@ -475,6 +533,12 @@ export function BusinessExecutionOverview({
               meta={`${outreach.length} logged`}
               onClick={() => setActiveWorkspaceTab('outreach')}
             />
+            <WorkspaceTabButton
+              active={activeWorkspaceTab === 'branding'}
+              label="Branding"
+              meta={biz.logo_url ? 'Logo set' : 'Needs logo'}
+              onClick={() => setActiveWorkspaceTab('branding')}
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -522,6 +586,10 @@ export function BusinessExecutionOverview({
                       {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                       Generate materials
                     </Button>
+                    <Button variant="outline" onClick={() => void handleRegenerateAll()} disabled={regenBusy || engineBusy !== null || !codes?.connection_code}>
+                      {regenBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Regenerate all
+                    </Button>
                     {joinUrl ? (
                       <Button variant="outline" asChild>
                         <Link href={joinUrl} target="_blank">
@@ -531,41 +599,76 @@ export function BusinessExecutionOverview({
                       </Button>
                     ) : null}
                   </div>
+                  {regenMessage ? (
+                    <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">{regenMessage}</div>
+                  ) : null}
+                  {!biz.logo_url ? (
+                    <div className="flex items-center gap-3 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span>Upload a logo to embed it in QR codes and materials.</span>
+                      <Button size="sm" variant="outline" onClick={() => setActiveWorkspaceTab('branding')}>Upload logo</Button>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
 
               <Card>
-                <CardHeader>
-                  <CardTitle>Generated materials</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <CardTitle>{showArchive ? 'Archive' : 'Generated materials'}</CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => setShowArchive(!showArchive)}>
+                    {showArchive ? <FileText className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                    {showArchive ? 'Active' : 'Archive'}
+                  </Button>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {generatedMaterials.length === 0 ? (
-                    <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-8 text-center text-sm text-surface-500">
-                      Materials will appear here as soon as generation runs.
-                    </div>
-                  ) : (
-                    generatedMaterials.map((item: GeneratedMaterial) => (
+                  {(() => {
+                    const filtered = generatedMaterials.filter((item: GeneratedMaterial) =>
+                      showArchive ? (item.is_active === false || item.is_outdated) : (item.is_active !== false && !item.is_outdated)
+                    )
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-8 text-center text-sm text-surface-500">
+                          {showArchive ? 'No archived versions.' : 'Materials will appear here as soon as generation runs.'}
+                        </div>
+                      )
+                    }
+                    return filtered.map((item: GeneratedMaterial) => (
                       <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="text-sm font-semibold text-surface-900">{item.generated_file_name || 'Generated asset'}</p>
-                            <p className="text-xs text-surface-500">{item.library_folder.replace(/_/g, ' ')}</p>
+                            <div className="mt-1 flex items-center gap-2">
+                              <p className="text-xs text-surface-500">{item.library_folder.replace(/_/g, ' ')}</p>
+                              {item.version_number > 1 ? (
+                                <Badge variant="outline">v{item.version_number}</Badge>
+                              ) : null}
+                            </div>
                           </div>
                           <Badge variant={item.generation_status === 'generated' ? 'success' : 'danger'}>
                             {item.generation_status}
                           </Badge>
                         </div>
                         {item.generation_error ? <p className="mt-2 text-xs text-danger-600">{item.generation_error}</p> : null}
-                        {item.generated_file_url ? (
-                          <div className="mt-3">
+                        <div className="mt-3 flex items-center gap-3">
+                          {item.generated_file_url ? (
                             <Link href={item.generated_file_url} target="_blank" className="text-sm font-medium text-brand-700 hover:underline">
                               Open file
                             </Link>
-                          </div>
-                        ) : null}
+                          ) : null}
+                          {showArchive && item.generated_file_url ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleRestoreVersion(item.id)}
+                              className="flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900"
+                            >
+                              <History className="h-3.5 w-3.5" />
+                              Restore
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     ))
-                  )}
+                  })()}
                 </CardContent>
               </Card>
             </div>
@@ -613,6 +716,138 @@ export function BusinessExecutionOverview({
                     {offerSaving || updateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
                     Save offer settings
                   </Button>
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {activeWorkspaceTab === 'branding' ? (
+            <div id="branding" className="grid gap-6 xl:grid-cols-[1fr,0.9fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Business branding</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-surface-700">Logo</label>
+                    <p className="mb-3 text-xs text-surface-500">Used in QR codes, generated materials, and listing previews.</p>
+                    {biz.logo_url ? (
+                      <div className="flex items-center gap-4">
+                        <div className="h-20 w-20 overflow-hidden rounded-2xl border border-surface-200 bg-surface-50">
+                          <img src={biz.logo_url} alt="Logo" className="h-full w-full object-contain" />
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => logoInputRef.current?.click()} disabled={uploadBusy !== null}>
+                          {uploadBusy === 'logo' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                          Replace
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => logoInputRef.current?.click()}
+                        disabled={uploadBusy !== null}
+                        className="flex h-32 w-full items-center justify-center rounded-2xl border-2 border-dashed border-surface-300 bg-surface-50 text-surface-500 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-600"
+                      >
+                        {uploadBusy === 'logo' ? <Loader2 className="h-6 w-6 animate-spin" /> : (
+                          <div className="flex flex-col items-center gap-2">
+                            <Upload className="h-6 w-6" />
+                            <span className="text-sm font-medium">Upload logo</span>
+                          </div>
+                        )}
+                      </button>
+                    )}
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) void handleUploadMedia('logo', file)
+                        e.target.value = ''
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-surface-700">Cover photo</label>
+                    <p className="mb-3 text-xs text-surface-500">Used in listing previews and applicable materials.</p>
+                    {biz.cover_photo_url ? (
+                      <div className="space-y-3">
+                        <div className="h-40 w-full overflow-hidden rounded-2xl border border-surface-200 bg-surface-50">
+                          <img src={biz.cover_photo_url} alt="Cover" className="h-full w-full object-cover" />
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => coverInputRef.current?.click()} disabled={uploadBusy !== null}>
+                          {uploadBusy === 'cover' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                          Replace
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => coverInputRef.current?.click()}
+                        disabled={uploadBusy !== null}
+                        className="flex h-32 w-full items-center justify-center rounded-2xl border-2 border-dashed border-surface-300 bg-surface-50 text-surface-500 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-600"
+                      >
+                        {uploadBusy === 'cover' ? <Loader2 className="h-6 w-6 animate-spin" /> : (
+                          <div className="flex flex-col items-center gap-2">
+                            <Image className="h-6 w-6" />
+                            <span className="text-sm font-medium">Upload cover photo</span>
+                          </div>
+                        )}
+                      </button>
+                    )}
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) void handleUploadMedia('cover_photo', file)
+                        e.target.value = ''
+                      }}
+                    />
+                  </div>
+
+                  {uploadMessage ? (
+                    <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{uploadMessage}</div>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Listing preview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-hidden rounded-2xl border border-surface-200 bg-white">
+                    {biz.cover_photo_url ? (
+                      <div className="h-36 w-full overflow-hidden bg-surface-100">
+                        <img src={biz.cover_photo_url} alt="Cover" className="h-full w-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="flex h-36 w-full items-center justify-center bg-gradient-to-br from-brand-100 to-brand-50">
+                        <p className="text-sm text-brand-400">No cover photo</p>
+                      </div>
+                    )}
+                    <div className="relative px-4 pb-4">
+                      <div className="-mt-8 mb-3 flex items-end gap-3">
+                        {biz.logo_url ? (
+                          <div className="h-16 w-16 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-sm">
+                            <img src={biz.logo_url} alt="Logo" className="h-full w-full object-contain" />
+                          </div>
+                        ) : (
+                          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-white bg-surface-100 shadow-sm">
+                            <span className="text-lg font-bold text-surface-400">{biz.name.charAt(0)}</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-lg font-semibold text-surface-900">{biz.name}</p>
+                      {biz.category ? <p className="mt-1 text-sm text-surface-500">{biz.category}</p> : null}
+                      {city ? <p className="mt-0.5 text-xs text-surface-400">{city.name}, {city.state}</p> : null}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </div>
