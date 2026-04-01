@@ -144,13 +144,19 @@ export default function BusinessDetailPage() {
   const { update: updateTask } = useTaskUpdate()
 
   const profileMap = React.useMemo(() => new Map(profiles.map(item => [item.id, item])), [profiles])
-  const owner = biz?.owner_id ? profileMap.get(biz.owner_id) || null : null
   const city = biz?.city_id ? cities.find(item => item.id === biz.city_id) || null : null
   const linkedCause = biz?.linked_cause_id ? causes.find(item => item.id === biz.linked_cause_id) || null : null
   const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
   const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
   const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
   const businessStakeholder = allStakeholders.find(s => s.business_id === id) || null
+  const owner = React.useMemo(() => {
+    if (!biz) return null
+    if (biz.owner_id) return profileMap.get(biz.owner_id) || null
+    if (businessStakeholder?.profile_id) return profileMap.get(businessStakeholder.profile_id) || null
+    if (businessStakeholder?.owner_user_id) return profileMap.get(businessStakeholder.owner_user_id) || null
+    return null
+  }, [biz, businessStakeholder, profileMap])
   const businessGeneratedMaterials = React.useMemo(() => {
     if (!businessStakeholder) return []
     return allGeneratedMaterials
@@ -359,7 +365,7 @@ export default function BusinessDetailPage() {
         </Button>
         <div className="ml-auto">
           <LogInAsButton
-            userId={owner?.id || null}
+            userId={owner?.id || businessStakeholder?.profile_id || businessStakeholder?.owner_user_id || null}
             userName={owner?.full_name || biz.name}
             stakeholderType="Business"
           />

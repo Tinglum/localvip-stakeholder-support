@@ -41,6 +41,7 @@ import {
   useCauses,
   useContacts,
   useGeneratedMaterials,
+  useMaterials,
   useNoteInsert,
   useNotes,
   useOnboardingFlows,
@@ -57,7 +58,7 @@ import {
   computeCauseReadiness,
   getCauseNextActions,
 } from '@/lib/cause-execution'
-import { buildStakeholderJoinUrl } from '@/lib/material-engine'
+import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS, getMaterialLibraryFolderMeta } from '@/lib/material-engine'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
@@ -92,6 +93,7 @@ export function CommunityDashboardPage() {
 
   const { data: qrCodes } = useQrCodes({ cause_id: scopedCause?.id || '__none__' })
   const { data: generatedMaterials } = useGeneratedMaterials({ stakeholder_id: scopedStakeholder?.id || '__none__' })
+  const { data: allMaterials } = useMaterials()
   const { data: flows } = useOnboardingFlows({ entity_type: 'cause', entity_id: scopedCause?.id || '__none__' })
   const flow = flows[0] || null
   const { data: steps } = useOnboardingSteps({ flow_id: flow?.id || '__none__' })
@@ -158,7 +160,13 @@ export function CommunityDashboardPage() {
   }, [codes?.join_url, codes?.connection_code, isSchool])
 
   const generatedCount = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url).length
-  const activeMaterials = generatedMaterials.filter(m => m.generation_status === 'generated' && m.is_active !== false)
+  const materialMap = React.useMemo(() => new Map(allMaterials.map(m => [m.id, m])), [allMaterials])
+  const activeMaterialPairs = React.useMemo(() =>
+    generatedMaterials
+      .filter(m => m.generation_status === 'generated' && m.is_active !== false)
+      .map(gm => ({ generated: gm, material: gm.material_id ? materialMap.get(gm.material_id) || null : null })),
+    [generatedMaterials, materialMap],
+  )
   const openTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
 
   // Action queue items
@@ -596,17 +604,17 @@ export function CommunityDashboardPage() {
             <div>
               <h2 className="text-lg font-semibold text-surface-900">Your Materials</h2>
               <p className="text-sm text-surface-500">
-                Materials generated for your {entityLabel.toLowerCase()} — flyers, cards, and outreach assets
+                Template-approved materials for your {entityLabel.toLowerCase()} — flyers, cards, and outreach assets
               </p>
             </div>
             <Button asChild variant="outline" size="sm">
-              <Link href="/materials/mine">
+              <Link href="/community/materials">
                 <ExternalLink className="h-3.5 w-3.5" /> Full library
               </Link>
             </Button>
           </div>
 
-          {activeMaterials.length === 0 ? (
+          {activeMaterialPairs.length === 0 ? (
             <Card>
               <CardContent className="py-12">
                 <div className="text-center">
@@ -619,35 +627,44 @@ export function CommunityDashboardPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {activeMaterials.map(mat => (
-                <Card key={mat.id} className="group transition-shadow hover:shadow-card-hover">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-surface-900">
-                          {(mat.metadata as any)?.template_name || 'Generated Material'}
-                        </p>
-                        <p className="text-xs text-surface-500 mt-0.5">
-                          {((mat.metadata as any)?.output_format || 'PDF').toUpperCase()} &middot; v{mat.version_number || 1}
-                        </p>
+            MATERIAL_LIBRARY_FOLDERS.map(folder => {
+              const folderItems = activeMaterialPairs.filter(({ generated }) => generated.library_folder === folder.value)
+              if (folderItems.length === 0) return null
+              const folderMeta = getMaterialLibraryFolderMeta(folder.value)
+              return (
+                <Card key={folder.value}>
+                  <CardHeader>
+                    <CardTitle>{folderMeta.label}</CardTitle>
+                    <p className="text-sm text-surface-500">{folderMeta.description}</p>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {folderItems.map(({ generated, material }) => (
+                      <div key={generated.id} className="flex items-center justify-between gap-4 rounded-xl border border-surface-200 bg-white px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-surface-900 truncate">
+                            {material?.title || generated.generated_file_name || 'Generated Material'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-surface-500">
+                              {(material?.type || 'pdf').toUpperCase()} · v{generated.version_number || 1}
+                            </span>
+                            {generated.tags?.map(tag => <Badge key={tag} variant="default">{tag}</Badge>)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant="success">Ready</Badge>
+                          {(generated.generated_file_url || material?.file_url) && (
+                            <a href={generated.generated_file_url || material?.file_url || ''} target="_blank" rel="noopener noreferrer">
+                              <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open</Button>
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <Badge variant="success">Ready</Badge>
-                    </div>
-                    {mat.generated_file_url && (
-                      <a
-                        href={mat.generated_file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700"
-                      >
-                        <ExternalLink className="h-3 w-3" /> Download / View
-                      </a>
-                    )}
+                    ))}
                   </CardContent>
                 </Card>
-              ))}
-            </div>
+              )
+            })
           )}
         </div>
       )}

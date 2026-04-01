@@ -52,7 +52,12 @@ export function LogInAsButton({
         returnUrl: window.location.href,
       })
 
-      window.open(payload.link, '_blank', 'noopener,noreferrer')
+      // Try opening in a new tab — fallback to same-tab navigation if popup blocked
+      const newTab = window.open(payload.link, '_blank')
+      if (!newTab || newTab.closed) {
+        // Popup was blocked — navigate in current tab
+        window.location.href = payload.link
+      }
     } catch {
       setError('Failed to impersonate.')
     } finally {

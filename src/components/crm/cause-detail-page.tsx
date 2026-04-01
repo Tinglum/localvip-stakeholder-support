@@ -67,6 +67,7 @@ import {
   useCauseUpdate,
   useCities,
   useGeneratedMaterials,
+  useMaterials,
   useNoteInsert,
   useNotes,
   useOnboardingFlows,
@@ -135,6 +136,7 @@ export default function CauseDetailPage() {
   const { data: allStakeholders } = useStakeholders()
   const { data: allStakeholderCodes } = useStakeholderCodes()
   const { data: allGeneratedMaterials } = useGeneratedMaterials()
+  const { data: allMaterialRecords } = useMaterials()
   const { data: assignments } = useStakeholderAssignments({ entity_id: causeId })
   const { data: causeQrCodes } = useQrCodes({ cause_id: causeId })
   const { data: flows } = useOnboardingFlows({ entity_type: 'cause', entity_id: causeId })
@@ -154,7 +156,6 @@ export default function CauseDetailPage() {
   // ── Derived data ──
   const profileMap = React.useMemo(() => new Map(profiles.map(p => [p.id, p])), [profiles])
   const city = cause?.city_id ? cities.find(c => c.id === cause.city_id) || null : null
-  const owner = cause?.owner_id ? profileMap.get(cause.owner_id) || null : null
   const campaign = cause?.campaign_id ? campaigns.find(c => c.id === cause.campaign_id) || null : null
   const linkedBusinesses = React.useMemo(() =>
     allBusinesses.filter(b => b.linked_cause_id === causeId),
@@ -168,6 +169,16 @@ export default function CauseDetailPage() {
     allStakeholders.find(s => s.cause_id === causeId) || null,
     [allStakeholders, causeId],
   )
+
+  // ── Owner resolution (fallback chain: cause.owner_id → stakeholder.profile_id → stakeholder.owner_user_id → assignment) ──
+  const owner = React.useMemo(() => {
+    if (!cause) return null
+    if (cause.owner_id) return profileMap.get(cause.owner_id) || null
+    if (causeStakeholder?.profile_id) return profileMap.get(causeStakeholder.profile_id) || null
+    if (causeStakeholder?.owner_user_id) return profileMap.get(causeStakeholder.owner_user_id) || null
+    if (assignments.length > 0) return profileMap.get(assignments[0].stakeholder_id) || null
+    return null
+  }, [cause, causeStakeholder, assignments, profileMap])
   const codes = React.useMemo(() =>
     causeStakeholder ? allStakeholderCodes.find(c => c.stakeholder_id === causeStakeholder.id) || null : null,
     [allStakeholderCodes, causeStakeholder],
@@ -178,7 +189,14 @@ export default function CauseDetailPage() {
       : [],
     [allGeneratedMaterials, causeStakeholder],
   )
-  const generatedCount = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url).length
+  const causeMaterialMap = React.useMemo(() => new Map(allMaterialRecords.map(m => [m.id, m])), [allMaterialRecords])
+  const generatedMaterialPairs = React.useMemo(() =>
+    generatedMaterials
+      .filter(gm => gm.generation_status === 'generated')
+      .map(gm => ({ generated: gm, material: gm.material_id ? causeMaterialMap.get(gm.material_id) || null : null })),
+    [generatedMaterials, causeMaterialMap],
+  )
+  const generatedCount = generatedMaterialPairs.filter(({ generated }) => !!generated.generated_file_url).length
 
   // ── Execution engine ──
   const executionSteps = React.useMemo(() => {
@@ -511,7 +529,7 @@ export default function CauseDetailPage() {
               <Plus className="h-3.5 w-3.5" /> Add Task
             </Button>
             <LogInAsButton
-              userId={owner?.id || null}
+              userId={owner?.id || causeStakeholder?.profile_id || causeStakeholder?.owner_user_id || null}
               userName={owner?.full_name || cause.name}
               stakeholderType={isSchool ? 'School Leader' : 'Cause Leader'}
             />
@@ -1015,7 +1033,7 @@ export default function CauseDetailPage() {
          ══════════════════════════════════════════════════════════ */}
       {activeTab === 'materials' && (
         <div className="space-y-6">
-          {generatedMaterials.length === 0 ? (
+          {generatedMaterialPairs.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <FileText className="mx-auto mb-3 h-10 w-10 text-surface-300" />
@@ -1031,8 +1049,8 @@ export default function CauseDetailPage() {
           ) : (
             <>
               {MATERIAL_LIBRARY_FOLDERS.map(folder => {
-                const folderMats = generatedMaterials.filter(m => m.library_folder === folder.value && m.generation_status === 'generated')
-                if (folderMats.length === 0) return null
+                const folderPairs = generatedMaterialPairs.filter(({ generated }) => generated.library_folder === folder.value)
+                if (folderPairs.length === 0) return null
                 return (
                   <Card key={folder.value}>
                     <CardHeader>
@@ -1040,18 +1058,24 @@ export default function CauseDetailPage() {
                       <p className="text-sm text-surface-500">{folder.description}</p>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {folderMats.map(mat => (
-                        <div key={mat.id} className="flex items-center justify-between gap-4 rounded-xl border border-surface-200 bg-white px-4 py-3">
+                      {folderPairs.map(({ generated, material }) => (
+                        <div key={generated.id} className="flex items-center justify-between gap-4 rounded-xl border border-surface-200 bg-white px-4 py-3">
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-surface-900 truncate">{mat.generated_file_name || 'Generated asset'}</p>
+                            <p className="text-sm font-semibold text-surface-900 truncate">
+                              {material?.title || generated.generated_file_name || 'Generated asset'}
+                            </p>
                             <div className="flex items-center gap-2 mt-1">
-                              {mat.tags?.map(tag => <Badge key={tag} variant="default">{tag}</Badge>)}
+                              {material?.description && (
+                                <span className="text-xs text-surface-500 truncate max-w-[200px]">{material.description}</span>
+                              )}
+                              {generated.tags?.map(tag => <Badge key={tag} variant="default">{tag}</Badge>)}
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
+                            {generated.is_outdated && <Badge variant="warning">Update available</Badge>}
                             <Badge variant="success">Ready</Badge>
-                            {mat.generated_file_url && (
-                              <a href={mat.generated_file_url} target="_blank" rel="noopener noreferrer">
+                            {(generated.generated_file_url || material?.file_url) && (
+                              <a href={generated.generated_file_url || material?.file_url || ''} target="_blank" rel="noopener noreferrer">
                                 <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open</Button>
                               </a>
                             )}
@@ -1069,12 +1093,15 @@ export default function CauseDetailPage() {
                     <CardTitle className="text-danger-700">Failed Materials</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {generatedMaterials.filter(m => m.generation_status === 'failed').map(mat => (
-                      <div key={mat.id} className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3">
-                        <p className="text-sm font-medium text-danger-800">{mat.generated_file_name || 'Failed asset'}</p>
-                        {mat.generation_error && <p className="mt-1 text-xs text-danger-600">{mat.generation_error}</p>}
-                      </div>
-                    ))}
+                    {generatedMaterials.filter(m => m.generation_status === 'failed').map(mat => {
+                      const failedSource = mat.material_id ? causeMaterialMap.get(mat.material_id) : null
+                      return (
+                        <div key={mat.id} className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3">
+                          <p className="text-sm font-medium text-danger-800">{failedSource?.title || mat.generated_file_name || 'Failed asset'}</p>
+                          {mat.generation_error && <p className="mt-1 text-xs text-danger-600">{mat.generation_error}</p>}
+                        </div>
+                      )
+                    })}
                   </CardContent>
                 </Card>
               )}
