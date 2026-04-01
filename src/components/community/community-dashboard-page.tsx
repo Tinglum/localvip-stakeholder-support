@@ -192,7 +192,7 @@ export function CommunityDashboardPage() {
         detail: isSchool
           ? 'Your school flyers, parent cards, and PTA materials need to be ready before outreach.'
           : 'Your cause flyers, supporter cards, and outreach materials need to be ready.',
-        href: '#materials',
+        href: '/community/materials',
         ctaLabel: 'View materials',
         priority: 'high' as const,
         badge: 'Materials',
@@ -218,7 +218,7 @@ export function CommunityDashboardPage() {
         detail: isSchool
           ? 'Your school needs at least one supporting business to turn the fundraising story into reality.'
           : 'Your cause needs at least one business supporter to show real local momentum.',
-        href: '#businesses',
+        href: '/community/businesses',
         ctaLabel: 'View business pipeline',
         priority: 'medium' as const,
         badge: 'Business support',
@@ -230,7 +230,7 @@ export function CommunityDashboardPage() {
         id: 'community-tasks',
         title: `${openTasks.length} task${openTasks.length === 1 ? '' : 's'} need attention`,
         detail: 'Review and complete your pending tasks to keep moving forward.',
-        href: '#tasks',
+        href: '/community/tasks',
         ctaLabel: 'View tasks',
         priority: 'medium' as const,
         badge: 'Tasks',
@@ -252,7 +252,7 @@ export function CommunityDashboardPage() {
       id: 'community-suggestion-business',
       title: 'Follow up with the next business',
       detail: 'Keep building the business side so the supporter story has real local momentum.',
-      href: '#businesses',
+      href: '/community/businesses',
       ctaLabel: 'View businesses',
     },
     {
