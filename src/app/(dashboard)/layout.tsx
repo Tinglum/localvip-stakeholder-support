@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
 import { AuthProvider } from '@/lib/auth/context'
+import { ImpersonationProvider } from '@/lib/impersonation-context'
 import { normalizeBusinessProfile } from '@/lib/business-portal'
 import type { Profile } from '@/lib/types/database'
 import { createClient } from '@/lib/supabase/client'
@@ -112,10 +113,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <AuthProvider profile={profile}>
-      <AppShell profile={profile}>
-        {children}
-      </AppShell>
-    </AuthProvider>
+    <ImpersonationProvider>
+      <AuthProvider profile={profile}>
+        <AppShell profile={profile}>
+          {children}
+        </AppShell>
+      </AuthProvider>
+    </ImpersonationProvider>
   )
 }

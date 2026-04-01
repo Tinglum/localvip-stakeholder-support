@@ -4,6 +4,8 @@ import * as React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar } from './sidebar'
 import { Topbar } from './topbar'
+import { ImpersonationBanner } from './impersonation-banner'
+import { useImpersonation } from '@/lib/impersonation-context'
 import { cn } from '@/lib/utils'
 import { canAccessPath, getStakeholderAccess } from '@/lib/stakeholder-access'
 import type { Profile } from '@/lib/types/database'
@@ -18,6 +20,7 @@ export function AppShell({ profile, children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const access = getStakeholderAccess(profile)
+  const { active: impersonating } = useImpersonation()
   const blockedPath = !canAccessPath(profile, pathname)
 
   React.useEffect(() => {
@@ -26,8 +29,11 @@ export function AppShell({ profile, children }: AppShellProps) {
     }
   }, [access.fallbackPath, blockedPath, router])
 
+  const bannerOffset = impersonating ? 'pt-10' : ''
+
   return (
-    <div className="min-h-screen bg-surface-50">
+    <div className={cn('min-h-screen bg-surface-50', bannerOffset)}>
+      <ImpersonationBanner />
       <Sidebar
         profile={profile}
         brand={profile.brand_context}

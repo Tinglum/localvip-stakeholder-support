@@ -50,6 +50,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate, formatDateTime } from '@/lib/utils'
@@ -509,6 +510,11 @@ export default function CauseDetailPage() {
             <Button variant="outline" size="sm" onClick={() => setActiveTab('tasks')}>
               <Plus className="h-3.5 w-3.5" /> Add Task
             </Button>
+            <LogInAsButton
+              userId={owner?.id || null}
+              userName={owner?.full_name || cause.name}
+              stakeholderType={isSchool ? 'School Leader' : 'Cause Leader'}
+            />
           </div>
         )}
       />

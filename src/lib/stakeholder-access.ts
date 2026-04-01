@@ -105,10 +105,13 @@ const LAUNCH_PARTNER_NAV_ITEMS: NavItem[] = [
 
 const COMMUNITY_NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
+  { label: 'Businesses', href: '/community/businesses', icon: 'Store', minLevel: 0 },
   { label: 'Supporters', href: '/community/supporters', icon: 'Users', minLevel: 0 },
+  { label: 'Materials', href: '/community/materials', icon: 'FileDown', minLevel: 0 },
+  { label: 'QR & Codes', href: '/community/qr', icon: 'QrCode', minLevel: 0 },
+  { label: 'Tasks & Notes', href: '/community/tasks', icon: 'CheckSquare', minLevel: 0 },
   { label: 'Share', href: '/community/share', icon: 'Megaphone', minLevel: 0 },
   { label: 'Activity', href: '/community/activity', icon: 'BarChart3', minLevel: 0 },
-  { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
 ]
 
 const INFLUENCER_NAV_ITEMS: NavItem[] = [
@@ -376,6 +379,10 @@ export function canAccessPath(profile: Profile, pathname: string) {
     return [
       '/dashboard',
       '/community/supporters',
+      '/community/businesses',
+      '/community/materials',
+      '/community/qr',
+      '/community/tasks',
       '/community/share',
       '/community/activity',
       '/materials/mine',

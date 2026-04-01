@@ -24,6 +24,7 @@ import {
 import { ProgressSteps } from '@/components/ui/progress-steps'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { BusinessExecutionOverview } from '@/components/crm/business-execution-overview'
+import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import {
   Select,
   SelectContent,
@@ -343,7 +344,7 @@ export default function BusinessDetailPage() {
       />
 
       {/* Quick Action Buttons */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => setActiveTab('activity')}>
           <Send className="h-3.5 w-3.5" /> Log Activity
         </Button>
@@ -356,6 +357,13 @@ export default function BusinessDetailPage() {
         <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}>
           <QrCodeIcon className="h-3.5 w-3.5" /> Generate QR Code
         </Button>
+        <div className="ml-auto">
+          <LogInAsButton
+            userId={owner?.id || null}
+            userName={owner?.full_name || biz.name}
+            stakeholderType="Business"
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-4">
