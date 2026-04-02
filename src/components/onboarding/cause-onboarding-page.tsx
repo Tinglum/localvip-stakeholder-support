@@ -7,16 +7,20 @@ import {
   Building2,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
+  Circle,
   ClipboardList,
   Clock3,
   FileText,
   Heart,
   Loader2,
+  Lock,
   MapPin,
   MessageSquare,
   Plus,
   QrCode,
   School,
+  Search,
   Sparkles,
   Users,
 } from 'lucide-react'
@@ -37,7 +41,12 @@ import {
 import { Input } from '@/components/ui/input'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { getEntityTheme } from '@/lib/entity-themes'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
+import { getStakeholderShell } from '@/lib/stakeholder-access'
+import {
+  computeCauseOnboardingChecklist,
+  type CauseOnboardingChecklist,
+} from '@/lib/cause-execution'
 import {
   useAdminTaskInsert,
   useAdminTasks,
@@ -216,8 +225,28 @@ function StageChanger({ cause, onStageChanged }: { cause: Cause; onStageChanged:
   )
 }
 
+// ─── Progress bar color helper ─────────────────────────────
+
+function getProgressColor(percent: number) {
+  if (percent >= 80) return 'bg-success-500'
+  if (percent >= 40) return 'bg-brand-500'
+  if (percent >= 20) return 'bg-amber-500'
+  return 'bg-danger-500'
+}
+
+function getProgressTextColor(percent: number) {
+  if (percent >= 80) return 'text-success-700'
+  if (percent >= 40) return 'text-brand-700'
+  if (percent >= 20) return 'text-amber-700'
+  return 'text-danger-700'
+}
+
+// ─── Main page component ───────────────────────────────────
+
 export default function CauseOnboardingPage() {
   const { profile } = useAuth()
+  const isFieldUser = getStakeholderShell(profile) === 'field'
+
   const { data: causes, loading, error, refetch } = useCauses()
   const { data: businesses } = useBusinesses()
   const { data: cities } = useCities()
@@ -244,6 +273,12 @@ export default function CauseOnboardingPage() {
   const [setupError, setSetupError] = React.useState<string | null>(null)
   const [setupLoadingCauseId, setSetupLoadingCauseId] = React.useState<string | null>(null)
   const [setupStatusByCause, setSetupStatusByCause] = React.useState<Record<string, string>>({})
+
+  // Filter state
+  const [cityFilter, setCityFilter] = React.useState('all')
+  const [campaignFilter, setCampaignFilter] = React.useState('all')
+  const [searchQuery, setSearchQuery] = React.useState('')
+  const [expandedChecklist, setExpandedChecklist] = React.useState<string | null>(null)
 
   const cityMap = React.useMemo(() => new Map(cities.map((city) => [city.id, city])), [cities])
   const campaignMap = React.useMemo(() => new Map(campaigns.map((campaign) => [campaign.id, campaign])), [campaigns])
@@ -353,12 +388,31 @@ export default function CauseOnboardingPage() {
     return map
   }, [qrCodes])
 
+  // ─── Filter causes based on role, city, campaign, search ───
+
+  const filteredCauses = React.useMemo(() => {
+    let items = causes
+    if (isFieldUser) {
+      const myIds = new Set<string>()
+      assignments.filter(a => a.stakeholder_id === profile.id && a.entity_type === 'cause').forEach(a => myIds.add(a.entity_id))
+      causes.filter(c => c.owner_id === profile.id).forEach(c => myIds.add(c.id))
+      items = items.filter(c => myIds.has(c.id))
+    }
+    if (cityFilter !== 'all') items = items.filter(c => c.city_id === cityFilter)
+    if (campaignFilter !== 'all') items = items.filter(c => c.campaign_id === campaignFilter)
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase()
+      items = items.filter(c => c.name.toLowerCase().includes(q))
+    }
+    return items
+  }, [causes, isFieldUser, assignments, profile.id, cityFilter, campaignFilter, searchQuery])
+
   const groupedCauses = React.useMemo(() => {
     return STAGE_ORDER.map((stage) => ({
       stage,
-      items: causes.filter((cause) => cause.stage === stage),
+      items: filteredCauses.filter((cause) => cause.stage === stage),
     })).filter((group) => group.items.length > 0)
-  }, [causes])
+  }, [filteredCauses])
 
   const summary = React.useMemo(() => {
     const live = causes.filter((cause) => cause.stage === 'live').length
@@ -664,6 +718,45 @@ export default function CauseOnboardingPage() {
         </Card>
       </div>
 
+      {/* ─── Filter bar ───────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+          <Input
+            placeholder="Search causes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <select
+          className="h-9 rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700"
+          value={cityFilter}
+          onChange={(e) => setCityFilter(e.target.value)}
+        >
+          <option value="all">All Cities</option>
+          {cities.map((city) => (
+            <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
+          ))}
+        </select>
+        <select
+          className="h-9 rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700"
+          value={campaignFilter}
+          onChange={(e) => setCampaignFilter(e.target.value)}
+        >
+          <option value="all">All Campaigns</option>
+          {campaigns.map((campaign) => (
+            <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+          ))}
+        </select>
+        {filteredCauses.length !== causes.length ? (
+          <span className="text-xs text-surface-500">
+            Showing {filteredCauses.length} of {causes.length} causes
+          </span>
+        ) : null}
+      </div>
+
+      {/* ─── Grouped cards ────────────────────────────────────── */}
       <div className="space-y-8">
         {groupedCauses.map((group) => (
           <section key={group.stage} className="space-y-4">
@@ -713,6 +806,20 @@ export default function CauseOnboardingPage() {
                   })[0]
                 const qrGeneratorHref = `/qr/generator?causeId=${cause.id}&returnTo=${encodeURIComponent('/onboarding/cause')}`
 
+                const causeChecklist = computeCauseOnboardingChecklist({
+                  cause,
+                  steps: stepsByFlow.get(flow?.id || '') || [],
+                  codes,
+                  generatedMaterials: generated,
+                  qrCodes: causeQrCodes,
+                  outreachCount: causeOutreach.length,
+                  linkedBusinessCount: linkedBusinesses.length,
+                  completedTaskCount: tasks.filter(t => t.entity_type === 'cause' && t.entity_id === cause.id && t.status === 'completed').length,
+                  hasOwner: !!cause.owner_id,
+                  hasCampaign: !!cause.campaign_id,
+                  hasJoinUrl: !!codes?.join_url,
+                })
+
                 return (
                   <CauseOnboardingCard
                     key={cause.id}
@@ -739,6 +846,9 @@ export default function CauseOnboardingPage() {
                     setupMessage={setupStatusByCause[cause.id] || null}
                     onCreateSetup={() => void ensureStakeholderSetup(cause)}
                     onStageChanged={refetch}
+                    checklist={causeChecklist}
+                    expanded={expandedChecklist === cause.id}
+                    onToggleExpand={() => setExpandedChecklist(expandedChecklist === cause.id ? null : cause.id)}
                   />
                 )
               })}
@@ -766,6 +876,8 @@ export default function CauseOnboardingPage() {
     </div>
   )
 }
+
+// ─── Small helpers ─────────────────────────────────────────
 
 function SummaryMetric({ label, value }: { label: string; value: number }) {
   return (
@@ -806,6 +918,8 @@ function SimpleSummaryCard({
   )
 }
 
+// ─── Redesigned CauseOnboardingCard ────────────────────────
+
 function CauseOnboardingCard({
   cause,
   owner,
@@ -830,6 +944,9 @@ function CauseOnboardingCard({
   setupMessage,
   onCreateSetup,
   onStageChanged,
+  checklist,
+  expanded,
+  onToggleExpand,
 }: {
   cause: Cause
   owner: Profile | null
@@ -854,11 +971,35 @@ function CauseOnboardingCard({
   setupMessage: string | null
   onCreateSetup: () => void
   onStageChanged: () => void
+  checklist: CauseOnboardingChecklist
+  expanded: boolean
+  onToggleExpand: () => void
 }) {
   return (
     <Card className={`overflow-hidden border ${causeTheme.border}`}>
+      {/* ── Progress bar row ──────────────────────────────── */}
+      <div className="flex items-center gap-3 border-b border-surface-200 bg-surface-50 px-5 py-3">
+        <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-surface-200">
+          <div
+            className={cn('h-full rounded-full transition-all duration-500 ease-out', getProgressColor(checklist.percent))}
+            style={{ width: `${checklist.percent}%` }}
+          />
+        </div>
+        <span className={cn('whitespace-nowrap text-xs font-semibold', getProgressTextColor(checklist.percent))}>
+          {checklist.percent}% ({checklist.completedCount}/{checklist.totalCount})
+        </span>
+        <button
+          onClick={onToggleExpand}
+          className="flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-surface-600 transition-colors hover:bg-surface-100 hover:text-surface-900"
+        >
+          View Checklist
+          <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-90')} />
+        </button>
+      </div>
+
+      {/* ── Header row ────────────────────────────────────── */}
       <div className={`bg-gradient-to-r ${causeTheme.gradient} px-5 py-4`}>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Link href={`/crm/causes/${cause.id}`} className="text-lg font-semibold text-surface-900 transition-colors hover:text-brand-700">
@@ -867,10 +1008,10 @@ function CauseOnboardingCard({
               <Badge variant={getStageBadgeVariant(cause.stage)} dot>
                 {ONBOARDING_STAGES[cause.stage]?.label}
               </Badge>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${causeTheme.badge}`}>{cause.type}</span>
               <Badge variant={cause.brand === 'hato' ? 'hato' : 'info'}>
                 {BRANDS[cause.brand]?.label || cause.brand}
               </Badge>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${causeTheme.badge}`}>{cause.type}</span>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-surface-500">
               {city ? (
@@ -881,59 +1022,72 @@ function CauseOnboardingCard({
               ) : null}
               {campaign ? <Link href={`/campaigns/${campaign.id}`} className="hover:text-surface-700">Campaign: {campaign.name}</Link> : null}
               <span>Added {formatDate(cause.created_at)}</span>
-              {cause.website ? (
-                <a href={cause.website.startsWith('http') ? cause.website : `https://${cause.website}`} target="_blank" rel="noopener noreferrer" className="hover:text-surface-700">
-                  Visit site
-                </a>
-              ) : null}
             </div>
           </div>
           <StageChanger cause={cause} onStageChanged={onStageChanged} />
         </div>
       </div>
 
+      {/* ── Body: Steps + Leadership ──────────────────────── */}
       <CardContent className="space-y-5 p-5">
         <div className="grid gap-4 lg:grid-cols-[1.3fr,0.9fr]">
+          {/* Onboarding steps */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-surface-500">
               <ClipboardList className="h-3.5 w-3.5" />
               Onboarding Steps
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {steps.map((step) => (
-                <div
-                  key={step.id}
-                  className={`rounded-xl border px-3 py-2 text-sm ${
-                    step.completed
-                      ? 'border-success-200 bg-success-50 text-success-700'
-                      : step.current
-                      ? `border-pink-200 ${causeTheme.softSurface} ${causeTheme.mutedText}`
-                      : 'border-surface-200 bg-surface-50 text-surface-500'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {step.completed ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+            <div className="space-y-1.5">
+              {steps.map((step) => {
+                const isLocked = !step.completed && !step.current
+                return (
+                  <div
+                    key={step.id}
+                    className={cn(
+                      'flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm',
+                      step.completed
+                        ? 'border-success-200 bg-success-50 text-success-700'
+                        : step.current
+                        ? `border-pink-200 ${causeTheme.softSurface} ${causeTheme.mutedText}`
+                        : 'border-surface-200 bg-surface-50 text-surface-400'
+                    )}
+                  >
+                    {step.completed ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    ) : step.current ? (
+                      <Clock3 className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <Lock className="h-3.5 w-3.5 shrink-0" />
+                    )}
                     <span className="font-medium">{step.label}</span>
+                    {step.current && (
+                      <Link
+                        href={`/crm/causes/${cause.id}`}
+                        className="ml-auto flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-800"
+                      >
+                        Fix <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
+          {/* Leadership */}
           <div className="space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4">
             <div>
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Leadership</p>
               {owner ? (
                 <Link href={`/admin/users/${owner.id}`} className="mt-2 inline-flex text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
-                  {owner.full_name}
+                  {owner.full_name} - Primary owner
                 </Link>
               ) : (
                 <p className="mt-2 text-sm font-semibold text-surface-900">Unassigned owner</p>
               )}
-              <p className="text-xs text-surface-500">{owner ? 'Primary community owner' : 'Needs a clear owner'}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Assigned Helpers</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Helpers</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {helperAssignments.length > 0 ? helperAssignments.map(({ assignment, profile: helper }) => (
                   <Link
@@ -945,20 +1099,35 @@ function CauseOnboardingCard({
                     {assignment.role ? ` - ${assignment.role}` : ''}
                   </Link>
                 )) : (
-                  <span className="text-xs text-surface-400">No helpers assigned yet</span>
+                  <span className="text-xs text-surface-400">None</span>
                 )}
               </div>
             </div>
           </div>
         </div>
 
+        {/* ── Metrics row ─────────────────────────────────── */}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <MetricBlock label="Open Tasks" value={tasks.length} detail={dueTask?.due_date ? `Next due ${formatDate(dueTask.due_date)}` : 'No due date set'} />
+          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Tasks</p>
+            <p className="mt-1 text-xl font-semibold text-surface-900">{tasks.length}</p>
+            <p className="mt-1 text-xs text-surface-500">Outreach: {outreach.length}</p>
+            <p className="mt-0.5 text-xs text-surface-500">Businesses: {linkedBusinesses.length}</p>
+          </div>
+          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Launch Assets</p>
+            <div className="mt-2 space-y-1 text-xs text-surface-500">
+              <p>Setup: <span className="font-medium text-surface-800">{stakeholder ? 'Ready' : 'Missing'}</span></p>
+              <p>Codes: <span className="font-medium text-surface-800">{codesReady ? 'Ready' : 'Missing'}</span></p>
+              <p>QR: <span className="font-medium text-surface-800">{qrCount > 0 ? `${qrCount} ready` : 'Missing'}</span></p>
+              <p>Materials: <span className="font-medium text-surface-800">{generatedCount > 0 ? `${generatedCount} ready` : 'Waiting'}</span></p>
+            </div>
+          </div>
           <MetricBlock
             label="Outreach Activity"
             value={outreach.length}
             detail={latestOutreach ? `${latestOutreach.type.replace('_', ' ')} / ${formatDate(latestOutreach.created_at)}` : 'No outreach logged yet'}
-            secondary={nextFollowUp?.next_step ? `${nextFollowUp.next_step}${nextFollowUp.next_step_date ? ` by ${formatDate(nextFollowUp.next_step_date)}` : ''}` : 'No follow-up scheduled'}
+            secondary={nextFollowUp?.next_step ? `${nextFollowUp.next_step}${nextFollowUp.next_step_date ? ` by ${formatDate(nextFollowUp.next_step_date)}` : ''}` : undefined}
           />
           <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Business Links</p>
@@ -973,22 +1142,9 @@ function CauseOnboardingCard({
               )}
             </div>
           </div>
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Launch Assets</p>
-            <div className="mt-2 space-y-1 text-xs text-surface-500">
-              <p>Setup: <span className="font-medium text-surface-800">{stakeholder ? 'Ready' : 'Missing'}</span></p>
-              <p>Codes: <span className="font-medium text-surface-800">{codesReady ? 'Ready' : 'Missing'}</span></p>
-              <p>QR: <span className="font-medium text-surface-800">{qrCount > 0 ? `${qrCount} ready` : 'Missing'}</span></p>
-              <p>Materials: <span className="font-medium text-surface-800">{generatedCount > 0 ? `${generatedCount} ready` : 'Waiting'}</span></p>
-              {taskStatus ? (
-                <div className="pt-1">
-                  <Badge variant={getTaskStatusVariant(taskStatus)}>{taskStatus.replace(/_/g, ' ')}</Badge>
-                </div>
-              ) : null}
-            </div>
-          </div>
         </div>
 
+        {/* ── Action buttons ──────────────────────────────── */}
         <div className="flex flex-wrap gap-2">
           <Link href={`/crm/causes/${cause.id}`}>
             <Button variant="outline" size="sm">
@@ -997,27 +1153,27 @@ function CauseOnboardingCard({
           </Link>
           <Link href={qrGeneratorHref}>
             <Button size="sm">
-              <QrCode className="h-3.5 w-3.5" /> Generate QR Code
+              <QrCode className="h-3.5 w-3.5" /> QR Code
             </Button>
           </Link>
-          {joinUrl ? (
-            <a href={joinUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm">
-                <ArrowRight className="h-3.5 w-3.5" /> Open Support Page
-              </Button>
-            </a>
-          ) : null}
           {!stakeholder || !taskStatus ? (
             <Button variant="outline" size="sm" onClick={onCreateSetup} disabled={setupLoading}>
               {setupLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
               {!stakeholder ? 'Create Material Setup' : 'Create Setup Task'}
             </Button>
           ) : null}
-          <Link href="/crm/outreach">
+          <Link href={`/crm/outreach?cause=${cause.id}`}>
             <Button variant="outline" size="sm">
               <MessageSquare className="h-3.5 w-3.5" /> Log Outreach
             </Button>
           </Link>
+          {joinUrl ? (
+            <a href={joinUrl} target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" size="sm">
+                <ArrowRight className="h-3.5 w-3.5" /> Support Page
+              </Button>
+            </a>
+          ) : null}
         </div>
 
         {setupMessage ? (
@@ -1026,6 +1182,31 @@ function CauseOnboardingCard({
           </div>
         ) : null}
       </CardContent>
+
+      {/* ── Expanded checklist ────────────────────────────── */}
+      {expanded && (
+        <div className="border-t border-surface-200 bg-surface-50 p-5">
+          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-surface-400">
+            Onboarding Checklist — {checklist.completedCount}/{checklist.totalCount} completed
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {checklist.items.map(item => (
+              <Link
+                key={item.id}
+                href={`${item.href}?tab=${item.tab}`}
+                className={cn(
+                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                  item.met ? 'text-success-700 bg-success-50' : 'text-surface-700 bg-surface-0 hover:bg-surface-100'
+                )}
+              >
+                {item.met ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" /> : <Circle className="h-4 w-4 shrink-0 text-surface-400" />}
+                <span className={item.met ? 'line-through opacity-60' : ''}>{item.label}</span>
+                {!item.met && <ArrowRight className="ml-auto h-3.5 w-3.5 text-surface-400" />}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   )
 }

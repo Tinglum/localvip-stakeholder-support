@@ -207,3 +207,76 @@ export function getBusinessNextActions(input: {
 
   return actions.slice(0, 5)
 }
+
+// ─── 20-point onboarding checklist (each item = 5%) ────────
+
+export interface OnboardingChecklistItem {
+  id: string
+  label: string
+  met: boolean
+  href: string
+  tab: string
+}
+
+export interface OnboardingChecklist {
+  items: OnboardingChecklistItem[]
+  completedCount: number
+  totalCount: number
+  percent: number
+}
+
+export function computeBusinessOnboardingChecklist(input: {
+  business: Business
+  steps: OnboardingStep[]
+  codes: StakeholderCode | null
+  generatedMaterials: GeneratedMaterial[]
+  qrCodes: QrCode[]
+  offers: Offer[]
+  outreachCount: number
+  completedTaskCount: number
+  hasOwner: boolean
+  hasCampaign: boolean
+  hasLinkedCause: boolean
+  hasLogo: boolean
+  hasCoverPhoto: boolean
+}): OnboardingChecklist {
+  const base = `/crm/businesses/${input.business.id}`
+  const captureOffer = resolveBusinessOffer(input.business, input.offers, 'capture')
+  const cashbackOffer = resolveBusinessOffer(input.business, input.offers, 'cashback')
+  const generatedCount = input.generatedMaterials.filter(
+    (m) => m.generation_status === 'generated' && !!m.generated_file_url,
+  ).length
+  const qrReady = Boolean(input.business.linked_qr_code_id || input.qrCodes.length > 0)
+  const stepsComplete = input.steps.filter((s) => s.is_completed).length
+
+  const items: OnboardingChecklistItem[] = [
+    { id: 'name', label: 'Business name set', met: !!input.business.name?.trim(), href: base, tab: 'overview' },
+    { id: 'category', label: 'Category assigned', met: !!input.business.category, href: base, tab: 'overview' },
+    { id: 'city', label: 'City assigned', met: !!input.business.city_id, href: base, tab: 'overview' },
+    { id: 'contact', label: 'Email or phone added', met: !!(input.business.email || input.business.phone), href: base, tab: 'overview' },
+    { id: 'website', label: 'Website added', met: !!input.business.website, href: base, tab: 'overview' },
+    { id: 'owner', label: 'Owner assigned', met: input.hasOwner, href: base, tab: 'overview' },
+    { id: 'campaign', label: 'Campaign linked', met: input.hasCampaign, href: base, tab: 'overview' },
+    { id: 'cause', label: 'Cause or school linked', met: input.hasLinkedCause, href: base, tab: 'overview' },
+    { id: 'first_outreach', label: 'First outreach logged', met: input.outreachCount >= 1, href: base, tab: 'outreach' },
+    { id: 'owner_convo', label: 'Owner conversation (3+ touches)', met: input.outreachCount >= 3, href: base, tab: 'outreach' },
+    { id: 'referral_code', label: 'Referral code saved', met: !!input.codes?.referral_code, href: base, tab: 'codes' },
+    { id: 'connection_code', label: 'Connection code saved', met: !!input.codes?.connection_code, href: base, tab: 'codes' },
+    { id: 'qr', label: 'QR code generated', met: qrReady, href: base, tab: 'codes' },
+    { id: 'materials', label: 'Materials generated', met: generatedCount > 0, href: base, tab: 'codes' },
+    { id: 'capture_offer', label: 'Customer capture offer set', met: !!captureOffer.headline?.trim(), href: base, tab: 'offers' },
+    { id: 'cashback', label: 'Cashback percentage configured', met: typeof cashbackOffer.cashback_percent === 'number' && cashbackOffer.cashback_percent >= 5 && cashbackOffer.cashback_percent <= 25, href: base, tab: 'offers' },
+    { id: 'logo', label: 'Logo uploaded', met: input.hasLogo, href: base, tab: 'codes' },
+    { id: 'cover', label: 'Cover photo uploaded', met: input.hasCoverPhoto, href: base, tab: 'codes' },
+    { id: 'task_done', label: 'At least one task completed', met: input.completedTaskCount > 0, href: base, tab: 'tasks' },
+    { id: 'all_steps', label: 'All onboarding steps completed', met: stepsComplete >= 4, href: base, tab: 'overview' },
+  ]
+
+  const completedCount = items.filter((item) => item.met).length
+  return {
+    items,
+    completedCount,
+    totalCount: 20,
+    percent: completedCount * 5,
+  }
+}

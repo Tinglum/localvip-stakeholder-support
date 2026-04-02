@@ -6,6 +6,8 @@ import {
   ArrowRight,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
+  Circle,
   ClipboardList,
   Clock3,
   FileText,
@@ -15,7 +17,7 @@ import {
   MessageSquare,
   Plus,
   QrCode,
-  Sparkles,
+  Search,
   Store,
   Users,
 } from 'lucide-react'
@@ -25,9 +27,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ONBOARDING_STAGES } from '@/lib/constants'
-import { computeBusinessExecutionSteps } from '@/lib/business-execution'
+import { computeBusinessExecutionSteps, computeBusinessOnboardingChecklist } from '@/lib/business-execution'
 import { getEntityTheme } from '@/lib/entity-themes'
 import { formatDate, formatDateTime } from '@/lib/utils'
+import { useAuth } from '@/lib/auth/context'
+import { getStakeholderShell } from '@/lib/stakeholder-access'
 import {
   useBusinesses,
   useBusinessUpdate,
@@ -80,6 +84,13 @@ function getStageBadgeVariant(stage: string) {
   }
 }
 
+function getProgressColor(percent: number) {
+  if (percent >= 80) return { bar: 'from-emerald-500 to-emerald-400', text: 'text-emerald-700', bg: 'bg-emerald-50' }
+  if (percent >= 40) return { bar: 'from-brand-600 to-brand-400', text: 'text-brand-700', bg: 'bg-brand-50' }
+  if (percent >= 20) return { bar: 'from-amber-500 to-amber-400', text: 'text-amber-700', bg: 'bg-amber-50' }
+  return { bar: 'from-red-500 to-red-400', text: 'text-red-700', bg: 'bg-red-50' }
+}
+
 function StageChanger({
   business,
   onStageChanged,
@@ -105,7 +116,7 @@ function StageChanger({
         disabled={loading}
       >
         {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-        Move Stage
+        Move
         <ChevronDown className="h-3.5 w-3.5" />
       </Button>
       {open && (
@@ -136,6 +147,9 @@ function StageChanger({
 }
 
 export default function BusinessOnboardingPage() {
+  const { profile } = useAuth()
+  const isFieldUser = getStakeholderShell(profile) === 'field'
+
   const { data: businesses, loading, error, refetch } = useBusinesses()
   const { data: cities } = useCities()
   const { data: causes } = useCauses()
@@ -152,10 +166,17 @@ export default function BusinessOnboardingPage() {
   const { data: tasks } = useTasks()
   const { data: outreach } = useOutreach()
 
+  // ── Filter state ──────────────────────────────────────────────
+  const [cityFilter, setCityFilter] = React.useState('all')
+  const [campaignFilter, setCampaignFilter] = React.useState('all')
+  const [searchQuery, setSearchQuery] = React.useState('')
+  const [expandedChecklist, setExpandedChecklist] = React.useState<string | null>(null)
+
+  // ── Lookup maps ───────────────────────────────────────────────
   const cityMap = React.useMemo(() => new Map(cities.map(city => [city.id, city])), [cities])
   const causeMap = React.useMemo(() => new Map(causes.map(cause => [cause.id, cause])), [causes])
   const campaignMap = React.useMemo(() => new Map(campaigns.map(campaign => [campaign.id, campaign])), [campaigns])
-  const profileMap = React.useMemo(() => new Map(profiles.map(profile => [profile.id, profile])), [profiles])
+  const profileMap = React.useMemo(() => new Map(profiles.map(p => [p.id, p])), [profiles])
 
   const assignmentsByBusiness = React.useMemo(() => {
     const map = new Map<string, typeof assignments>()
@@ -258,26 +279,68 @@ export default function BusinessOnboardingPage() {
     return map
   }, [outreach])
 
+  // ── Filtered businesses (role + filter bar) ───────────────────
+  const filteredBusinesses = React.useMemo(() => {
+    let items = businesses
+    if (isFieldUser) {
+      const myIds = new Set<string>()
+      assignments
+        .filter(a => a.stakeholder_id === profile.id && a.entity_type === 'business')
+        .forEach(a => myIds.add(a.entity_id))
+      businesses
+        .filter(b => b.owner_id === profile.id)
+        .forEach(b => myIds.add(b.id))
+      items = items.filter(b => myIds.has(b.id))
+    }
+    if (cityFilter !== 'all') items = items.filter(b => b.city_id === cityFilter)
+    if (campaignFilter !== 'all') items = items.filter(b => b.campaign_id === campaignFilter)
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase()
+      items = items.filter(b => b.name.toLowerCase().includes(q))
+    }
+    return items
+  }, [businesses, isFieldUser, assignments, profile.id, cityFilter, campaignFilter, searchQuery])
+
+  // ── Group filtered businesses by stage ────────────────────────
   const groupedBusinesses = React.useMemo(() => {
     return STAGE_ORDER.map(stage => ({
       stage,
-      items: businesses.filter(business => business.stage === stage),
+      items: filteredBusinesses.filter(business => business.stage === stage),
     })).filter(group => group.items.length > 0)
-  }, [businesses])
+  }, [filteredBusinesses])
 
+  // ── Summary stats ─────────────────────────────────────────────
   const summary = React.useMemo(() => {
-    const live = businesses.filter(business => business.stage === 'live').length
-    const onboarding = businesses.filter(business => business.stage === 'in_progress' || business.stage === 'onboarded').length
+    const live = filteredBusinesses.filter(business => business.stage === 'live').length
+    const onboarding = filteredBusinesses.filter(business => business.stage === 'in_progress' || business.stage === 'onboarded').length
     const followUps = outreach.filter(activity =>
       activity.entity_type === 'business'
       && !!activity.next_step_date
       && new Date(activity.next_step_date).getTime() <= Date.now() + (1000 * 60 * 60 * 24 * 7)
     ).length
-    const assigned = businesses.filter(business => assignmentsByBusiness.has(business.id)).length
+    const assigned = filteredBusinesses.filter(business => assignmentsByBusiness.has(business.id)).length
 
-    return { live, onboarding, followUps, assigned }
-  }, [assignmentsByBusiness, businesses, outreach])
+    return { total: filteredBusinesses.length, live, onboarding, followUps, assigned }
+  }, [assignmentsByBusiness, filteredBusinesses, outreach])
 
+  // ── Unique city/campaign options for filter dropdowns ─────────
+  const cityOptions = React.useMemo(() => {
+    const ids = new Set(businesses.map(b => b.city_id).filter(Boolean) as string[])
+    return Array.from(ids)
+      .map(id => cityMap.get(id))
+      .filter(Boolean)
+      .sort((a, b) => (a!.name > b!.name ? 1 : -1)) as typeof cities
+  }, [businesses, cityMap])
+
+  const campaignOptions = React.useMemo(() => {
+    const ids = new Set(businesses.map(b => b.campaign_id).filter(Boolean) as string[])
+    return Array.from(ids)
+      .map(id => campaignMap.get(id))
+      .filter(Boolean)
+      .sort((a, b) => (a!.name > b!.name ? 1 : -1)) as typeof campaigns
+  }, [businesses, campaignMap])
+
+  // ── Step execution helpers ────────────────────────────────────
   const [busyStepId, setBusyStepId] = React.useState<string | null>(null)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
@@ -322,6 +385,8 @@ export default function BusinessOnboardingPage() {
       setBusyStepId(null)
     }
   }
+
+  // ── Loading / error / empty states ────────────────────────────
 
   if (loading) {
     return (
@@ -378,87 +443,71 @@ export default function BusinessOnboardingPage() {
         }
       />
 
-      <Card className={`overflow-hidden border ${businessTheme.border}`}>
-        <div className={`bg-gradient-to-r ${businessTheme.gradient} px-6 py-6`}>
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-start gap-4">
-              <div className={`rounded-2xl p-3 shadow-sm ${businessTheme.icon}`}>
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <p className={`text-sm font-semibold ${businessTheme.text}`}>Business outreach should be obvious at a glance</p>
-                <p className="mt-1 max-w-3xl text-sm text-surface-600">
-                  Each business now shows ownership, helper assignments, onboarding steps, outreach pressure, and the direct links your team needs to keep momentum moving.
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div className="rounded-2xl bg-white/85 px-4 py-3 ring-1 ring-amber-100">
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Pipeline</p>
-                <p className="mt-1 text-2xl font-semibold text-surface-900">{businesses.length}</p>
-              </div>
-              <div className="rounded-2xl bg-white/85 px-4 py-3 ring-1 ring-amber-100">
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Active Build</p>
-                <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.onboarding}</p>
-              </div>
-              <div className="rounded-2xl bg-white/85 px-4 py-3 ring-1 ring-amber-100">
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Live</p>
-                <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.live}</p>
-              </div>
-              <div className="rounded-2xl bg-white/85 px-4 py-3 ring-1 ring-amber-100">
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Follow Ups</p>
-                <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.followUps}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className={`border ${businessTheme.border} ${businessTheme.surface}`}>
-          <CardContent className="p-5">
-            <div className="flex items-center gap-3">
-              <div className={`rounded-xl p-2 ${businessTheme.icon}`}>
-                <Users className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Assigned Outreach</p>
-                <p className="text-lg font-semibold text-surface-900">{summary.assigned} businesses covered</p>
-              </div>
-            </div>
+      {/* ── Summary stat cards ─────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Card className={`border ${businessTheme.border}`}>
+          <CardContent className="p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Pipeline</p>
+            <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.total}</p>
           </CardContent>
         </Card>
-        <Card className={`border ${causeTheme.border} ${causeTheme.surface}`}>
-          <CardContent className="p-5">
-            <div className="flex items-center gap-3">
-              <div className={`rounded-xl p-2 ${causeTheme.icon}`}>
-                <Heart className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">School / Cause Links</p>
-                <p className="text-lg font-semibold text-surface-900">
-                  {businesses.filter(business => !!business.linked_cause_id).length} businesses linked to a local cause
-                </p>
-              </div>
-            </div>
+        <Card className={`border ${businessTheme.border}`}>
+          <CardContent className="p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Active Build</p>
+            <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.onboarding}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="flex h-full items-center justify-between gap-4 p-5">
-            <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Next Best Action</p>
-              <p className="mt-1 text-lg font-semibold text-surface-900">Use scripts before the next follow-up</p>
-              <p className="mt-1 text-sm text-surface-500">Jump straight into the script engine for any business below.</p>
-            </div>
-            <Link href="/crm/scripts">
-              <Button>
-                Open Scripts <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
+        <Card className={`border ${businessTheme.border}`}>
+          <CardContent className="p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Live</p>
+            <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.live}</p>
+          </CardContent>
+        </Card>
+        <Card className={`border ${businessTheme.border}`}>
+          <CardContent className="p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Follow-ups</p>
+            <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.followUps}</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* ── Filter bar ─────────────────────────────────────────── */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-3 p-4">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+            <input
+              type="text"
+              placeholder="Search businesses..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full rounded-lg border border-surface-200 bg-surface-0 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            />
+          </div>
+          <select
+            value={cityFilter}
+            onChange={e => setCityFilter(e.target.value)}
+            className="rounded-lg border border-surface-200 bg-surface-0 px-3 py-2 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          >
+            <option value="all">All Cities</option>
+            {cityOptions.map(city => (
+              <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
+            ))}
+          </select>
+          <select
+            value={campaignFilter}
+            onChange={e => setCampaignFilter(e.target.value)}
+            className="rounded-lg border border-surface-200 bg-surface-0 px-3 py-2 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          >
+            <option value="all">All Campaigns</option>
+            {campaignOptions.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </CardContent>
+      </Card>
+
+      {/* ── Action feedback ────────────────────────────────────── */}
       {actionError ? (
         <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
           {actionError}
@@ -471,6 +520,23 @@ export default function BusinessOnboardingPage() {
         </div>
       ) : null}
 
+      {/* ── Empty filtered state ───────────────────────────────── */}
+      {filteredBusinesses.length === 0 && businesses.length > 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 p-10 text-center">
+            <Store className="h-8 w-8 text-surface-300" />
+            <p className="text-sm font-medium text-surface-600">No businesses match your filters</p>
+            <button
+              onClick={() => { setCityFilter('all'); setCampaignFilter('all'); setSearchQuery('') }}
+              className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            >
+              Clear all filters
+            </button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Stage groups ───────────────────────────────────────── */}
       <div className="space-y-8">
         {groupedBusinesses.map(group => (
           <section key={group.stage} className="space-y-4">
@@ -496,6 +562,22 @@ export default function BusinessOnboardingPage() {
                   offers: offersByBusiness.get(business.id) || [],
                   outreachCount: (outreachByBusiness.get(business.id) || []).length,
                 })
+                const metadata = business.metadata as Record<string, unknown> | null
+                const checklist = computeBusinessOnboardingChecklist({
+                  business,
+                  steps: stepsByFlow.get(flow?.id || '') || [],
+                  codes,
+                  generatedMaterials: generated,
+                  qrCodes: qrByBusiness.get(business.id) || [],
+                  offers: offersByBusiness.get(business.id) || [],
+                  outreachCount: (outreachByBusiness.get(business.id) || []).length,
+                  completedTaskCount: tasks.filter(t => t.entity_type === 'business' && t.entity_id === business.id && t.status === 'completed').length,
+                  hasOwner: !!business.owner_id,
+                  hasCampaign: !!business.campaign_id,
+                  hasLinkedCause: !!business.linked_cause_id,
+                  hasLogo: !!(metadata?.logo_url),
+                  hasCoverPhoto: !!(metadata?.cover_photo_url),
+                })
                 const owner = business.owner_id ? profileMap.get(business.owner_id) : null
                 const helperAssignments = (assignmentsByBusiness.get(business.id) || [])
                   .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
@@ -507,23 +589,34 @@ export default function BusinessOnboardingPage() {
                 const businessOutreach = (outreachByBusiness.get(business.id) || [])
                   .slice()
                   .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-                const latestOutreach = businessOutreach[0]
-                const nextFollowUp = businessOutreach
-                  .filter(activity => activity.next_step || activity.next_step_date)
-                  .slice()
-                  .sort((left, right) => {
-                    const leftTime = left.next_step_date ? new Date(left.next_step_date).getTime() : Number.MAX_SAFE_INTEGER
-                    const rightTime = right.next_step_date ? new Date(right.next_step_date).getTime() : Number.MAX_SAFE_INTEGER
-                    return leftTime - rightTime
-                  })[0]
-                const dueTask = businessTasks
-                  .slice()
-                  .sort((left, right) => new Date(left.due_date || 0).getTime() - new Date(right.due_date || 0).getTime())[0]
+
+                const progressColors = getProgressColor(checklist.percent)
 
                 return (
                   <Card key={business.id} className={`overflow-hidden border ${businessTheme.border}`}>
+                    {/* ── Progress bar header ──────────────── */}
+                    <div className="flex items-center gap-3 px-5 py-3 border-b border-surface-100 bg-surface-0">
+                      <div className="flex-1 h-3 rounded-full bg-surface-100 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full bg-gradient-to-r ${progressColors.bar} transition-all duration-500 ease-out`}
+                          style={{ width: `${checklist.percent}%` }}
+                        />
+                      </div>
+                      <span className={`shrink-0 text-xs font-semibold ${progressColors.text}`}>
+                        {checklist.percent}% ({checklist.completedCount}/{checklist.totalCount})
+                      </span>
+                      <button
+                        onClick={() => setExpandedChecklist(expandedChecklist === business.id ? null : business.id)}
+                        className="shrink-0 flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 transition-colors"
+                      >
+                        View Checklist
+                        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${expandedChecklist === business.id ? 'rotate-90' : ''}`} />
+                      </button>
+                    </div>
+
+                    {/* ── Business identity row ────────────── */}
                     <div className={`bg-gradient-to-r ${businessTheme.gradient} px-5 py-4`}>
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
                             <Link href={`/crm/businesses/${business.id}`} className="text-lg font-semibold text-surface-900 transition-colors hover:text-brand-700">
@@ -572,8 +665,10 @@ export default function BusinessOnboardingPage() {
                       </div>
                     </div>
 
+                    {/* ── Steps + Ownership columns ─────────── */}
                     <CardContent className="space-y-5 p-5">
                       <div className="grid gap-4 lg:grid-cols-[1.3fr,0.9fr]">
+                        {/* Onboarding steps */}
                         <div className="space-y-3">
                           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-surface-500">
                             <ClipboardList className="h-3.5 w-3.5" />
@@ -628,7 +723,7 @@ export default function BusinessOnboardingPage() {
                                       ) : (
                                         <Link href={`/crm/businesses/${business.id}`}>
                                           <Button size="sm" variant="outline">
-                                            Open CRM
+                                            Fix <ArrowRight className="h-3.5 w-3.5" />
                                           </Button>
                                         </Link>
                                       )
@@ -640,23 +735,21 @@ export default function BusinessOnboardingPage() {
                           </div>
                         </div>
 
+                        {/* Ownership panel */}
                         <div className="space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4">
                           <div>
                             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Ownership</p>
                             {owner ? (
                               <Link href={`/admin/users/${owner.id}`} className="mt-2 inline-flex text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
-                                {owner.full_name}
+                                {owner.full_name} - Primary owner
                               </Link>
                             ) : (
                               <p className="mt-2 text-sm font-semibold text-surface-900">Unassigned owner</p>
                             )}
-                            <p className="text-xs text-surface-500">
-                              {owner ? 'Primary outreach owner' : 'Needs a clear owner'}
-                            </p>
                           </div>
 
                           <div>
-                            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Assigned Helpers</p>
+                            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Helpers</p>
                             <div className="mt-2 flex flex-wrap gap-2">
                               {helperAssignments.length > 0 ? helperAssignments.map(({ assignment, profile: helper }) => (
                                 <Link
@@ -668,32 +761,22 @@ export default function BusinessOnboardingPage() {
                                   {assignment.role ? ` - ${assignment.role}` : ''}
                                 </Link>
                               )) : (
-                                <span className="text-xs text-surface-400">No helpers assigned yet</span>
+                                <span className="text-xs text-surface-400">None</span>
                               )}
                             </div>
                           </div>
                         </div>
                       </div>
 
+                      {/* ── Counters row ───────────────────────── */}
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Open Tasks</p>
+                          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Tasks</p>
                           <p className="mt-1 text-xl font-semibold text-surface-900">{businessTasks.length}</p>
-                          <p className="mt-1 text-xs text-surface-500">
-                            {dueTask?.due_date ? `Next due ${formatDate(dueTask.due_date)}` : 'No due date set'}
-                          </p>
                         </div>
                         <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Outreach Activity</p>
+                          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Outreach</p>
                           <p className="mt-1 text-xl font-semibold text-surface-900">{businessOutreach.length}</p>
-                          <p className="mt-1 text-xs text-surface-500">
-                            {latestOutreach ? `${latestOutreach.type.replace('_', ' ')} · ${formatDate(latestOutreach.created_at)}` : 'No outreach logged yet'}
-                          </p>
-                          <p className="mt-1 text-xs text-surface-500">
-                            {nextFollowUp?.next_step
-                              ? `${nextFollowUp.next_step}${nextFollowUp.next_step_date ? ` by ${formatDate(nextFollowUp.next_step_date)}` : ''}`
-                              : 'No follow-up scheduled'}
-                          </p>
                         </div>
                         <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
                           <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Launch Assets</p>
@@ -708,6 +791,7 @@ export default function BusinessOnboardingPage() {
                         </div>
                       </div>
 
+                      {/* ── Action buttons ─────────────────────── */}
                       <div className="flex flex-wrap gap-2">
                         <Link href={`/crm/businesses/${business.id}`}>
                           <Button variant="outline" size="sm">
@@ -716,7 +800,17 @@ export default function BusinessOnboardingPage() {
                         </Link>
                         <Link href={`/crm/scripts?business=${business.id}`}>
                           <Button size="sm">
-                            <MessageSquare className="h-3.5 w-3.5" /> Generate Script
+                            <MessageSquare className="h-3.5 w-3.5" /> Script
+                          </Button>
+                        </Link>
+                        <Link href={`/crm/outreach?business=${business.id}`}>
+                          <Button variant="outline" size="sm">
+                            <ArrowRight className="h-3.5 w-3.5" /> Log Outreach
+                          </Button>
+                        </Link>
+                        <Link href={`/qr/generator?businessId=${business.id}&returnTo=${encodeURIComponent('/onboarding/business')}`}>
+                          <Button variant="outline" size="sm">
+                            <QrCode className="h-3.5 w-3.5" /> QR
                           </Button>
                         </Link>
                         {owner && (
@@ -729,19 +823,46 @@ export default function BusinessOnboardingPage() {
                         {campaign && (
                           <Link href={`/campaigns/${campaign.id}`}>
                             <Button variant="outline" size="sm">
-                              <ArrowRight className="h-3.5 w-3.5" /> Campaign
+                              Campaign
                             </Button>
                           </Link>
                         )}
                         {city && (
                           <Link href={`/crm/cities/${city.id}`}>
                             <Button variant="outline" size="sm">
-                              <MapPin className="h-3.5 w-3.5" /> City Progress
+                              <MapPin className="h-3.5 w-3.5" /> City
                             </Button>
                           </Link>
                         )}
                       </div>
                     </CardContent>
+
+                    {/* ── Expanded checklist ────────────────── */}
+                    {expandedChecklist === business.id && (
+                      <div className="border-t border-surface-200 bg-surface-50 p-5">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {checklist.items.map(item => (
+                            <Link
+                              key={item.id}
+                              href={`${item.href}?tab=${item.tab}`}
+                              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                                item.met
+                                  ? 'text-success-700 hover:bg-success-50'
+                                  : 'text-surface-600 hover:bg-surface-100'
+                              }`}
+                            >
+                              {item.met ? (
+                                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" />
+                              ) : (
+                                <Circle className="h-4 w-4 shrink-0 text-surface-300" />
+                              )}
+                              <span className="flex-1">{item.label}</span>
+                              {!item.met && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </Card>
                 )
               })}

@@ -7,6 +7,8 @@ import {
   ArrowUpRight,
   Building2,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   Copy,
   Filter,
@@ -76,6 +78,8 @@ import type {
   QrCode,
 } from '@/lib/types/database'
 
+/* ─────────────────────────── constants ─────────────────────────── */
+
 const STAGE_VARIANT: Record<string, 'default' | 'info' | 'warning' | 'success' | 'danger'> = {
   lead: 'default',
   contacted: 'info',
@@ -97,6 +101,8 @@ const SCRIPT_STATUS_VARIANT: Record<OutreachScriptStatus, 'default' | 'info' | '
   not_interested: 'danger',
   follow_up_needed: 'warning',
 }
+
+/* ─────────────────────────── helpers ─────────────────────────── */
 
 function relativeTime(date: string) {
   const now = Date.now()
@@ -152,6 +158,8 @@ function toIsoOrNull(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
+
+/* ─────────────────────────── sub-components ─────────────────────────── */
 
 function InputBlock({
   label,
@@ -253,55 +261,37 @@ function HistoryRow({
   )
 }
 
-function StepCard({
-  index,
-  title,
-  description,
-  active,
-  complete,
-  onClick,
+function SelectedBusinessBanner({
+  business,
+  stage,
+  onChangeClick,
 }: {
-  index: number
-  title: string
-  description: string
-  active: boolean
-  complete: boolean
-  onClick: () => void
+  business: { name: string; category: string | null; cityLabel: string; stage: string }
+  stage: string
+  onChangeClick: () => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'w-full rounded-2xl border px-4 py-4 text-left transition-colors',
-        active
-          ? 'border-brand-500 bg-brand-50'
-          : complete
-          ? 'border-success-200 bg-success-50'
-          : 'border-surface-200 bg-surface-0 hover:border-surface-300'
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
-            active
-              ? 'bg-brand-600 text-white'
-              : complete
-              ? 'bg-success-500 text-white'
-              : 'bg-surface-100 text-surface-700'
-          )}
-        >
-          {complete ? <Check className="h-4 w-4" /> : index + 1}
+    <div className="mb-6 flex items-center justify-between rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-brand-600">
+          <Store className="h-4 w-4" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-surface-900">{title}</p>
-          <p className="mt-1 text-xs leading-5 text-surface-500">{description}</p>
+          <p className="text-sm font-semibold text-surface-900">{business.name}</p>
+          <p className="text-xs text-surface-500">{categoryLabel(business.category)} &middot; {business.cityLabel}</p>
         </div>
       </div>
-    </button>
+      <div className="flex items-center gap-2">
+        <Badge variant={STAGE_VARIANT[stage] || 'default'} dot>
+          {ONBOARDING_STAGES[stage as keyof typeof ONBOARDING_STAGES]?.label || stage}
+        </Badge>
+        <Button variant="ghost" size="sm" onClick={onChangeClick}>Change</Button>
+      </div>
+    </div>
   )
 }
+
+/* ─────────────────────────── main page ─────────────────────────── */
 
 export default function OutreachScriptsPage() {
   const searchParams = useSearchParams()
@@ -359,6 +349,8 @@ export default function OutreachScriptsPage() {
     avg_ticket: '',
     local_context: '',
   })
+
+  /* ── maps ── */
 
   const cityLabelMap = React.useMemo(() => {
     const map: Record<string, string> = {}
@@ -481,6 +473,8 @@ export default function OutreachScriptsPage() {
     return typeof schoolName === 'string' ? schoolName : ''
   }, [organizations, profile.organization_id, profile.metadata])
 
+  /* ── enriched businesses ── */
+
   const enrichedBusinesses = React.useMemo(() => {
     return businesses.map((business) => {
       const categoryKey = normalizeBusinessCategory(business.category)
@@ -549,6 +543,8 @@ export default function OutreachScriptsPage() {
     })
   }, [categoryFilter, cityFilter, causeFilter, deferredSearch, enrichedBusinesses, isFieldUser, stageFilter])
 
+  /* ── url sync ── */
+
   const updateBusinessQueryParam = React.useCallback(
     (businessId: string | null) => {
       const params = new URLSearchParams(searchParams.toString())
@@ -570,6 +566,8 @@ export default function OutreachScriptsPage() {
     },
     [updateBusinessQueryParam]
   )
+
+  /* ── effects ── */
 
   React.useEffect(() => {
     if (!filteredBusinesses.length) {
@@ -595,6 +593,11 @@ export default function OutreachScriptsPage() {
     if (!enrichedBusinesses.some((item) => item.id === requestedBusiness)) return
     setSelectedBusinessId(requestedBusiness)
   }, [enrichedBusinesses, searchParams])
+
+  // Guard: bounce to step 0 if business is deselected while on a later step
+  React.useEffect(() => {
+    if (step > 0 && !selectedBusinessId) setStep(0)
+  }, [selectedBusinessId, step])
 
   const selectedBusiness = React.useMemo(
     () => filteredBusinesses.find((item) => item.id === selectedBusinessId) || enrichedBusinesses.find((item) => item.id === selectedBusinessId) || null,
@@ -708,6 +711,8 @@ export default function OutreachScriptsPage() {
     setNextStepDate(defaultFollowUpDateInput())
   }, [nextStepDate, status])
 
+  /* ── derived values ── */
+
   const selectedHistory = selectedBusiness ? historyByBusiness[selectedBusiness.id] || [] : []
   const myHistoryForBusiness = selectedHistory.filter((item) => item.created_by === profile.id)
   const recommendedHistory = myHistoryForBusiness.find((item) => item.status === 'interested' || item.status === 'replied') || myHistoryForBusiness[0] || null
@@ -759,6 +764,17 @@ export default function OutreachScriptsPage() {
     !!selectedBusiness && !!generatedScript && !!editorContent.trim(),
   ]
 
+  const stepMeta = [
+    { title: 'Choose business', description: 'Pick the business and review what the CRM already knows.' },
+    { title: 'Local angle', description: 'Ground the script in school, city, cause, and real connection.' },
+    { title: 'Shape approach', description: 'Choose message angle, channel, and strength level.' },
+    { title: 'Review & log', description: 'Tighten the draft, copy it, and push it back into the CRM.' },
+  ] as const
+
+  const focusHistory = recommendedHistory || recommendedStructures[0] || null
+
+  /* ── step navigation ── */
+
   function goToNextStep() {
     setStep((current) => {
       if (current === 0) return 1
@@ -776,6 +792,8 @@ export default function OutreachScriptsPage() {
       return 0
     })
   }
+
+  /* ── history reuse ── */
 
   function applyHistoryRecord(
     item: OutreachScript,
@@ -814,6 +832,8 @@ export default function OutreachScriptsPage() {
     setCopied(false)
     setActionMessage(`Loaded ${humanizeKey(item.script_tier)} / ${humanizeKey(item.channel)} from your history.`)
   }
+
+  /* ── persist & log handlers ── */
 
   async function persistScriptRecord(nextStatus: OutreachScriptStatus, options?: { incrementCopy?: boolean; includeOutreach?: boolean }) {
     if (!selectedBusiness || !generatedScript) return null
@@ -974,26 +994,7 @@ export default function OutreachScriptsPage() {
     }
   }
 
-  const stepMeta = [
-    {
-      title: 'Choose the business',
-      description: 'Pick the business and review what the CRM already knows before you write anything.',
-    },
-    {
-      title: 'Add your local angle',
-      description: 'Make it sound like you by grounding it in school, city, cause, and real connection.',
-    },
-    {
-      title: 'Shape the approach',
-      description: 'Choose the message angle, channel, and strength level that gives you the best shot.',
-    },
-    {
-      title: 'Use or log the script',
-      description: 'Tighten the final draft, copy it, and push the touchpoint back into the CRM.',
-    },
-  ] as const
-
-  const focusHistory = recommendedHistory || recommendedStructures[0] || null
+  /* ──────────────────── RENDER ──────────────────── */
 
   if (businessesLoading) {
     return (
@@ -1006,871 +1007,816 @@ export default function OutreachScriptsPage() {
 
   return (
     <div className="space-y-6">
+      {/* ── page header ── */}
       <PageHeader
         title={isFieldUser ? 'Intern Outreach Script Wizard' : 'Outreach Script Wizard'}
         description={isFieldUser
-          ? 'Work business by business through a guided flow, reuse what already worked for you, and log every touchpoint cleanly.'
+          ? 'Work business by business through a guided flow, reuse what already worked, and log every touchpoint cleanly.'
           : 'Generate highly specific local-business scripts through a guided flow and push each touchpoint straight back into the CRM.'}
         breadcrumb={isFieldUser
-          ? [
-              { label: 'Dashboard', href: '/dashboard' },
-              { label: 'Outreach Scripts' },
-            ]
-          : [
-              { label: 'CRM', href: '/crm/businesses' },
-              { label: 'Outreach Scripts' },
-            ]}
+          ? [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Outreach Scripts' }]
+          : [{ label: 'CRM', href: '/crm/businesses' }, { label: 'Outreach Scripts' }]}
         actions={
           <div className="flex flex-wrap gap-2">
             {isFieldUser && (
               <Link href="/dashboard">
-                <Button variant="outline">
-                  My Outreach Workspace <ArrowUpRight className="h-4 w-4" />
-                </Button>
+                <Button variant="outline">My Outreach Workspace <ArrowUpRight className="h-4 w-4" /></Button>
               </Link>
             )}
             <Link href="/crm/outreach">
-              <Button variant="outline">
-                View Outreach Timeline <ArrowUpRight className="h-4 w-4" />
-              </Button>
+              <Button variant="outline">View Outreach Timeline <ArrowUpRight className="h-4 w-4" /></Button>
             </Link>
           </div>
         }
       />
 
-      <Card
-        className="overflow-hidden border-0 shadow-panel"
-        style={{ background: 'linear-gradient(135deg, rgba(255, 244, 214, 1) 0%, rgba(255, 232, 241, 1) 48%, rgba(234, 246, 214, 1) 100%)' }}
-      >
-        <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-3">
-            <Badge variant="outline" className="border-white/70 bg-white/60 text-surface-700">Intern Outreach Script Wizard</Badge>
-            <h2 className="max-w-3xl text-3xl font-semibold tracking-tight text-surface-900">
-              A guided outreach flow that helps you sound more local, more credible, and more likely to get a real yes.
-            </h2>
-            <p className="max-w-2xl text-sm leading-6 text-surface-700">
-              Pick the business, add your real connection, choose the strongest angle, then tighten the final script without losing your history or CRM logging.
-            </p>
-            <div className="flex flex-wrap gap-2 text-xs text-surface-700">
-              <span className="rounded-full bg-white/70 px-3 py-1">Wizard-based</span>
-              <span className="rounded-full bg-white/70 px-3 py-1">History-aware</span>
-              <span className="rounded-full bg-white/70 px-3 py-1">CRM-connected</span>
-              <span className="rounded-full bg-white/70 px-3 py-1">Built for conversion</span>
-              {focusHistory && (
-                <span className="rounded-full bg-white/70 px-3 py-1">Resume from your strongest recent structure</span>
-              )}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Scripts Generated" value={stats.generated} icon={<Sparkles className="h-4 w-4" />} className="bg-white/70" />
-            <StatCard label="Interested Replies" value={stats.interested} icon={<Send className="h-4 w-4" />} className="bg-white/70" />
-            <StatCard label="Copied for Use" value={stats.copied} icon={<Copy className="h-4 w-4" />} className="bg-white/70" />
-            <StatCard label="Follow-Ups Needed" value={stats.followUps} icon={<History className="h-4 w-4" />} className="bg-white/70" />
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── stats ── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Scripts Generated" value={stats.generated} icon={<Sparkles className="h-4 w-4" />} />
+        <StatCard label="Interested Replies" value={stats.interested} icon={<Send className="h-4 w-4" />} />
+        <StatCard label="Copied for Use" value={stats.copied} icon={<Copy className="h-4 w-4" />} />
+        <StatCard label="Follow-Ups Needed" value={stats.followUps} icon={<History className="h-4 w-4" />} />
+      </div>
 
+      {/* ── messages ── */}
       {businessesError && (
         <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
           Failed to load businesses for the script engine: {businessesError}
         </div>
       )}
-
       {actionMessage && (
         <div className="rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
           {actionMessage}
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)]">
-        <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-          <Card>
-            <CardHeader>
-              <CardTitle>Wizard Progress</CardTitle>
-              <CardDescription>Move through one decision at a time so the script is easier to build and easier to trust.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {stepMeta.map((item, index) => (
-                <StepCard
-                  key={item.title}
-                  index={index}
-                  title={item.title}
-                  description={item.description}
-                  active={step === index}
-                  complete={!!isStepComplete[index]}
+      {/* ── horizontal step indicator ── */}
+      <nav className="rounded-2xl border border-surface-200 bg-surface-0 p-2">
+        <div className="flex items-center">
+          {stepMeta.map((item, index) => {
+            const isActive = step === index
+            const isDone = !!isStepComplete[index] && step !== index
+            return (
+              <React.Fragment key={item.title}>
+                <button
+                  type="button"
                   onClick={() => setStep(index as 0 | 1 | 2 | 3)}
-                />
-              ))}
-
-              {historyHint && (
-                <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
-                  {historyHint}
-                </div>
-              )}
-
-              {focusHistory && (
-                <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Quick resume</p>
-                  <p className="mt-2 text-sm font-medium text-surface-900">
-                    {humanizeKey(focusHistory.script_tier)} / {humanizeKey(focusHistory.channel)}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-surface-500">
-                    Pull in your strongest recent structure instead of starting from a blank page.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => {
-                      applyHistoryRecord(focusHistory, {
-                        includePersonalization: true,
-                        includeContent: focusHistory.business_id === selectedBusiness?.id,
-                      })
-                      setStep(focusHistory.business_id === selectedBusiness?.id ? 3 : 2)
-                    }}
+                  className={cn(
+                    'group flex flex-1 items-center gap-3 rounded-xl px-3 py-3 text-left transition-all sm:px-4',
+                    isActive
+                      ? 'bg-brand-50 shadow-sm ring-1 ring-brand-300'
+                      : isDone
+                      ? 'hover:bg-success-50/60'
+                      : 'hover:bg-surface-50'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all sm:h-9 sm:w-9 sm:text-sm',
+                      isActive
+                        ? 'bg-brand-600 text-white shadow-md'
+                        : isDone
+                        ? 'bg-success-500 text-white'
+                        : 'bg-surface-200 text-surface-600'
+                    )}
                   >
-                    Use recent structure
-                  </Button>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" className="flex-1" onClick={goToPreviousStep} disabled={step === 0}>
-                  Back
-                </Button>
-                <Button className="flex-1" onClick={goToNextStep} disabled={step === 3 || !isStepComplete[step]}>
-                  Continue
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {step === 0 ? (
-            <>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Find the business</CardTitle>
-                  <CardDescription>Start with the CRM so the rest of the flow is grounded in the right context.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-                    <Input
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Search business, category, area..."
-                      className="pl-9"
-                    />
+                    {isDone ? <Check className="h-3.5 w-3.5" /> : index + 1}
                   </div>
-                  <div className="grid gap-3">
-                    <div>
-                      <p className="mb-1 text-xs font-medium text-surface-500">Category</p>
-                      <select
-                        value={categoryFilter}
-                        onChange={(event) => setCategoryFilter(event.target.value)}
-                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                      >
-                        <option value="all">All categories</option>
-                        <option value="coffee_shop">Coffee Shop</option>
-                        <option value="restaurant">Restaurant</option>
-                        <option value="gym_fitness">Gym / Fitness</option>
-                        <option value="salon_barbershop">Salon / Barbershop</option>
-                        <option value="family_entertainment">Family Entertainment</option>
-                      </select>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-xs font-medium text-surface-500">City</p>
-                      <select
-                        value={cityFilter}
-                        onChange={(event) => setCityFilter(event.target.value)}
-                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                      >
-                        <option value="all">All cities</option>
-                        {cities.map((city) => (
-                          <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-xs font-medium text-surface-500">Onboarding Status</p>
-                      <select
-                        value={stageFilter}
-                        onChange={(event) => setStageFilter(event.target.value)}
-                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                      >
-                        <option value="all">All stages</option>
-                        {Object.entries(ONBOARDING_STAGES).map(([value, def]) => (
-                          <option key={value} value={value}>{def.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-xs font-medium text-surface-500">Cause / School Relationship</p>
-                      <select
-                        value={causeFilter}
-                        onChange={(event) => setCauseFilter(event.target.value as 'all' | 'linked' | 'suggested' | 'none')}
-                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                      >
-                        <option value="all">All relationship states</option>
-                        <option value="linked">Explicitly linked</option>
-                        <option value="suggested">Suggested from city</option>
-                        <option value="none">No relationship yet</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-surface-500">
-                    <span>{filteredBusinesses.length} available</span>
-                    <span className="flex items-center gap-1"><Filter className="h-3.5 w-3.5" /> Filtered from CRM</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="space-y-3">
-                {filteredBusinesses.length === 0 ? (
-                  <Card>
-                    <CardContent className="py-10">
-                      <EmptyState
-                        icon={<Store className="h-8 w-8" />}
-                        title="No matching businesses"
-                        description="Adjust the filters or add more businesses in the CRM."
-                      />
-                    </CardContent>
-                  </Card>
-                ) : (
-                  filteredBusinesses.map((business) => {
-                    const isSelected = business.id === selectedBusinessId
-                    const assignedPeople = businessAssignments[business.id] || []
-                    return (
-                      <button
-                        key={business.id}
-                        type="button"
-                        onClick={() => handleSelectBusiness(business.id)}
-                        className={cn(
-                          'w-full rounded-card border text-left transition-all',
-                          isSelected
-                            ? 'border-brand-500 bg-brand-50/60 shadow-card-hover'
-                            : 'border-surface-200 bg-surface-0 hover:border-surface-300 hover:shadow-card-hover'
-                        )}
-                      >
-                        <div className="space-y-3 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-surface-900">{business.name}</p>
-                              <p className="mt-0.5 text-xs text-surface-500">{categoryLabel(business.category)}</p>
-                            </div>
-                            <Badge variant={STAGE_VARIANT[business.stage] || 'default'} dot>
-                              {ONBOARDING_STAGES[business.stage]?.label || business.stage}
-                            </Badge>
-                          </div>
-
-                          <div className="flex flex-wrap gap-2 text-xs text-surface-500">
-                            <span className="inline-flex items-center gap-1">
-                              <MapPin className="h-3.5 w-3.5" />
-                              {business.cityLabel}
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <User className="h-3.5 w-3.5" />
-                              {assignedPeople.length ? `${assignedPeople.length} assigned` : 'No assignee'}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant={business.causeMode === 'linked' ? 'success' : business.causeMode === 'suggested' ? 'warning' : 'default'}>
-                              {business.causeMode === 'linked' ? 'Cause Linked' : business.causeMode === 'suggested' ? 'Cause Suggested' : 'No Cause Link'}
-                            </Badge>
-                            {business.recentHistory && (
-                              <Badge variant={SCRIPT_STATUS_VARIANT[business.recentHistory.status]}>
-                                {OUTREACH_SCRIPT_STATUS_OPTIONS.find(option => option.value === business.recentHistory.status)?.label || business.recentHistory.status}
-                              </Badge>
-                            )}
-                          </div>
-
-                          {business.recentHistory && (
-                            <div className="rounded-lg bg-surface-50 px-3 py-2 text-xs text-surface-600">
-                              Last script {relativeTime(business.recentHistory.created_at)} by {personLabel(business.recentHistory.created_by, profileMap, profile.id)}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </>
-          ) : (
-            <Card className="bg-surface-50">
-              <CardContent className="grid gap-3 p-4">
-                <div className="flex items-center justify-between text-xs text-surface-500">
-                  <span>My outreach snapshot</span>
-                  <span>{recentMine.length} recent scripts</span>
-                </div>
-                <StatCard label="My scripts" value={stats.generated} icon={<Sparkles className="h-4 w-4" />} />
-                <StatCard label="Interested" value={stats.interested} icon={<Send className="h-4 w-4" />} />
-                <StatCard label="Follow-ups" value={stats.followUps} icon={<History className="h-4 w-4" />} />
-              </CardContent>
-            </Card>
-          )}
-        </div>
-        {!selectedBusiness || !generatedScript ? (
-          <Card>
-            <CardContent className="py-20">
-              <EmptyState
-                icon={<Sparkles className="h-8 w-8" />}
-                title="Choose a business to start"
-                description="Once you pick a business in step one, the wizard will guide you through local context, script angle, and final CRM logging."
-              />
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-              <div className="space-y-6">
-                {step === 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Business Snapshot</CardTitle>
-                    <CardDescription>Confirm the business context first so the rest of the script feels true instead of generic.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h2 className="text-2xl font-semibold text-surface-900">{selectedBusiness.name}</h2>
-                          <Link href={`/crm/businesses/${selectedBusiness.id}`}>
-                            <Button variant="ghost" size="icon-sm">
-                              <ArrowUpRight className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                        </div>
-                        <p className="text-sm text-surface-500">{categoryLabel(selectedBusiness.category)}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant={STAGE_VARIANT[selectedBusiness.stage] || 'default'} dot>
-                          {ONBOARDING_STAGES[selectedBusiness.stage]?.label || selectedBusiness.stage}
-                        </Badge>
-                        {selectedHistory[0] ? (
-                          <Badge variant={SCRIPT_STATUS_VARIANT[selectedHistory[0].status]}>
-                            {OUTREACH_SCRIPT_STATUS_OPTIONS.find(option => option.value === selectedHistory[0].status)?.label || selectedHistory[0].status}
-                          </Badge>
-                        ) : (
-                          <Badge variant="default">No script history yet</Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {recentRiskByOther && recentRisk && (
-                      <div className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
-                        <div className="flex items-start gap-2">
-                          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                          <div>
-                            <p className="font-medium">Recent outreach already logged</p>
-                            <p className="mt-1 text-xs">
-                              {personLabel(recentRisk.created_by, profileMap, profile.id)} used a {recentRisk.script_tier} script here {relativeTime(recentRisk.created_at)}.
-                              Logging is paused for now so this business does not get double-contacted.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <SnapshotField icon={<MapPin className="h-4 w-4" />} label="Address / Area" value={selectedBusiness.address || selectedBusiness.cityLabel} />
-                      <SnapshotField icon={<User className="h-4 w-4" />} label="Primary Contact" value={selectedContact ? `${selectedContact.first_name} ${selectedContact.last_name}`.trim() : personalization.owner_name || 'No owner name yet'} />
-                      <SnapshotField icon={<FileText className="h-4 w-4" />} label="Average Spend" value={personalization.avg_ticket || 'Need an estimate'} />
-                      <SnapshotField icon={<Store className="h-4 w-4" />} label="Products / Services" value={personalization.specific_product || 'Need a sharper product angle'} />
-                      <SnapshotField icon={<GraduationCap className="h-4 w-4" />} label="Local Cause / School" value={personalization.local_cause_name || 'No linked cause yet'} />
-                      <SnapshotField
-                        icon={<Building2 className="h-4 w-4" />}
-                        label="Assigned Stakeholder"
-                        value={(businessAssignments[selectedBusiness.id] || [])
-                          .map((id) => personLabel(id, profileMap, profile.id))
-                          .join(', ') || 'No assignee visible'}
-                      />
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-lg bg-surface-50 p-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Outreach Status</p>
-                        <p className="mt-1 text-sm font-medium text-surface-800">
-                          {selectedHistory[0]
-                            ? `${OUTREACH_SCRIPT_STATUS_OPTIONS.find(option => option.value === selectedHistory[0].status)?.label || selectedHistory[0].status} by ${personLabel(selectedHistory[0].created_by, profileMap, profile.id)}`
-                            : 'No logged script yet'}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-surface-50 p-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Cause Relationship</p>
-                        <p className="mt-1 text-sm font-medium text-surface-800">
-                          {selectedBusiness.explicitCause
-                            ? `Linked to ${selectedBusiness.explicitCause.name}`
-                            : selectedBusiness.suggestedCause
-                            ? `Suggested from city: ${selectedBusiness.suggestedCause.name}`
-                            : 'No linked cause yet'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {selectedContact && (
-                      <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Selected Contact Context</p>
-                        <p className="mt-2 text-sm font-medium text-surface-900">
-                          {`${selectedContact.first_name} ${selectedContact.last_name}`.trim()}
-                          {selectedContact.title ? `, ${selectedContact.title}` : ''}
-                        </p>
-                        <p className="mt-1 text-xs text-surface-500">
-                          {[selectedContact.email, selectedContact.phone].filter(Boolean).join(' / ') || 'No direct email or phone saved yet.'}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="space-y-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Connected Records</p>
-                      <div className="flex flex-wrap gap-2">
-                        <SnapshotLink href={`/crm/businesses/${selectedBusiness.id}`} icon={<Store className="h-3.5 w-3.5" />} label="Business Record" />
-                        {selectedBusiness.explicitCause && (
-                          <SnapshotLink href={`/crm/causes/${selectedBusiness.explicitCause.id}`} icon={<GraduationCap className="h-3.5 w-3.5" />} label={selectedBusiness.explicitCause.name} />
-                        )}
-                        {!selectedBusiness.explicitCause && selectedBusiness.suggestedCause && (
-                          <SnapshotLink href={`/crm/causes/${selectedBusiness.suggestedCause.id}`} icon={<GraduationCap className="h-3.5 w-3.5" />} label={`Suggested: ${selectedBusiness.suggestedCause.name}`} />
-                        )}
-                        {selectedBusiness.campaign && (
-                          <SnapshotLink href={`/campaigns/${selectedBusiness.campaign.id}`} icon={<Building2 className="h-3.5 w-3.5" />} label={selectedBusiness.campaign.name} />
-                        )}
-                        {(businessAssignments[selectedBusiness.id] || []).slice(0, 2).map((stakeholderId) => (
-                          <SnapshotLink
-                            key={stakeholderId}
-                            href={`/admin/users/${stakeholderId}`}
-                            icon={<User className="h-3.5 w-3.5" />}
-                            label={personLabel(stakeholderId, profileMap, profile.id)}
-                          />
-                        ))}
-                        {selectedBusiness.linkedMaterial && (
-                          <SnapshotLink href="/materials/library" icon={<FileText className="h-3.5 w-3.5" />} label={selectedBusiness.linkedMaterial.title} />
-                        )}
-                        {selectedBusiness.linkedQrCode && (
-                          <SnapshotLink href="/qr/mine" icon={<QrCodeIcon className="h-3.5 w-3.5" />} label={selectedBusiness.linkedQrCode.name} />
-                        )}
-                        {selectedBusiness.linkedQrCollection && (
-                          <SnapshotLink href="/qr/collections" icon={<QrCodeIcon className="h-3.5 w-3.5" />} label={selectedBusiness.linkedQrCollection.name} />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Recent Notes</p>
-                      {selectedNotes.length === 0 ? (
-                        <div className="rounded-lg border border-dashed border-surface-200 px-3 py-4 text-sm text-surface-500">
-                          No shared notes are visible for this business yet.
-                        </div>
-                      ) : (
-                        selectedNotes.map((note) => (
-                          <div key={note.id} className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-3">
-                            <p className="text-sm text-surface-700">{note.content}</p>
-                            <p className="mt-2 text-xs text-surface-400">{relativeTime(note.created_at)}</p>
-                          </div>
-                        ))
+                  <div className="hidden min-w-0 lg:block">
+                    <p
+                      className={cn(
+                        'truncate text-sm font-semibold',
+                        isActive ? 'text-brand-700' : isDone ? 'text-success-700' : 'text-surface-700'
                       )}
-                    </div>
-                  </CardContent>
-                </Card>
-                )}
-
-                {step === 1 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Add Your Local Angle</CardTitle>
-                    <CardDescription>Use real local context. Tighten the fields until the script sounds like something you would actually say out loud.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid gap-4 md:grid-cols-2">
-                    <InputBlock label="Intern Name">
-                      <Input value={personalization.intern_name} onChange={(event) => setPersonalization((current) => ({ ...current, intern_name: event.target.value }))} />
-                    </InputBlock>
-                    <InputBlock label="City">
-                      <Input value={personalization.city} onChange={(event) => setPersonalization((current) => ({ ...current, city: event.target.value }))} />
-                    </InputBlock>
-                    <InputBlock label="School Name">
-                      <Input value={personalization.school_name} onChange={(event) => setPersonalization((current) => ({ ...current, school_name: event.target.value }))} />
-                    </InputBlock>
-                    <InputBlock label="Local Cause">
-                      <Input value={personalization.local_cause_name} onChange={(event) => setPersonalization((current) => ({ ...current, local_cause_name: event.target.value }))} />
-                    </InputBlock>
-                    <InputBlock label="Owner Name Override">
-                      <Input value={personalization.owner_name} onChange={(event) => setPersonalization((current) => ({ ...current, owner_name: event.target.value }))} />
-                    </InputBlock>
-                    <InputBlock label="Specific Product Override">
-                      <Input value={personalization.specific_product} onChange={(event) => setPersonalization((current) => ({ ...current, specific_product: event.target.value }))} />
-                    </InputBlock>
-                    <InputBlock label="Average Spend Override">
-                      <Input value={personalization.avg_ticket} onChange={(event) => setPersonalization((current) => ({ ...current, avg_ticket: event.target.value }))} />
-                    </InputBlock>
-                    <InputBlock label="Local Context">
-                      <Input value={personalization.local_context} onChange={(event) => setPersonalization((current) => ({ ...current, local_context: event.target.value }))} placeholder="Neighborhood, district, school zone..." />
-                    </InputBlock>
-                    <InputBlock label="Personal Connection" className="md:col-span-2">
-                      <Textarea
-                        value={personalization.personal_connection}
-                        onChange={(event) => setPersonalization((current) => ({ ...current, personal_connection: event.target.value }))}
-                        placeholder="Example: I used to stop by after games, or I know families from my school already come here."
-                        rows={4}
-                      />
-                    </InputBlock>
-                  </CardContent>
-                </Card>
-                )}
-
-                {step === 2 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Choose the Angle</CardTitle>
-                    <CardDescription>Choose the angle, quality level, and delivery mode that give you the best shot with this business.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <InputBlock label="Script Type">
-                        <select
-                          value={scriptType}
-                          onChange={(event) => setScriptType(event.target.value)}
-                          className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                        >
-                          {scriptTypeOptions.map((option) => (
-                            <option key={option.key} value={option.key}>{option.label}</option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-xs text-surface-500">
-                          {scriptTypeOptions.find((option) => option.key === scriptType)?.description}
-                        </p>
-                      </InputBlock>
-                      <InputBlock label="Communication Mode">
-                        <select
-                          value={channel}
-                          onChange={(event) => setChannel(event.target.value as OutreachScriptChannel)}
-                          className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                        >
-                          {OUTREACH_SCRIPT_CHANNEL_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-xs text-surface-500">
-                          {OUTREACH_SCRIPT_CHANNEL_OPTIONS.find((option) => option.value === channel)?.hint}
-                        </p>
-                      </InputBlock>
-                    </div>
-
-                    <div>
-                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-surface-400">Quality Tier</p>
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        {OUTREACH_SCRIPT_TIER_OPTIONS.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setTier(option.value)}
-                            className={cn(
-                              'rounded-xl border p-4 text-left transition-colors',
-                              tier === option.value
-                                ? 'border-brand-500 bg-brand-50'
-                                : 'border-surface-200 bg-surface-0 hover:border-surface-300'
-                            )}
-                          >
-                            <p className="text-sm font-semibold text-surface-900">{option.label}</p>
-                            <p className="mt-1 text-xs text-surface-500">{option.hint}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl bg-surface-50 px-4 py-3 text-sm text-surface-700">
-                      <span className="font-medium text-surface-900">Current frame:</span> {generatedScript.categoryLabel} using the {generatedScript.scriptTypeLabel} angle for a {OUTREACH_SCRIPT_CHANNEL_OPTIONS.find((option) => option.value === channel)?.label.toLowerCase()}.
-                    </div>
-
-                    {categoryConfig && (
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
-                          <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Message Framing</p>
-                          <p className="mt-2 text-sm text-surface-800">{categoryConfig.messageFraming}</p>
-                        </div>
-                        <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
-                          <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Emotional Relevance</p>
-                          <p className="mt-2 text-sm text-surface-800">{categoryConfig.emotionalRelevance}</p>
-                        </div>
-                        <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
-                          <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Product Examples</p>
-                          <p className="mt-2 text-sm text-surface-800">{categoryConfig.productExamples.join(', ')}</p>
-                        </div>
-                        <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
-                          <p className="text-xs font-medium uppercase tracking-wide text-surface-400">CTA Style</p>
-                          <p className="mt-2 text-sm text-surface-800">{categoryConfig.callToActionStyle}</p>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-                )}
-              </div>
-
-              <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
-                {step >= 2 && (
-                <Card className="overflow-hidden border-brand-100 shadow-panel">
-                  <div className="border-b border-brand-100 bg-brand-50/60 px-5 py-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-brand-700">{step === 2 ? 'Preview Draft' : generatedScript.title}</p>
-                        <p className="mt-1 text-xs text-surface-600">
-                          {tier.charAt(0).toUpperCase() + tier.slice(1)} tier / {OUTREACH_SCRIPT_CHANNEL_OPTIONS.find((option) => option.value === channel)?.label}
-                        </p>
-                      </div>
-                      <Badge variant={step === 2 ? 'info' : SCRIPT_STATUS_VARIANT[status]}>
-                        {step === 2 ? 'Preview' : OUTREACH_SCRIPT_STATUS_OPTIONS.find((option) => option.value === status)?.label}
-                      </Badge>
-                    </div>
+                    >
+                      {item.title}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-surface-500">{item.description}</p>
                   </div>
-                  <CardContent className="space-y-4 p-5">
-                    {generatedScript.subject && (
-                      <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Subject</p>
-                        <p className="mt-1 text-sm font-medium text-surface-800">{generatedScript.subject}</p>
-                      </div>
+                </button>
+                {index < 3 && (
+                  <div
+                    className={cn(
+                      'mx-1 hidden h-px w-6 shrink-0 sm:block',
+                      isStepComplete[index] ? 'bg-success-400' : 'bg-surface-200'
                     )}
+                  />
+                )}
+              </React.Fragment>
+            )
+          })}
+        </div>
+      </nav>
 
-                    <Textarea
-                      value={editorContent}
-                      onChange={(event) => setEditorContent(event.target.value)}
-                      rows={18}
-                      className="min-h-[26rem] text-[15px] leading-7"
-                      readOnly={step === 2}
-                    />
+      {/* ── hints ── */}
+      {historyHint && (
+        <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">{historyHint}</div>
+      )}
 
-                    {step === 3 ? (
-                      <div className="flex flex-wrap gap-2">
-                        <Button onClick={handleCopy} disabled={pendingAction || !editorContent.trim()}>
-                          {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                          {copied ? 'Copied' : generatedScript.subject ? 'Copy Email Draft' : 'Copy Script'}
-                        </Button>
-                        {focusHistory && (
-                          <Button
-                            variant="outline"
-                            onClick={() => applyHistoryRecord(focusHistory, { includePersonalization: true, includeContent: true })}
-                            disabled={pendingAction}
-                          >
-                            Use prior full draft
-                          </Button>
+      {/* ────────── STEP 0 · Choose Business ────────── */}
+      {step === 0 && (
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle className="text-lg">Choose the Business</CardTitle>
+            <CardDescription>Start with the CRM so the rest of the flow is grounded in the right context.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* filters */}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="pl-9" />
+              </div>
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="h-9 rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm">
+                <option value="all">All categories</option>
+                <option value="coffee_shop">Coffee Shop</option>
+                <option value="restaurant">Restaurant</option>
+                <option value="gym_fitness">Gym / Fitness</option>
+                <option value="salon_barbershop">Salon / Barbershop</option>
+                <option value="family_entertainment">Family Entertainment</option>
+              </select>
+              <select value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} className="h-9 rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm">
+                <option value="all">All cities</option>
+                {cities.map((city) => (
+                  <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
+                ))}
+              </select>
+              <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="h-9 rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm">
+                <option value="all">All stages</option>
+                {Object.entries(ONBOARDING_STAGES).map(([value, def]) => (
+                  <option key={value} value={value}>{def.label}</option>
+                ))}
+              </select>
+              <select value={causeFilter} onChange={(e) => setCauseFilter(e.target.value as 'all' | 'linked' | 'suggested' | 'none')} className="h-9 rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm">
+                <option value="all">All cause states</option>
+                <option value="linked">Explicitly linked</option>
+                <option value="suggested">Suggested from city</option>
+                <option value="none">No relationship</option>
+              </select>
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-surface-500">
+              <span>{filteredBusinesses.length} businesses found</span>
+              <span className="flex items-center gap-1"><Filter className="h-3.5 w-3.5" /> Filtered from CRM</span>
+            </div>
+
+            {/* business grid */}
+            {filteredBusinesses.length === 0 ? (
+              <EmptyState icon={<Store className="h-8 w-8" />} title="No matching businesses" description="Adjust the filters or add more businesses in the CRM." />
+            ) : (
+              <div className="grid max-h-[32rem] gap-3 overflow-y-auto rounded-lg pr-1 sm:grid-cols-2 xl:grid-cols-3">
+                {filteredBusinesses.map((business) => {
+                  const isSelected = business.id === selectedBusinessId
+                  const assignedPeople = businessAssignments[business.id] || []
+                  return (
+                    <button
+                      key={business.id}
+                      type="button"
+                      onClick={() => handleSelectBusiness(business.id)}
+                      className={cn(
+                        'rounded-xl border p-4 text-left transition-all',
+                        isSelected
+                          ? 'border-brand-500 bg-brand-50/60 shadow-md ring-2 ring-brand-200'
+                          : 'border-surface-200 bg-surface-0 hover:border-surface-300 hover:shadow-sm'
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-surface-900">{business.name}</p>
+                          <p className="mt-0.5 text-xs text-surface-500">{categoryLabel(business.category)}</p>
+                        </div>
+                        <Badge variant={STAGE_VARIANT[business.stage] || 'default'} dot>
+                          {ONBOARDING_STAGES[business.stage]?.label || business.stage}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-surface-500">
+                        <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" /> {business.cityLabel}</span>
+                        <span className="inline-flex items-center gap-1"><User className="h-3 w-3" /> {assignedPeople.length ? `${assignedPeople.length} assigned` : 'No assignee'}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant={business.causeMode === 'linked' ? 'success' : business.causeMode === 'suggested' ? 'warning' : 'default'}>
+                          {business.causeMode === 'linked' ? 'Cause Linked' : business.causeMode === 'suggested' ? 'Cause Suggested' : 'No Cause'}
+                        </Badge>
+                        {business.recentHistory && (
+                          <Badge variant={SCRIPT_STATUS_VARIANT[business.recentHistory.status]}>
+                            {OUTREACH_SCRIPT_STATUS_OPTIONS.find(o => o.value === business.recentHistory.status)?.label || business.recentHistory.status}
+                          </Badge>
                         )}
                       </div>
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-surface-200 px-4 py-3 text-xs leading-6 text-surface-500">
-                        Preview the structure here first. If it feels right, continue to the final step to edit, copy, and log it.
-                      </div>
-                    )}
+                      {business.recentHistory && (
+                        <div className="mt-2 rounded-md bg-surface-50 px-2.5 py-1.5 text-xs text-surface-600">
+                          Last {relativeTime(business.recentHistory.created_at)} by {personLabel(business.recentHistory.created_by, profileMap, profile.id)}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
 
-                    <div className="rounded-lg border border-dashed border-surface-200 px-4 py-3 text-xs leading-6 text-surface-500">
-                      Edits are tracked against the generated draft so we can later report by city, category, script tier, stakeholder, and outreach channel.
+            {/* selected business snapshot */}
+            {selectedBusiness && (
+              <div className="space-y-5 rounded-xl border border-brand-200 bg-brand-50/30 p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xl font-semibold text-surface-900">{selectedBusiness.name}</h3>
+                      <Link href={`/crm/businesses/${selectedBusiness.id}`}>
+                        <Button variant="ghost" size="icon-sm"><ArrowUpRight className="h-4 w-4" /></Button>
+                      </Link>
                     </div>
-                  </CardContent>
-                </Card>
+                    <p className="text-sm text-surface-500">{categoryLabel(selectedBusiness.category)}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant={STAGE_VARIANT[selectedBusiness.stage] || 'default'} dot>
+                      {ONBOARDING_STAGES[selectedBusiness.stage]?.label || selectedBusiness.stage}
+                    </Badge>
+                    {selectedHistory[0] ? (
+                      <Badge variant={SCRIPT_STATUS_VARIANT[selectedHistory[0].status]}>
+                        {OUTREACH_SCRIPT_STATUS_OPTIONS.find(o => o.value === selectedHistory[0].status)?.label || selectedHistory[0].status}
+                      </Badge>
+                    ) : (
+                      <Badge variant="default">No script history</Badge>
+                    )}
+                  </div>
+                </div>
+
+                {recentRiskByOther && recentRisk && (
+                  <div className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+                    <div className="flex items-start gap-2">
+                      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div>
+                        <p className="font-medium">Recent outreach already logged</p>
+                        <p className="mt-1 text-xs">
+                          {personLabel(recentRisk.created_by, profileMap, profile.id)} used a {recentRisk.script_tier} script here {relativeTime(recentRisk.created_at)}.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
-                {step === 3 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Outreach Logging</CardTitle>
-                    <CardDescription>Choose the contact, mark the outcome, and send this touchpoint back into the CRM.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {logBlocked && recentRisk && (
-                      <div className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
-                        {personLabel(recentRisk.created_by, profileMap, profile.id)} logged outreach {relativeTime(recentRisk.created_at)}. Review that touchpoint before sending another.
-                      </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <SnapshotField icon={<MapPin className="h-4 w-4" />} label="Address / Area" value={selectedBusiness.address || selectedBusiness.cityLabel} />
+                  <SnapshotField icon={<User className="h-4 w-4" />} label="Primary Contact" value={selectedContact ? `${selectedContact.first_name} ${selectedContact.last_name}`.trim() : personalization.owner_name || 'No owner name yet'} />
+                  <SnapshotField icon={<FileText className="h-4 w-4" />} label="Average Spend" value={personalization.avg_ticket || 'Need an estimate'} />
+                  <SnapshotField icon={<Store className="h-4 w-4" />} label="Products / Services" value={personalization.specific_product || 'Need a sharper product angle'} />
+                  <SnapshotField icon={<GraduationCap className="h-4 w-4" />} label="Local Cause / School" value={personalization.local_cause_name || 'No linked cause yet'} />
+                  <SnapshotField
+                    icon={<Building2 className="h-4 w-4" />}
+                    label="Assigned Stakeholder"
+                    value={(businessAssignments[selectedBusiness.id] || []).map((id) => personLabel(id, profileMap, profile.id)).join(', ') || 'No assignee visible'}
+                  />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg bg-white p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Outreach Status</p>
+                    <p className="mt-1 text-sm font-medium text-surface-800">
+                      {selectedHistory[0]
+                        ? `${OUTREACH_SCRIPT_STATUS_OPTIONS.find(option => option.value === selectedHistory[0].status)?.label || selectedHistory[0].status} by ${personLabel(selectedHistory[0].created_by, profileMap, profile.id)}`
+                        : 'No logged script yet'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-white p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Cause Relationship</p>
+                    <p className="mt-1 text-sm font-medium text-surface-800">
+                      {selectedBusiness.explicitCause
+                        ? `Linked to ${selectedBusiness.explicitCause.name}`
+                        : selectedBusiness.suggestedCause
+                        ? `Suggested from city: ${selectedBusiness.suggestedCause.name}`
+                        : 'No linked cause yet'}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedContact && (
+                  <div className="rounded-lg border border-surface-200 bg-white px-4 py-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Selected Contact</p>
+                    <p className="mt-1 text-sm font-medium text-surface-900">
+                      {`${selectedContact.first_name} ${selectedContact.last_name}`.trim()}
+                      {selectedContact.title ? `, ${selectedContact.title}` : ''}
+                    </p>
+                    <p className="mt-0.5 text-xs text-surface-500">
+                      {[selectedContact.email, selectedContact.phone].filter(Boolean).join(' / ') || 'No direct email or phone saved yet.'}
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Connected Records</p>
+                  <div className="flex flex-wrap gap-2">
+                    <SnapshotLink href={`/crm/businesses/${selectedBusiness.id}`} icon={<Store className="h-3.5 w-3.5" />} label="Business Record" />
+                    {selectedBusiness.explicitCause && (
+                      <SnapshotLink href={`/crm/causes/${selectedBusiness.explicitCause.id}`} icon={<GraduationCap className="h-3.5 w-3.5" />} label={selectedBusiness.explicitCause.name} />
                     )}
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <InputBlock label="Contact">
-                        <select
-                          value={selectedContactId}
-                          onChange={(event) => {
-                            const nextId = event.target.value
-                            setSelectedContactId(nextId)
-                            const nextContact = selectedBusiness.contacts.find((contact) => contact.id === nextId) || null
-                            if (nextContact) {
-                              setPersonalization((current) => ({
-                                ...current,
-                                owner_name: `${nextContact.first_name} ${nextContact.last_name}`.trim(),
-                              }))
-                            }
-                          }}
-                          className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                        >
-                          <option value="">Use business-level owner context</option>
-                          {selectedBusiness.contacts.map((contact) => (
-                            <option key={contact.id} value={contact.id}>
-                              {`${contact.first_name} ${contact.last_name}`.trim()}
-                              {contact.title ? ` - ${contact.title}` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </InputBlock>
-                      <InputBlock label="Outreach Status">
-                        <select
-                          value={status}
-                          onChange={(event) => setStatus(event.target.value as OutreachScriptStatus)}
-                          className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                        >
-                          {OUTREACH_SCRIPT_STATUS_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                      </InputBlock>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <InputBlock label="Next Step">
-                        <Input
-                          value={nextStep}
-                          onChange={(event) => setNextStep(event.target.value)}
-                          placeholder={status === 'follow_up_needed' ? `Follow up with ${selectedBusiness.name}` : 'Optional next action'}
-                        />
-                      </InputBlock>
-                      <InputBlock label="Follow-Up Date">
-                        <Input
-                          type="datetime-local"
-                          value={nextStepDate}
-                          onChange={(event) => setNextStepDate(event.target.value)}
-                        />
-                      </InputBlock>
-                    </div>
-
-                    <InputBlock label="Logging Notes">
-                      <Textarea
-                        value={logNotes}
-                        onChange={(event) => setLogNotes(event.target.value)}
-                        placeholder="What happened, what mattered, or what should happen next?"
-                        rows={4}
+                    {!selectedBusiness.explicitCause && selectedBusiness.suggestedCause && (
+                      <SnapshotLink href={`/crm/causes/${selectedBusiness.suggestedCause.id}`} icon={<GraduationCap className="h-3.5 w-3.5" />} label={`Suggested: ${selectedBusiness.suggestedCause.name}`} />
+                    )}
+                    {selectedBusiness.campaign && (
+                      <SnapshotLink href={`/campaigns/${selectedBusiness.campaign.id}`} icon={<Building2 className="h-3.5 w-3.5" />} label={selectedBusiness.campaign.name} />
+                    )}
+                    {(businessAssignments[selectedBusiness.id] || []).slice(0, 2).map((stakeholderId) => (
+                      <SnapshotLink
+                        key={stakeholderId}
+                        href={`/admin/users/${stakeholderId}`}
+                        icon={<User className="h-3.5 w-3.5" />}
+                        label={personLabel(stakeholderId, profileMap, profile.id)}
                       />
-                    </InputBlock>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" onClick={() => handleLog(false)} disabled={pendingAction || !editorContent.trim() || logBlocked}>
-                        {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        Log Outreach
-                      </Button>
-                      <Button variant="secondary" onClick={() => handleLog(true)} disabled={pendingAction || !editorContent.trim() || logBlocked}>
-                        {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-                        Copy + Log Outreach
-                      </Button>
-                    </div>
-
-                    <div className="rounded-lg border border-dashed border-surface-200 px-4 py-3 text-xs leading-6 text-surface-500">
-                      Logging writes the generated draft, edited draft, contact, script tier, QR/material hooks, and outreach status back into the CRM. Follow-up status also creates a task for the current stakeholder.
-                    </div>
-                  </CardContent>
-                </Card>
-                )}
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{step === 1 ? 'Use Your History' : step === 2 ? 'Useful Structures' : 'Script History'}</CardTitle>
-                    <CardDescription>
-                      {step === 1
-                        ? 'Reuse a setup that already sounded like you, then adapt it for this business.'
-                        : step === 2
-                        ? 'Pull in a structure that already worked before you move to the final edit step.'
-                        : 'Review what has already been used for this business and what you have recently touched yourself.'}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    {step === 1 ? (
-                      focusHistory ? (
-                        <div className="space-y-3">
-                          <HistoryRow
-                            item={focusHistory}
-                            label={focusHistory.business_id === selectedBusiness.id ? 'This business' : 'A similar business'}
-                            actionLabel="Use this setup"
-                            onAction={() => applyHistoryRecord(focusHistory, { includePersonalization: true, strategyOnly: false })}
-                          />
-                          {recommendedStructures.filter((item) => item.id !== focusHistory.id).slice(0, 2).map((item) => (
-                            <HistoryRow
-                              key={item.id}
-                              item={item}
-                              label={businessNameMap[item.business_id] || 'Another business'}
-                              compact
-                              actionLabel="Reuse setup"
-                              onAction={() => applyHistoryRecord(item, { includePersonalization: true, strategyOnly: true })}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="rounded-lg border border-dashed border-surface-200 px-4 py-4 text-sm text-surface-500">
-                          Once you have used the wizard on a few businesses, your strongest setups will show up here automatically.
-                        </div>
-                      )
-                    ) : step === 2 ? (
-                      recommendedStructures.length === 0 ? (
-                        <div className="rounded-lg border border-dashed border-surface-200 px-4 py-4 text-sm text-surface-500">
-                          No similar-business patterns yet. Once you work a few more businesses, the wizard will recommend stronger structures automatically.
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {recommendedStructures.map((item) => (
-                            <HistoryRow
-                              key={item.id}
-                              item={item}
-                              label={businessNameMap[item.business_id] || 'Another business'}
-                              compact
-                              actionLabel="Use this structure"
-                              onAction={() => applyHistoryRecord(item, { includePersonalization: true, includeContent: false, strategyOnly: true })}
-                            />
-                          ))}
-                        </div>
-                      )
-                    ) : historyLoading ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
-                      </div>
-                    ) : (
-                      <>
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs font-medium uppercase tracking-wide text-surface-400">This Business</p>
-                            <span className="text-xs text-surface-400">{selectedHistory.length} records</span>
-                          </div>
-                          {selectedHistory.length === 0 ? (
-                            <div className="rounded-lg border border-dashed border-surface-200 px-4 py-4 text-sm text-surface-500">
-                              No scripts have been used for this business yet.
-                            </div>
-                          ) : (
-                            selectedHistory.slice(0, 4).map((item) => (
-                              <HistoryRow
-                                key={item.id}
-                                item={item}
-                                label={personLabel(item.created_by, profileMap, profile.id)}
-                                actionLabel="Load draft"
-                                onAction={() => applyHistoryRecord(item, { includePersonalization: true, includeContent: true })}
-                              />
-                            ))
-                          )}
-                        </div>
-
-                        <div className="space-y-3 border-t border-surface-100 pt-4">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs font-medium uppercase tracking-wide text-surface-400">My Recent Use</p>
-                            <span className="text-xs text-surface-400">{recentMine.length} recent</span>
-                          </div>
-                          {recentMine.length === 0 ? (
-                            <div className="rounded-lg border border-dashed border-surface-200 px-4 py-4 text-sm text-surface-500">
-                              Once you copy or log a script, your activity will appear here.
-                            </div>
-                          ) : (
-                            recentMine.map((item) => (
-                              <HistoryRow key={item.id} item={item} label={selectedBusiness.id === item.business_id ? 'This business' : 'Another business'} compact />
-                            ))
-                          )}
-                        </div>
-                      </>
+                    ))}
+                    {selectedBusiness.linkedMaterial && (
+                      <SnapshotLink href="/materials/library" icon={<FileText className="h-3.5 w-3.5" />} label={selectedBusiness.linkedMaterial.title} />
                     )}
-                  </CardContent>
-                </Card>
+                    {selectedBusiness.linkedQrCode && (
+                      <SnapshotLink href="/qr/mine" icon={<QrCodeIcon className="h-3.5 w-3.5" />} label={selectedBusiness.linkedQrCode.name} />
+                    )}
+                    {selectedBusiness.linkedQrCollection && (
+                      <SnapshotLink href="/qr/collections" icon={<QrCodeIcon className="h-3.5 w-3.5" />} label={selectedBusiness.linkedQrCollection.name} />
+                    )}
+                  </div>
+                </div>
+
+                {selectedNotes.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Recent Notes</p>
+                    {selectedNotes.map((note) => (
+                      <div key={note.id} className="rounded-lg border border-surface-200 bg-white px-3 py-2">
+                        <p className="text-sm text-surface-700">{note.content}</p>
+                        <p className="mt-1 text-xs text-surface-400">{relativeTime(note.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── STEP 1 · Local Angle ────────── */}
+      {step === 1 && selectedBusiness && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Add Your Local Angle</CardTitle>
+            <CardDescription>Use real local context. Tighten the fields until the script sounds like something you would actually say out loud.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <SelectedBusinessBanner business={selectedBusiness} stage={selectedBusiness.stage} onChangeClick={() => setStep(0)} />
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <InputBlock label="Intern Name">
+                <Input value={personalization.intern_name} onChange={(e) => setPersonalization((c) => ({ ...c, intern_name: e.target.value }))} />
+              </InputBlock>
+              <InputBlock label="City">
+                <Input value={personalization.city} onChange={(e) => setPersonalization((c) => ({ ...c, city: e.target.value }))} />
+              </InputBlock>
+              <InputBlock label="School Name">
+                <Input value={personalization.school_name} onChange={(e) => setPersonalization((c) => ({ ...c, school_name: e.target.value }))} />
+              </InputBlock>
+              <InputBlock label="Local Cause">
+                <Input value={personalization.local_cause_name} onChange={(e) => setPersonalization((c) => ({ ...c, local_cause_name: e.target.value }))} />
+              </InputBlock>
+              <InputBlock label="Owner Name Override">
+                <Input value={personalization.owner_name} onChange={(e) => setPersonalization((c) => ({ ...c, owner_name: e.target.value }))} />
+              </InputBlock>
+              <InputBlock label="Specific Product Override">
+                <Input value={personalization.specific_product} onChange={(e) => setPersonalization((c) => ({ ...c, specific_product: e.target.value }))} />
+              </InputBlock>
+              <InputBlock label="Average Spend Override">
+                <Input value={personalization.avg_ticket} onChange={(e) => setPersonalization((c) => ({ ...c, avg_ticket: e.target.value }))} />
+              </InputBlock>
+              <InputBlock label="Local Context">
+                <Input value={personalization.local_context} onChange={(e) => setPersonalization((c) => ({ ...c, local_context: e.target.value }))} placeholder="Neighborhood, district, school zone..." />
+              </InputBlock>
+              <InputBlock label="Personal Connection" className="md:col-span-2">
+                <Textarea
+                  value={personalization.personal_connection}
+                  onChange={(e) => setPersonalization((c) => ({ ...c, personal_connection: e.target.value }))}
+                  placeholder="Example: I used to stop by after games, or I know families from my school already come here."
+                  rows={4}
+                />
+              </InputBlock>
+            </div>
+
+            {/* history suggestions */}
+            {focusHistory && (
+              <div className="space-y-3 border-t border-surface-200 pt-5">
+                <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Reuse from your history</p>
+                <HistoryRow
+                  item={focusHistory}
+                  label={focusHistory.business_id === selectedBusiness.id ? 'This business' : 'A similar business'}
+                  actionLabel="Use this setup"
+                  onAction={() => applyHistoryRecord(focusHistory, { includePersonalization: true, strategyOnly: false })}
+                />
+                {recommendedStructures.filter((item) => item.id !== focusHistory.id).slice(0, 2).map((item) => (
+                  <HistoryRow
+                    key={item.id}
+                    item={item}
+                    label={businessNameMap[item.business_id] || 'Another business'}
+                    compact
+                    actionLabel="Reuse setup"
+                    onAction={() => applyHistoryRecord(item, { includePersonalization: true, strategyOnly: true })}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── STEP 2 · Shape Approach ────────── */}
+      {step === 2 && selectedBusiness && generatedScript && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Shape the Approach</CardTitle>
+            <CardDescription>Choose the angle, quality level, and delivery mode that give you the best shot with this business.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <SelectedBusinessBanner business={selectedBusiness} stage={selectedBusiness.stage} onChangeClick={() => setStep(0)} />
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <InputBlock label="Script Type">
+                <select
+                  value={scriptType}
+                  onChange={(e) => setScriptType(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                >
+                  {scriptTypeOptions.map((option) => (
+                    <option key={option.key} value={option.key}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-surface-500">
+                  {scriptTypeOptions.find((option) => option.key === scriptType)?.description}
+                </p>
+              </InputBlock>
+              <InputBlock label="Communication Mode">
+                <select
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value as OutreachScriptChannel)}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                >
+                  {OUTREACH_SCRIPT_CHANNEL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-surface-500">
+                  {OUTREACH_SCRIPT_CHANNEL_OPTIONS.find((option) => option.value === channel)?.hint}
+                </p>
+              </InputBlock>
+            </div>
+
+            {/* tier cards */}
+            <div>
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-surface-400">Quality Tier</p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {OUTREACH_SCRIPT_TIER_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setTier(option.value)}
+                    className={cn(
+                      'rounded-xl border p-4 text-left transition-all',
+                      tier === option.value
+                        ? 'border-brand-500 bg-brand-50 shadow-sm ring-1 ring-brand-300'
+                        : 'border-surface-200 bg-surface-0 hover:border-surface-300 hover:shadow-sm'
+                    )}
+                  >
+                    <p className="text-sm font-semibold text-surface-900">{option.label}</p>
+                    <p className="mt-1 text-xs text-surface-500">{option.hint}</p>
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
-        )}
+
+            <div className="rounded-xl bg-surface-50 px-4 py-3 text-sm text-surface-700">
+              <span className="font-medium text-surface-900">Current frame:</span>{' '}
+              {generatedScript.categoryLabel} using the {generatedScript.scriptTypeLabel} angle for a{' '}
+              {OUTREACH_SCRIPT_CHANNEL_OPTIONS.find((option) => option.value === channel)?.label.toLowerCase()}.
+            </div>
+
+            {/* category insights */}
+            {categoryConfig && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Message Framing</p>
+                  <p className="mt-2 text-sm text-surface-800">{categoryConfig.messageFraming}</p>
+                </div>
+                <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Emotional Relevance</p>
+                  <p className="mt-2 text-sm text-surface-800">{categoryConfig.emotionalRelevance}</p>
+                </div>
+                <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Product Examples</p>
+                  <p className="mt-2 text-sm text-surface-800">{categoryConfig.productExamples.join(', ')}</p>
+                </div>
+                <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">CTA Style</p>
+                  <p className="mt-2 text-sm text-surface-800">{categoryConfig.callToActionStyle}</p>
+                </div>
+              </div>
+            )}
+
+            {/* preview draft */}
+            <div className="space-y-3 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-brand-700">Preview Draft</p>
+                <Badge variant="info">Preview</Badge>
+              </div>
+              {generatedScript.subject && (
+                <div className="rounded-lg border border-surface-200 bg-white px-4 py-2.5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Subject</p>
+                  <p className="mt-1 text-sm font-medium text-surface-800">{generatedScript.subject}</p>
+                </div>
+              )}
+              <Textarea value={editorContent} rows={14} className="min-h-[18rem] bg-white text-[15px] leading-7" readOnly />
+              <p className="text-xs text-surface-500">
+                Preview the structure here first. If it feels right, continue to the final step to edit, copy, and log it.
+              </p>
+            </div>
+
+            {/* recommended structures */}
+            {recommendedStructures.length > 0 && (
+              <div className="space-y-3 border-t border-surface-200 pt-5">
+                <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Useful Structures From Your History</p>
+                {recommendedStructures.map((item) => (
+                  <HistoryRow
+                    key={item.id}
+                    item={item}
+                    label={businessNameMap[item.business_id] || 'Another business'}
+                    compact
+                    actionLabel="Use this structure"
+                    onAction={() => applyHistoryRecord(item, { includePersonalization: true, includeContent: false, strategyOnly: true })}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── STEP 3 · Review & Log ────────── */}
+      {step === 3 && selectedBusiness && generatedScript && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Review, Edit &amp; Log</CardTitle>
+              <CardDescription>Tighten the final draft, copy it, and push the touchpoint back into the CRM.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <SelectedBusinessBanner business={selectedBusiness} stage={selectedBusiness.stage} onChangeClick={() => setStep(0)} />
+
+              {recentRiskByOther && recentRisk && (
+                <div className="rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+                  <div className="flex items-start gap-2">
+                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">Recent outreach already logged</p>
+                      <p className="mt-1 text-xs">
+                        {personLabel(recentRisk.created_by, profileMap, profile.id)} logged outreach {relativeTime(recentRisk.created_at)}. Review that touchpoint before sending another.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* left: script editor */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-surface-900">{generatedScript.title}</p>
+                    <Badge variant={SCRIPT_STATUS_VARIANT[status]}>
+                      {OUTREACH_SCRIPT_STATUS_OPTIONS.find((o) => o.value === status)?.label || status}
+                    </Badge>
+                  </div>
+
+                  {generatedScript.subject && (
+                    <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-2.5">
+                      <p className="text-xs font-medium uppercase tracking-wide text-surface-400">Subject</p>
+                      <p className="mt-1 text-sm font-medium text-surface-800">{generatedScript.subject}</p>
+                    </div>
+                  )}
+
+                  <Textarea
+                    value={editorContent}
+                    onChange={(e) => setEditorContent(e.target.value)}
+                    rows={18}
+                    className="min-h-[24rem] text-[15px] leading-7"
+                  />
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={handleCopy} disabled={pendingAction || !editorContent.trim()}>
+                      {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {copied ? 'Copied' : generatedScript.subject ? 'Copy Email Draft' : 'Copy Script'}
+                    </Button>
+                    {focusHistory && (
+                      <Button
+                        variant="outline"
+                        onClick={() => applyHistoryRecord(focusHistory, { includePersonalization: true, includeContent: true })}
+                        disabled={pendingAction}
+                      >
+                        Use prior full draft
+                      </Button>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-surface-500">
+                    Edits are tracked against the generated draft for city, category, tier, stakeholder, and channel reporting.
+                  </p>
+                </div>
+
+                {/* right: logging form */}
+                <div className="space-y-4 rounded-xl border border-surface-200 bg-surface-50/50 p-5">
+                  <p className="text-sm font-semibold text-surface-900">Outreach Logging</p>
+                  <p className="text-xs text-surface-500">Choose the contact, mark the outcome, and send this touchpoint back into the CRM.</p>
+
+                  {logBlocked && recentRisk && (
+                    <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2.5 text-xs text-warning-700">
+                      {personLabel(recentRisk.created_by, profileMap, profile.id)} logged outreach {relativeTime(recentRisk.created_at)}. Review first.
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <InputBlock label="Contact">
+                      <select
+                        value={selectedContactId}
+                        onChange={(e) => {
+                          const nextId = e.target.value
+                          setSelectedContactId(nextId)
+                          const nextContact = selectedBusiness.contacts.find((c) => c.id === nextId) || null
+                          if (nextContact) {
+                            setPersonalization((cur) => ({
+                              ...cur,
+                              owner_name: `${nextContact.first_name} ${nextContact.last_name}`.trim(),
+                            }))
+                          }
+                        }}
+                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                      >
+                        <option value="">Use business-level owner context</option>
+                        {selectedBusiness.contacts.map((contact) => (
+                          <option key={contact.id} value={contact.id}>
+                            {`${contact.first_name} ${contact.last_name}`.trim()}
+                            {contact.title ? ` - ${contact.title}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </InputBlock>
+                    <InputBlock label="Outreach Status">
+                      <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as OutreachScriptStatus)}
+                        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                      >
+                        {OUTREACH_SCRIPT_STATUS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </InputBlock>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <InputBlock label="Next Step">
+                      <Input
+                        value={nextStep}
+                        onChange={(e) => setNextStep(e.target.value)}
+                        placeholder={status === 'follow_up_needed' ? `Follow up with ${selectedBusiness.name}` : 'Optional next action'}
+                      />
+                    </InputBlock>
+                    <InputBlock label="Follow-Up Date">
+                      <Input
+                        type="datetime-local"
+                        value={nextStepDate}
+                        onChange={(e) => setNextStepDate(e.target.value)}
+                      />
+                    </InputBlock>
+                  </div>
+
+                  <InputBlock label="Logging Notes">
+                    <Textarea
+                      value={logNotes}
+                      onChange={(e) => setLogNotes(e.target.value)}
+                      placeholder="What happened, what mattered, or what should happen next?"
+                      rows={4}
+                    />
+                  </InputBlock>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => handleLog(false)} disabled={pendingAction || !editorContent.trim() || logBlocked}>
+                      {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Log Outreach
+                    </Button>
+                    <Button variant="secondary" onClick={() => handleLog(true)} disabled={pendingAction || !editorContent.trim() || logBlocked}>
+                      {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+                      Copy + Log Outreach
+                    </Button>
+                  </div>
+
+                  <p className="text-xs text-surface-500">
+                    Logging writes the generated draft, edited draft, contact, script tier, QR/material hooks, and outreach status back into the CRM. Follow-up status also creates a task.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* script history */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Script History</CardTitle>
+              <CardDescription>Review what has been used for this business and what you have recently touched yourself.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium uppercase tracking-wide text-surface-400">This Business</p>
+                      <span className="text-xs text-surface-400">{selectedHistory.length} records</span>
+                    </div>
+                    {selectedHistory.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-surface-200 px-4 py-4 text-sm text-surface-500">
+                        No scripts have been used for this business yet.
+                      </div>
+                    ) : (
+                      selectedHistory.slice(0, 4).map((item) => (
+                        <HistoryRow
+                          key={item.id}
+                          item={item}
+                          label={personLabel(item.created_by, profileMap, profile.id)}
+                          actionLabel="Load draft"
+                          onAction={() => applyHistoryRecord(item, { includePersonalization: true, includeContent: true })}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  <div className="space-y-3 border-t border-surface-100 pt-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium uppercase tracking-wide text-surface-400">My Recent Use</p>
+                      <span className="text-xs text-surface-400">{recentMine.length} recent</span>
+                    </div>
+                    {recentMine.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-surface-200 px-4 py-4 text-sm text-surface-500">
+                        Once you copy or log a script, your activity will appear here.
+                      </div>
+                    ) : (
+                      recentMine.map((item) => (
+                        <HistoryRow key={item.id} item={item} label={selectedBusiness.id === item.business_id ? 'This business' : 'Another business'} compact />
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* ── fallback when no business selected on steps 1-3 ── */}
+      {step > 0 && !selectedBusiness && (
+        <Card>
+          <CardContent className="py-20">
+            <EmptyState
+              icon={<Sparkles className="h-8 w-8" />}
+              title="Choose a business first"
+              description="Go back to step one and pick a business before continuing."
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── navigation footer ── */}
+      <div className="flex items-center justify-between rounded-2xl border border-surface-200 bg-surface-0 px-6 py-4 shadow-sm">
+        <Button variant="outline" onClick={goToPreviousStep} disabled={step === 0}>
+          <ChevronLeft className="h-4 w-4" />
+          Back
+        </Button>
+        <div className="flex items-center gap-3">
+          {step > 0 && focusHistory && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                applyHistoryRecord(focusHistory, {
+                  includePersonalization: true,
+                  includeContent: focusHistory.business_id === selectedBusiness?.id,
+                })
+                setStep(focusHistory.business_id === selectedBusiness?.id ? 3 : 2)
+              }}
+            >
+              Use recent structure
+            </Button>
+          )}
+          {step < 3 && (
+            <Button onClick={goToNextStep} disabled={!isStepComplete[step]}>
+              Continue
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   )
