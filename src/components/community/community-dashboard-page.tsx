@@ -483,10 +483,10 @@ export function CommunityDashboardPage() {
                   {nextActions.map((action, idx) => {
                     const routeMap: Record<string, string> = {
                       mission: '/community',
-                      codes: '/community/materials',
+                      codes: '/community/qr',
                       materials: '/community/materials',
                       businesses: '/community/businesses',
-                      activity: '/community/tasks',
+                      activity: '/community/activity',
                       tasks: '/community/tasks',
                     }
                     const href = routeMap[action.tab] || '/community'
