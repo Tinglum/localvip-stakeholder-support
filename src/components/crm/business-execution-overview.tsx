@@ -25,7 +25,7 @@ import {
 import { useAuth } from '@/lib/auth/context'
 import { resolveBusinessOffer } from '@/lib/offers'
 import { buildStakeholderJoinUrl } from '@/lib/material-engine'
-import { computeBusinessExecutionSteps, getBusinessNextActions, type BusinessExecutionStepSummary } from '@/lib/business-execution'
+import { computeBusinessExecutionSteps, getBusinessNextActions, getTabForBusinessStepKey, type BusinessExecutionStepSummary } from '@/lib/business-execution'
 import {
   useAdminTasks,
   useContacts,
@@ -440,7 +440,20 @@ export function BusinessExecutionOverview({
                         {item.step.completed_by ? ` by ${profileMap.get(item.step.completed_by)?.full_name || 'a team member'}` : ''}
                       </p>
                     ) : item.blocker ? (
-                      <p className="text-xs text-warning-700">{item.blocker}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tab = getTabForBusinessStepKey(item.key)
+                          if (['materials', 'offers', 'outreach', 'branding'].includes(tab)) {
+                            openWorkspaceTab(tab as 'materials' | 'offers' | 'outreach' | 'branding')
+                          } else if (tab === 'codes') {
+                            openWorkspaceTab('materials')
+                          }
+                        }}
+                        className="text-xs text-warning-700 underline decoration-warning-300 underline-offset-2 hover:text-warning-900 hover:decoration-warning-500 transition-colors cursor-pointer text-left"
+                      >
+                        {item.blocker} →
+                      </button>
                     ) : (
                       <p className="text-xs text-surface-500">Ready for the next action.</p>
                     )}
@@ -486,10 +499,26 @@ export function BusinessExecutionOverview({
               <p><span className="font-semibold text-surface-900">Helpers:</span> {helperAssignments.length}</p>
             </div>
             {nextActions.length > 0 ? nextActions.map((action) => (
-              <div key={action} className="flex items-start gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3">
+              <button
+                key={action.text}
+                type="button"
+                onClick={() => {
+                  const tabMap: Record<string, 'materials' | 'offers' | 'outreach' | 'branding'> = {
+                    codes: 'materials',
+                    materials: 'materials',
+                    offers: 'offers',
+                    outreach: 'outreach',
+                    branding: 'branding',
+                  }
+                  const wsTab = tabMap[action.tab]
+                  if (wsTab) openWorkspaceTab(wsTab)
+                }}
+                className="flex w-full items-start gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50 transition-colors cursor-pointer group"
+              >
                 <Sparkles className="mt-0.5 h-4 w-4 text-brand-500" />
-                <p className="text-sm text-surface-700">{action}</p>
-              </div>
+                <span className="text-sm text-surface-700 group-hover:text-brand-700 flex-1">{action.text}</span>
+                <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-surface-300 group-hover:text-brand-500 transition-colors" />
+              </button>
             )) : (
               <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
                 This business has no immediate blockers.

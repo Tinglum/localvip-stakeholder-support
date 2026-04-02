@@ -50,19 +50,24 @@ export async function syncMaterialAssetTemplatesForStakeholder(
   stakeholderType: StakeholderType,
   templateId?: string,
 ) {
-  const { data, error } = await supabase
-    .from('materials')
-    .select('*')
-    .eq('is_template', true)
-    .order('updated_at', { ascending: false })
+  // Fetch both materials and existing asset templates in parallel (avoid N+1)
+  const [materialsResult, existingTemplatesResult] = await Promise.all([
+    supabase.from('materials').select('*').eq('is_template', true).order('updated_at', { ascending: false }),
+    supabase.from('material_templates').select('*').eq('template_type', 'material_asset'),
+  ])
 
-  if (error) throw error
+  if (materialsResult.error) throw materialsResult.error
+  if (existingTemplatesResult.error) throw existingTemplatesResult.error
 
-  const materials = (data || []) as Material[]
+  const materials = (materialsResult.data || []) as Material[]
+  const existingAssetTemplates = (existingTemplatesResult.data || []) as MaterialTemplate[]
   const matchingMaterials = materials.filter((material) => materialMatchesStakeholderType(material, stakeholderType))
 
+  // Skip sync entirely if no matching materials
+  if (matchingMaterials.length === 0) return []
+
   const templates = await Promise.all(
-    matchingMaterials.map((material) => syncMaterialAssetTemplateRow(supabase, material)),
+    matchingMaterials.map((material) => syncMaterialAssetTemplateRow(supabase, material, existingAssetTemplates)),
   )
 
   return templates
@@ -132,20 +137,14 @@ function materialMatchesStakeholderType(material: Material, stakeholderType: Sta
 async function syncMaterialAssetTemplateRow(
   supabase: ServiceSupabaseClient,
   material: Material,
+  existingAssetTemplates: MaterialTemplate[],
 ) {
   const config = getMaterialAutomationTemplateConfig(material)
   if (!config.enabled || !materialSupportsAutomationTemplate(material) || !material.file_url) {
     return null
   }
 
-  const { data, error } = await supabase
-    .from('material_templates')
-    .select('*')
-    .eq('template_type', 'material_asset')
-
-  if (error) throw error
-
-  const existingTemplate = ((data || []) as MaterialTemplate[]).find((template) => getSourceMaterialId(template) === material.id) || null
+  const existingTemplate = existingAssetTemplates.find((template) => getSourceMaterialId(template) === material.id) || null
   const placements = getQrPlacements(material.metadata as Record<string, unknown> | null)
   const payload = {
     name: material.title,

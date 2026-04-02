@@ -458,12 +458,25 @@ export function CommunityDashboardPage() {
                   <h3 className="text-sm font-semibold text-surface-800">Recommended actions</h3>
                 </div>
                 <ul className="space-y-1.5">
-                  {nextActions.map((action, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-sm text-surface-600">
-                      <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-400" />
-                      {action}
-                    </li>
-                  ))}
+                  {nextActions.map((action, idx) => {
+                    const routeMap: Record<string, string> = {
+                      mission: '/community',
+                      codes: '/community/materials',
+                      materials: '/community/materials',
+                      businesses: '/community/businesses',
+                      activity: '/community/tasks',
+                      tasks: '/community/tasks',
+                    }
+                    const href = routeMap[action.tab] || '/community'
+                    return (
+                      <li key={idx}>
+                        <Link href={href} className="flex items-start gap-2 text-sm text-surface-600 hover:text-brand-700 transition-colors group">
+                          <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-400 group-hover:text-brand-600" />
+                          <span className="group-hover:underline">{action.text}</span>
+                        </Link>
+                      </li>
+                    )
+                  })}
                 </ul>
               </CardContent>
             </Card>

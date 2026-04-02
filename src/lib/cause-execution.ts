@@ -177,6 +177,37 @@ export function computeCauseReadiness(input: {
 
 // ─── Next best actions ──────────────────────────────────────
 
+export interface CauseNextAction {
+  text: string
+  tab: string
+}
+
+/** Map a lifecycle step key to the tab that resolves the blocker. */
+export function getTabForStepKey(key: string): string {
+  switch (key) {
+    case 'initial_connection': return 'mission'
+    case 'leader_conversation': return 'activity'
+    case 'materials_qr': return 'codes'
+    case 'activation_decision': return 'businesses'
+    default: return 'mission'
+  }
+}
+
+/** Map a readiness checklist label to the tab where the user can fix it. */
+export function getTabForReadinessCheck(label: string): string {
+  switch (label) {
+    case 'Profile complete': return 'mission'
+    case 'Codes entered': return 'codes'
+    case 'Materials generated': return 'codes'
+    case 'QR assets ready': return 'codes'
+    case 'First business linked': return 'businesses'
+    case 'Outreach started': return 'activity'
+    case 'Leadership engaged': return 'activity'
+    case 'Community activation started': return 'businesses'
+    default: return 'mission'
+  }
+}
+
 export function getCauseNextActions(input: {
   cause: Cause
   steps: CauseExecutionStepSummary[]
@@ -186,54 +217,65 @@ export function getCauseNextActions(input: {
   outreachCount: number
   linkedBusinessCount: number
   openTaskCount: number
-}): string[] {
-  const actions: string[] = []
+}): CauseNextAction[] {
+  const actions: CauseNextAction[] = []
+  const seen = new Set<string>()
   const isSchool = input.cause.type === 'school'
   const nextStep = input.steps.find((step) => step.state === 'active')
 
+  function add(text: string, tab: string) {
+    if (!seen.has(text)) {
+      seen.add(text)
+      actions.push({ text, tab })
+    }
+  }
+
   if (nextStep) {
-    actions.push(nextStep.blocker || `Complete "${nextStep.label.toLowerCase()}" to move forward.`)
+    add(
+      nextStep.blocker || `Complete "${nextStep.label.toLowerCase()}" to move forward.`,
+      getTabForStepKey(nextStep.key),
+    )
   }
 
   if (!input.cause.city_id || !(input.cause.email || input.cause.phone || input.cause.website)) {
-    actions.push('Complete your profile with city and contact information.')
+    add('Complete your profile with city and contact information.', 'mission')
   }
 
   if (!input.codes?.referral_code || !input.codes?.connection_code) {
-    actions.push('Add referral and connection codes so QR and materials can be generated.')
+    add('Add referral and connection codes so QR and materials can be generated.', 'codes')
   }
 
   if (input.generatedMaterials.filter((item) => item.generation_status === 'generated').length === 0) {
-    actions.push(isSchool
+    add(isSchool
       ? 'Generate your school materials so you can share with parents and businesses.'
-      : 'Generate your cause materials so you can share with supporters and businesses.')
+      : 'Generate your cause materials so you can share with supporters and businesses.', 'codes')
   }
 
   if (input.qrCodes.length === 0) {
-    actions.push('Create a QR code so supporters can join directly.')
+    add('Create a QR code so supporters can join directly.', 'codes')
   }
 
   if (input.linkedBusinessCount === 0) {
-    actions.push(isSchool
+    add(isSchool
       ? 'Add your first business prospect. This is the foundation of your school\'s fundraising.'
-      : 'Add your first business prospect. This is how your cause starts generating real support.')
+      : 'Add your first business prospect. This is how your cause starts generating real support.', 'businesses')
   }
 
   if (input.outreachCount === 0) {
-    actions.push(isSchool
+    add(isSchool
       ? 'Log your first outreach to track parent and leadership conversations.'
-      : 'Log your first outreach to track supporter and leadership conversations.')
+      : 'Log your first outreach to track supporter and leadership conversations.', 'activity')
   }
 
   if (input.openTaskCount > 0) {
-    actions.push(`Work on ${input.openTaskCount} open task${input.openTaskCount === 1 ? '' : 's'}.`)
+    add(`Work on ${input.openTaskCount} open task${input.openTaskCount === 1 ? '' : 's'}.`, 'tasks')
   }
 
   if (input.linkedBusinessCount >= 1 && input.linkedBusinessCount < 3) {
-    actions.push(isSchool
+    add(isSchool
       ? 'Get to 3 businesses to build real momentum for your school.'
-      : 'Get to 3 businesses to build real momentum for your cause.')
+      : 'Get to 3 businesses to build real momentum for your cause.', 'businesses')
   }
 
-  return Array.from(new Set(actions)).slice(0, 5)
+  return actions.slice(0, 5)
 }

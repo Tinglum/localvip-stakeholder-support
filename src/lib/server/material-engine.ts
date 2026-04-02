@@ -306,22 +306,31 @@ export async function generateMaterialsForStakeholder(
     templateId?: string
   },
 ): Promise<GenerationResult> {
-  const stakeholder = await getStakeholderById(supabase, stakeholderId)
+  // Phase 1: Load stakeholder + codes in parallel
+  const [stakeholder, codesResult] = await Promise.all([
+    getStakeholderById(supabase, stakeholderId),
+    getStakeholderCode(supabase, stakeholderId),
+  ])
   if (!stakeholder) throw new Error('Stakeholder not found.')
-
-  const codes = await getStakeholderCode(supabase, stakeholder.id)
+  const codes = codesResult
   if (!codes) throw new Error('Stakeholder codes are missing.')
 
-  await ensureMaterialsBucket(supabase)
+  // Phase 2: Build context + ensure bucket in parallel
+  const [context] = await Promise.all([
+    buildStakeholderMaterialContext(supabase, stakeholder, codes),
+    ensureMaterialsBucket(supabase),
+  ])
 
-  const context = await buildStakeholderMaterialContext(supabase, stakeholder, codes)
-  const qrCode = await ensureStakeholderQrCode(supabase, context, actorId)
-  const templates = await getTemplatesForStakeholder(supabase, stakeholder.type, options?.templateId, {
-    tier: 'auto',
-    cityId: stakeholder.city_id,
-    campaignId: context.business?.campaign_id || context.cause?.campaign_id || null,
-    businessCategory: context.business?.category || null,
-  })
+  // Phase 3: Ensure QR code + resolve templates in parallel (both depend on context)
+  const [qrCode, templates] = await Promise.all([
+    ensureStakeholderQrCode(supabase, context, actorId),
+    getTemplatesForStakeholder(supabase, stakeholder.type, options?.templateId, {
+      tier: 'auto',
+      cityId: stakeholder.city_id,
+      campaignId: context.business?.campaign_id || context.cause?.campaign_id || null,
+      businessCategory: context.business?.category || null,
+    }),
+  ])
 
   if (templates.length === 0) {
     const msg = options?.templateId

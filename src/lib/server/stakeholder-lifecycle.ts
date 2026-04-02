@@ -399,18 +399,36 @@ export async function ensureStakeholderCodesRow(
 
   if (existing) return existing
 
-  const { data, error } = await (supabase.from('stakeholder_codes') as any)
-    .insert({
-      stakeholder_id: stakeholderId,
-      referral_code: null,
-      connection_code: null,
-      join_url: null,
-    })
-    .select()
-    .single()
+  // Try inserting a placeholder row — if the table has NOT NULL constraints on code columns,
+  // skip gracefully since the codes will be set later by upsertStakeholderCodesAndGenerate.
+  try {
+    const { data, error } = await (supabase.from('stakeholder_codes') as any)
+      .insert({
+        stakeholder_id: stakeholderId,
+        referral_code: null,
+        connection_code: null,
+        join_url: null,
+      })
+      .select()
+      .single()
 
-  if (error) throw error
-  return data
+    if (error) {
+      // If it's a NOT NULL violation, the row will be created properly later when codes are set
+      const msg = String(error.message || error.code || '')
+      if (msg.includes('not-null') || msg.includes('null value') || msg.includes('23502')) {
+        return null
+      }
+      throw error
+    }
+    return data
+  } catch (insertError) {
+    // Tolerate insert failures — the codes row will be created by the material engine
+    const msg = insertError instanceof Error ? insertError.message : String(insertError)
+    if (msg.includes('not-null') || msg.includes('null value') || msg.includes('23502')) {
+      return null
+    }
+    throw insertError
+  }
 }
 
 export async function ensureStakeholderSetupTask(

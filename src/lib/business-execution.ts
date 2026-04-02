@@ -131,6 +131,22 @@ export function computeBusinessStageFromSteps(steps: OnboardingStep[], business:
   return 'onboarded'
 }
 
+export interface BusinessNextAction {
+  text: string
+  tab: string
+}
+
+/** Map a business lifecycle step key to the tab that resolves the blocker. */
+export function getTabForBusinessStepKey(key: string): string {
+  switch (key) {
+    case 'initial_connection': return 'overview'
+    case 'owner_conversation': return 'outreach'
+    case 'materials_qr': return 'codes'
+    case 'launch_decision': return 'offers'
+    default: return 'overview'
+  }
+}
+
 export function getBusinessNextActions(input: {
   business: Business
   steps: BusinessExecutionStepSummary[]
@@ -140,43 +156,54 @@ export function getBusinessNextActions(input: {
   offers: Offer[]
   joinedCount: number
   openTaskCount: number
-}) {
-  const actions: string[] = []
+}): BusinessNextAction[] {
+  const actions: BusinessNextAction[] = []
+  const seen = new Set<string>()
   const nextStep = input.steps.find((step) => step.state === 'active')
   const captureOffer = resolveBusinessOffer(input.business, input.offers, 'capture')
   const cashbackOffer = resolveBusinessOffer(input.business, input.offers, 'cashback')
 
+  function add(text: string, tab: string) {
+    if (!seen.has(text)) {
+      seen.add(text)
+      actions.push({ text, tab })
+    }
+  }
+
   if (nextStep) {
-    actions.push(nextStep.blocker || `Complete ${nextStep.label.toLowerCase()}.`)
+    add(
+      nextStep.blocker || `Complete ${nextStep.label.toLowerCase()}.`,
+      getTabForBusinessStepKey(nextStep.key),
+    )
   }
 
   if (!input.codes?.referral_code || !input.codes?.connection_code) {
-    actions.push('Add referral and connection codes so QR and materials can be generated.')
+    add('Add referral and connection codes so QR and materials can be generated.', 'codes')
   }
 
   if (input.generatedMaterials.filter((item) => item.generation_status === 'generated').length === 0) {
-    actions.push('Generate the first materials so launch assets are ready.')
+    add('Generate the first materials so launch assets are ready.', 'codes')
   }
 
   if (input.qrCodes.length === 0) {
-    actions.push('Create or link a QR code for customer capture.')
+    add('Create or link a QR code for customer capture.', 'codes')
   }
 
   if (!captureOffer.headline?.trim()) {
-    actions.push('Set the customer capture offer customers see before launch.')
+    add('Set the customer capture offer customers see before launch.', 'offers')
   }
 
   if (typeof cashbackOffer.cashback_percent !== 'number' || cashbackOffer.cashback_percent < 5 || cashbackOffer.cashback_percent > 25) {
-    actions.push('Set the LocalVIP cashback percentage so launch can move forward.')
+    add('Set the LocalVIP cashback percentage so launch can move forward.', 'offers')
   }
 
   if (input.joinedCount < 100) {
-    actions.push(`Grow the 100-list. ${input.joinedCount} customers are joined so far.`)
+    add(`Grow the 100-list. ${input.joinedCount} customers are joined so far.`, 'overview')
   }
 
   if (input.openTaskCount > 0) {
-    actions.push(`Work the ${input.openTaskCount} open task${input.openTaskCount === 1 ? '' : 's'} blocking launch progress.`)
+    add(`Work the ${input.openTaskCount} open task${input.openTaskCount === 1 ? '' : 's'} blocking launch progress.`, 'tasks')
   }
 
-  return Array.from(new Set(actions)).slice(0, 5)
+  return actions.slice(0, 5)
 }

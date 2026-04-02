@@ -114,26 +114,37 @@ async function loadExecutionState(
   }
 }
 
+function extractRouteError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    if ('message' in error) return String((error as any).message)
+    if ('details' in error) return String((error as any).details)
+    if ('code' in error) return `Database error (code: ${(error as any).code})`
+    try { return JSON.stringify(error) } catch { /* ignore */ }
+  }
+  if (typeof error === 'string') return error
+  return 'The business action could not be completed.'
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const context = await getExecutionContext(params.id)
-  if ('error' in context) return context.error
-
-  let body: unknown
   try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
-  }
+    const context = await getExecutionContext(params.id)
+    if ('error' in context) return context.error
 
-  const parsed = actionSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid action.' }, { status: 400 })
-  }
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
+    }
 
-  try {
+    const parsed = actionSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid action.' }, { status: 400 })
+    }
     if (parsed.data.action === 'save_codes') {
       const result = await upsertStakeholderCodesAndGenerate(
         context.supabase,
@@ -263,10 +274,12 @@ export async function POST(
       businessStage: nextBusinessStage,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message
-      : (error && typeof error === 'object' && 'message' in error) ? String((error as any).message)
-      : 'The business action could not be completed.'
-    const status = /already in use/i.test(message) ? 409 : 400
+    console.error('[business-execution] Error:', error)
+    const message = extractRouteError(error)
+    const status = /already in use/i.test(message) ? 409
+      : /not found/i.test(message) ? 404
+      : /forbidden|unauthorized/i.test(message) ? 403
+      : 400
     return NextResponse.json({ error: message }, { status })
   }
 }
