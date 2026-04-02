@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, ChevronDown, ChevronRight, Home, LogOut, Search, Settings, User } from 'lucide-react'
+import { Bell, ChevronDown, ChevronLeft, LogOut, Search, Settings, User } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
@@ -12,7 +12,7 @@ import { getStakeholderAccess, isAdminProfile } from '@/lib/stakeholder-access'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types/database'
 
-// ── Route → label mapping for breadcrumbs ──
+// ── Route → human label mapping ──
 const ROUTE_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
   crm: 'CRM',
@@ -50,24 +50,37 @@ const ROUTE_LABELS: Record<string, string> = {
   partner: 'Partner',
   workspace: 'Workspace',
   influencer: 'Influencer',
+  notes: 'Notes',
 }
 
-function buildBreadcrumbs(pathname: string) {
+const HISTORY_KEY = 'nav_history'
+const MAX_HISTORY = 50 // keep a deeper stack so clicking back still has trail
+
+/** Turn a pathname like /crm/causes/abc-123 into "Causes / Detail" */
+function pathnameToLabel(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean)
-  if (segments.length === 0) return []
+  // Take the last two meaningful segments for a short label
+  const meaningful = segments.map(seg => {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}/.test(seg)) return 'Detail'
+    return ROUTE_LABELS[seg] || seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')
+  })
+  // Show last 2 segments max for compact display
+  return meaningful.slice(-2).join(' / ')
+}
 
-  const crumbs: { label: string; href: string }[] = []
-
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i]
-    // Skip UUID-looking segments for the breadcrumb label (but keep them in the path)
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}/.test(segment)
-    const label = isUuid ? 'Detail' : (ROUTE_LABELS[segment] || segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' '))
-    const href = '/' + segments.slice(0, i + 1).join('/')
-    crumbs.push({ label, href })
+function readHistory(): { path: string; label: string }[] {
+  try {
+    const raw = sessionStorage.getItem(HISTORY_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
   }
+}
 
-  return crumbs
+function writeHistory(history: { path: string; label: string }[]) {
+  try {
+    sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)))
+  } catch { /* quota exceeded — ignore */ }
 }
 
 interface TopbarProps {
@@ -83,8 +96,46 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
   const searchPlaceholder = access.searchPlaceholder
   const [searchValue, setSearchValue] = React.useState('')
   const searchRef = React.useRef<HTMLInputElement>(null)
+  const [history, setHistory] = React.useState<{ path: string; label: string }[]>([])
 
-  const breadcrumbs = React.useMemo(() => buildBreadcrumbs(pathname), [pathname])
+  // On every pathname change, push it to history (deduplicate consecutive)
+  React.useEffect(() => {
+    const prev = readHistory()
+    // Don't push if it's the same as the most recent entry
+    if (prev.length > 0 && prev[0].path === pathname) {
+      setHistory(prev)
+      return
+    }
+    const next = [{ path: pathname, label: pathnameToLabel(pathname) }, ...prev].slice(0, MAX_HISTORY)
+    writeHistory(next)
+    setHistory(next)
+  }, [pathname])
+
+  // The trail: up to 3 previous pages (not the current one)
+  const trail = React.useMemo(() => {
+    // history[0] is the current page — skip it, show the next 3 unique paths
+    const seen = new Set<string>()
+    seen.add(pathname)
+    const items: { path: string; label: string }[] = []
+    for (const entry of history) {
+      if (seen.has(entry.path)) continue
+      seen.add(entry.path)
+      items.push(entry)
+      if (items.length >= 3) break
+    }
+    return items
+  }, [history, pathname])
+
+  function handleTrailClick(targetPath: string) {
+    // Trim history back to that point so clicking back "rewinds"
+    const idx = history.findIndex(h => h.path === targetPath)
+    if (idx > 0) {
+      const rewound = history.slice(idx)
+      writeHistory(rewound)
+      setHistory(rewound)
+    }
+    router.push(targetPath)
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -107,7 +158,6 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && searchValue.trim()) {
       const query = searchValue.trim().toLowerCase()
-      // Navigate to the most relevant CRM page with the search term
       if (isAdminProfile(profile)) {
         router.push(`/crm/businesses?q=${encodeURIComponent(query)}`)
       } else if (access.shell === 'community') {
@@ -131,35 +181,24 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
         sidebarCollapsed ? 'left-16' : 'left-60'
       )}
     >
-      {/* Breadcrumb trail */}
-      <nav className="flex items-center gap-1 min-w-0 flex-shrink overflow-hidden mr-2">
-        <Link
-          href="/dashboard"
-          className="flex items-center text-surface-400 hover:text-surface-600 transition-colors shrink-0"
-        >
-          <Home className="h-3.5 w-3.5" />
-        </Link>
-        {breadcrumbs.map((crumb, idx) => {
-          const isLast = idx === breadcrumbs.length - 1
-          return (
-            <React.Fragment key={crumb.href}>
-              <ChevronRight className="h-3 w-3 text-surface-300 shrink-0" />
-              {isLast ? (
-                <span className="text-xs font-medium text-surface-700 truncate max-w-[140px]">
-                  {crumb.label}
-                </span>
-              ) : (
-                <Link
-                  href={crumb.href}
-                  className="text-xs text-surface-400 hover:text-surface-600 transition-colors truncate max-w-[120px]"
-                >
-                  {crumb.label}
-                </Link>
-              )}
+      {/* Navigation history trail */}
+      {trail.length > 0 && (
+        <nav className="flex items-center gap-1 min-w-0 flex-shrink overflow-hidden mr-1">
+          {trail.map((entry, idx) => (
+            <React.Fragment key={entry.path + idx}>
+              {idx > 0 && <ChevronLeft className="h-3 w-3 text-surface-300 shrink-0" />}
+              <button
+                onClick={() => handleTrailClick(entry.path)}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-surface-500 hover:bg-surface-100 hover:text-surface-700 transition-colors truncate max-w-[150px] shrink-0"
+                title={entry.label}
+              >
+                {idx === 0 && <ChevronLeft className="h-3 w-3 shrink-0" />}
+                <span className="truncate">{entry.label}</span>
+              </button>
             </React.Fragment>
-          )
-        })}
-      </nav>
+          ))}
+        </nav>
+      )}
 
       <div className="flex-1" />
 
