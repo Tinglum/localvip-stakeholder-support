@@ -49,8 +49,8 @@ export default function CommunityBusinessesPage() {
         description={isSchool ? 'Businesses supporting your school fundraising' : 'Businesses supporting your cause'}
         actions={
           <Button asChild size="sm">
-            <Link href="/community/share">
-              <Megaphone className="h-4 w-4" /> Share outreach materials
+            <Link href="/community/materials">
+              <Megaphone className="h-4 w-4" /> View outreach materials
             </Link>
           </Button>
         }
@@ -76,8 +76,8 @@ export default function CommunityBusinessesPage() {
               </p>
               <div className="mt-4">
                 <Button asChild size="sm">
-                  <Link href="/community/share">
-                    <Megaphone className="h-4 w-4" /> Open share tools
+                  <Link href="/community/materials">
+                    <Megaphone className="h-4 w-4" /> Open outreach materials
                   </Link>
                 </Button>
               </div>
