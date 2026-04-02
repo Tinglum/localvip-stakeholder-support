@@ -57,6 +57,7 @@ import {
   computeCauseExecutionSteps,
   computeCauseReadiness,
   getCauseNextActions,
+  getTabForReadinessCheck,
 } from '@/lib/cause-execution'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS, getMaterialLibraryFolderMeta } from '@/lib/material-engine'
 import { ONBOARDING_STAGES } from '@/lib/constants'
@@ -435,16 +436,37 @@ export function CommunityDashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {readiness.checks.map((check, idx) => (
-                  <div key={idx} className="flex items-center gap-3 py-1">
-                    <div className={`h-5 w-5 rounded-full flex items-center justify-center ${check.met ? 'bg-success-100 text-success-600' : 'bg-surface-100 text-surface-400'}`}>
-                      {check.met ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className="h-2 w-2 rounded-full bg-current" />}
-                    </div>
-                    <span className={`text-sm ${check.met ? 'text-surface-700' : 'text-surface-500'}`}>
-                      {check.label}
-                    </span>
-                  </div>
-                ))}
+                {readiness.checks.map((check, idx) => {
+                  const routeMap: Record<string, string> = {
+                    mission: '/community',
+                    codes: '/community/materials',
+                    materials: '/community/materials',
+                    businesses: '/community/businesses',
+                    activity: '/community/tasks',
+                    tasks: '/community/tasks',
+                  }
+                  const tab = getTabForReadinessCheck(check.label)
+                  const href = routeMap[tab] || '/community'
+                  return (
+                    <Link
+                      key={idx}
+                      href={href}
+                      className={`flex items-center gap-3 py-1.5 px-2 -mx-2 rounded-lg transition-colors ${
+                        check.met
+                          ? 'hover:bg-success-50'
+                          : 'hover:bg-warning-50'
+                      }`}
+                    >
+                      <div className={`h-5 w-5 rounded-full flex items-center justify-center ${check.met ? 'bg-success-100 text-success-600' : 'bg-surface-100 text-surface-400'}`}>
+                        {check.met ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className="h-2 w-2 rounded-full bg-current" />}
+                      </div>
+                      <span className={`text-sm flex-1 ${check.met ? 'text-surface-700' : 'text-surface-500'}`}>
+                        {check.label}
+                      </span>
+                      {!check.met && <ArrowRight className="h-3.5 w-3.5 text-surface-300" />}
+                    </Link>
+                  )
+                })}
               </CardContent>
             </Card>
           </div>
