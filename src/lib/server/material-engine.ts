@@ -352,12 +352,37 @@ export async function generateMaterialsForStakeholder(
       results.push(generated)
     } catch (error) {
       const message = extractErrorMessage(error, `Generation failed for template "${template.name}"`)
-      failures.push({ templateId: template.id, templateName: template.name, error: message })
-      await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, message)
+      try {
+        const fallbackGenerated = await generateEmergencyFallbackMaterial(
+          supabase,
+          context,
+          qrCode,
+          template,
+          actorId,
+          message,
+        )
+        results.push(fallbackGenerated)
+        failures.push({
+          templateId: template.id,
+          templateName: template.name,
+          error: `Primary render failed, but a fallback material was generated instead: ${message}`,
+        })
+      } catch (fallbackError) {
+        const fallbackMessage = extractErrorMessage(
+          fallbackError,
+          `Fallback generation also failed for template "${template.name}"`,
+        )
+        const combinedMessage = `${message} | Fallback failed: ${fallbackMessage}`
+        failures.push({ templateId: template.id, templateName: template.name, error: combinedMessage })
+        await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, combinedMessage)
+      }
     }
   }
 
   const status = failures.length > 0 && results.length === 0 ? 'failed' : 'generated'
+  const generationError = failures.length > 0
+    ? failures.map((failure) => `[${failure.templateName}] ${failure.error}`).join(' | ')
+    : null
 
   await updateAdminTaskStatus(
     supabase,
@@ -367,14 +392,14 @@ export async function generateMaterialsForStakeholder(
       generated_count: results.length,
       failure_count: failures.length,
       failures,
+      generation_error: generationError,
       generated_at: new Date().toISOString(),
     },
   )
 
   if (status === 'failed') {
     throw new Error(
-      `Material generation failed for all ${failures.length} template(s). `
-      + failures.map((f) => `[${f.templateName}]: ${f.error}`).join(' | ')
+      `Material generation failed for all ${failures.length} template(s). ${generationError || ''}`.trim(),
     )
   }
 
@@ -386,6 +411,8 @@ export async function generateMaterialsForStakeholder(
     codes,
     generatedMaterials: results,
     failures,
+    generationStatus: status,
+    generationError,
   }
 }
 

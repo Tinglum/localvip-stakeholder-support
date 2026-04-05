@@ -68,6 +68,7 @@ import {
   useCampaigns,
   useCauseUpdate,
   useCities,
+  useAdminTasks,
   useGeneratedMaterials,
   useMaterials,
   useNoteInsert,
@@ -135,13 +136,13 @@ export default function CauseDetailPage() {
   const { data: cities } = useCities()
   const { data: campaigns } = useCampaigns()
   const { data: allBusinesses } = useBusinesses()
-  const { data: allStakeholders } = useStakeholders()
-  const { data: allStakeholderCodes } = useStakeholderCodes()
-  const { data: allGeneratedMaterials } = useGeneratedMaterials()
-  const { data: allMaterialRecords } = useMaterials()
+  const { data: allStakeholders, refetch: refetchStakeholders } = useStakeholders()
+  const { data: allStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes()
+  const { data: allGeneratedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials()
+  const { data: allMaterialRecords, refetch: refetchMaterialRecords } = useMaterials()
   const { data: assignments } = useStakeholderAssignments({ entity_id: causeId })
-  const { data: causeQrCodes } = useQrCodes({ cause_id: causeId })
-  const { data: flows } = useOnboardingFlows({ entity_type: 'cause', entity_id: causeId })
+  const { data: causeQrCodes, refetch: refetchQrCodes } = useQrCodes({ cause_id: causeId })
+  const { data: flows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'cause', entity_id: causeId })
   const flow = flows[0] || null
   const { data: steps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || '__none__' })
   const { data: outreach, refetch: refetchOutreach } = useOutreach({ entity_id: causeId })
@@ -171,6 +172,7 @@ export default function CauseDetailPage() {
     allStakeholders.find(s => s.cause_id === causeId) || null,
     [allStakeholders, causeId],
   )
+  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: causeStakeholder?.id || '__none__' })
 
   // ── Owner resolution (fallback chain: cause.owner_id → stakeholder.profile_id → stakeholder.owner_user_id → assignment) ──
   const owner = React.useMemo(() => {
@@ -199,6 +201,10 @@ export default function CauseDetailPage() {
     [generatedMaterials, causeMaterialMap],
   )
   const generatedCount = generatedMaterialPairs.filter(({ generated }) => !!generated.generated_file_url).length
+  const setupTask = adminTasks[0] || null
+  const generationState = generatedCount > 0
+    ? 'generated'
+    : setupTask?.status || (codes?.referral_code ? 'ready' : 'needs codes')
 
   // ── Execution engine ──
   const executionSteps = React.useMemo(() => {
@@ -285,6 +291,18 @@ export default function CauseDetailPage() {
     return buildStakeholderJoinUrl(isSchool ? 'school' : 'cause', connectionCode)
   }, [codes?.join_url, connectionCode, isSchool])
 
+  async function refetchExecution() {
+    refetchStakeholders({ silent: true })
+    refetchCodes({ silent: true })
+    refetchGeneratedMaterials({ silent: true })
+    refetchMaterialRecords({ silent: true })
+    refetchAdminTasks({ silent: true })
+    refetchFlows({ silent: true })
+    refetchSteps({ silent: true })
+    refetchQrCodes({ silent: true })
+    refetchOutreach({ silent: true })
+  }
+
   async function callExecutionAction(payload: Record<string, unknown>) {
     const response = await fetch(`/api/crm/causes/${causeId}/execution`, {
       method: 'POST',
@@ -302,13 +320,19 @@ export default function CauseDetailPage() {
     setEngineError(null)
     try {
       const body = await callExecutionAction({ action: 'save_codes', referralCode, connectionCode })
-      const generatedCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
-      if (generatedCount === 0) {
-        setEngineError(body?.result?.generationError || 'Codes saved, but materials could not be generated.')
+      const generationStatus = body?.result?.generationStatus
+      const generationError = body?.result?.generationError
+      const generatedMaterialsCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
+      const fallbackGenerated = Array.isArray(body?.result?.failures) && body.result.failures.length > 0 && generatedMaterialsCount > 0
+
+      if (generationStatus === 'failed' || generatedMaterialsCount === 0) {
+        setEngineError(generationError || 'Codes saved, but materials could not be generated.')
+      } else if (fallbackGenerated) {
+        setEngineMessage('Codes saved. Materials generated with fallback layouts where needed.')
       } else {
         setEngineMessage('Codes saved and materials generated.')
       }
-      window.location.reload()
+      await refetchExecution()
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
     } finally {
@@ -322,13 +346,16 @@ export default function CauseDetailPage() {
     setEngineError(null)
     try {
       const body = await callExecutionAction({ action: 'generate_materials' })
-      const count = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
-      if (count === 0) {
+      const generatedMaterialsCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
+      const fallbackGenerated = Array.isArray(body?.result?.failures) && body.result.failures.length > 0 && generatedMaterialsCount > 0
+      if (generatedMaterialsCount === 0) {
         setEngineError(body?.result?.generationError || 'Materials could not be generated.')
+      } else if (fallbackGenerated) {
+        setEngineMessage('Materials generated with fallback layouts where needed.')
       } else {
-        setEngineMessage(`${count} material${count > 1 ? 's' : ''} generated.`)
+        setEngineMessage(`${generatedMaterialsCount} material${generatedMaterialsCount > 1 ? 's' : ''} generated.`)
       }
-      window.location.reload()
+      await refetchExecution()
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Materials could not be generated.')
     } finally {
@@ -1170,7 +1197,7 @@ export default function CauseDetailPage() {
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <MiniStatus label="Generation" value={generatedCount > 0 ? 'generated' : codes?.referral_code ? 'ready' : 'needs codes'} />
+                  <MiniStatus label="Generation" value={generationState} />
                   <MiniStatus label="Generated files" value={`${generatedCount}`} />
                   <MiniStatus label="QR linked" value={causeQrCodes.length > 0 ? 'Yes' : 'No'} />
                 </div>
@@ -1197,38 +1224,79 @@ export default function CauseDetailPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>QR Codes</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {causeQrCodes.length === 0 ? (
-                  <div className="rounded-2xl border-2 border-dashed border-surface-200 bg-surface-50 px-4 py-8 text-center">
-                    <QrCode className="mx-auto mb-2 h-8 w-8 text-surface-300" />
-                    <p className="text-sm font-medium text-surface-700">No QR codes yet</p>
-                    <p className="mt-1 text-xs text-surface-500">Create a QR code to give supporters a direct sign-up path.</p>
-                    <Link href={qrGeneratorHref}>
-                      <Button size="sm" className="mt-3"><QrCode className="h-3.5 w-3.5" /> Create QR Code</Button>
-                    </Link>
-                  </div>
-                ) : causeQrCodes.map(qr => (
-                  <div key={qr.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-surface-900">{qr.name}</p>
-                        <p className="text-xs text-surface-500">{qr.scan_count} scans</p>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Generated materials</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {generatedMaterialPairs.length === 0 ? (
+                    <div className="rounded-2xl border-2 border-dashed border-surface-200 bg-surface-50 px-4 py-8 text-center">
+                      <FileText className="mx-auto mb-2 h-8 w-8 text-surface-300" />
+                      <p className="text-sm font-medium text-surface-700">No materials generated yet</p>
+                      <p className="mt-1 text-xs text-surface-500">Save your codes or run generation to create cause-ready materials here.</p>
+                    </div>
+                  ) : (
+                    generatedMaterialPairs.slice(0, 4).map(({ generated, material }) => (
+                      <div key={generated.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-surface-900">
+                              {material?.title || generated.generated_file_name || 'Generated asset'}
+                            </p>
+                            <p className="mt-1 text-xs text-surface-500">{generated.library_folder.replace(/_/g, ' ')}</p>
+                          </div>
+                          <Badge variant="success">Ready</Badge>
+                        </div>
+                        {(generated.generated_file_url || material?.file_url) && (
+                          <a
+                            href={generated.generated_file_url || material?.file_url || ''}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" /> Open file
+                          </a>
+                        )}
                       </div>
-                      <Badge variant={qr.status === 'active' ? 'success' : 'default'}>{qr.status}</Badge>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>QR Codes</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {causeQrCodes.length === 0 ? (
+                    <div className="rounded-2xl border-2 border-dashed border-surface-200 bg-surface-50 px-4 py-8 text-center">
+                      <QrCode className="mx-auto mb-2 h-8 w-8 text-surface-300" />
+                      <p className="text-sm font-medium text-surface-700">No QR codes yet</p>
+                      <p className="mt-1 text-xs text-surface-500">Create a QR code to give supporters a direct sign-up path.</p>
+                      <Link href={qrGeneratorHref}>
+                        <Button size="sm" className="mt-3"><QrCode className="h-3.5 w-3.5" /> Create QR Code</Button>
+                      </Link>
                     </div>
-                    <div className="mt-2 flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(qr.redirect_url)}>
-                        <Copy className="h-3.5 w-3.5" /> Copy Link
-                      </Button>
+                  ) : causeQrCodes.map(qr => (
+                    <div key={qr.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-surface-900">{qr.name}</p>
+                          <p className="text-xs text-surface-500">{qr.scan_count} scans</p>
+                        </div>
+                        <Badge variant={qr.status === 'active' ? 'success' : 'default'}>{qr.status}</Badge>
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(qr.redirect_url)}>
+                          <Copy className="h-3.5 w-3.5" /> Copy Link
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       )}

@@ -112,6 +112,10 @@ export function CommunityDashboardPage() {
 
   const isSchool = scopedCause?.type === 'school'
   const entityLabel = isSchool ? 'School' : 'Cause'
+  const causeMetadata = React.useMemo(
+    () => ((scopedCause?.metadata as Record<string, unknown> | null) || {}),
+    [scopedCause?.metadata],
+  )
 
   // Execution engine
   const executionSteps = React.useMemo(() => {
@@ -140,6 +144,36 @@ export function CommunityDashboardPage() {
     })
   }, [scopedCause, steps, codes, generatedMaterials, qrCodes, supportingBusinesses.length])
 
+  const generatedCount = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url).length
+  const materialMap = React.useMemo(() => new Map(allMaterials.map(m => [m.id, m])), [allMaterials])
+  const activeMaterialPairs = React.useMemo(() =>
+    generatedMaterials
+      .filter(m => m.generation_status === 'generated' && m.is_active !== false)
+      .map(gm => ({ generated: gm, material: gm.material_id ? materialMap.get(gm.material_id) || null : null })),
+    [generatedMaterials, materialMap],
+  )
+  const hasLinkedQr = typeof causeMetadata.linked_qr_code_id === 'string' && causeMetadata.linked_qr_code_id.length > 0
+  const hasLinkedGeneratedMaterial = typeof causeMetadata.linked_generated_material_id === 'string'
+    && causeMetadata.linked_generated_material_id.length > 0
+  const hasSupporterQr = qrCodes.length > 0 || hasLinkedQr
+  const hasReadyMaterials = generatedCount > 0 || activeMaterialPairs.length > 0 || hasLinkedGeneratedMaterial
+
+  const displayReadiness = React.useMemo(() => {
+    const checks = readiness.checks.map((check) => {
+      if (check.label === 'Materials generated') return { ...check, met: hasReadyMaterials }
+      if (check.label === 'QR assets ready') return { ...check, met: hasSupporterQr }
+      return check
+    })
+    const score = checks.filter((check) => check.met).length
+    return {
+      ...readiness,
+      checks,
+      score,
+      total: checks.length,
+      percent: checks.length > 0 ? Math.round((score / checks.length) * 100) : 0,
+    }
+  }, [readiness, hasReadyMaterials, hasSupporterQr])
+
   const nextActions = React.useMemo(() => {
     if (!scopedCause) return []
     return getCauseNextActions({
@@ -151,30 +185,26 @@ export function CommunityDashboardPage() {
       outreachCount: 0,
       linkedBusinessCount: supportingBusinesses.length,
       openTaskCount: tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length,
+    }).filter((action) => {
+      const normalized = action.text.toLowerCase()
+      if (hasSupporterQr && normalized.includes('qr')) return false
+      if (hasReadyMaterials && normalized.includes('material')) return false
+      return true
     })
-  }, [scopedCause, executionSteps, codes, generatedMaterials, qrCodes, supportingBusinesses.length, tasks])
+  }, [scopedCause, executionSteps, codes, generatedMaterials, qrCodes, supportingBusinesses.length, tasks, hasSupporterQr, hasReadyMaterials])
 
   const joinUrl = React.useMemo(() => {
     if (codes?.join_url) return codes.join_url
     if (!codes?.connection_code) return ''
     return buildStakeholderJoinUrl(isSchool ? 'school' : 'cause', codes.connection_code)
   }, [codes?.join_url, codes?.connection_code, isSchool])
-
-  const generatedCount = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url).length
-  const materialMap = React.useMemo(() => new Map(allMaterials.map(m => [m.id, m])), [allMaterials])
-  const activeMaterialPairs = React.useMemo(() =>
-    generatedMaterials
-      .filter(m => m.generation_status === 'generated' && m.is_active !== false)
-      .map(gm => ({ generated: gm, material: gm.material_id ? materialMap.get(gm.material_id) || null : null })),
-    [generatedMaterials, materialMap],
-  )
   const openTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
 
   // Action queue items
   const immediateItems = React.useMemo(() => {
     const items = []
 
-    if (qrCodes.length === 0) {
+    if (!hasSupporterQr) {
       items.push({
         id: 'community-qr',
         title: 'Set up your supporter QR',
@@ -186,7 +216,7 @@ export function CommunityDashboardPage() {
       })
     }
 
-    if (generatedCount === 0) {
+    if (!hasReadyMaterials) {
       items.push({
         id: 'community-materials',
         title: 'Get your materials ready',
@@ -239,7 +269,7 @@ export function CommunityDashboardPage() {
     }
 
     return items
-  }, [generatedCount, qrCodes.length, supporterContacts.length, supportingBusinesses.length, openTasks.length, isSchool])
+  }, [hasReadyMaterials, hasSupporterQr, supporterContacts.length, supportingBusinesses.length, openTasks.length, isSchool])
 
   const suggestedItems = React.useMemo(() => [
     {
@@ -356,10 +386,10 @@ export function CommunityDashboardPage() {
               <div className="h-2 w-32 rounded-full bg-surface-200">
                 <div
                   className="h-2 rounded-full bg-brand-500 transition-all"
-                  style={{ width: `${readiness.percent}%` }}
+                  style={{ width: `${displayReadiness.percent}%` }}
                 />
               </div>
-              <span className="text-xs font-medium text-surface-600">{readiness.percent}% ready</span>
+              <span className="text-xs font-medium text-surface-600">{displayReadiness.percent}% ready</span>
             </div>
           </div>
 
@@ -415,8 +445,8 @@ export function CommunityDashboardPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Total supporters" value={supporterContacts.length} icon={<Users className="h-5 w-5" />} />
             <StatCard label="Supporting businesses" value={supportingBusinesses.length} icon={<Store className="h-5 w-5" />} />
-            <StatCard label="Materials ready" value={generatedCount} icon={<FileText className="h-5 w-5" />} />
-            <StatCard label="QR codes" value={qrCodes.length > 0 ? 'Active' : 'Not set up'} icon={<QrCode className="h-5 w-5" />} />
+            <StatCard label="Materials ready" value={hasReadyMaterials ? Math.max(generatedCount, 1) : 0} icon={<FileText className="h-5 w-5" />} />
+            <StatCard label="QR codes" value={hasSupporterQr ? 'Active' : 'Not set up'} icon={<QrCode className="h-5 w-5" />} />
           </div>
 
           {/* Action queue + next steps */}
@@ -436,7 +466,7 @@ export function CommunityDashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {readiness.checks.map((check, idx) => {
+                {displayReadiness.checks.map((check, idx) => {
                   const routeMap: Record<string, string> = {
                     mission: '/community',
                     codes: '/community/materials',
