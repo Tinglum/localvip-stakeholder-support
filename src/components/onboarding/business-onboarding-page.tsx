@@ -409,9 +409,6 @@ export default function BusinessOnboardingPage() {
       offers: offersByBusiness.get(business.id) || [],
       outreachCount: (outreachByBusiness.get(business.id) || []).length,
     })
-    const metadata = business.metadata as Record<string, unknown> | null
-    const logoUrl = typeof metadata?.logo_url === 'string' ? metadata.logo_url : null
-    const coverPhotoUrl = typeof metadata?.cover_photo_url === 'string' ? metadata.cover_photo_url : null
     const checklist = computeBusinessOnboardingChecklist({
       business,
       steps: stepsByFlow.get(flow?.id || '') || [],
@@ -424,8 +421,8 @@ export default function BusinessOnboardingPage() {
       hasOwner: !!business.owner_id,
       hasCampaign: !!business.campaign_id,
       hasLinkedCause: !!business.linked_cause_id,
-      hasLogo: !!logoUrl,
-      hasCoverPhoto: !!coverPhotoUrl,
+      hasLogo: !!business.logo_url,
+      hasCoverPhoto: !!business.cover_photo_url,
     })
     const owner = business.owner_id ? profileMap.get(business.owner_id) : null
     const helperAssignments = (assignmentsByBusiness.get(business.id) || [])
