@@ -435,6 +435,8 @@ export default function BusinessOnboardingPage() {
     const businessOutreach = (outreachByBusiness.get(business.id) || [])
       .slice()
       .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+    const logoUrl = business.logo_url || null
+    const coverPhotoUrl = business.cover_photo_url || null
 
     return {
       flow,
