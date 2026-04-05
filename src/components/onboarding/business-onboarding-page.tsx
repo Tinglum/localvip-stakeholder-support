@@ -12,6 +12,7 @@ import {
   Clock3,
   FileText,
   Heart,
+  LayoutGrid,
   Loader2,
   MapPin,
   MessageSquare,
@@ -409,6 +410,8 @@ export default function BusinessOnboardingPage() {
       outreachCount: (outreachByBusiness.get(business.id) || []).length,
     })
     const metadata = business.metadata as Record<string, unknown> | null
+    const logoUrl = typeof metadata?.logo_url === 'string' ? metadata.logo_url : null
+    const coverPhotoUrl = typeof metadata?.cover_photo_url === 'string' ? metadata.cover_photo_url : null
     const checklist = computeBusinessOnboardingChecklist({
       business,
       steps: stepsByFlow.get(flow?.id || '') || [],
@@ -421,8 +424,8 @@ export default function BusinessOnboardingPage() {
       hasOwner: !!business.owner_id,
       hasCampaign: !!business.campaign_id,
       hasLinkedCause: !!business.linked_cause_id,
-      hasLogo: !!(metadata?.logo_url),
-      hasCoverPhoto: !!(metadata?.cover_photo_url),
+      hasLogo: !!logoUrl,
+      hasCoverPhoto: !!coverPhotoUrl,
     })
     const owner = business.owner_id ? profileMap.get(business.owner_id) : null
     const helperAssignments = (assignmentsByBusiness.get(business.id) || [])
@@ -436,7 +439,23 @@ export default function BusinessOnboardingPage() {
       .slice()
       .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
 
-    return { flow, stakeholder, codes, generated, businessSteps, checklist, owner, helperAssignments, linkedCause, campaign, city, businessTasks, businessOutreach }
+    return {
+      flow,
+      stakeholder,
+      codes,
+      generated,
+      businessSteps,
+      checklist,
+      owner,
+      helperAssignments,
+      linkedCause,
+      campaign,
+      city,
+      businessTasks,
+      businessOutreach,
+      logoUrl,
+      coverPhotoUrl,
+    }
   }
 
   // ── Selected business for modal ───────────────────────────────
@@ -501,66 +520,91 @@ export default function BusinessOnboardingPage() {
       />
 
       {/* ── Summary stat cards ─────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card className={`border ${businessTheme.border}`}>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Pipeline</p>
-            <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.total}</p>
-          </CardContent>
+      <div className="grid gap-4 xl:grid-cols-[1.4fr,1fr]">
+        <Card className="overflow-hidden border border-surface-200 shadow-sm">
+          <div className={`bg-gradient-to-r ${businessTheme.gradient} px-6 py-6`}>
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex items-start gap-4">
+                <div className={`rounded-2xl p-3 shadow-sm ring-1 ${businessTheme.ring} ${businessTheme.icon}`}>
+                  <Store className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className={`text-sm font-semibold ${businessTheme.text}`}>Business onboarding should feel obvious at a glance</p>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-600">
+                    Open any business to run the full workspace, clear blockers, finish setup steps, and move it from lead to live without bouncing between pages.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-surface-500">
+                <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 font-medium text-surface-700">
+                  {filteredBusinesses.length} visible
+                </span>
+                <span className="rounded-full border border-white/70 bg-white/70 px-3 py-1">
+                  Click a card to open the workspace
+                </span>
+              </div>
+            </div>
+          </div>
         </Card>
-        <Card className={`border ${businessTheme.border}`}>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Active Build</p>
-            <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.onboarding}</p>
-          </CardContent>
-        </Card>
-        <Card className={`border ${businessTheme.border}`}>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Live</p>
-            <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.live}</p>
-          </CardContent>
-        </Card>
-        <Card className={`border ${businessTheme.border}`}>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Follow-ups</p>
-            <p className="mt-1 text-2xl font-semibold text-surface-900">{summary.followUps}</p>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-2 gap-3">
+          <CompactBusinessMetricCard label="Pipeline" value={summary.total} />
+          <CompactBusinessMetricCard label="Active Build" value={summary.onboarding} />
+          <CompactBusinessMetricCard label="Live" value={summary.live} />
+          <CompactBusinessMetricCard label="Follow-ups" value={summary.followUps} />
+        </div>
       </div>
 
       {/* ── Filter bar ─────────────────────────────────────────── */}
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-3 p-4">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-            <input
-              type="text"
-              placeholder="Search businesses..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-surface-200 bg-surface-0 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-            />
+      <Card className="overflow-hidden border border-surface-200 shadow-sm">
+        <CardContent className="space-y-4 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-surface-100 p-2 text-surface-600">
+                <LayoutGrid className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Filter the pipeline</p>
+                <p className="text-sm text-surface-600">Narrow the list by city, campaign, or business name.</p>
+              </div>
+            </div>
+            {filteredBusinesses.length !== businesses.length ? (
+              <span className="rounded-full border border-surface-200 bg-surface-50 px-2.5 py-1 text-xs font-medium text-surface-600">
+                {filteredBusinesses.length} of {businesses.length} showing
+              </span>
+            ) : null}
           </div>
-          <select
-            value={cityFilter}
-            onChange={e => setCityFilter(e.target.value)}
-            className="rounded-lg border border-surface-200 bg-surface-0 px-3 py-2 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-          >
-            <option value="all">All Cities</option>
-            {cityOptions.map(city => (
-              <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
-            ))}
-          </select>
-          <select
-            value={campaignFilter}
-            onChange={e => setCampaignFilter(e.target.value)}
-            className="rounded-lg border border-surface-200 bg-surface-0 px-3 py-2 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-          >
-            <option value="all">All Campaigns</option>
-            {campaignOptions.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),170px,200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+              <input
+                type="text"
+                placeholder="Search businesses..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="h-11 w-full rounded-xl border border-surface-200 bg-surface-0 py-2 pl-10 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              />
+            </div>
+            <select
+              value={cityFilter}
+              onChange={e => setCityFilter(e.target.value)}
+              className="h-11 rounded-xl border border-surface-200 bg-surface-0 px-3 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            >
+              <option value="all">All Cities</option>
+              {cityOptions.map(city => (
+                <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
+              ))}
+            </select>
+            <select
+              value={campaignFilter}
+              onChange={e => setCampaignFilter(e.target.value)}
+              className="h-11 rounded-xl border border-surface-200 bg-surface-0 px-3 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            >
+              <option value="all">All Campaigns</option>
+              {campaignOptions.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
         </CardContent>
       </Card>
 
@@ -597,17 +641,21 @@ export default function BusinessOnboardingPage() {
       <div className="space-y-8">
         {groupedBusinesses.map(group => (
           <section key={group.stage} className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Badge variant={getStageBadgeVariant(group.stage)} dot>
-                {ONBOARDING_STAGES[group.stage]?.label}
-              </Badge>
-              <span className="text-sm text-surface-500">{group.items.length} businesses</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Badge variant={getStageBadgeVariant(group.stage)} dot>
+                  {ONBOARDING_STAGES[group.stage]?.label}
+                </Badge>
+                <span className="text-sm text-surface-500">{group.items.length} businesses</span>
+              </div>
+              <span className="hidden text-xs uppercase tracking-[0.16em] text-surface-400 md:block">
+                Click a card to open the workspace
+              </span>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {group.items.map(business => {
-                const { checklist, owner, city, linkedCause, businessTasks, businessOutreach } = getBusinessDetail(business)
-                const progressColors = getProgressColor(checklist.percent)
+                const { checklist, owner, city, linkedCause, businessTasks, businessOutreach, coverPhotoUrl } = getBusinessDetail(business)
 
                 return (
                   <button
@@ -615,83 +663,102 @@ export default function BusinessOnboardingPage() {
                     type="button"
                     onClick={() => setSelectedBusinessId(business.id)}
                     className={cn(
-                      'group relative w-full cursor-pointer overflow-hidden rounded-xl border text-left transition-all duration-200',
-                      'hover:shadow-lg hover:-translate-y-0.5 hover:border-[#d7e200]',
+                      'group relative w-full cursor-pointer overflow-hidden rounded-[28px] border border-transparent bg-cover bg-center bg-no-repeat text-left text-white shadow-sm transition-all duration-200',
+                      'hover:-translate-y-0.5 hover:shadow-xl',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
-                      businessTheme.border,
                     )}
+                    style={{
+                      backgroundImage: coverPhotoUrl
+                        ? `linear-gradient(120deg, rgba(16, 19, 4, 0.92) 0%, rgba(63, 73, 0, 0.74) 42%, rgba(215, 226, 0, 0.20) 100%), url('${coverPhotoUrl}')`
+                        : 'radial-gradient(circle at top right, rgba(215, 226, 0, 0.38), transparent 32%), linear-gradient(135deg, #101304 0%, #3b4500 45%, #6d7900 100%)',
+                    }}
                   >
                     {/* ── Progress bar (thin top) ───────────── */}
-                    <div className="h-1.5 w-full bg-surface-100">
+                    <div className="h-2.5 w-full bg-white/15">
                       <div
-                        className={cn('h-full transition-all duration-500', progressColors.bar)}
+                        className="h-full bg-[#d7e200] transition-all duration-500"
                         style={{ width: `${checklist.percent}%` }}
                       />
                     </div>
 
                     {/* ── Card body ─────────────────────────── */}
-                    <div className="p-4 space-y-3">
+                    <div className="space-y-4 p-5">
                       {/* Row 1: Name + stage */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-surface-900 group-hover:text-brand-700 transition-colors">
+                          <p className="truncate text-2xl font-semibold leading-tight text-white transition-colors">
                             {business.name}
                           </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <div className="mt-3 flex flex-wrap items-center gap-3">
                             {city && (
-                              <span className="flex items-center gap-1 text-[11px] text-surface-500">
-                                <MapPin className="h-3 w-3" />
+                              <span className="flex items-center gap-1 text-xs text-white/75">
+                                <MapPin className="h-3.5 w-3.5" />
                                 {city.name}
                               </span>
                             )}
                             {business.category && (
-                              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${businessTheme.badge}`}>
+                              <span className="rounded-full bg-[#d7e200]/95 px-2.5 py-1 text-[11px] font-medium text-surface-950">
                                 {business.category}
                               </span>
                             )}
+                            <span className="text-xs text-white/70">Added {formatDate(business.created_at)}</span>
                           </div>
                         </div>
-                        <Badge variant={getStageBadgeVariant(business.stage)} dot className="shrink-0">
+                        <Badge variant={getStageBadgeVariant(business.stage)} dot className="shrink-0 bg-white/90">
                           {ONBOARDING_STAGES[business.stage]?.label}
                         </Badge>
                       </div>
 
                       {/* Row 2: Progress + key stats */}
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-2 rounded-full bg-surface-100 overflow-hidden">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/70">
+                            Progress
+                          </span>
+                          <span className="text-sm font-bold tabular-nums text-white">
+                            {checklist.percent}%
+                          </span>
+                        </div>
+                        <div className="h-2.5 overflow-hidden rounded-full bg-white/15">
                           <div
-                            className={cn('h-full rounded-full transition-all duration-500', progressColors.bar)}
+                            className="h-full rounded-full bg-[#d7e200] transition-all duration-500"
                             style={{ width: `${checklist.percent}%` }}
                           />
                         </div>
-                        <span className={cn('text-xs font-bold tabular-nums', progressColors.text)}>
-                          {checklist.percent}%
-                        </span>
                       </div>
 
-                      {/* Row 3: Mini stats */}
-                      <div className="flex items-center gap-4 text-[11px] text-surface-500">
-                        <span className="flex items-center gap-1">
-                          <ClipboardList className="h-3 w-3" />
-                          {businessTasks.length} tasks
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MessageSquare className="h-3 w-3" />
-                          {businessOutreach.length} outreach
-                        </span>
-                        {owner && (
-                          <span className="flex items-center gap-1 truncate">
-                            <Users className="h-3 w-3" />
-                            {owner.full_name?.split(' ')[0]}
+                      <div className="grid grid-cols-3 gap-2 text-[11px]">
+                        <div className="rounded-2xl border border-white/12 bg-white/12 px-3 py-2 text-white/85 backdrop-blur-sm">
+                          <span className="flex items-center gap-1">
+                            <ClipboardList className="h-3 w-3" />
+                            {businessTasks.length} tasks
                           </span>
-                        )}
-                        {linkedCause && (
-                          <span className={cn('flex items-center gap-1 truncate rounded-full px-1.5 py-0.5', causeTheme.badge)}>
-                            <Heart className="h-2.5 w-2.5" />
-                            {linkedCause.name?.split(' ').slice(0, 2).join(' ')}
+                        </div>
+                        <div className="rounded-2xl border border-white/12 bg-white/12 px-3 py-2 text-white/85 backdrop-blur-sm">
+                          <span className="flex items-center gap-1">
+                            <MessageSquare className="h-3 w-3" />
+                            {businessOutreach.length} outreach
                           </span>
-                        )}
+                        </div>
+                        <div className="rounded-2xl border border-white/12 bg-white/12 px-3 py-2 text-white/85 backdrop-blur-sm">
+                          {owner ? (
+                            <span className="flex items-center gap-1 truncate">
+                              <Users className="h-3 w-3" />
+                              {owner.full_name?.split(' ')[0]}
+                            </span>
+                          ) : (
+                            <span className="text-white/55">No owner</span>
+                          )}
+                        </div>
                       </div>
+                      {linkedCause && (
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/80">
+                          <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1', causeTheme.badge)}>
+                            <Heart className="h-2.5 w-2.5" />
+                            Linked cause: {linkedCause.name}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </button>
                 )
@@ -724,6 +791,24 @@ export default function BusinessOnboardingPage() {
 // Business Detail Modal (fullscreen-ish)
 // ═══════════════════════════════════════════════════════════════
 
+function CompactBusinessMetricCard({
+  label,
+  value,
+}: {
+  label: string
+  value: number
+}) {
+  return (
+    <div className="rounded-2xl border border-surface-200 bg-white px-4 py-4 shadow-sm">
+      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
+      <p className="mt-2 text-3xl font-semibold text-surface-900">{value}</p>
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#eef5a5]/60">
+        <div className="h-full w-10 rounded-full bg-[#d7e200]" />
+      </div>
+    </div>
+  )
+}
+
 function BusinessDetailModal({
   business,
   detail,
@@ -739,23 +824,36 @@ function BusinessDetailModal({
   onCompleteStep: (businessId: string, stepId: string) => void
   onStageChanged: () => void
 }) {
-  const { checklist, businessSteps, owner, helperAssignments, linkedCause, campaign, city, businessTasks, businessOutreach } = detail
+  const { checklist, businessSteps, owner, helperAssignments, linkedCause, campaign, city, businessTasks, businessOutreach, coverPhotoUrl } = detail
   const progressColors = getProgressColor(checklist.percent)
   const [showChecklist, setShowChecklist] = React.useState(false)
 
   return (
     <div>
       {/* ── Gradient header ────────────────────────────────────── */}
-      <div className={`bg-gradient-to-r ${businessTheme.gradient} px-6 py-5 border-b border-surface-100`}>
+      <div
+        className="border-b border-surface-100 px-6 py-6"
+        style={{
+          backgroundImage: coverPhotoUrl
+            ? `linear-gradient(120deg, rgba(16, 19, 4, 0.90) 0%, rgba(73, 84, 0, 0.72) 42%, rgba(215, 226, 0, 0.18) 100%), url('${coverPhotoUrl}')`
+            : undefined,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        <div className={cn('rounded-[24px] p-0', !coverPhotoUrl && `bg-gradient-to-r ${businessTheme.gradient}`)}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-bold text-surface-900">{business.name}</h2>
-              <Badge variant={getStageBadgeVariant(business.stage)} dot>
+              <span className="rounded-full bg-white/18 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-white/92 backdrop-blur-sm">
+                Business onboarding
+              </span>
+              <h2 className="text-2xl font-bold text-white">{business.name}</h2>
+              <Badge variant={getStageBadgeVariant(business.stage)} dot className="bg-white/90">
                 {ONBOARDING_STAGES[business.stage]?.label}
               </Badge>
               {business.category && (
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${businessTheme.badge}`}>
+                <span className="rounded-full bg-[#d7e200]/95 px-2.5 py-1 text-xs font-medium text-surface-950">
                   {business.category}
                 </span>
               )}
@@ -765,15 +863,15 @@ function BusinessDetailModal({
                 </Link>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-4 text-xs text-surface-500">
+            <div className="flex flex-wrap items-center gap-4 text-xs text-white/75">
               {city && (
-                <Link href={`/crm/cities/${city.id}`} className="flex items-center gap-1 hover:text-surface-700">
+                <Link href={`/crm/cities/${city.id}`} className="flex items-center gap-1 hover:text-white">
                   <MapPin className="h-3.5 w-3.5" />
                   {city.name}, {city.state}
                 </Link>
               )}
               {campaign && (
-                <Link href={`/campaigns/${campaign.id}`} className="hover:text-surface-700">
+                <Link href={`/campaigns/${campaign.id}`} className="hover:text-white">
                   Campaign: {campaign.name}
                 </Link>
               )}
@@ -783,7 +881,7 @@ function BusinessDetailModal({
                   href={business.website.startsWith('http') ? business.website : `https://${business.website}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-surface-700"
+                  className="hover:text-white"
                 >
                   Visit site
                 </a>
@@ -794,26 +892,32 @@ function BusinessDetailModal({
         </div>
 
         {/* ── Progress bar ───────────────────────────────────── */}
-        <div className="mt-4 flex items-center gap-3">
-          <div className="flex-1 h-3 rounded-full bg-white/60 overflow-hidden">
-            <div
-              className={cn('h-full rounded-full transition-all duration-500', progressColors.bar)}
-              style={{ width: `${checklist.percent}%` }}
-            />
+        <div className="mt-6 flex items-end gap-4">
+          <div className="flex-1 space-y-3">
+            <p className="text-2xl italic text-white/92">Progress in motion</p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-3 rounded-full bg-white/18 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#d7e200] transition-all duration-500"
+                  style={{ width: `${checklist.percent}%` }}
+                />
+              </div>
+              <span className="text-sm font-bold tabular-nums text-white">
+                {checklist.percent}%
+              </span>
+              <span className="text-xs text-white/70">
+                ({checklist.completedCount}/{checklist.totalCount})
+              </span>
+            </div>
           </div>
-          <span className={cn('text-sm font-bold tabular-nums', progressColors.text)}>
-            {checklist.percent}%
-          </span>
-          <span className="text-xs text-surface-500">
-            ({checklist.completedCount}/{checklist.totalCount})
-          </span>
           <button
             onClick={() => setShowChecklist(!showChecklist)}
-            className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 transition-colors"
+            className="flex items-center gap-1 rounded-full border border-white/18 bg-white/10 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-white/15"
           >
             {showChecklist ? 'Hide' : 'View'} Checklist
             <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', showChecklist && 'rotate-90')} />
           </button>
+        </div>
         </div>
       </div>
 
