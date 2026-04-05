@@ -414,6 +414,8 @@ export interface Cause {
   source: string | null
   source_detail: string | null
   campaign_id: string | null
+  logo_url: string | null
+  cover_photo_url: string | null
   duplicate_of: string | null
   external_id: string | null
   status: EntityStatus

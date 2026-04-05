@@ -36,6 +36,11 @@ const actionSchema = z.discriminatedUnion('action', [
     action: z.literal('restore_version'),
     generatedMaterialId: z.string().uuid('Generated material ID required.'),
   }),
+  z.object({
+    action: z.literal('upload_media'),
+    mediaType: z.enum(['logo', 'cover_photo']),
+    fileUrl: z.string().url('A valid file URL is required.'),
+  }),
 ])
 
 async function getExecutionContext(causeId: string) {
@@ -168,6 +173,26 @@ export async function POST(
     if (parsed.data.action === 'restore_version') {
       const result = await restoreGeneratedMaterialVersion(context.supabase, parsed.data.generatedMaterialId)
       return NextResponse.json({ success: true, result })
+    }
+
+    if (parsed.data.action === 'upload_media') {
+      const patch: Partial<Cause> = parsed.data.mediaType === 'logo'
+        ? { logo_url: parsed.data.fileUrl }
+        : { cover_photo_url: parsed.data.fileUrl }
+
+      const { error: updateError } = await (context.supabase.from('causes') as any)
+        .update(patch)
+        .eq('id', context.cause.id)
+      if (updateError) throw updateError
+
+      // Auto-regenerate materials when branding changes
+      try {
+        await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      } catch {
+        // Regeneration failure is non-fatal for media upload
+      }
+
+      return NextResponse.json({ success: true, mediaType: parsed.data.mediaType, fileUrl: parsed.data.fileUrl })
     }
 
     const completeStepAction = parsed.data

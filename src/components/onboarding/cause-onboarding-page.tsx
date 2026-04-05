@@ -556,6 +556,8 @@ export default function CauseOnboardingPage() {
       hasOwner: !!cause.owner_id,
       hasCampaign: !!cause.campaign_id,
       hasJoinUrl: !!codes?.join_url,
+      hasLogo: !!cause.logo_url,
+      hasCoverPhoto: !!cause.cover_photo_url,
     })
 
     return {

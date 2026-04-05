@@ -519,33 +519,31 @@ export default function BusinessOnboardingPage() {
       />
 
       {/* ── Summary stat cards ─────────────────────────────────── */}
-      <div className="grid gap-4 xl:grid-cols-[1.4fr,1fr]">
-        <Card className="overflow-hidden border border-surface-200 shadow-sm">
-          <div className={`bg-gradient-to-r ${businessTheme.gradient} px-6 py-6`}>
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex items-start gap-4">
-                <div className={`rounded-2xl p-3 shadow-sm ring-1 ${businessTheme.ring} ${businessTheme.icon}`}>
-                  <Store className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className={`text-sm font-semibold ${businessTheme.text}`}>Business onboarding should feel obvious at a glance</p>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-600">
-                    Open any business to run the full workspace, clear blockers, finish setup steps, and move it from lead to live without bouncing between pages.
-                  </p>
-                </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr),repeat(4,minmax(0,0.55fr))]">
+        <Card className={`overflow-hidden border shadow-sm ${businessTheme.border}`}>
+          <CardContent className={`flex h-full min-h-[120px] flex-col justify-between gap-4 bg-gradient-to-r ${businessTheme.gradient} p-5`}>
+            <div className="flex items-start gap-4">
+              <div className={`rounded-2xl p-3 shadow-sm ring-1 ${businessTheme.ring} ${businessTheme.icon}`}>
+                <Store className="h-5 w-5" />
               </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-surface-500">
-                <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 font-medium text-surface-700">
-                  {filteredBusinesses.length} visible
-                </span>
-                <span className="rounded-full border border-white/70 bg-white/70 px-3 py-1">
-                  Click a card to open the workspace
-                </span>
+              <div className="space-y-1">
+                <p className={`text-sm font-semibold ${businessTheme.text}`}>Business onboarding should feel obvious at a glance</p>
+                <p className="max-w-2xl text-sm leading-6 text-surface-600">
+                  Open any business to run the full workspace, clear blockers, finish setup steps, and move it from lead to live.
+                </p>
               </div>
             </div>
-          </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-surface-500">
+              <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 font-medium text-surface-700">
+                {filteredBusinesses.length} visible
+              </span>
+              <span className="rounded-full border border-white/70 bg-white/70 px-3 py-1">
+                Click a card to open the workspace
+              </span>
+            </div>
+          </CardContent>
         </Card>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 xl:col-span-4 xl:grid-cols-4">
           <CompactBusinessMetricCard label="Pipeline" value={summary.total} />
           <CompactBusinessMetricCard label="Active Build" value={summary.onboarding} />
           <CompactBusinessMetricCard label="Live" value={summary.live} />
@@ -654,112 +652,15 @@ export default function BusinessOnboardingPage() {
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {group.items.map(business => {
-                const { checklist, owner, city, linkedCause, businessTasks, businessOutreach, coverPhotoUrl } = getBusinessDetail(business)
+                const detail = getBusinessDetail(business)
 
                 return (
-                  <button
+                  <BusinessOnboardingSummaryCard
                     key={business.id}
-                    type="button"
-                    onClick={() => setSelectedBusinessId(business.id)}
-                    className={cn(
-                      'group relative w-full cursor-pointer overflow-hidden rounded-[28px] border border-transparent bg-cover bg-center bg-no-repeat text-left text-white shadow-sm transition-all duration-200',
-                      'hover:-translate-y-0.5 hover:shadow-xl',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
-                    )}
-                    style={{
-                      backgroundImage: coverPhotoUrl
-                        ? `linear-gradient(120deg, rgba(16, 19, 4, 0.92) 0%, rgba(63, 73, 0, 0.74) 42%, rgba(215, 226, 0, 0.20) 100%), url('${coverPhotoUrl}')`
-                        : 'radial-gradient(circle at top right, rgba(215, 226, 0, 0.38), transparent 32%), linear-gradient(135deg, #101304 0%, #3b4500 45%, #6d7900 100%)',
-                    }}
-                  >
-                    {/* ── Progress bar (thin top) ───────────── */}
-                    <div className="h-2.5 w-full bg-white/15">
-                      <div
-                        className="h-full bg-[#d7e200] transition-all duration-500"
-                        style={{ width: `${checklist.percent}%` }}
-                      />
-                    </div>
-
-                    {/* ── Card body ─────────────────────────── */}
-                    <div className="space-y-4 p-5">
-                      {/* Row 1: Name + stage */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-2xl font-semibold leading-tight text-white transition-colors">
-                            {business.name}
-                          </p>
-                          <div className="mt-3 flex flex-wrap items-center gap-3">
-                            {city && (
-                              <span className="flex items-center gap-1 text-xs text-white/75">
-                                <MapPin className="h-3.5 w-3.5" />
-                                {city.name}
-                              </span>
-                            )}
-                            {business.category && (
-                              <span className="rounded-full bg-[#d7e200]/95 px-2.5 py-1 text-[11px] font-medium text-surface-950">
-                                {business.category}
-                              </span>
-                            )}
-                            <span className="text-xs text-white/70">Added {formatDate(business.created_at)}</span>
-                          </div>
-                        </div>
-                        <Badge variant={getStageBadgeVariant(business.stage)} dot className="shrink-0 bg-white/90">
-                          {ONBOARDING_STAGES[business.stage]?.label}
-                        </Badge>
-                      </div>
-
-                      {/* Row 2: Progress + key stats */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/70">
-                            Progress
-                          </span>
-                          <span className="text-sm font-bold tabular-nums text-white">
-                            {checklist.percent}%
-                          </span>
-                        </div>
-                        <div className="h-2.5 overflow-hidden rounded-full bg-white/15">
-                          <div
-                            className="h-full rounded-full bg-[#d7e200] transition-all duration-500"
-                            style={{ width: `${checklist.percent}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 text-[11px]">
-                        <div className="rounded-2xl border border-white/12 bg-white/12 px-3 py-2 text-white/85 backdrop-blur-sm">
-                          <span className="flex items-center gap-1">
-                            <ClipboardList className="h-3 w-3" />
-                            {businessTasks.length} tasks
-                          </span>
-                        </div>
-                        <div className="rounded-2xl border border-white/12 bg-white/12 px-3 py-2 text-white/85 backdrop-blur-sm">
-                          <span className="flex items-center gap-1">
-                            <MessageSquare className="h-3 w-3" />
-                            {businessOutreach.length} outreach
-                          </span>
-                        </div>
-                        <div className="rounded-2xl border border-white/12 bg-white/12 px-3 py-2 text-white/85 backdrop-blur-sm">
-                          {owner ? (
-                            <span className="flex items-center gap-1 truncate">
-                              <Users className="h-3 w-3" />
-                              {owner.full_name?.split(' ')[0]}
-                            </span>
-                          ) : (
-                            <span className="text-white/55">No owner</span>
-                          )}
-                        </div>
-                      </div>
-                      {linkedCause && (
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/80">
-                          <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1', causeTheme.badge)}>
-                            <Heart className="h-2.5 w-2.5" />
-                            Linked cause: {linkedCause.name}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </button>
+                    business={business}
+                    detail={detail}
+                    onOpen={() => setSelectedBusinessId(business.id)}
+                  />
                 )
               })}
             </div>
@@ -798,13 +699,124 @@ function CompactBusinessMetricCard({
   value: number
 }) {
   return (
-    <div className="rounded-2xl border border-surface-200 bg-white px-4 py-4 shadow-sm">
+    <div className={`rounded-2xl border bg-white px-4 py-4 shadow-sm ${businessTheme.border}`}>
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-2 text-3xl font-semibold text-surface-900">{value}</p>
       <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#eef5a5]/60">
-        <div className="h-full w-10 rounded-full bg-[#d7e200]" />
+        <div className="h-full w-12 rounded-full bg-[#d7e200]" />
       </div>
     </div>
+  )
+}
+
+function BusinessOnboardingSummaryCard({
+  business,
+  detail,
+  onOpen,
+}: {
+  business: Business
+  detail: any
+  onOpen: () => void
+}) {
+  const { checklist, owner, city, linkedCause, businessTasks, businessOutreach, coverPhotoUrl } = detail
+  const progressColors = getProgressColor(checklist.percent)
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        'group relative w-full cursor-pointer overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200',
+        'hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
+        businessTheme.border,
+      )}
+    >
+      <div className={`relative overflow-hidden border-b border-surface-100 bg-gradient-to-r ${businessTheme.gradient} px-4 py-4`}>
+        {coverPhotoUrl ? (
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-cover bg-center opacity-[0.12]"
+            style={{ backgroundImage: `url('${coverPhotoUrl}')` }}
+          />
+        ) : null}
+        <div className="relative flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate text-lg font-semibold text-surface-950 transition-colors group-hover:text-brand-700">
+                {business.name}
+              </p>
+              <Badge variant={getStageBadgeVariant(business.stage)} dot className="shrink-0">
+                {ONBOARDING_STAGES[business.stage]?.label}
+              </Badge>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-surface-600">
+              {city ? (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {city.name}
+                </span>
+              ) : null}
+              {business.category ? (
+                <span className={`rounded-full px-2 py-0.5 font-medium ${businessTheme.badge}`}>
+                  {business.category}
+                </span>
+              ) : null}
+              <span>Added {formatDate(business.created_at)}</span>
+            </div>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Progress</p>
+            <p className={cn('mt-1 text-3xl font-bold leading-none', progressColors.text)}>
+              {checklist.percent}%
+            </p>
+            <p className="mt-1 text-[11px] text-surface-500">
+              {checklist.completedCount}/{checklist.totalCount}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3 p-4">
+        <div className="flex items-center gap-3">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-100">
+            <div
+              className={cn('h-full rounded-full transition-all duration-500', progressColors.bar)}
+              style={{ width: `${checklist.percent}%` }}
+            />
+          </div>
+          <span className={cn('text-xs font-bold tabular-nums', progressColors.text)}>
+            {checklist.percent}%
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 text-[11px] text-surface-500">
+          <span className="flex items-center gap-1">
+            <ClipboardList className="h-3 w-3" />
+            {businessTasks.length} tasks
+          </span>
+          <span className="flex items-center gap-1">
+            <MessageSquare className="h-3 w-3" />
+            {businessOutreach.length} outreach
+          </span>
+          {owner ? (
+            <span className="flex items-center gap-1 truncate">
+              <Users className="h-3 w-3" />
+              {owner.full_name?.split(' ')[0]}
+            </span>
+          ) : (
+            <span className="text-surface-400">No owner yet</span>
+          )}
+        </div>
+
+        {linkedCause ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium', causeTheme.badge)}>
+              <Heart className="h-2.5 w-2.5" />
+              {linkedCause.name}
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </button>
   )
 }
 

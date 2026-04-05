@@ -22,7 +22,7 @@ import {
   useOffers,
   useOfferUpdate,
 } from '@/lib/supabase/hooks'
-import { createClient } from '@/lib/supabase/client'
+// Client-side Supabase removed — media uploads now use the /api/crm/businesses/[id]/media route
 
 type StepKey = 'profile' | 'branding' | 'capture' | 'cashback' | 'activate'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -35,15 +35,6 @@ const STEPS: Array<{ key: StepKey; label: string; description: string; icon: Rea
   { key: 'activate', label: 'Activate', description: 'Review your setup and unlock your QR and 100 List.', icon: <Rocket className="h-4 w-4" /> },
 ]
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
 function splitProducts(value: string) {
   return value
     .split(',')
@@ -54,7 +45,7 @@ function splitProducts(value: string) {
 export function BusinessSetupWizardPage() {
   const { profile } = useAuth()
   const searchParams = useSearchParams()
-  const supabase = React.useMemo(() => createClient(), [])
+  // supabase client removed — media uploads now use the server API route
   const businessFilters = React.useMemo<Record<string, string>>(() => {
     const filters: Record<string, string> = {}
     if (profile.business_id) {
@@ -118,8 +109,8 @@ export function BusinessSetupWizardPage() {
     setDescription(business.public_description || portal.description || '')
     setAvgTicket(business.avg_ticket || portal.avg_ticket || '')
     setProducts((business.products_services || []).join(', '))
-    setLogoUrl(portal.logo_url || null)
-    setCoverUrl(portal.cover_photo_url || null)
+    setLogoUrl(business.logo_url || portal.logo_url || null)
+    setCoverUrl(business.cover_photo_url || portal.cover_photo_url || null)
     setCaptureHeadline(captureOffer?.headline || '')
     setCaptureDescription(captureOffer?.description || '')
     setCaptureValue(captureOffer?.value_label || '')
@@ -132,8 +123,8 @@ export function BusinessSetupWizardPage() {
       description: business.public_description || portal.description || '',
       avgTicket: business.avg_ticket || portal.avg_ticket || '',
       products: (business.products_services || []).join(', '),
-      logoUrl: portal.logo_url || null,
-      coverUrl: portal.cover_photo_url || null,
+      logoUrl: business.logo_url || portal.logo_url || null,
+      coverUrl: business.cover_photo_url || portal.cover_photo_url || null,
       captureHeadline: captureOffer?.headline || '',
       captureDescription: captureOffer?.description || '',
       captureValue: captureOffer?.value_label || '',
@@ -151,24 +142,27 @@ export function BusinessSetupWizardPage() {
       let nextLogoUrl = logoUrl
       let nextCoverUrl = coverUrl
 
+      // Upload via the server API route which handles storage + top-level column updates
       if (logoFile) {
-        const filePath = `business-logos/${business.id}/logo-${Date.now()}-${logoFile.name}`
-        const uploadResult = await supabase.storage.from('public-assets').upload(filePath, logoFile, { upsert: true })
-        if (uploadResult.error) {
-          nextLogoUrl = await fileToDataUrl(logoFile)
-        } else {
-          nextLogoUrl = supabase.storage.from('public-assets').getPublicUrl(filePath).data.publicUrl
+        const formData = new FormData()
+        formData.append('file', logoFile)
+        formData.append('mediaType', 'logo')
+        const uploadResponse = await fetch(`/api/crm/businesses/${business.id}/media`, { method: 'POST', body: formData })
+        const uploadResult = await uploadResponse.json().catch(() => ({}))
+        if (uploadResponse.ok && uploadResult.fileUrl) {
+          nextLogoUrl = uploadResult.fileUrl
         }
         setLogoFile(null)
       }
 
       if (coverFile) {
-        const filePath = `business-covers/${business.id}/cover-${Date.now()}-${coverFile.name}`
-        const uploadResult = await supabase.storage.from('public-assets').upload(filePath, coverFile, { upsert: true })
-        if (uploadResult.error) {
-          nextCoverUrl = await fileToDataUrl(coverFile)
-        } else {
-          nextCoverUrl = supabase.storage.from('public-assets').getPublicUrl(filePath).data.publicUrl
+        const formData = new FormData()
+        formData.append('file', coverFile)
+        formData.append('mediaType', 'cover_photo')
+        const uploadResponse = await fetch(`/api/crm/businesses/${business.id}/media`, { method: 'POST', body: formData })
+        const uploadResult = await uploadResponse.json().catch(() => ({}))
+        if (uploadResponse.ok && uploadResult.fileUrl) {
+          nextCoverUrl = uploadResult.fileUrl
         }
         setCoverFile(null)
       }
@@ -195,6 +189,8 @@ export function BusinessSetupWizardPage() {
         avg_ticket: avgTicket || null,
         products_services: splitProducts(products),
         launch_phase: launchPhase === 'setup' ? 'setup' : business.launch_phase || null,
+        logo_url: nextLogoUrl || null,
+        cover_photo_url: nextCoverUrl || null,
         metadata: nextMetadata as Record<string, unknown>,
       })
 
@@ -279,7 +275,6 @@ export function BusinessSetupWizardPage() {
     portal,
     products,
     refetchOffers,
-    supabase.storage,
     updateBusiness,
     updateOffer,
   ])

@@ -426,8 +426,8 @@ async function generateOneMaterial(
     errorCorrectionLevel: 'H',
   })
 
-  // Embed business logo into QR center if available
-  const logoUrl = context.business?.logo_url || null
+  // Embed business or cause logo into QR center if available
+  const logoUrl = context.business?.logo_url || context.cause?.logo_url || null
   const qrDataUrl = logoUrl
     ? await embedLogoIntoQr(rawQrDataUrl, logoUrl)
     : rawQrDataUrl
@@ -1076,7 +1076,7 @@ async function ensureStakeholderQrCode(
     destination_url: context.joinUrl,
     redirect_url: redirectUrl,
     brand: context.brand,
-    logo_url: context.business?.logo_url || null,
+    logo_url: context.business?.logo_url || context.cause?.logo_url || null,
     foreground_color: context.brand === 'hato' ? '#ec8012' : '#2563eb',
     background_color: '#ffffff',
     frame_text: context.stakeholder.type === 'business' ? 'GET MY OFFER' : 'SCAN TO JOIN',
@@ -1602,8 +1602,10 @@ function renderStructuredTemplateSvg(
     bodyLines,
     footerLines,
   } = renderState
-  const backgroundImage = template.source_path
-    ? `<image href="${escapeXml(template.source_path)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="0.18" />`
+  const coverPhotoFallback = context.business?.cover_photo_url || context.cause?.cover_photo_url || null
+  const backgroundImageSrc = template.source_path || coverPhotoFallback
+  const backgroundImage = backgroundImageSrc
+    ? `<image href="${escapeXml(backgroundImageSrc)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="0.18" />`
     : ''
 
   return `
@@ -1643,8 +1645,9 @@ async function renderStructuredTemplatePng(
   const { width, height } = renderState
   const canvas = createCanvas(width, height)
   const ctx = canvas.getContext('2d')
+  const coverPhotoFallback = context.business?.cover_photo_url || context.cause?.cover_photo_url || null
 
-  await drawStructuredTemplateOnContext(ctx, template, renderState, qrDataUrl, loadImage)
+  await drawStructuredTemplateOnContext(ctx, template, renderState, qrDataUrl, loadImage, coverPhotoFallback)
 
   return canvas.toBuffer('image/png')
 }
@@ -1667,8 +1670,9 @@ async function renderStructuredTemplatePdf(
     compressionLevel: 6,
   })
   const ctx = pdf.beginPage(width, height)
+  const coverPhotoFallback = context.business?.cover_photo_url || context.cause?.cover_photo_url || null
 
-  await drawStructuredTemplateOnContext(ctx, template, renderState, qrDataUrl, loadImage)
+  await drawStructuredTemplateOnContext(ctx, template, renderState, qrDataUrl, loadImage, coverPhotoFallback)
 
   if (typeof ctx.annotateLinkUrl === 'function') {
     ctx.annotateLinkUrl(
@@ -1716,6 +1720,7 @@ async function drawStructuredTemplateOnContext(
   renderState: StructuredTemplateRenderState,
   qrDataUrl: string,
   loadImage: RuntimeCanvasModule['loadImage'],
+  coverPhotoUrl?: string | null,
 ) {
   const {
     copy,
@@ -1736,9 +1741,10 @@ async function drawStructuredTemplateOnContext(
   ctx.fillStyle = backgroundGradient
   ctx.fillRect(0, 0, width, height)
 
-  if (template.source_path) {
+  const backgroundImageSrc = template.source_path || coverPhotoUrl || null
+  if (backgroundImageSrc) {
     try {
-      const backgroundImage = await loadImage(template.source_path)
+      const backgroundImage = await loadImage(backgroundImageSrc)
       ctx.save()
       ctx.globalAlpha = 0.18
       drawCoverImage(ctx, backgroundImage, width, height)

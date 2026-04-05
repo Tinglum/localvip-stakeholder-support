@@ -150,7 +150,7 @@ export function getDefaultNextAction(entityType: ClaimedEntityType, workflowStag
 
 function hasBusinessBranding(business: Business) {
   const portal = getBusinessPortalData(business)
-  return !!(portal.logo_url || portal.cover_photo_url)
+  return !!(business.logo_url || business.cover_photo_url || portal.logo_url || portal.cover_photo_url)
 }
 
 function hasBusinessCaptureOffer(business: Business) {

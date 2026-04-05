@@ -200,6 +200,8 @@ export function getTabForReadinessCheck(label: string): string {
     case 'Codes entered': return 'codes'
     case 'Materials generated': return 'codes'
     case 'QR assets ready': return 'codes'
+    case 'Logo uploaded': return 'codes'
+    case 'Cover photo uploaded': return 'codes'
     case 'First business linked': return 'businesses'
     case 'Outreach started': return 'activity'
     case 'Leadership engaged': return 'activity'
@@ -309,6 +311,8 @@ export function computeCauseOnboardingChecklist(input: {
   hasOwner: boolean
   hasCampaign: boolean
   hasJoinUrl: boolean
+  hasLogo: boolean
+  hasCoverPhoto: boolean
 }): CauseOnboardingChecklist {
   const base = `/crm/causes/${input.cause.id}`
   const generatedCount = input.generatedMaterials.filter(
@@ -324,6 +328,8 @@ export function computeCauseOnboardingChecklist(input: {
     { id: 'contact', label: 'Email or phone added', met: !!(input.cause.email || input.cause.phone), href: base, tab: 'mission' },
     { id: 'website', label: 'Website added', met: !!input.cause.website, href: base, tab: 'mission' },
     { id: 'owner', label: 'Owner assigned', met: input.hasOwner, href: base, tab: 'mission' },
+    { id: 'logo', label: 'Logo uploaded', met: input.hasLogo, href: base, tab: 'codes' },
+    { id: 'cover', label: 'Cover photo uploaded', met: input.hasCoverPhoto, href: base, tab: 'codes' },
     { id: 'campaign', label: 'Campaign linked', met: input.hasCampaign, href: base, tab: 'mission' },
     { id: 'first_business', label: 'First business linked', met: input.linkedBusinessCount >= 1, href: base, tab: 'businesses' },
     { id: 'first_outreach', label: 'First outreach logged', met: input.outreachCount >= 1, href: base, tab: 'activity' },
@@ -334,9 +340,7 @@ export function computeCauseOnboardingChecklist(input: {
     { id: 'materials', label: 'Materials generated', met: generatedCount > 0, href: base, tab: 'codes' },
     { id: 'join_url', label: 'Join URL configured', met: input.hasJoinUrl, href: base, tab: 'codes' },
     { id: 'second_business', label: 'Second business linked', met: input.linkedBusinessCount >= 2, href: base, tab: 'businesses' },
-    { id: 'third_business', label: 'Third business linked', met: input.linkedBusinessCount >= 3, href: base, tab: 'businesses' },
     { id: 'task_done', label: 'At least one task completed', met: input.completedTaskCount > 0, href: base, tab: 'tasks' },
-    { id: 'community_active', label: 'Community activation started', met: input.linkedBusinessCount >= 2 && input.outreachCount >= 3, href: base, tab: 'businesses' },
     { id: 'all_steps', label: 'All onboarding steps completed', met: stepsComplete >= 4, href: base, tab: 'mission' },
   ]
 

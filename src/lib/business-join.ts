@@ -111,7 +111,7 @@ export function getBusinessJoinOfferValue(business: Business) {
 
 export function getBusinessJoinLogoUrl(business: Business) {
   const portal = getBusinessPortalData(business)
-  return portal.logo_url || null
+  return business.logo_url || portal.logo_url || null
 }
 
 export function getDefaultBusinessJoinQrAppearance(business: Business): BusinessJoinQrAppearance {
