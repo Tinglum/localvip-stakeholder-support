@@ -88,7 +88,30 @@
       "Bash(find \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip\\\\src\\\\app\\\\\\(dashboard\\)\\\\crm\\\\businesses\\\\[id]\" -type f)",
       "Bash(grep -n \"activeTab === ''materials''\" \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip\\\\src\\\\app\\\\\\(dashboard\\)\\\\crm\\\\businesses\\\\[id]\\\\page.tsx\")",
       "Bash(xargs grep:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(node scripts/delete-duplicates.mjs)",
+      "Bash(node scripts/delete-duplicates-2.mjs)",
+      "Bash(ls \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip/src/app/\\(dashboard\\)/admin/\")",
+      "Bash(ls \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip\\\\src\\\\app\\\\\\(dashboard\\)\\\\community\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip -type f -name *material*)",
+      "Bash(ls -la /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/[id]/)",
+      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip/src/lib -name *hook* -o -name *material*)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(grep -r \"materials\" /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/[id]/ --include=\"*.tsx\" -l)",
+      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/api -path *material* -type f)",
+      "Bash(wc -l /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/[id]/page.tsx)",
+      "Bash(grep -n \"materials\\\\|Materials\\\\|Tab\\\\|tab\" /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/[id]/page.tsx)",
+      "Bash(wc -l /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/community/materials/page.tsx)",
+      "Bash(cat /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/community/materials/page.tsx)",
+      "Bash(ls -la /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/causes/[id]/)",
+      "Bash(grep -n \"materials\\\\|Materials\" /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/causes/[id]/page.tsx)",
+      "Bash(cat /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/causes/[id]/page.tsx)",
+      "Bash(ls -la \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip/src/app/\\(dashboard\\)/community/\")",
+      "Bash(wc -l src/app/\\\\\\(dashboard\\\\\\)/crm/scripts/page.tsx)",
+      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip -type f \\\\\\(-name *onboarding* -o -name *execution* -o -name *lifecycle* \\\\\\))",
+      "Bash(wc -l /c/Users/kenne/Downloads/OnboardingLocalvip/src/components/onboarding/*.tsx /c/Users/kenne/Downloads/OnboardingLocalvip/src/lib/business-execution.ts /c/Users/kenne/Downloads/OnboardingLocalvip/src/lib/cause-execution.ts /c/Users/kenne/Downloads/OnboardingLocalvip/src/lib/server/stakeholder-lifecycle.ts /c/Users/kenne/Downloads/OnboardingLocalvip/src/components/crm/business-execution-overview.tsx)",
+      "Bash(grep -l \"ALTER TABLE businesses\" /c/Users/kenne/Downloads/OnboardingLocalvip/supabase/migrations/*.sql)"
     ]
   }
 }

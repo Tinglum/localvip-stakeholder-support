@@ -13,6 +13,7 @@ import {
   Clock3,
   FileText,
   Heart,
+  LayoutGrid,
   Loader2,
   Lock,
   MapPin,
@@ -81,6 +82,7 @@ import type {
   QrCode as QrCodeRow,
   Stakeholder,
   StakeholderAssignment,
+  StakeholderCode,
   StakeholderType,
   Task,
 } from '@/lib/types/database'
@@ -133,12 +135,15 @@ interface CauseDetailData {
   nextFollowUp: OutreachActivity | undefined
   linkedBusinesses: Business[]
   stakeholder: Stakeholder | null
+  codes: StakeholderCode | null
   codesReady: boolean
   joinUrl: string | null
+  generated: GeneratedMaterial[]
   generatedCount: number
   taskStatus: string | null
   qrCount: number
   qrGeneratorHref: string
+  coverPhotoUrl: string | null
   setupLoading: boolean
   setupMessage: string | null
   checklist: CauseOnboardingChecklist
@@ -270,6 +275,79 @@ function getProgressTextColor(percent: number) {
   if (percent >= 40) return 'text-brand-700'
   if (percent >= 20) return 'text-amber-700'
   return 'text-danger-700'
+}
+
+type CauseModalSection =
+  | 'steps'
+  | 'mission'
+  | 'relationships'
+  | 'brand'
+  | 'tasks'
+  | 'codes'
+  | 'activity'
+  | 'businesses'
+
+function getCauseChecklistSection(itemId: string): CauseModalSection {
+  switch (itemId) {
+    case 'name':
+    case 'type':
+    case 'city':
+    case 'contact':
+    case 'website':
+      return 'mission'
+    case 'owner':
+    case 'campaign':
+      return 'relationships'
+    case 'logo':
+    case 'cover':
+      return 'brand'
+    case 'first_business':
+    case 'second_business':
+      return 'businesses'
+    case 'first_outreach':
+    case 'leader_convo':
+      return 'activity'
+    case 'referral_code':
+    case 'connection_code':
+    case 'qr':
+    case 'materials':
+    case 'join_url':
+      return 'codes'
+    case 'task_done':
+      return 'tasks'
+    case 'all_steps':
+    default:
+      return 'steps'
+  }
+}
+
+function getCauseSectionHighlight(activeSection: string | null, section: string) {
+  return activeSection === section ? 'ring-2 ring-pink-300 ring-offset-2 ring-offset-surface-0' : ''
+}
+
+function ChecklistJumpButton({
+  met,
+  label,
+  onClick,
+}: {
+  met: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+        met ? 'bg-success-50 text-success-700 hover:bg-success-100' : 'bg-white text-surface-700 hover:bg-surface-100'
+      )}
+    >
+      {met ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" /> : <Circle className="h-4 w-4 shrink-0 text-surface-300" />}
+      <span className={cn('flex-1', met && 'line-through opacity-60')}>{label}</span>
+      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />
+    </button>
+  )
 }
 
 // ─── Main page component ───────────────────────────────────
@@ -473,6 +551,22 @@ export default function CauseOnboardingPage() {
     return { live, onboarding, followUps, assigned, linkedBusinesses, materialReady }
   }, [assignmentsByCause, businesses, causes, generatedByStakeholder, outreach, stakeholderByCause])
 
+  const cityOptions = React.useMemo(() => {
+    const ids = new Set(causes.map((cause) => cause.city_id).filter(Boolean) as string[])
+    return Array.from(ids)
+      .map((id) => cityMap.get(id))
+      .filter(Boolean)
+      .sort((left, right) => (left!.name > right!.name ? 1 : -1)) as typeof cities
+  }, [causes, cityMap])
+
+  const campaignOptions = React.useMemo(() => {
+    const ids = new Set(causes.map((cause) => cause.campaign_id).filter(Boolean) as string[])
+    return Array.from(ids)
+      .map((id) => campaignMap.get(id))
+      .filter(Boolean)
+      .sort((left, right) => (left!.name > right!.name ? 1 : -1)) as typeof campaigns
+  }, [causes, campaignMap])
+
   const nextBestActionCause = React.useMemo(() => {
     const ranked = causes
       .map((cause) => {
@@ -543,6 +637,7 @@ export default function CauseOnboardingPage() {
         return leftTime - rightTime
       })[0]
     const qrGeneratorHref = `/qr/generator?causeId=${cause.id}&returnTo=${encodeURIComponent('/onboarding/cause')}`
+    const coverPhotoUrl = cause.cover_photo_url || null
 
     const checklist = computeCauseOnboardingChecklist({
       cause,
@@ -573,12 +668,15 @@ export default function CauseOnboardingPage() {
       nextFollowUp,
       linkedBusinesses,
       stakeholder,
+      codes,
       codesReady: !!codes?.join_url,
       joinUrl: codes?.join_url || null,
+      generated,
       generatedCount,
       taskStatus: adminTask?.status || null,
       qrCount: causeQrCodes.length,
       qrGeneratorHref,
+      coverPhotoUrl,
       setupLoading: setupLoadingCauseId === cause.id || creatingAdminTask,
       setupMessage: setupStatusByCause[cause.id] || null,
       checklist,
@@ -761,31 +859,91 @@ export default function CauseOnboardingPage() {
         </div>
       ) : null}
 
-      <Card className={`overflow-hidden border ${causeTheme.border}`}>
-        <div className={`bg-gradient-to-r ${causeTheme.gradient} px-6 py-6`}>
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr),repeat(4,minmax(0,0.55fr))]">
+        <Card className={`overflow-hidden border shadow-sm ${causeTheme.border}`}>
+          <CardContent className={`flex h-full min-h-[120px] flex-col justify-between gap-4 bg-gradient-to-r ${causeTheme.gradient} p-5`}>
             <div className="flex items-start gap-4">
-              <div className={`rounded-2xl p-3 shadow-sm ${causeTheme.icon}`}>
+              <div className={`rounded-2xl p-3 shadow-sm ring-1 ${causeTheme.ring} ${causeTheme.icon}`}>
                 <Sparkles className="h-5 w-5" />
               </div>
-              <div>
-                <p className={`text-sm font-semibold ${causeTheme.text}`}>Cause activation should be obvious at a glance</p>
-                <p className="mt-1 max-w-3xl text-sm text-surface-600">
-                  Each school and cause now shows ownership, helper assignments, onboarding steps, business connections, supporter-launch assets, and the direct actions your team needs to keep activation moving.
+              <div className="space-y-1">
+                <p className={`text-sm font-semibold ${causeTheme.text}`}>Cause activation should feel obvious at a glance</p>
+                <p className="max-w-2xl text-sm leading-6 text-surface-600">
+                  Open any school or cause to run the full workspace, clear blockers, finish activation steps, and move it from first contact to live.
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <SummaryMetric label="Pipeline" value={causes.length} />
-              <SummaryMetric label="Active Build" value={summary.onboarding} />
-              <SummaryMetric label="Live" value={summary.live} />
-              <SummaryMetric label="Follow Ups" value={summary.followUps} />
+            <div className="flex flex-wrap items-center gap-2 text-xs text-surface-500">
+              <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 font-medium text-surface-700">
+                {filteredCauses.length} visible
+              </span>
+              <span className="rounded-full border border-white/70 bg-white/70 px-3 py-1">
+                Click a card to open the workspace
+              </span>
             </div>
-          </div>
+          </CardContent>
+        </Card>
+        <div className="grid grid-cols-2 gap-3 xl:col-span-4 xl:grid-cols-4">
+          <CompactCauseMetricCard label="Pipeline" value={filteredCauses.length} />
+          <CompactCauseMetricCard label="Active Build" value={summary.onboarding} />
+          <CompactCauseMetricCard label="Live" value={summary.live} />
+          <CompactCauseMetricCard label="Follow-ups" value={summary.followUps} />
         </div>
+      </div>
+
+      <Card className="overflow-hidden border border-surface-200 shadow-sm">
+        <CardContent className="space-y-4 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-surface-100 p-2 text-surface-600">
+                <LayoutGrid className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Filter the pipeline</p>
+                <p className="text-sm text-surface-600">Narrow the list by city, campaign, or cause name.</p>
+              </div>
+            </div>
+            {filteredCauses.length !== causes.length ? (
+              <span className="rounded-full border border-surface-200 bg-surface-50 px-2.5 py-1 text-xs font-medium text-surface-600">
+                {filteredCauses.length} of {causes.length} showing
+              </span>
+            ) : null}
+          </div>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),170px,200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+              <Input
+                placeholder="Search causes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-11 pl-10"
+              />
+            </div>
+            <select
+              className="h-11 rounded-xl border border-surface-200 bg-surface-0 px-3 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+            >
+              <option value="all">All Cities</option>
+              {cityOptions.map((city) => (
+                <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
+              ))}
+            </select>
+            <select
+              className="h-11 rounded-xl border border-surface-200 bg-surface-0 px-3 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              value={campaignFilter}
+              onChange={(e) => setCampaignFilter(e.target.value)}
+            >
+              <option value="all">All Campaigns</option>
+              {campaignOptions.map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+              ))}
+            </select>
+          </div>
+        </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="hidden grid gap-4 lg:grid-cols-4">
         <SimpleSummaryCard
           icon={<Users className="h-4 w-4" />}
           iconClassName={causeTheme.icon}
@@ -836,7 +994,7 @@ export default function CauseOnboardingPage() {
       </div>
 
       {/* ─── Filter bar ───────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="hidden flex flex-wrap items-center gap-3">
         <div className="relative flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
           <Input
@@ -877,11 +1035,16 @@ export default function CauseOnboardingPage() {
       <div className="space-y-8">
         {groupedCauses.map((group) => (
           <section key={group.stage} className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Badge variant={getStageBadgeVariant(group.stage)} dot>
-                {ONBOARDING_STAGES[group.stage]?.label}
-              </Badge>
-              <span className="text-sm text-surface-500">{group.items.length} causes</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Badge variant={getStageBadgeVariant(group.stage)} dot>
+                  {ONBOARDING_STAGES[group.stage]?.label}
+                </Badge>
+                <span className="text-sm text-surface-500">{group.items.length} causes</span>
+              </div>
+              <span className="hidden text-[11px] uppercase tracking-[0.16em] text-surface-400 md:inline">
+                Click a card to open the workspace
+              </span>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -933,11 +1096,14 @@ export default function CauseOnboardingPage() {
 
 // ─── Small helpers ─────────────────────────────────────────
 
-function SummaryMetric({ label, value }: { label: string; value: number }) {
+function CompactCauseMetricCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className={`rounded-2xl bg-white/85 px-4 py-3 ring-1 ${causeTheme.ring}`}>
+    <div className={`rounded-2xl border bg-white px-4 py-4 shadow-sm ${causeTheme.border}`}>
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-surface-900">{value}</p>
+      <p className="mt-2 text-3xl font-semibold text-surface-900">{value}</p>
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-pink-100/80">
+        <div className="h-full w-12 rounded-full bg-pink-500" />
+      </div>
     </div>
   )
 }
@@ -1276,49 +1442,61 @@ function CauseOnboardingSummaryCard({
 }) {
   const progressColor = getProgressColor(detail.checklist.percent)
   const progressText = getProgressTextColor(detail.checklist.percent)
+  const { coverPhotoUrl } = detail
 
   return (
     <button
       type="button"
       onClick={onOpen}
       className={cn(
-        'group relative w-full cursor-pointer overflow-hidden rounded-xl border text-left transition-all duration-200',
+        'group relative w-full cursor-pointer overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200',
         'hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
         causeTheme.border
       )}
     >
-      <div className="h-1.5 w-full bg-surface-100">
-        <div
-          className={cn('h-full transition-all duration-500', progressColor)}
-          style={{ width: `${detail.checklist.percent}%` }}
-        />
-      </div>
-      <div className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-surface-900 transition-colors group-hover:text-brand-700">
+      <div className={`relative overflow-hidden border-b border-surface-100 bg-gradient-to-r ${causeTheme.gradient} px-4 py-4`}>
+        {coverPhotoUrl ? (
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-cover bg-center opacity-[0.12]"
+            style={{ backgroundImage: `url('${coverPhotoUrl}')` }}
+          />
+        ) : null}
+        <div className="relative flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="truncate text-lg font-semibold text-surface-950 transition-colors group-hover:text-brand-700">
               {cause.name}
             </p>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-surface-600">
               {detail.city ? (
-                <span className="flex items-center gap-1 text-[11px] text-surface-500">
+                <span className="flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
                   {detail.city.name}
                 </span>
               ) : null}
-              <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium', causeTheme.badge)}>
+              <span className={cn('rounded-full px-2 py-0.5 font-medium', causeTheme.badge)}>
                 {cause.type}
               </span>
               <Badge variant={cause.brand === 'hato' ? 'hato' : 'info'} className="text-[10px]">
                 {BRANDS[cause.brand]?.label || cause.brand}
               </Badge>
+              <span>Added {formatDate(cause.created_at)}</span>
             </div>
           </div>
-          <Badge variant={getStageBadgeVariant(cause.stage)} dot className="shrink-0">
-            {ONBOARDING_STAGES[cause.stage]?.label}
-          </Badge>
+          <div className="shrink-0 text-right">
+            <Badge variant={getStageBadgeVariant(cause.stage)} dot className="justify-end">
+              {ONBOARDING_STAGES[cause.stage]?.label}
+            </Badge>
+            <p className={cn('mt-2 text-3xl font-bold leading-none', progressText)}>
+              {detail.checklist.percent}%
+            </p>
+            <p className="mt-1 text-[11px] text-surface-500">
+              {detail.checklist.completedCount}/{detail.checklist.totalCount}
+            </p>
+          </div>
         </div>
+      </div>
 
+      <div className="space-y-3 p-4">
         <div className="flex items-center gap-3">
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-100">
             <div
@@ -1331,7 +1509,7 @@ function CauseOnboardingSummaryCard({
           </span>
         </div>
 
-        <div className="flex items-center gap-4 text-[11px] text-surface-500">
+        <div className="flex flex-wrap items-center gap-4 text-[11px] text-surface-500">
           <span className="flex items-center gap-1">
             <ClipboardList className="h-3 w-3" />
             {detail.tasks.length} tasks
@@ -1345,9 +1523,11 @@ function CauseOnboardingSummaryCard({
               <Users className="h-3 w-3" />
               {detail.owner.full_name?.split(' ')[0]}
             </span>
-          ) : null}
+          ) : (
+            <span className="text-surface-400">No owner yet</span>
+          )}
           {detail.linkedBusinesses.length > 0 ? (
-            <span className={cn('flex items-center gap-1 truncate rounded-full px-1.5 py-0.5', businessTheme.badge)}>
+            <span className={cn('flex items-center gap-1 truncate rounded-full px-2 py-0.5', businessTheme.badge)}>
               <Building2 className="h-2.5 w-2.5" />
               {detail.linkedBusinesses.length} linked
             </span>
@@ -1370,12 +1550,48 @@ function CauseDetailModal({
   onStageChanged: () => void
 }) {
   const [showChecklist, setShowChecklist] = React.useState(false)
+  const [activeSection, setActiveSection] = React.useState<CauseModalSection | null>(null)
+  const sectionRefs = React.useRef<Partial<Record<CauseModalSection, HTMLDivElement | null>>>({})
+  const clearHighlightRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressColor = getProgressColor(detail.checklist.percent)
   const progressText = getProgressTextColor(detail.checklist.percent)
+  const { coverPhotoUrl } = detail
+
+  const setSectionRef = React.useCallback((section: CauseModalSection) => {
+    return (node: HTMLDivElement | null) => {
+      sectionRefs.current[section] = node
+    }
+  }, [])
+
+  const jumpToSection = React.useCallback((section: CauseModalSection) => {
+    setActiveSection(section)
+    if (clearHighlightRef.current) {
+      clearTimeout(clearHighlightRef.current)
+    }
+    clearHighlightRef.current = setTimeout(() => setActiveSection(null), 2200)
+    requestAnimationFrame(() => {
+      sectionRefs.current[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
+
+  React.useEffect(() => {
+    return () => {
+      if (clearHighlightRef.current) {
+        clearTimeout(clearHighlightRef.current)
+      }
+    }
+  }, [])
 
   return (
     <div>
-      <div className={`border-b border-surface-100 bg-gradient-to-r ${causeTheme.gradient} px-6 py-5`}>
+      <div className={`relative overflow-hidden border-b border-surface-100 bg-gradient-to-r ${causeTheme.gradient} px-6 py-5`}>
+        {coverPhotoUrl ? (
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-cover bg-center opacity-[0.14]"
+            style={{ backgroundImage: `url('${coverPhotoUrl}')` }}
+          />
+        ) : null}
+        <div className="relative">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -1439,6 +1655,7 @@ function CauseDetailModal({
             <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', showChecklist && 'rotate-90')} />
           </button>
         </div>
+        </div>
       </div>
 
       {showChecklist ? (
@@ -1448,26 +1665,74 @@ function CauseDetailModal({
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {detail.checklist.items.map((item) => (
-              <Link
+              <ChecklistJumpButton
                 key={item.id}
-                href={`${item.href}?tab=${item.tab}`}
-                className={cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                  item.met ? 'bg-success-50 text-success-700' : 'bg-white text-surface-700 hover:bg-surface-100'
-                )}
-              >
-                {item.met ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" /> : <Circle className="h-4 w-4 shrink-0 text-surface-300" />}
-                <span className={cn('flex-1', item.met && 'line-through opacity-60')}>{item.label}</span>
-                {!item.met ? <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" /> : null}
-              </Link>
+                met={item.met}
+                label={item.label}
+                onClick={() => jumpToSection(getCauseChecklistSection(item.id))}
+              />
             ))}
           </div>
         </div>
       ) : null}
 
       <div className="space-y-6 p-6">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div
+            ref={setSectionRef('mission')}
+            className={cn('space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getCauseSectionHighlight(activeSection, 'mission'))}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Mission Profile</p>
+              <Link href={`/crm/causes/${cause.id}`}>
+                <Button variant="outline" size="sm">
+                  Open CRM <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InlineDetail label="Organization name" value={cause.name || 'Missing'} />
+              <InlineDetail label="Type" value={cause.type || 'Missing'} />
+              <InlineDetail label="City" value={detail.city ? `${detail.city.name}, ${detail.city.state}` : 'Missing'} />
+              <InlineDetail label="Contact" value={cause.email || cause.phone || 'Missing'} />
+              <InlineDetail label="Website" value={cause.website || 'Missing'} />
+              <InlineDetail label="Brand" value={BRANDS[cause.brand]?.label || cause.brand} />
+            </div>
+          </div>
+
+          <div
+            ref={setSectionRef('brand')}
+            className={cn('space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getCauseSectionHighlight(activeSection, 'brand'))}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Brand Assets</p>
+              <Link href={`/crm/causes/${cause.id}`}>
+                <Button variant="outline" size="sm">
+                  Review assets <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InlineDetail label="Logo" value={cause.logo_url ? 'Uploaded' : 'Missing'} />
+              <InlineDetail label="Cover photo" value={coverPhotoUrl ? 'Uploaded' : 'Missing'} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {cause.logo_url ? (
+                <a href={cause.logo_url} target="_blank" rel="noopener noreferrer" className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900">
+                  View logo
+                </a>
+              ) : null}
+              {coverPhotoUrl ? (
+                <a href={coverPhotoUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900">
+                  View cover
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
         <div className="grid gap-5 lg:grid-cols-[1.3fr,0.9fr]">
-          <div className="space-y-3">
+          <div ref={setSectionRef('steps')} className={cn('space-y-3 transition-shadow', getCauseSectionHighlight(activeSection, 'steps'))}>
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-surface-500">
               <ClipboardList className="h-3.5 w-3.5" />
               Onboarding Steps
@@ -1508,9 +1773,12 @@ function CauseDetailModal({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4">
+          <div
+            ref={setSectionRef('relationships')}
+            className={cn('space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getCauseSectionHighlight(activeSection, 'relationships'))}
+          >
             <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Leadership</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Leadership + Relationships</p>
               {detail.owner ? (
                 <Link href={`/admin/users/${detail.owner.id}`} className="mt-2 inline-flex text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
                   {detail.owner.full_name} - Primary owner
@@ -1537,33 +1805,42 @@ function CauseDetailModal({
                 )}
               </div>
             </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InlineDetail label="Campaign" value={detail.campaign?.name || 'Not linked'} />
+              <InlineDetail label="Community stage" value={ONBOARDING_STAGES[cause.stage]?.label || cause.stage} />
+            </div>
           </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+          <div ref={setSectionRef('tasks')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getCauseSectionHighlight(activeSection, 'tasks'))}>
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Tasks</p>
             <p className="mt-1 text-xl font-semibold text-surface-900">{detail.tasks.length}</p>
             <p className="mt-1 text-xs text-surface-500">Outreach: {detail.outreach.length}</p>
             <p className="mt-0.5 text-xs text-surface-500">Businesses: {detail.linkedBusinesses.length}</p>
           </div>
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Launch Assets</p>
+          <div ref={setSectionRef('codes')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getCauseSectionHighlight(activeSection, 'codes'))}>
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Codes + Materials</p>
             <div className="mt-2 space-y-1 text-xs text-surface-500">
+              <p>Referral: <span className="font-medium text-surface-800">{detail.codes?.referral_code || 'Missing'}</span></p>
+              <p>Connection: <span className="font-medium text-surface-800">{detail.codes?.connection_code || 'Missing'}</span></p>
+              <p>Join page: <span className="font-medium text-surface-800">{detail.joinUrl ? 'Ready' : 'Waiting on codes'}</span></p>
               <p>Setup: <span className="font-medium text-surface-800">{detail.stakeholder ? 'Ready' : 'Missing'}</span></p>
-              <p>Codes: <span className="font-medium text-surface-800">{detail.codesReady ? 'Ready' : 'Missing'}</span></p>
               <p>QR: <span className="font-medium text-surface-800">{detail.qrCount > 0 ? `${detail.qrCount} ready` : 'Missing'}</span></p>
               <p>Materials: <span className="font-medium text-surface-800">{detail.generatedCount > 0 ? `${detail.generatedCount} ready` : 'Waiting'}</span></p>
               <p>Task: <span className="font-medium text-surface-800">{detail.taskStatus || 'Not started'}</span></p>
             </div>
           </div>
-          <MetricBlock
-            label="Outreach Activity"
-            value={detail.outreach.length}
-            detail={detail.latestOutreach ? `${detail.latestOutreach.type.replace('_', ' ')} / ${formatDate(detail.latestOutreach.created_at)}` : 'No outreach logged yet'}
-            secondary={detail.nextFollowUp?.next_step ? `${detail.nextFollowUp.next_step}${detail.nextFollowUp.next_step_date ? ` by ${formatDate(detail.nextFollowUp.next_step_date)}` : ''}` : undefined}
-          />
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+          <div ref={setSectionRef('activity')} className={cn('transition-shadow', getCauseSectionHighlight(activeSection, 'activity'))}>
+            <MetricBlock
+              label="Outreach Activity"
+              value={detail.outreach.length}
+              detail={detail.latestOutreach ? `${detail.latestOutreach.type.replace('_', ' ')} / ${formatDate(detail.latestOutreach.created_at)}` : 'No outreach logged yet'}
+              secondary={detail.nextFollowUp?.next_step ? `${detail.nextFollowUp.next_step}${detail.nextFollowUp.next_step_date ? ` by ${formatDate(detail.nextFollowUp.next_step_date)}` : ''}` : undefined}
+            />
+          </div>
+          <div ref={setSectionRef('businesses')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getCauseSectionHighlight(activeSection, 'businesses'))}>
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Business Links</p>
             <p className="mt-1 text-xl font-semibold text-surface-900">{detail.linkedBusinesses.length}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1575,6 +1852,28 @@ function CauseDetailModal({
                 <span className="text-xs text-surface-400">No connected businesses yet</span>
               )}
             </div>
+          </div>
+        </div>
+
+        <div className={cn('space-y-3 rounded-xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getCauseSectionHighlight(activeSection, 'codes'))}>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Generated Materials</p>
+            <span className="text-xs text-surface-500">{detail.generatedCount} ready</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {detail.generated.length > 0 ? detail.generated.slice(0, 6).map((item) => (
+              <a
+                key={item.id}
+                href={item.generated_file_url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900"
+              >
+                {item.generated_file_name || item.library_folder.replaceAll('_', ' ')}
+              </a>
+            )) : (
+              <span className="text-xs text-surface-400">Materials will appear here after generation runs.</span>
+            )}
           </div>
         </div>
 
@@ -1600,6 +1899,27 @@ function CauseDetailModal({
               <MessageSquare className="h-3.5 w-3.5" /> Log Outreach
             </Button>
           </Link>
+          {detail.owner ? (
+            <Link href={`/admin/users/${detail.owner.id}`}>
+              <Button variant="outline" size="sm">
+                <Users className="h-3.5 w-3.5" /> Owner
+              </Button>
+            </Link>
+          ) : null}
+          {detail.campaign ? (
+            <Link href={`/campaigns/${detail.campaign.id}`}>
+              <Button variant="outline" size="sm">
+                Campaign
+              </Button>
+            </Link>
+          ) : null}
+          {detail.city ? (
+            <Link href={`/crm/cities/${detail.city.id}`}>
+              <Button variant="outline" size="sm">
+                <MapPin className="h-3.5 w-3.5" /> City
+              </Button>
+            </Link>
+          ) : null}
           {detail.joinUrl ? (
             <a href={detail.joinUrl} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" size="sm">
@@ -1615,6 +1935,21 @@ function CauseDetailModal({
           </div>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function InlineDetail({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-surface-500">{label}</p>
+      <p className="mt-1 text-sm font-medium text-surface-900">{value}</p>
     </div>
   )
 }

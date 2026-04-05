@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
+  Lock,
   ArrowRight,
   CheckCircle2,
   ChevronDown,
@@ -41,6 +42,7 @@ import { cn, formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import {
+  useAdminTasks,
   useBusinesses,
   useBusinessUpdate,
   useCampaigns,
@@ -60,11 +62,13 @@ import {
 } from '@/lib/supabase/hooks'
 import type {
   Business,
+  GeneratedMaterial,
   OnboardingFlow,
   OnboardingStage,
   OnboardingStep,
   OutreachActivity,
   Profile,
+  Stakeholder,
   Task,
 } from '@/lib/types/database'
 
@@ -171,6 +175,7 @@ export default function BusinessOnboardingPage() {
   const { data: steps, refetch: refetchSteps } = useOnboardingSteps()
   const { data: offers, refetch: refetchOffers } = useOffers()
   const { data: qrCodes, refetch: refetchQrCodes } = useQrCodes()
+  const { data: adminTasks } = useAdminTasks()
   const { data: tasks } = useTasks()
   const { data: outreach } = useOutreach()
 
@@ -241,6 +246,17 @@ export default function BusinessOnboardingPage() {
     })
     return map
   }, [generatedMaterials])
+
+  const adminTaskByStakeholder = React.useMemo(() => {
+    const map = new Map<string, typeof adminTasks[number]>()
+    adminTasks
+      .filter((task) => task.task_type === 'stakeholder_setup')
+      .forEach((task) => {
+        if (map.has(task.stakeholder_id)) return
+        map.set(task.stakeholder_id, task)
+      })
+    return map
+  }, [adminTasks])
 
   const offersByBusiness = React.useMemo(() => {
     const map = new Map<string, typeof offers>()
@@ -400,13 +416,16 @@ export default function BusinessOnboardingPage() {
     const stakeholder = stakeholderByBusiness.get(business.id) || null
     const codes = stakeholder ? codesByStakeholder.get(stakeholder.id) || null : null
     const generated = stakeholder ? generatedByStakeholder.get(stakeholder.id) || [] : []
+    const generatedReady = generated.filter((item) => item.generation_status === 'generated')
+    const businessOffers = offersByBusiness.get(business.id) || []
+    const businessQrCodes = qrByBusiness.get(business.id) || []
     const businessSteps = computeBusinessExecutionSteps({
       business,
       steps: stepsByFlow.get(flow?.id || '') || [],
       codes,
       generatedMaterials: generated,
-      qrCodes: qrByBusiness.get(business.id) || [],
-      offers: offersByBusiness.get(business.id) || [],
+      qrCodes: businessQrCodes,
+      offers: businessOffers,
       outreachCount: (outreachByBusiness.get(business.id) || []).length,
     })
     const checklist = computeBusinessOnboardingChecklist({
@@ -414,8 +433,8 @@ export default function BusinessOnboardingPage() {
       steps: stepsByFlow.get(flow?.id || '') || [],
       codes,
       generatedMaterials: generated,
-      qrCodes: qrByBusiness.get(business.id) || [],
-      offers: offersByBusiness.get(business.id) || [],
+      qrCodes: businessQrCodes,
+      offers: businessOffers,
       outreachCount: (outreachByBusiness.get(business.id) || []).length,
       completedTaskCount: tasks.filter(t => t.entity_type === 'business' && t.entity_id === business.id && t.status === 'completed').length,
       hasOwner: !!business.owner_id,
@@ -435,14 +454,34 @@ export default function BusinessOnboardingPage() {
     const businessOutreach = (outreachByBusiness.get(business.id) || [])
       .slice()
       .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+    const adminTask = stakeholder ? adminTaskByStakeholder.get(stakeholder.id) || null : null
+    const latestOutreach = businessOutreach[0]
+    const nextFollowUp = businessOutreach
+      .filter((activity) => activity.next_step || activity.next_step_date)
+      .slice()
+      .sort((left, right) => {
+        const leftTime = left.next_step_date ? new Date(left.next_step_date).getTime() : Number.MAX_SAFE_INTEGER
+        const rightTime = right.next_step_date ? new Date(right.next_step_date).getTime() : Number.MAX_SAFE_INTEGER
+        return leftTime - rightTime
+      })[0]
+    const dueTask = businessTasks
+      .slice()
+      .sort((left, right) => {
+        const leftTime = left.due_date ? new Date(left.due_date).getTime() : Number.MAX_SAFE_INTEGER
+        const rightTime = right.due_date ? new Date(right.due_date).getTime() : Number.MAX_SAFE_INTEGER
+        return leftTime - rightTime
+      })[0]
     const logoUrl = business.logo_url || null
     const coverPhotoUrl = business.cover_photo_url || null
+    const captureOffer = businessOffers.find((offer) => offer.offer_type === 'capture') || null
+    const cashbackOffer = businessOffers.find((offer) => offer.offer_type === 'cashback') || null
+    const qrGeneratorHref = `/qr/generator?businessId=${business.id}&returnTo=${encodeURIComponent('/onboarding/business')}`
 
     return {
       flow,
       stakeholder,
       codes,
-      generated,
+      generated: generatedReady,
       businessSteps,
       checklist,
       owner,
@@ -452,6 +491,17 @@ export default function BusinessOnboardingPage() {
       city,
       businessTasks,
       businessOutreach,
+      latestOutreach,
+      nextFollowUp,
+      dueTask,
+      codesReady: !!codes?.join_url,
+      joinUrl: codes?.join_url || null,
+      generatedCount: generatedReady.length,
+      qrCount: businessQrCodes.length,
+      taskStatus: adminTask?.status || null,
+      captureOffer,
+      cashbackOffer,
+      qrGeneratorHref,
       logoUrl,
       coverPhotoUrl,
     }
@@ -734,10 +784,11 @@ function BusinessOnboardingSummaryCard({
       <div className={`relative overflow-hidden border-b border-surface-100 bg-gradient-to-r ${businessTheme.gradient} px-4 py-4`}>
         {coverPhotoUrl ? (
           <div
-            className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-cover bg-center opacity-[0.12]"
+            className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-cover bg-center opacity-[0.08]"
             style={{ backgroundImage: `url('${coverPhotoUrl}')` }}
           />
         ) : null}
+        <div className="pointer-events-none absolute inset-0 bg-white/35" />
         <div className="relative flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -748,7 +799,7 @@ function BusinessOnboardingSummaryCard({
                 {ONBOARDING_STAGES[business.stage]?.label}
               </Badge>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-surface-600">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-surface-700">
               {city ? (
                 <span className="flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
@@ -764,11 +815,11 @@ function BusinessOnboardingSummaryCard({
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Progress</p>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-surface-700">Progress</p>
             <p className={cn('mt-1 text-3xl font-bold leading-none', progressColors.text)}>
               {checklist.percent}%
             </p>
-            <p className="mt-1 text-[11px] text-surface-500">
+            <p className="mt-1 text-[11px] text-surface-700">
               {checklist.completedCount}/{checklist.totalCount}
             </p>
           </div>
@@ -820,6 +871,79 @@ function BusinessOnboardingSummaryCard({
   )
 }
 
+type BusinessModalSection =
+  | 'steps'
+  | 'profile'
+  | 'relationships'
+  | 'brand'
+  | 'tasks'
+  | 'codes'
+  | 'outreach'
+  | 'offers'
+
+function getBusinessChecklistSection(itemId: string): BusinessModalSection {
+  switch (itemId) {
+    case 'name':
+    case 'category':
+    case 'city':
+    case 'contact':
+    case 'website':
+      return 'profile'
+    case 'owner':
+    case 'campaign':
+    case 'cause':
+      return 'relationships'
+    case 'logo':
+    case 'cover':
+      return 'brand'
+    case 'first_outreach':
+    case 'owner_convo':
+      return 'outreach'
+    case 'referral_code':
+    case 'connection_code':
+    case 'qr':
+    case 'materials':
+      return 'codes'
+    case 'capture_offer':
+    case 'cashback':
+      return 'offers'
+    case 'task_done':
+      return 'tasks'
+    case 'all_steps':
+    default:
+      return 'steps'
+  }
+}
+
+function getSectionHighlight(activeSection: string | null, section: string) {
+  return activeSection === section ? 'ring-2 ring-brand-300 ring-offset-2 ring-offset-surface-0' : ''
+}
+
+function ChecklistJumpButton({
+  met,
+  label,
+  onClick,
+}: {
+  met: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+        met ? 'bg-success-50 text-success-700 hover:bg-success-100' : 'bg-white text-surface-700 hover:bg-surface-100'
+      )}
+    >
+      {met ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" /> : <Circle className="h-4 w-4 shrink-0 text-surface-300" />}
+      <span className={cn('flex-1', met && 'line-through opacity-60')}>{label}</span>
+      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />
+    </button>
+  )
+}
+
 function BusinessDetailModal({
   business,
   detail,
@@ -835,36 +959,87 @@ function BusinessDetailModal({
   onCompleteStep: (businessId: string, stepId: string) => void
   onStageChanged: () => void
 }) {
-  const { checklist, businessSteps, owner, helperAssignments, linkedCause, campaign, city, businessTasks, businessOutreach, coverPhotoUrl } = detail
+  const {
+    checklist,
+    businessSteps,
+    owner,
+    helperAssignments,
+    linkedCause,
+    campaign,
+    city,
+    businessTasks,
+    businessOutreach,
+    logoUrl,
+    coverPhotoUrl,
+    generated,
+    generatedCount,
+    qrCount,
+    taskStatus,
+    codesReady,
+    joinUrl,
+    latestOutreach,
+    nextFollowUp,
+    dueTask,
+    captureOffer,
+    cashbackOffer,
+    qrGeneratorHref,
+    codes,
+  } = detail
   const progressColors = getProgressColor(checklist.percent)
   const [showChecklist, setShowChecklist] = React.useState(false)
+  const [activeSection, setActiveSection] = React.useState<BusinessModalSection | null>(null)
+  const sectionRefs = React.useRef<Partial<Record<BusinessModalSection, HTMLDivElement | null>>>({})
+  const clearHighlightRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const setSectionRef = React.useCallback((section: BusinessModalSection) => {
+    return (node: HTMLDivElement | null) => {
+      sectionRefs.current[section] = node
+    }
+  }, [])
+
+  const jumpToSection = React.useCallback((section: BusinessModalSection) => {
+    setActiveSection(section)
+    if (clearHighlightRef.current) {
+      clearTimeout(clearHighlightRef.current)
+    }
+    clearHighlightRef.current = setTimeout(() => setActiveSection(null), 2200)
+    requestAnimationFrame(() => {
+      sectionRefs.current[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
+
+  React.useEffect(() => {
+    return () => {
+      if (clearHighlightRef.current) {
+        clearTimeout(clearHighlightRef.current)
+      }
+    }
+  }, [])
 
   return (
     <div>
       {/* ── Gradient header ────────────────────────────────────── */}
-      <div
-        className="border-b border-surface-100 px-6 py-6"
-        style={{
-          backgroundImage: coverPhotoUrl
-            ? `linear-gradient(120deg, rgba(16, 19, 4, 0.90) 0%, rgba(73, 84, 0, 0.72) 42%, rgba(215, 226, 0, 0.18) 100%), url('${coverPhotoUrl}')`
-            : undefined,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div className={cn('rounded-[24px] p-0', !coverPhotoUrl && `bg-gradient-to-r ${businessTheme.gradient}`)}>
+      <div className={`relative overflow-hidden border-b border-surface-100 bg-gradient-to-r ${businessTheme.gradient} px-6 py-5`}>
+        {coverPhotoUrl ? (
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-cover bg-center opacity-[0.08]"
+            style={{ backgroundImage: `url('${coverPhotoUrl}')` }}
+          />
+        ) : null}
+        <div className="pointer-events-none absolute inset-0 bg-white/45" />
+        <div className="relative">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-surface-700">
+              Business Onboarding
+            </p>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-white/18 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-white/92 backdrop-blur-sm">
-                Business onboarding
-              </span>
-              <h2 className="text-2xl font-bold text-white">{business.name}</h2>
-              <Badge variant={getStageBadgeVariant(business.stage)} dot className="bg-white/90">
+              <h2 className="text-xl font-bold text-surface-900">{business.name}</h2>
+              <Badge variant={getStageBadgeVariant(business.stage)} dot>
                 {ONBOARDING_STAGES[business.stage]?.label}
               </Badge>
               {business.category && (
-                <span className="rounded-full bg-[#d7e200]/95 px-2.5 py-1 text-xs font-medium text-surface-950">
+                <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', businessTheme.badge)}>
                   {business.category}
                 </span>
               )}
@@ -874,15 +1049,15 @@ function BusinessDetailModal({
                 </Link>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-4 text-xs text-white/75">
+            <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-surface-700">
               {city && (
-                <Link href={`/crm/cities/${city.id}`} className="flex items-center gap-1 hover:text-white">
+                <Link href={`/crm/cities/${city.id}`} className="flex items-center gap-1 hover:text-surface-700">
                   <MapPin className="h-3.5 w-3.5" />
                   {city.name}, {city.state}
                 </Link>
               )}
               {campaign && (
-                <Link href={`/campaigns/${campaign.id}`} className="hover:text-white">
+                <Link href={`/campaigns/${campaign.id}`} className="hover:text-surface-700">
                   Campaign: {campaign.name}
                 </Link>
               )}
@@ -892,7 +1067,7 @@ function BusinessDetailModal({
                   href={business.website.startsWith('http') ? business.website : `https://${business.website}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-white"
+                  className="hover:text-surface-700"
                 >
                   Visit site
                 </a>
@@ -903,31 +1078,31 @@ function BusinessDetailModal({
         </div>
 
         {/* ── Progress bar ───────────────────────────────────── */}
-        <div className="mt-6 flex items-end gap-4">
-          <div className="flex-1 space-y-3">
-            <p className="text-2xl italic text-white/92">Progress in motion</p>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-3 rounded-full bg-white/18 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-[#d7e200] transition-all duration-500"
-                  style={{ width: `${checklist.percent}%` }}
-                />
-              </div>
-              <span className="text-sm font-bold tabular-nums text-white">
-                {checklist.percent}%
-              </span>
-              <span className="text-xs text-white/70">
-                ({checklist.completedCount}/{checklist.totalCount})
-              </span>
-            </div>
+        <div className="mt-4 rounded-2xl border border-[#d7e200]/40 bg-white/70 px-4 py-4 shadow-sm backdrop-blur-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-surface-600">
+            Progress in motion
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+          <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#e8ecbf]">
+            <div
+              className={cn('h-full rounded-full transition-all duration-500', progressColors.bar)}
+              style={{ width: `${checklist.percent}%` }}
+            />
           </div>
+          <span className={cn('text-sm font-bold tabular-nums', progressColors.text)}>
+            {checklist.percent}%
+          </span>
+          <span className="text-xs font-medium text-surface-700">
+            ({checklist.completedCount}/{checklist.totalCount})
+          </span>
           <button
-            onClick={() => setShowChecklist(!showChecklist)}
-            className="flex items-center gap-1 rounded-full border border-white/18 bg-white/10 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-white/15"
+            onClick={() => setShowChecklist((current) => !current)}
+            className="ml-auto flex items-center gap-1 rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-700 transition-colors hover:bg-surface-50"
           >
             {showChecklist ? 'Hide' : 'View'} Checklist
             <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', showChecklist && 'rotate-90')} />
           </button>
+        </div>
         </div>
         </div>
       </div>
@@ -940,24 +1115,12 @@ function BusinessDetailModal({
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {checklist.items.map((item: any) => (
-              <Link
+              <ChecklistJumpButton
                 key={item.id}
-                href={`${item.href}?tab=${item.tab}`}
-                className={cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                  item.met
-                    ? 'text-success-700 bg-success-50'
-                    : 'text-surface-600 bg-white hover:bg-surface-100'
-                )}
-              >
-                {item.met ? (
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" />
-                ) : (
-                  <Circle className="h-4 w-4 shrink-0 text-surface-300" />
-                )}
-                <span className={cn('flex-1', item.met && 'line-through opacity-60')}>{item.label}</span>
-                {!item.met && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />}
-              </Link>
+                met={item.met}
+                label={item.label}
+                onClick={() => jumpToSection(getBusinessChecklistSection(item.id))}
+              />
             ))}
           </div>
         </div>
@@ -965,10 +1128,64 @@ function BusinessDetailModal({
 
       {/* ── Body content ───────────────────────────────────────── */}
       <div className="space-y-6 p-6">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div
+            ref={setSectionRef('profile')}
+            className={cn('space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getSectionHighlight(activeSection, 'profile'))}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Business Profile</p>
+              <Link href={`/crm/businesses/${business.id}`}>
+                <Button variant="outline" size="sm">
+                  Open CRM <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InlineDetail label="Business name" value={business.name || 'Missing'} />
+              <InlineDetail label="Category" value={business.category || 'Missing'} />
+              <InlineDetail label="City" value={city ? `${city.name}, ${city.state}` : 'Missing'} />
+              <InlineDetail label="Contact" value={business.email || business.phone || 'Missing'} />
+              <InlineDetail label="Website" value={business.website || 'Missing'} />
+              <InlineDetail label="Source" value={business.source || 'Not set'} />
+            </div>
+          </div>
+
+          <div
+            ref={setSectionRef('brand')}
+            className={cn('space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getSectionHighlight(activeSection, 'brand'))}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Brand Assets</p>
+              <Link href={`/crm/businesses/${business.id}`}>
+                <Button variant="outline" size="sm">
+                  Review assets <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InlineDetail label="Logo" value={logoUrl ? 'Uploaded' : 'Missing'} />
+              <InlineDetail label="Cover photo" value={coverPhotoUrl ? 'Uploaded' : 'Missing'} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {logoUrl ? (
+                <a href={logoUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900">
+                  View logo
+                </a>
+              ) : null}
+              {coverPhotoUrl ? (
+                <a href={coverPhotoUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900">
+                  View cover
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
         {/* Steps + Ownership columns */}
         <div className="grid gap-5 lg:grid-cols-[1.3fr,0.9fr]">
           {/* Onboarding steps */}
-          <div className="space-y-3">
+          <div ref={setSectionRef('steps')} className={cn('space-y-3 transition-shadow', getSectionHighlight(activeSection, 'steps'))}>
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-surface-500">
               <ClipboardList className="h-3.5 w-3.5" />
               Onboarding Steps
@@ -989,26 +1206,22 @@ function BusinessDetailModal({
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        {step.state === 'completed' ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
+                        {step.state === 'completed' ? <CheckCircle2 className="h-4 w-4" /> : step.state === 'active' ? <Clock3 className="h-4 w-4" /> : <Lock className="h-3.5 w-3.5" />}
                         <span className="font-medium">{step.label}</span>
                       </div>
-                      {step.state === 'completed' && step.step.completed_at ? (
+                      {step.state === 'completed' ? (
                         <p className="text-xs">
-                          Completed {formatDateTime(step.step.completed_at)}
-                          {step.step.completed_by ? ` by ${profileMap.get(step.step.completed_by)?.full_name || 'a team member'}` : ''}
+                          {step.step.completed_at
+                            ? `Completed ${formatDateTime(step.step.completed_at)}${step.step.completed_by ? ` by ${profileMap.get(step.step.completed_by)?.full_name || 'a team member'}` : ''}`
+                            : 'Completed and ready.'}
                         </p>
-                      ) : step.blocker ? (
-                        <p className="text-xs">{step.blocker}</p>
+                      ) : step.state === 'active' ? (
+                        <p className="text-xs">{step.readyToComplete ? 'Ready to complete now.' : step.blocker || 'This is the next action to move.'}</p>
                       ) : (
-                        <p className="text-xs">
-                          {step.readyToComplete ? 'Ready to complete now.' : step.state === 'locked' ? 'Finish the earlier steps first.' : 'Open the next action area.'}
-                        </p>
+                        <p className="text-xs">This unlocks after the current step.</p>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      <Badge variant={step.state === 'completed' ? 'success' : step.state === 'active' ? 'warning' : 'default'}>
-                        {step.state}
-                      </Badge>
                       {step.state === 'active' ? (
                         step.readyToComplete ? (
                           <Button
@@ -1036,9 +1249,12 @@ function BusinessDetailModal({
           </div>
 
           {/* Ownership panel */}
-          <div className="space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4">
+          <div
+            ref={setSectionRef('relationships')}
+            className={cn('space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getSectionHighlight(activeSection, 'relationships'))}
+          >
             <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Ownership</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Ownership + Relationships</p>
               {owner ? (
                 <Link href={`/admin/users/${owner.id}`} className="mt-2 inline-flex text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
                   {owner.full_name} - Primary owner
@@ -1065,29 +1281,73 @@ function BusinessDetailModal({
                 )}
               </div>
             </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InlineDetail label="Campaign" value={campaign?.name || 'Not linked'} />
+              <InlineDetail label="Cause / school" value={linkedCause?.name || 'Not linked'} />
+            </div>
           </div>
         </div>
 
         {/* ── Counters row ───────────────────────────────────────── */}
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Tasks</p>
-            <p className="mt-1 text-xl font-semibold text-surface-900">{businessTasks.length}</p>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div ref={setSectionRef('tasks')} className={cn('transition-shadow', getSectionHighlight(activeSection, 'tasks'))}>
+            <MetricBlock
+              label="Tasks"
+              value={businessTasks.length}
+              detail={dueTask?.due_date ? `Due ${formatDate(dueTask.due_date)}` : 'No due task yet'}
+              secondary={`Outreach: ${businessOutreach.length}`}
+            />
           </div>
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Outreach</p>
-            <p className="mt-1 text-xl font-semibold text-surface-900">{businessOutreach.length}</p>
-          </div>
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Launch Assets</p>
-            <div className="mt-2 flex items-center gap-3 text-xs text-surface-500">
-              <span className={cn('inline-flex items-center gap-1', business.linked_material_id ? 'text-surface-700' : 'text-surface-400')}>
-                <FileText className="h-3.5 w-3.5" /> Material
-              </span>
-              <span className={cn('inline-flex items-center gap-1', business.linked_qr_code_id || business.linked_qr_collection_id ? 'text-surface-700' : 'text-surface-400')}>
-                <QrCode className="h-3.5 w-3.5" /> QR
-              </span>
+          <div ref={setSectionRef('codes')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getSectionHighlight(activeSection, 'codes'))}>
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Codes + Materials</p>
+            <div className="mt-2 space-y-1 text-xs text-surface-500">
+              <p>Referral: <span className="font-medium text-surface-800">{codes?.referral_code || 'Missing'}</span></p>
+              <p>Connection: <span className="font-medium text-surface-800">{codes?.connection_code || 'Missing'}</span></p>
+              <p>Join page: <span className="font-medium text-surface-800">{joinUrl ? 'Ready' : 'Waiting on codes'}</span></p>
+              <p>QR: <span className="font-medium text-surface-800">{qrCount > 0 ? `${qrCount} ready` : 'Missing'}</span></p>
+              <p>Materials: <span className="font-medium text-surface-800">{generatedCount > 0 ? `${generatedCount} ready` : 'Waiting'}</span></p>
+              <p>Task: <span className="font-medium text-surface-800">{taskStatus || 'Not started'}</span></p>
             </div>
+          </div>
+          <div ref={setSectionRef('outreach')} className={cn('transition-shadow', getSectionHighlight(activeSection, 'outreach'))}>
+            <MetricBlock
+              label="Outreach Activity"
+              value={businessOutreach.length}
+              detail={latestOutreach ? `${latestOutreach.type.replace('_', ' ')} / ${formatDate(latestOutreach.created_at)}` : 'No outreach logged yet'}
+              secondary={nextFollowUp?.next_step ? `${nextFollowUp.next_step}${nextFollowUp.next_step_date ? ` by ${formatDate(nextFollowUp.next_step_date)}` : ''}` : undefined}
+            />
+          </div>
+          <div ref={setSectionRef('offers')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getSectionHighlight(activeSection, 'offers'))}>
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Offers + Launch Readiness</p>
+            <div className="mt-2 space-y-1 text-xs text-surface-500">
+              <p>100-list offer: <span className="font-medium text-surface-800">{captureOffer?.headline || 'Missing'}</span></p>
+              <p>Cashback: <span className="font-medium text-surface-800">{cashbackOffer?.cashback_percent ? `${cashbackOffer.cashback_percent}% ready` : 'Missing'}</span></p>
+              <p>Cause: <span className="font-medium text-surface-800">{linkedCause?.name || 'Not linked'}</span></p>
+              <p>Status: <span className="font-medium text-surface-800">{codesReady ? 'Capture ready' : 'Needs codes'}</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div className={cn('space-y-3 rounded-xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getSectionHighlight(activeSection, 'codes'))}>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Generated Materials</p>
+            <span className="text-xs text-surface-500">{generatedCount} ready</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {generated.length > 0 ? generated.slice(0, 6).map((item: GeneratedMaterial) => (
+              <a
+                key={item.id}
+                href={item.generated_file_url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900"
+              >
+                {item.generated_file_name || item.library_folder.replaceAll('_', ' ')}
+              </a>
+            )) : (
+              <span className="text-xs text-surface-400">Materials will appear here after generation runs.</span>
+            )}
           </div>
         </div>
 
@@ -1098,21 +1358,28 @@ function BusinessDetailModal({
               <Store className="h-3.5 w-3.5" /> Open CRM
             </Button>
           </Link>
-          <Link href={`/crm/scripts?business=${business.id}`}>
+          <Link href={qrGeneratorHref}>
             <Button size="sm">
+              <QrCode className="h-3.5 w-3.5" /> QR Code
+            </Button>
+          </Link>
+          <Link href={`/crm/scripts?business=${business.id}`}>
+            <Button variant="outline" size="sm">
               <MessageSquare className="h-3.5 w-3.5" /> Script
             </Button>
           </Link>
           <Link href={`/crm/outreach?business=${business.id}`}>
             <Button variant="outline" size="sm">
-              <ArrowRight className="h-3.5 w-3.5" /> Log Outreach
+              <MessageSquare className="h-3.5 w-3.5" /> Log Outreach
             </Button>
           </Link>
-          <Link href={`/qr/generator?businessId=${business.id}&returnTo=${encodeURIComponent('/onboarding/business')}`}>
-            <Button variant="outline" size="sm">
-              <QrCode className="h-3.5 w-3.5" /> QR
-            </Button>
-          </Link>
+          {joinUrl ? (
+            <a href={joinUrl} target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" size="sm">
+                <ArrowRight className="h-3.5 w-3.5" /> Join Page
+              </Button>
+            </a>
+          ) : null}
           {owner && (
             <Link href={`/admin/users/${owner.id}`}>
               <Button variant="outline" size="sm">
@@ -1120,6 +1387,13 @@ function BusinessDetailModal({
               </Button>
             </Link>
           )}
+          {linkedCause ? (
+            <Link href={`/crm/causes/${linkedCause.id}`}>
+              <Button variant="outline" size="sm">
+                <Heart className="h-3.5 w-3.5" /> Cause
+              </Button>
+            </Link>
+          ) : null}
           {campaign && (
             <Link href={`/campaigns/${campaign.id}`}>
               <Button variant="outline" size="sm">
@@ -1136,6 +1410,42 @@ function BusinessDetailModal({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function InlineDetail({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-surface-500">{label}</p>
+      <p className="mt-1 text-sm font-medium text-surface-900">{value}</p>
+    </div>
+  )
+}
+
+function MetricBlock({
+  label,
+  value,
+  detail,
+  secondary,
+}: {
+  label: string
+  value: number
+  detail: string
+  secondary?: string
+}) {
+  return (
+    <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-surface-900">{value}</p>
+      <p className="mt-1 text-xs text-surface-500">{detail}</p>
+      {secondary ? <p className="mt-1 text-xs text-surface-500">{secondary}</p> : null}
     </div>
   )
 }
