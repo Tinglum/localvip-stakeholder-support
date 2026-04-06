@@ -33,7 +33,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
-import { ProgressSteps } from '@/components/ui/progress-steps'
 import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import {
@@ -351,7 +350,6 @@ export function CommunityDashboardPage() {
   }
 
   const completedStepCount = executionSteps.filter(s => s.state === 'completed').length
-  const stageIdx = ['lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live'].indexOf(scopedCause.stage)
 
   // ─── Tab config ───
   const tabs: Array<{ key: DashboardTab; label: string; icon: React.ReactNode; count?: number }> = [
@@ -407,15 +405,6 @@ export function CommunityDashboardPage() {
           </div>
         </div>
       </div>
-
-      {/* ── Progress stepper ── */}
-      <ProgressSteps
-        steps={['Lead', 'Contacted', 'Interested', 'In Progress', 'Onboarded', 'Live'].map((label, idx) => ({
-          label,
-          completed: stageIdx > idx || scopedCause.stage === 'live',
-          current: stageIdx === idx,
-        }))}
-      />
 
       {/* ── Tab Navigation ── */}
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-surface-200 bg-surface-50 p-1">
