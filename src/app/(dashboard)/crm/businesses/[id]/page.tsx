@@ -50,7 +50,7 @@ import {
   useStakeholderAssignments,
   useStakeholders,
 } from '@/lib/supabase/hooks'
-import type { QaBusinessDetail } from '@/lib/business-api'
+import type { CrmBusiness, QaBusinessDetail } from '@/lib/crm-api'
 import type {
   Business,
   Campaign,
@@ -394,8 +394,8 @@ export default function BusinessDetailPage() {
               <Link href={`/admin/users/${owner.id}`} className="text-sm font-medium text-surface-700 transition-colors hover:text-brand-700">
                 {owner.full_name}
               </Link>
-            ) : qaBusiness?.ownerName ? (
-              <span className="text-sm font-medium text-surface-700">{qaBusiness.ownerName}</span>
+            ) : biz.owner_name ? (
+              <span className="text-sm font-medium text-surface-700">{biz.owner_name}</span>
             ) : (
               <span className="text-sm font-medium text-surface-700">Unassigned</span>
             )}
@@ -442,10 +442,10 @@ export default function BusinessDetailPage() {
               <Link href={`/admin/users/${owner.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
                 {owner.full_name}
               </Link>
-            ) : qaBusiness?.ownerName ? (
+            ) : biz.owner_name ? (
               <div>
-                <p className="text-sm font-semibold text-surface-900">{qaBusiness.ownerName}</p>
-                <p className="text-xs text-surface-400">{qaBusiness.ownerEmail || 'QA owner email not provided'}</p>
+                <p className="text-sm font-semibold text-surface-900">{biz.owner_name}</p>
+                <p className="text-xs text-surface-400">{biz.owner_email || 'QA owner email not provided'}</p>
               </div>
             ) : (
               <p className="text-sm text-surface-500">No owner assigned yet.</p>
@@ -460,14 +460,14 @@ export default function BusinessDetailPage() {
               <Link href={`/crm/cities/${city.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
                 {city.name}, {city.state}
               </Link>
-            ) : qaBusiness?.city || qaBusiness?.state ? (
+            ) : biz.city_name || biz.state ? (
               <p className="text-sm font-semibold text-surface-900">
-                {[qaBusiness?.city, qaBusiness?.state].filter(Boolean).join(', ')}
+                {[biz.city_name, biz.state].filter(Boolean).join(', ')}
               </p>
             ) : (
               <p className="text-sm text-surface-500">No city linked yet.</p>
             )}
-            <p className="text-xs text-surface-400">{biz.address || 'No address on file'}</p>
+            <p className="text-xs text-surface-400">{biz.full_address || biz.address || 'No address on file'}</p>
           </CardContent>
         </Card>
         <Card className="transition-colors hover:border-brand-200">
@@ -884,7 +884,7 @@ function ReadOnlyBusinessOverview({
   biz,
   qaBusiness,
 }: {
-  biz: Business
+  biz: CrmBusiness
   qaBusiness: QaBusinessDetail | null
 }) {
   return (
@@ -903,16 +903,16 @@ function ReadOnlyBusinessOverview({
           </div>
           <div className="rounded-lg border border-surface-200 px-4 py-3">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Primary contact</p>
-            <p className="mt-2 text-sm text-surface-900">{qaBusiness?.ownerName || 'No owner name'}</p>
-            <p className="mt-1 text-xs text-surface-500">{biz.email || qaBusiness?.ownerEmail || 'No email available'}</p>
+            <p className="mt-2 text-sm text-surface-900">{biz.owner_name || 'No owner name'}</p>
+            <p className="mt-1 text-xs text-surface-500">{biz.owner_email || biz.email || 'No email available'}</p>
           </div>
           <div className="rounded-lg border border-surface-200 px-4 py-3">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Phone</p>
-            <p className="mt-2 text-sm text-surface-900">{biz.phone || qaBusiness?.ownerPhone || 'No phone available'}</p>
+            <p className="mt-2 text-sm text-surface-900">{biz.owner_phone || biz.phone || 'No phone available'}</p>
           </div>
           <div className="rounded-lg border border-surface-200 px-4 py-3">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Address</p>
-            <p className="mt-2 text-sm text-surface-900">{biz.address || qaBusiness?.fullAddress || 'No address available'}</p>
+            <p className="mt-2 text-sm text-surface-900">{biz.full_address || biz.address || 'No address available'}</p>
           </div>
         </div>
       </CardContent>

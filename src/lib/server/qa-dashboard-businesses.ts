@@ -1,112 +1,28 @@
 import type { Business } from '@/lib/types/database'
 import type {
+  CrmBusiness,
   CrmBusinessDetailResponse,
   CrmBusinessListItem,
   CrmBusinessOrigin,
   QaBusinessDetail,
   QaBusinessListItem,
-} from '@/lib/business-api'
+} from '@/lib/crm-api'
 import { fetchQaApi } from '@/lib/auth/qa-api'
+import {
+  buildQaAccountFields,
+  buildQaAccountMetadata,
+  createAccountIndex,
+  findLocalAccountForQa,
+  findQaAccountForLocal,
+  getQaAccountIdFromLocal,
+  isRecord,
+  joinAddress,
+  resolveImageUrl,
+} from '@/lib/server/qa-dashboard-shared'
 
 function asErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message
   return 'The QA business API request failed.'
-}
-
-function normalizeText(value: string | null | undefined) {
-  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ')
-}
-
-function normalizeName(value: string | null | undefined) {
-  return normalizeText(value).replace(/[^a-z0-9]+/g, ' ').trim()
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-function getMetadataQaBusinessId(business: Business) {
-  if (!isRecord(business.metadata)) return null
-
-  const directId = business.metadata.qaBusinessId
-  if (typeof directId === 'number') return directId
-  if (typeof directId === 'string' && /^\d+$/.test(directId)) return Number(directId)
-
-  const qaApi = business.metadata.qaApi
-  if (isRecord(qaApi)) {
-    const nestedId = qaApi.id
-    if (typeof nestedId === 'number') return nestedId
-    if (typeof nestedId === 'string' && /^\d+$/.test(nestedId)) return Number(nestedId)
-  }
-
-  return null
-}
-
-function getQaBusinessIdFromLocal(business: Business) {
-  if (business.external_id && /^\d+$/.test(business.external_id.trim())) {
-    return Number(business.external_id.trim())
-  }
-
-  return getMetadataQaBusinessId(business)
-}
-
-function createBusinessIndex(localBusinesses: Business[]) {
-  const byExternalId = new Map<string, Business>()
-  const byName = new Map<string, Business[]>()
-
-  for (const business of localBusinesses) {
-    const externalId = business.external_id?.trim()
-    if (externalId) byExternalId.set(externalId, business)
-
-    const metadataQaId = getMetadataQaBusinessId(business)
-    if (metadataQaId !== null) byExternalId.set(String(metadataQaId), business)
-
-    const normalizedName = normalizeName(business.name)
-    if (!normalizedName) continue
-
-    const entries = byName.get(normalizedName) || []
-    entries.push(business)
-    byName.set(normalizedName, entries)
-  }
-
-  return { byExternalId, byName }
-}
-
-function findLocalBusinessForQa(
-  qaBusiness: QaBusinessListItem | QaBusinessDetail,
-  index: ReturnType<typeof createBusinessIndex>,
-) {
-  const externalMatch = index.byExternalId.get(String(qaBusiness.id))
-  if (externalMatch) return externalMatch
-
-  const nameMatches = index.byName.get(normalizeName(qaBusiness.name)) || []
-  if (nameMatches.length === 1) return nameMatches[0]
-
-  const normalizedEmail = normalizeText(qaBusiness.ownerEmail)
-  if (!normalizedEmail) return null
-
-  const emailMatches = nameMatches.filter(item => normalizeText(item.email) === normalizedEmail)
-  return emailMatches.length === 1 ? emailMatches[0] : null
-}
-
-export function findQaBusinessForLocal(
-  localBusiness: Business,
-  qaBusinesses: QaBusinessListItem[],
-) {
-  const qaId = getQaBusinessIdFromLocal(localBusiness)
-  if (qaId !== null) {
-    return qaBusinesses.find(item => item.id === qaId) || null
-  }
-
-  const normalizedName = normalizeName(localBusiness.name)
-  const nameMatches = qaBusinesses.filter(item => normalizeName(item.name) === normalizedName)
-  if (nameMatches.length === 1) return nameMatches[0]
-
-  const normalizedEmail = normalizeText(localBusiness.email)
-  if (!normalizedEmail) return null
-
-  const emailMatches = nameMatches.filter(item => normalizeText(item.ownerEmail) === normalizedEmail)
-  return emailMatches.length === 1 ? emailMatches[0] : null
 }
 
 function resolveOrigin(localBusiness: Business | null, qaBusiness: QaBusinessListItem | QaBusinessDetail | null): CrmBusinessOrigin {
@@ -115,78 +31,41 @@ function resolveOrigin(localBusiness: Business | null, qaBusiness: QaBusinessLis
   return 'local'
 }
 
-function joinAddress(parts: Array<string | null | undefined>) {
-  const cleaned = parts.map(part => part?.trim()).filter(Boolean)
-  return cleaned.length ? cleaned.join(', ') : null
-}
-
-function resolveImageUrl(imageUrl: string | null | undefined) {
-  const trimmed = imageUrl?.trim()
-  if (!trimmed) return null
-  return /^https?:\/\//i.test(trimmed) ? trimmed : null
-}
-
-function qaMetadata(qaBusiness: QaBusinessListItem | QaBusinessDetail | null) {
-  if (!qaBusiness) return null
-
-  const detailFields = 'description' in qaBusiness
-    ? {
-        description: qaBusiness.description,
-        ownerPhone: qaBusiness.ownerPhone,
-        address1: qaBusiness.address1,
-        address2: qaBusiness.address2,
-        zipCode: qaBusiness.zipCode,
-        fullAddress: qaBusiness.fullAddress,
-        imageUrl: qaBusiness.imageUrl,
-        marketing: qaBusiness.marketing,
-        txFee: qaBusiness.txFee,
-        salesTax: qaBusiness.salesTax,
-        taxId: qaBusiness.taxId,
-        timeZone: qaBusiness.timeZone,
-        hasStripeOnboarding: qaBusiness.hasStripeOnboarding,
-      }
-    : {}
-
-  return {
-    id: qaBusiness.id,
-    name: qaBusiness.name,
-    headline: qaBusiness.headline,
-    ownerName: qaBusiness.ownerName,
-    ownerEmail: qaBusiness.ownerEmail,
-    city: qaBusiness.city,
-    state: qaBusiness.state,
-    country: qaBusiness.country,
-    createdDate: qaBusiness.createdDate,
-    active: qaBusiness.active,
-    ...detailFields,
-  }
+export function findQaBusinessForLocal(
+  localBusiness: Business,
+  qaBusinesses: QaBusinessListItem[],
+) {
+  return findQaAccountForLocal(localBusiness, qaBusinesses)
 }
 
 export function mergeBusinessRecord(
   localBusiness: Business | null,
   qaBusiness: QaBusinessListItem | QaBusinessDetail | null,
-): Business | null {
+): CrmBusiness | null {
   if (!localBusiness && !qaBusiness) return null
 
   const baseMetadata = isRecord(localBusiness?.metadata) ? localBusiness.metadata : {}
-  const qaApi = qaMetadata(qaBusiness)
+  const qaApi = buildQaAccountMetadata(qaBusiness)
+  const qaFields = buildQaAccountFields(qaBusiness)
   const metadata = qaApi
-    ? { ...baseMetadata, qaApi, qaBusinessId: qaBusiness?.id ?? null }
+    ? { ...baseMetadata, qaApi, qaAccountId: qaBusiness?.id ?? null, qaBusinessId: qaBusiness?.id ?? null }
     : baseMetadata
 
-  const qaDescription = qaBusiness && 'description' in qaBusiness ? qaBusiness.description : null
-  const qaPhone = qaBusiness && 'ownerPhone' in qaBusiness ? qaBusiness.ownerPhone : null
-  const qaAddress = qaBusiness && 'fullAddress' in qaBusiness
-    ? qaBusiness.fullAddress || joinAddress([qaBusiness.address1, qaBusiness.address2, qaBusiness.city, qaBusiness.state, qaBusiness.zipCode, qaBusiness.country])
-    : null
-
   return {
+    ...qaFields,
     id: localBusiness?.id || `qa-${qaBusiness!.id}`,
     name: qaBusiness?.name || localBusiness!.name,
     website: localBusiness?.website || null,
-    email: qaBusiness?.ownerEmail || localBusiness?.email || null,
-    phone: qaPhone || localBusiness?.phone || null,
-    address: qaAddress || localBusiness?.address || null,
+    email: qaFields.owner_email || localBusiness?.email || null,
+    phone: qaFields.owner_phone || localBusiness?.phone || null,
+    address: qaFields.full_address || joinAddress([
+      qaFields.address1,
+      qaFields.address2,
+      qaFields.city_name,
+      qaFields.state,
+      qaFields.zip_code,
+      qaFields.country,
+    ]) || localBusiness?.address || null,
     city_id: localBusiness?.city_id || null,
     category: localBusiness?.category || null,
     brand: localBusiness?.brand || 'localvip',
@@ -199,12 +78,12 @@ export function mergeBusinessRecord(
     linked_cause_id: localBusiness?.linked_cause_id || null,
     linked_material_id: localBusiness?.linked_material_id || null,
     linked_qr_code_id: localBusiness?.linked_qr_code_id || null,
-    logo_url: localBusiness?.logo_url || (qaBusiness && 'imageUrl' in qaBusiness ? resolveImageUrl(qaBusiness.imageUrl) : null),
+    logo_url: localBusiness?.logo_url || resolveImageUrl(qaFields.image_url) || null,
     cover_photo_url: localBusiness?.cover_photo_url || null,
     linked_qr_collection_id: localBusiness?.linked_qr_collection_id || null,
     duplicate_of: localBusiness?.duplicate_of || null,
     external_id: qaBusiness ? String(qaBusiness.id) : localBusiness?.external_id || null,
-    public_description: qaDescription || localBusiness?.public_description || null,
+    public_description: qaFields.description || localBusiness?.public_description || null,
     avg_ticket: localBusiness?.avg_ticket || null,
     products_services: localBusiness?.products_services || null,
     activation_status: localBusiness?.activation_status || null,
@@ -218,7 +97,7 @@ export function mergeBusinessRecord(
 
 function toListItem(localBusiness: Business | null, qaBusiness: QaBusinessListItem | null): CrmBusinessListItem {
   const origin = resolveOrigin(localBusiness, qaBusiness)
-  const qaBusinessId = qaBusiness?.id || getQaBusinessIdFromLocal(localBusiness!) || null
+  const qaBusinessId = qaBusiness?.id || getQaAccountIdFromLocal(localBusiness!) || null
   const detailHref = localBusiness?.id
     ? `/crm/businesses/${localBusiness.id}${qaBusinessId !== null ? `?qaId=${qaBusinessId}` : ''}`
     : `/crm/businesses/qa-${qaBusinessId}`
@@ -234,6 +113,9 @@ function toListItem(localBusiness: Business | null, qaBusiness: QaBusinessListIt
     ownerName: qaBusiness?.ownerName || null,
     ownerEmail: qaBusiness?.ownerEmail || localBusiness?.email || null,
     city: qaBusiness?.city || null,
+    owner_name: qaBusiness?.ownerName || null,
+    owner_email: qaBusiness?.ownerEmail || localBusiness?.email || null,
+    city_name: qaBusiness?.city || null,
     state: qaBusiness?.state || null,
     country: qaBusiness?.country || null,
     active: qaBusiness?.active ?? null,
@@ -248,10 +130,10 @@ function toListItem(localBusiness: Business | null, qaBusiness: QaBusinessListIt
 }
 
 export function buildCrmBusinessList(localBusinesses: Business[], qaBusinesses: QaBusinessListItem[]) {
-  const index = createBusinessIndex(localBusinesses)
+  const index = createAccountIndex(localBusinesses)
   const matchedLocalIds = new Set<string>()
   const items: CrmBusinessListItem[] = qaBusinesses.map(qaBusiness => {
-    const localBusiness = findLocalBusinessForQa(qaBusiness, index)
+    const localBusiness = findLocalAccountForQa(qaBusiness, index)
     if (localBusiness) matchedLocalIds.add(localBusiness.id)
     return toListItem(localBusiness, qaBusiness)
   })
@@ -275,7 +157,7 @@ export function buildCrmBusinessDetail(
   return {
     business,
     localBusinessId: localBusiness?.id || null,
-    qaBusinessId: qaBusiness?.id || getQaBusinessIdFromLocal(localBusiness!) || null,
+    qaBusinessId: qaBusiness?.id || getQaAccountIdFromLocal(localBusiness!) || null,
     origin: resolveOrigin(localBusiness, qaBusiness),
     qaBusiness,
     qaError,

@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import {
   AlertTriangle,
   ArrowRight,
@@ -55,6 +55,8 @@ import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
+import { useCrmCause } from '@/lib/hooks/crm-businesses'
+import type { CrmCause } from '@/lib/crm-api'
 import {
   computeCauseExecutionSteps,
   computeCauseReadiness,
@@ -79,7 +81,6 @@ import {
   useOutreachInsert,
   useProfiles,
   useQrCodes,
-  useRecord,
   useStakeholderAssignments,
   useStakeholderCodes,
   useStakeholders,
@@ -89,7 +90,6 @@ import {
 } from '@/lib/supabase/hooks'
 import type {
   Business,
-  Cause,
   GeneratedMaterial,
   OnboardingStage,
   OutreachType,
@@ -126,12 +126,22 @@ type DashboardTab = 'mission' | 'launch' | 'businesses' | 'community' | 'leaders
 
 export default function CauseDetailPage() {
   const params = useParams()
-  const causeId = params.id as string
+  const searchParams = useSearchParams()
+  const routeId = params.id as string
+  const qaCauseId = React.useMemo(() => {
+    const value = searchParams.get('qaId')
+    return value && /^\d+$/.test(value) ? Number(value) : null
+  }, [searchParams])
   const { profile, isAdmin } = useAuth()
   const [activeTab, setActiveTab] = React.useState<DashboardTab>('mission')
 
   // ── Data hooks ──
-  const { data: cause, loading: causeLoading } = useRecord<Cause>('causes', causeId)
+  const { data: causeResponse, loading: causeLoading, error: causeError } = useCrmCause(routeId, qaCauseId)
+  const cause = causeResponse?.cause || null
+  const localCauseId = causeResponse?.localCauseId || null
+  const readOnly = causeResponse?.readOnly || false
+  const detailQaError = causeResponse?.qaError || null
+  const causeId = localCauseId || routeId
   const { data: profiles } = useProfiles()
   const { data: cities } = useCities()
   const { data: campaigns } = useCampaigns()
@@ -476,7 +486,17 @@ export default function CauseDetailPage() {
       <EmptyState
         icon={isSchool ? <GraduationCap className="h-8 w-8" /> : <Heart className="h-8 w-8" />}
         title={`${entityLabel} not found`}
-        description="This record could not be loaded."
+        description={causeError || detailQaError || 'This record could not be loaded.'}
+      />
+    )
+  }
+
+  if (readOnly) {
+    return (
+      <QaCauseReadonlyView
+        cause={cause}
+        qaError={detailQaError}
+        apiError={causeError}
       />
     )
   }
@@ -499,6 +519,25 @@ export default function CauseDetailPage() {
 
   return (
     <div className="space-y-6">
+      {causeError && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+          <div>
+            <p className="font-medium">Cause detail warning</p>
+            <p className="mt-1 text-xs text-warning-700">{causeError}</p>
+          </div>
+        </div>
+      )}
+
+      {detailQaError && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+          <div>
+            <p className="font-medium">QA nonprofit sync warning</p>
+            <p className="mt-1 text-xs text-warning-700">{detailQaError}</p>
+          </div>
+        </div>
+      )}
       {/* ── Duplicate warning ── */}
       {cause.duplicate_of && (
         <div className="flex items-center gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
@@ -788,7 +827,7 @@ export default function CauseDetailPage() {
                   group: 'Setup',
                   icon: <Target className="h-5 w-5 text-brand-600" />,
                   items: [
-                    { label: 'Profile complete (city + contact)', done: !!(cause.city_id && (cause.email || cause.phone)) },
+                    { label: 'Profile complete (city + contact)', done: !!(cause.city_id && (cause.owner_email || cause.email || cause.owner_phone || cause.phone)) },
                     { label: 'Referral & connection codes saved', done: !!(codes?.referral_code && codes?.connection_code) },
                     { label: 'Materials generated', done: generatedCount > 0 },
                     { label: 'QR code created', done: causeQrCodes.length > 0 },
@@ -1540,6 +1579,92 @@ function MiniStatus({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-1 text-sm font-semibold text-surface-900">{value}</p>
+    </div>
+  )
+}
+
+function QaCauseReadonlyView({
+  cause,
+  qaError,
+  apiError,
+}: {
+  cause: CrmCause
+  qaError: string | null
+  apiError: string | null
+}) {
+  const entityLabel = cause.type === 'school' ? 'School' : 'Cause'
+
+  return (
+    <div className="space-y-6">
+      {(apiError || qaError) && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+          <div>
+            <p className="font-medium">QA nonprofit sync warning</p>
+            <p className="mt-1 text-xs text-warning-700">{apiError || qaError}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-start gap-3 rounded-lg border border-info-200 bg-info-50 px-4 py-3 text-sm text-info-800">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-info-600" />
+        <div>
+          <p className="font-medium">QA record loaded in read-only mode</p>
+          <p className="mt-1 text-xs text-info-700">
+            This {entityLabel.toLowerCase()} exists in QA, but it does not have a linked local dashboard record yet. CRM-only tabs like tasks, notes, materials, and codes stay disabled until it is imported or linked locally.
+          </p>
+        </div>
+      </div>
+
+      <PageHeader
+        title={cause.name}
+        description={`${entityLabel} account from QA • dashboard workflow stays read-only until linked locally.`}
+        breadcrumb={[
+          { label: 'CRM', href: '/crm/causes' },
+          { label: 'Causes', href: '/crm/causes' },
+          { label: cause.name },
+        ]}
+      />
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <MiniStatus label="QA Status" value={cause.active ? 'Active' : 'Inactive'} />
+        <MiniStatus label="Type" value={entityLabel} />
+        <MiniStatus label="Owner Email" value={cause.owner_email || cause.email || 'Not available'} />
+        <MiniStatus label="Location" value={[cause.city_name, cause.state].filter(Boolean).join(', ') || 'Not available'} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>QA Account Summary</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Headline</p>
+            <p className="mt-2 text-sm text-surface-900">{cause.headline || 'No headline available'}</p>
+          </div>
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Primary Contact</p>
+            <p className="mt-2 text-sm text-surface-900">{cause.owner_name || 'No owner name'}</p>
+            <p className="mt-1 text-xs text-surface-500">{cause.owner_email || cause.email || 'No email available'}</p>
+          </div>
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Phone</p>
+            <p className="mt-2 text-sm text-surface-900">{cause.owner_phone || cause.phone || 'No phone available'}</p>
+          </div>
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Address</p>
+            <p className="mt-2 text-sm text-surface-900">{cause.full_address || cause.address || 'No address available'}</p>
+          </div>
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Description</p>
+            <p className="mt-2 text-sm text-surface-900">{cause.description || 'No description available'}</p>
+          </div>
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Created</p>
+            <p className="mt-2 text-sm text-surface-900">{formatDateTime(cause.created_at)}</p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

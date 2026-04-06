@@ -1817,32 +1817,46 @@ function CauseDetailModal({
           <div ref={setSectionRef('tasks')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getCauseSectionHighlight(activeSection, 'tasks'))}>
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Tasks</p>
             <p className="mt-1 text-xl font-semibold text-surface-900">{detail.tasks.length}</p>
-            <p className="mt-1 text-xs text-surface-500">Outreach: {detail.outreach.length}</p>
-            <p className="mt-0.5 text-xs text-surface-500">Businesses: {detail.linkedBusinesses.length}</p>
+            <div className="mt-2 space-y-1">
+              <ActionableDetailButton label={detail.dueTask?.due_date ? `Due ${formatDate(detail.dueTask.due_date)}` : 'No due task yet'} onClick={() => jumpToSection('tasks')} />
+              <ActionableDetailButton label={`Outreach: ${detail.outreach.length}`} onClick={() => jumpToSection('activity')} />
+              <ActionableDetailButton label={`Businesses: ${detail.linkedBusinesses.length}`} onClick={() => jumpToSection('businesses')} />
+            </div>
           </div>
           <div ref={setSectionRef('codes')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getCauseSectionHighlight(activeSection, 'codes'))}>
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Codes + Materials</p>
-            <div className="mt-2 space-y-1 text-xs text-surface-500">
-              <p>Referral: <span className="font-medium text-surface-800">{detail.codes?.referral_code || 'Missing'}</span></p>
-              <p>Connection: <span className="font-medium text-surface-800">{detail.codes?.connection_code || 'Missing'}</span></p>
-              <p>Join page: <span className="font-medium text-surface-800">{detail.joinUrl ? 'Ready' : 'Waiting on codes'}</span></p>
-              <p>Setup: <span className="font-medium text-surface-800">{detail.stakeholder ? 'Ready' : 'Missing'}</span></p>
-              <p>QR: <span className="font-medium text-surface-800">{detail.qrCount > 0 ? `${detail.qrCount} ready` : 'Missing'}</span></p>
-              <p>Materials: <span className="font-medium text-surface-800">{detail.generatedCount > 0 ? `${detail.generatedCount} ready` : 'Waiting'}</span></p>
-              <p>Task: <span className="font-medium text-surface-800">{detail.taskStatus || 'Not started'}</span></p>
+            <div className="mt-2 space-y-1">
+              <ActionableDetailButton label={`Referral: ${detail.codes?.referral_code || 'Missing'}`} onClick={() => jumpToSection('codes')} />
+              <ActionableDetailButton label={`Connection: ${detail.codes?.connection_code || 'Missing'}`} onClick={() => jumpToSection('codes')} />
+              <ActionableDetailButton label={`Join page: ${detail.joinUrl ? 'Ready' : 'Waiting on codes'}`} onClick={() => jumpToSection('codes')} />
+              <ActionableDetailButton label={`Setup: ${detail.stakeholder ? 'Ready' : 'Missing'}`} onClick={() => jumpToSection('codes')} />
+              <ActionableDetailButton label={`QR: ${detail.qrCount > 0 ? `${detail.qrCount} ready` : 'Missing'}`} onClick={() => jumpToSection('codes')} />
+              <ActionableDetailButton label={`Materials: ${detail.generatedCount > 0 ? `${detail.generatedCount} ready` : 'Waiting'}`} onClick={() => jumpToSection('codes')} />
+              <ActionableDetailButton label={`Task: ${detail.taskStatus || 'Not started'}`} onClick={() => jumpToSection('codes')} />
             </div>
           </div>
           <div ref={setSectionRef('activity')} className={cn('transition-shadow', getCauseSectionHighlight(activeSection, 'activity'))}>
-            <MetricBlock
-              label="Outreach Activity"
-              value={detail.outreach.length}
-              detail={detail.latestOutreach ? `${detail.latestOutreach.type.replace('_', ' ')} / ${formatDate(detail.latestOutreach.created_at)}` : 'No outreach logged yet'}
-              secondary={detail.nextFollowUp?.next_step ? `${detail.nextFollowUp.next_step}${detail.nextFollowUp.next_step_date ? ` by ${formatDate(detail.nextFollowUp.next_step_date)}` : ''}` : undefined}
-            />
+            <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Outreach Activity</p>
+              <p className="mt-1 text-xl font-semibold text-surface-900">{detail.outreach.length}</p>
+              <div className="mt-2 space-y-1">
+                <ActionableDetailButton
+                  label={detail.latestOutreach ? `${detail.latestOutreach.type.replace('_', ' ')} / ${formatDate(detail.latestOutreach.created_at)}` : 'No outreach logged yet'}
+                  onClick={() => jumpToSection('activity')}
+                />
+                <ActionableDetailButton
+                  label={detail.nextFollowUp?.next_step ? `${detail.nextFollowUp.next_step}${detail.nextFollowUp.next_step_date ? ` by ${formatDate(detail.nextFollowUp.next_step_date)}` : ''}` : 'No follow-up scheduled yet'}
+                  onClick={() => jumpToSection('activity')}
+                />
+              </div>
+            </div>
           </div>
           <div ref={setSectionRef('businesses')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getCauseSectionHighlight(activeSection, 'businesses'))}>
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Business Links</p>
             <p className="mt-1 text-xl font-semibold text-surface-900">{detail.linkedBusinesses.length}</p>
+            <div className="mt-2 space-y-1">
+              <ActionableDetailButton label={detail.linkedBusinesses.length > 0 ? 'Open connected businesses' : 'No connected businesses yet'} onClick={() => jumpToSection('businesses')} />
+            </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {detail.linkedBusinesses.length > 0 ? detail.linkedBusinesses.slice(0, 3).map((business) => (
                 <Link key={business.id} href={`/crm/businesses/${business.id}`} className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', businessTheme.badge)}>
@@ -1951,6 +1965,25 @@ function InlineDetail({
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-1 text-sm font-medium text-surface-900">{value}</p>
     </div>
+  )
+}
+
+function ActionableDetailButton({
+  label,
+  onClick,
+}: {
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-xs text-surface-500 transition-colors hover:bg-white hover:text-surface-800"
+    >
+      <span>{label}</span>
+      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />
+    </button>
   )
 }
 

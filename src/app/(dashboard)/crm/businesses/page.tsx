@@ -22,7 +22,7 @@ import { useAuth } from '@/lib/auth/context'
 import { useCrmBusinesses } from '@/lib/hooks/crm-businesses'
 import { useCities } from '@/lib/supabase/hooks'
 import { formatDate } from '@/lib/utils'
-import type { CrmBusinessListItem } from '@/lib/business-api'
+import type { CrmBusinessListItem } from '@/lib/crm-api'
 import type { Business, OnboardingStage } from '@/lib/types/database'
 
 const STAGE_BADGE_VARIANT: Record<OnboardingStage, 'default' | 'info' | 'warning' | 'success' | 'danger'> = {
@@ -105,9 +105,9 @@ export default function BusinessesPage() {
   const rows = React.useMemo<BusinessRow[]>(() =>
     businesses.map(item => ({
       ...item,
-      locationLabel: [item.city, item.state].filter(Boolean).join(', ') || '—',
+      locationLabel: [item.city_name || item.city, item.state].filter(Boolean).join(', ') || 'N/A',
     })),
-    [businesses]
+    [businesses],
   )
 
   const filtered = React.useMemo(() => {
@@ -116,10 +116,6 @@ export default function BusinessesPage() {
     if (filters.origin) result = result.filter(item => item.origin === filters.origin)
     return result
   }, [filters.origin, filters.stage, rows])
-
-  const handleFilterChange = React.useCallback((key: string, value: string) => {
-    setFilters(current => ({ ...current, [key]: value }))
-  }, [])
 
   const resetForm = React.useCallback(() => {
     setFormName('')
@@ -231,13 +227,13 @@ export default function BusinessesPage() {
       ),
     },
     {
-      key: 'ownerName',
+      key: 'owner_name',
       header: 'Owner',
       sortable: true,
       render: item => (
         <div className="space-y-1">
-          <p className="text-sm text-surface-800">{item.ownerName || '—'}</p>
-          <p className="text-xs text-surface-500">{item.ownerEmail || 'No owner email from QA'}</p>
+          <p className="text-sm text-surface-800">{item.owner_name || item.ownerName || 'N/A'}</p>
+          <p className="text-xs text-surface-500">{item.owner_email || item.ownerEmail || 'No owner email from QA'}</p>
         </div>
       ),
     },
@@ -296,7 +292,7 @@ export default function BusinessesPage() {
       sortable: true,
       render: item => (
         <span className="text-xs text-surface-500">
-          {item.updatedAt ? relativeTime(item.updatedAt) : (item.createdAt ? relativeTime(item.createdAt) : '—')}
+          {item.updatedAt ? relativeTime(item.updatedAt) : (item.createdAt ? relativeTime(item.createdAt) : 'N/A')}
         </span>
       ),
     },
@@ -350,7 +346,7 @@ export default function BusinessesPage() {
           { key: 'origin', label: 'All Record Sources', options: ORIGIN_OPTIONS },
         ]}
         activeFilters={filters}
-        onFilterChange={handleFilterChange}
+        onFilterChange={(key, value) => setFilters(current => ({ ...current, [key]: value }))}
         emptyState={(
           <EmptyState
             icon={<Store className="h-8 w-8" />}

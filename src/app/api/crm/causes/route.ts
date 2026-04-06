@@ -1,7 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
 import { createCauseLifecycle } from '@/lib/server/stakeholder-lifecycle'
+import {
+  buildCrmCauseList,
+  fetchQaCauseList,
+  qaCauseRouteError,
+} from '@/lib/server/qa-dashboard-causes'
 import type { Brand, Cause, OnboardingStage } from '@/lib/types/database'
+
+export async function GET() {
+  const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
+  if ('error' in context) return context.error
+
+  const [{ data: localCausesData }, qaResult] = await Promise.all([
+    context.supabase
+      .from('causes')
+      .select('*')
+      .order('updated_at', { ascending: false }),
+    fetchQaCauseList()
+      .then(data => ({ data, error: null as string | null }))
+      .catch(error => ({ data: [] as Awaited<ReturnType<typeof fetchQaCauseList>>, error: qaCauseRouteError(error) })),
+  ])
+
+  const localCauses = (localCausesData || []) as Cause[]
+  const items = buildCrmCauseList(localCauses, qaResult.data)
+
+  return NextResponse.json({
+    items,
+    qaError: qaResult.error,
+  })
+}
 
 export async function POST(request: NextRequest) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])

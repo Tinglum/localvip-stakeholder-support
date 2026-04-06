@@ -1,5 +1,10 @@
 import * as React from 'react'
-import type { CrmBusinessDetailResponse, CrmBusinessesResponse } from '@/lib/business-api'
+import type {
+  CrmBusinessDetailResponse,
+  CrmBusinessesResponse,
+  CrmCauseDetailResponse,
+  CrmCausesResponse,
+} from '@/lib/crm-api'
 
 interface UseApiResult<T> {
   data: T | null
@@ -86,4 +91,18 @@ export function useCrmBusiness(routeId: string | null, qaBusinessId: number | nu
   }, [qaBusinessId, routeId])
 
   return useApiJson<CrmBusinessDetailResponse>(url)
+}
+
+export function useCrmCauses() {
+  return useApiJson<CrmCausesResponse>('/api/crm/causes')
+}
+
+export function useCrmCause(routeId: string | null, qaCauseId: number | null = null) {
+  const url = React.useMemo(() => {
+    if (!routeId) return null
+    const query = qaCauseId !== null ? `?qaId=${qaCauseId}` : ''
+    return `/api/crm/causes/${encodeURIComponent(routeId)}${query}`
+  }, [qaCauseId, routeId])
+
+  return useApiJson<CrmCauseDetailResponse>(url)
 }
