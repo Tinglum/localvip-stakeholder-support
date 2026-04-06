@@ -147,6 +147,48 @@ const DEFAULT_QR_POSITION = {
 }
 
 let materialsBucketPrepared = false
+let generatedMaterialsSupportsActiveFlag: boolean | null = null
+let generatedMaterialsSupportsVersionNumber: boolean | null = null
+
+async function supportsGeneratedMaterialsActiveFlag(
+  supabase: ServiceSupabaseClient,
+): Promise<boolean> {
+  if (generatedMaterialsSupportsActiveFlag !== null) {
+    return generatedMaterialsSupportsActiveFlag
+  }
+
+  const { error } = await (supabase.from('generated_materials') as any)
+    .select('is_active')
+    .limit(1)
+
+  if (error && /is_active/i.test(error.message || '')) {
+    generatedMaterialsSupportsActiveFlag = false
+    return false
+  }
+
+  generatedMaterialsSupportsActiveFlag = true
+  return true
+}
+
+async function supportsGeneratedMaterialsVersionNumber(
+  supabase: ServiceSupabaseClient,
+): Promise<boolean> {
+  if (generatedMaterialsSupportsVersionNumber !== null) {
+    return generatedMaterialsSupportsVersionNumber
+  }
+
+  const { error } = await (supabase.from('generated_materials') as any)
+    .select('version_number')
+    .limit(1)
+
+  if (error && /version_number/i.test(error.message || '')) {
+    generatedMaterialsSupportsVersionNumber = false
+    return false
+  }
+
+  generatedMaterialsSupportsVersionNumber = true
+  return true
+}
 
 export async function createStakeholderRecord(
   supabase: ServiceSupabaseClient,
@@ -403,8 +445,12 @@ export async function generateMaterialsForStakeholder(
     )
   }
 
-  // Send notification to stakeholder owner
-  await createMaterialNotification(supabase, stakeholder, results.length)
+  // Notification should never block successful material generation.
+  try {
+    await createMaterialNotification(supabase, stakeholder, results.length)
+  } catch {
+    // Ignore notification failures.
+  }
 
   return {
     stakeholder,
@@ -524,14 +570,19 @@ async function generateOneMaterial(
   const generatedFileUrl = urlData.publicUrl
   // Archive existing versions for this stakeholder+template
   const existingVersions = await getActiveGeneratedMaterials(supabase, context.stakeholder.id, template.id)
-  const nextVersion = existingVersions.length > 0
+  const supportsVersionNumber = await supportsGeneratedMaterialsVersionNumber(supabase)
+  const nextVersion = supportsVersionNumber && existingVersions.length > 0
     ? Math.max(...existingVersions.map(v => v.version_number || 1)) + 1
     : 1
 
   if (existingVersions.length > 0) {
+    const supportsActiveFlag = await supportsGeneratedMaterialsActiveFlag(supabase)
     for (const old of existingVersions) {
       await (supabase.from('generated_materials') as any)
-        .update({ is_active: false, is_outdated: true })
+        .update({
+          ...(supportsActiveFlag ? { is_active: false } : {}),
+          is_outdated: true,
+        })
         .eq('id', old.id)
     }
   }
@@ -599,30 +650,36 @@ async function generateOneMaterial(
     await ensureMaterialAssignment(supabase, materialId, ownerProfileId, actorId)
   }
 
-  const { data: generatedData, error: generatedError } = await (supabase.from('generated_materials') as any)
-    .insert({
-      stakeholder_id: context.stakeholder.id,
-      template_id: template.id,
-      material_id: materialId,
-      generated_file_url: generatedFileUrl,
-      generated_file_name: `${fileBase}.${fileExtension}`,
-      library_folder: template.library_folder,
-      tags: template.audience_tags,
-      generation_status: 'generated',
-      generation_error: null,
-      generated_at: new Date().toISOString(),
-      template_version: template.version || 1,
-      is_outdated: false,
-      version_number: nextVersion,
-      is_active: true,
-      metadata: {
-        qr_code_id: qrCode.id,
-        redirect_url: qrCode.redirect_url,
-        join_url: context.joinUrl,
-        display_url: context.displayUrl,
-        output_format: template.output_format,
-      },
-    })
+  const supportsActiveFlag = await supportsGeneratedMaterialsActiveFlag(supabase)
+  const generatedRow = {
+    stakeholder_id: context.stakeholder.id,
+    template_id: template.id,
+    material_id: materialId,
+    generated_file_url: generatedFileUrl,
+    generated_file_name: `${fileBase}.${fileExtension}`,
+    library_folder: template.library_folder,
+    tags: template.audience_tags,
+    generation_status: 'generated',
+    generation_error: null,
+    generated_at: new Date().toISOString(),
+    template_version: template.version || 1,
+    is_outdated: false,
+    ...(supportsVersionNumber ? { version_number: nextVersion } : {}),
+    ...(supportsActiveFlag ? { is_active: true } : {}),
+    metadata: {
+      qr_code_id: qrCode.id,
+      redirect_url: qrCode.redirect_url,
+      join_url: context.joinUrl,
+      display_url: context.displayUrl,
+      output_format: template.output_format,
+    },
+  }
+
+  const generatedWrite = supportsActiveFlag
+    ? (supabase.from('generated_materials') as any).insert(generatedRow)
+    : (supabase.from('generated_materials') as any).upsert(generatedRow, { onConflict: 'stakeholder_id,template_id' })
+
+  const { data: generatedData, error: generatedError } = await generatedWrite
     .select()
     .single()
 
@@ -753,19 +810,23 @@ async function generateEmergencyFallbackMaterial(
 
   // Archive old versions for fallback too
   const oldFallback = await getActiveGeneratedMaterials(supabase, context.stakeholder.id, template.id)
-  const fallbackVersion = oldFallback.length > 0
+  const supportsVersionNumber = await supportsGeneratedMaterialsVersionNumber(supabase)
+  const fallbackVersion = supportsVersionNumber && oldFallback.length > 0
     ? Math.max(...oldFallback.map(v => v.version_number || 1)) + 1
     : 1
   if (oldFallback.length > 0) {
+    const supportsActiveFlag = await supportsGeneratedMaterialsActiveFlag(supabase)
     for (const old of oldFallback) {
       await (supabase.from('generated_materials') as any)
-        .update({ is_active: false, is_outdated: true })
+        .update({
+          ...(supportsActiveFlag ? { is_active: false } : {}),
+          is_outdated: true,
+        })
         .eq('id', old.id)
     }
   }
 
-  const { data: generatedData, error: generatedError } = await (supabase.from('generated_materials') as any)
-    .insert({
+  const fallbackGeneratedRow = {
       stakeholder_id: context.stakeholder.id,
       template_id: template.id,
       material_id: materialId,
@@ -776,8 +837,10 @@ async function generateEmergencyFallbackMaterial(
       generation_status: 'generated',
       generation_error: null,
       generated_at: new Date().toISOString(),
-      version_number: fallbackVersion,
-      is_active: true,
+      template_version: template.version || 1,
+      is_outdated: false,
+      ...(supportsVersionNumber ? { version_number: fallbackVersion } : {}),
+      ...(await supportsGeneratedMaterialsActiveFlag(supabase) ? { is_active: true } : {}),
       metadata: {
         qr_code_id: qrCode.id,
         redirect_url: qrCode.redirect_url,
@@ -787,7 +850,14 @@ async function generateEmergencyFallbackMaterial(
         generation_mode: 'emergency_fallback',
         primary_error: primaryError,
       },
-    })
+    }
+
+  const supportsActiveFlag = await supportsGeneratedMaterialsActiveFlag(supabase)
+  const { data: generatedData, error: generatedError } = await (
+    supportsActiveFlag
+      ? (supabase.from('generated_materials') as any).insert(fallbackGeneratedRow)
+      : (supabase.from('generated_materials') as any).upsert(fallbackGeneratedRow, { onConflict: 'stakeholder_id,template_id' })
+  )
     .select()
     .single()
 
@@ -2022,13 +2092,26 @@ async function getActiveGeneratedMaterials(
   stakeholderId: string,
   templateId: string,
 ) {
-  const { data } = await supabase
+  const supportsActiveFlag = await supportsGeneratedMaterialsActiveFlag(supabase)
+  const supportsVersionNumber = await supportsGeneratedMaterialsVersionNumber(supabase)
+
+  let query = supabase
     .from('generated_materials')
     .select('*')
     .eq('stakeholder_id', stakeholderId)
     .eq('template_id', templateId)
-    .eq('is_active', true)
-    .order('version_number', { ascending: false })
+    .eq('generation_status', 'generated')
+    .order('updated_at', { ascending: false })
+
+  if (supportsVersionNumber) {
+    query = query.order('version_number', { ascending: false })
+  }
+
+  query = supportsActiveFlag
+    ? query.eq('is_active', true)
+    : query.eq('is_outdated', false)
+
+  const { data } = await query
   return (data || []) as GeneratedMaterial[]
 }
 
@@ -2138,17 +2221,30 @@ export async function restoreGeneratedMaterialVersion(
 
   if (error || !data) throw new Error('Generated material version not found.')
   const target = data as GeneratedMaterial
+  const supportsActiveFlag = await supportsGeneratedMaterialsActiveFlag(supabase)
 
   // Deactivate current active version for same stakeholder+template
-  await (supabase.from('generated_materials') as any)
-    .update({ is_active: false, is_outdated: true })
+  let deactivateQuery = (supabase.from('generated_materials') as any)
+    .update({
+      ...(supportsActiveFlag ? { is_active: false } : {}),
+      is_outdated: true,
+    })
     .eq('stakeholder_id', target.stakeholder_id)
     .eq('template_id', target.template_id)
-    .eq('is_active', true)
+    .eq('generation_status', 'generated')
+
+  deactivateQuery = supportsActiveFlag
+    ? deactivateQuery.eq('is_active', true)
+    : deactivateQuery.eq('is_outdated', false)
+
+  await deactivateQuery
 
   // Activate the target version
   await (supabase.from('generated_materials') as any)
-    .update({ is_active: true, is_outdated: false })
+    .update({
+      ...(supportsActiveFlag ? { is_active: true } : {}),
+      is_outdated: false,
+    })
     .eq('id', generatedMaterialId)
 
   return target
