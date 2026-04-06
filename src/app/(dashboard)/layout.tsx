@@ -7,89 +7,44 @@ import { AuthProvider } from '@/lib/auth/context'
 import { ImpersonationProvider } from '@/lib/impersonation-context'
 import { normalizeBusinessProfile } from '@/lib/business-portal'
 import type { Profile } from '@/lib/types/database'
-import { createClient } from '@/lib/supabase/client'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const supabase = React.useMemo(() => createClient(), [])
   const [profile, setProfile] = React.useState<Profile | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    async function resolvePortalProfile(baseProfile: Profile) {
-      const { data: ownedBusinesses, error: ownedBusinessesError } = await supabase
-        .from('businesses')
-        .select('id,email,website,owner_id')
-        .eq('owner_id', baseProfile.id)
-
-      if (ownedBusinessesError) {
-        console.error('Failed to load owned businesses for profile normalization:', ownedBusinessesError)
-        return baseProfile
-      }
-
-      return normalizeBusinessProfile(baseProfile, ownedBusinesses || [])
-    }
+    let cancelled = false
 
     async function loadProfile() {
-      // Check Supabase auth session
-      const { data: { user }, error } = await supabase.auth.getUser()
+      const response = await fetch('/api/auth/session', {
+        credentials: 'include',
+        cache: 'no-store',
+      }).catch(() => null)
 
-      if (error || !user) {
+      if (!response || !response.ok) {
         router.push('/login')
         return
       }
 
-      // Fetch profile from profiles table
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-
-      if (profileError || !profileData) {
-        // Profile not found — might need seeding
-        console.error('Profile not found for user:', user.id)
-        // Create a basic profile from auth metadata
-        const meta = user.user_metadata || {}
-        const fallbackProfile: Profile = {
-          id: user.id,
-          email: user.email || '',
-          full_name: meta.full_name || user.email?.split('@')[0] || 'User',
-          avatar_url: null,
-          role: meta.role || 'volunteer',
-          brand_context: 'localvip',
-          organization_id: null,
-          city_id: null,
-          business_id: (meta.business_id as string | null) || null,
-          phone: null,
-          referral_code: null,
-          status: 'active',
-          metadata: null,
-          created_at: user.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-        setProfile(await resolvePortalProfile(fallbackProfile))
-        setLoading(false)
+      const session = await response.json().catch(() => null)
+      if (!session?.authenticated || !session?.profile) {
+        router.push('/login')
         return
       }
 
-      setProfile(await resolvePortalProfile(profileData as Profile))
-      setLoading(false)
+      if (!cancelled) {
+        setProfile(normalizeBusinessProfile(session.profile as Profile, []))
+        setLoading(false)
+      }
     }
 
-    loadProfile()
+    void loadProfile()
 
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event) => {
-        if (event === 'SIGNED_OUT') {
-          router.push('/login')
-        }
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [supabase, router])
+    return () => {
+      cancelled = true
+    }
+  }, [router])
 
   if (loading || !profile) {
     return (

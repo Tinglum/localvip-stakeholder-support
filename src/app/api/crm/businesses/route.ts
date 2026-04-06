@@ -1,7 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
 import { createBusinessLifecycle } from '@/lib/server/stakeholder-lifecycle'
+import {
+  buildCrmBusinessList,
+  fetchQaBusinessList,
+  qaBusinessRouteError,
+} from '@/lib/server/qa-dashboard-businesses'
 import type { Brand, Business, OnboardingStage } from '@/lib/types/database'
+
+export async function GET() {
+  const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
+  if ('error' in context) return context.error
+
+  const [{ data: localBusinessesData }, qaResult] = await Promise.all([
+    context.supabase
+      .from('businesses')
+      .select('*')
+      .order('updated_at', { ascending: false }),
+    fetchQaBusinessList()
+      .then(data => ({ data, error: null as string | null }))
+      .catch(error => ({ data: [] as Awaited<ReturnType<typeof fetchQaBusinessList>>, error: qaBusinessRouteError(error) })),
+  ])
+
+  const localBusinesses = (localBusinessesData || []) as Business[]
+  const items = buildCrmBusinessList(localBusinesses, qaResult.data)
+
+  return NextResponse.json({
+    items,
+    qaError: qaResult.error,
+  })
+}
 
 export async function POST(request: NextRequest) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])

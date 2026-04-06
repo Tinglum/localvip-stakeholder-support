@@ -2,12 +2,12 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import {
-  ArrowLeft, Phone, Mail, Globe, MapPin, Calendar, Clock,
+  ArrowLeft, Phone, Mail, Globe, MapPin, Clock,
   AlertTriangle, MessageSquare, CheckSquare, StickyNote, QrCode as QrCodeIcon,
   FileText, Send, Plus, ExternalLink, MoreHorizontal, User,
-  Check, X, ChevronDown, Loader2,
+  Check, ChevronDown, Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +22,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ProgressSteps } from '@/components/ui/progress-steps'
-import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { BusinessExecutionOverview } from '@/components/crm/business-execution-overview'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import {
@@ -35,9 +34,9 @@ import {
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
+import { useCrmBusiness } from '@/lib/hooks/crm-businesses'
 import {
   useCampaigns,
-  useRecord,
   useCauses,
   useCities,
   useGeneratedMaterials,
@@ -51,6 +50,7 @@ import {
   useStakeholderAssignments,
   useStakeholders,
 } from '@/lib/supabase/hooks'
+import type { QaBusinessDetail } from '@/lib/business-api'
 import type {
   Business,
   Campaign,
@@ -111,18 +111,27 @@ const STAGE_OPTIONS: OnboardingStage[] = [
   'lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live', 'paused', 'declined',
 ]
 
-const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
-
 // ─── Component ──────────────────────────────────────────────
 
 export default function BusinessDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const id = params.id as string
+  const qaBusinessId = React.useMemo(() => {
+    const value = searchParams.get('qaId')
+    return value && /^\d+$/.test(value) ? Number(value) : null
+  }, [searchParams])
   const { profile } = useAuth()
   const [activeTab, setActiveTab] = React.useState<'overview' | 'activity' | 'tasks' | 'notes' | 'qr' | 'materials'>('overview')
 
   // ── Data hooks ──
-  const { data: biz, loading: bizLoading } = useRecord<Business>('businesses', id)
+  const { data: businessResponse, loading: bizLoading, error: bizError } = useCrmBusiness(id, qaBusinessId)
+  const biz = businessResponse?.business || null
+  const localBusinessId = businessResponse?.localBusinessId || null
+  const qaBusiness = businessResponse?.qaBusiness || null
+  const readOnly = businessResponse?.readOnly || false
+  const detailQaError = businessResponse?.qaError || null
+  const localEntityId = localBusinessId || '__qa_unlinked__'
   const { data: profiles } = useProfiles()
   const { data: cities } = useCities()
   const { data: causes } = useCauses()
@@ -131,10 +140,10 @@ export default function BusinessDetailPage() {
   const { data: materials } = useMaterials()
   const { data: allStakeholders } = useStakeholders()
   const { data: allGeneratedMaterials } = useGeneratedMaterials()
-  const { data: assignments } = useStakeholderAssignments({ entity_id: id })
-  const { data: outreach, loading: outreachLoading, refetch: refetchOutreach } = useOutreach({ entity_id: id })
-  const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ entity_id: id })
-  const { data: notes, loading: notesLoading, refetch: refetchNotes } = useNotes({ entity_id: id })
+  const { data: assignments } = useStakeholderAssignments({ entity_id: localEntityId })
+  const { data: outreach, loading: outreachLoading, refetch: refetchOutreach } = useOutreach({ entity_id: localEntityId })
+  const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ entity_id: localEntityId })
+  const { data: notes, loading: notesLoading, refetch: refetchNotes } = useNotes({ entity_id: localEntityId })
 
   // ── Mutation hooks ──
   const { update: updateBusiness, loading: updateLoading } = useBusinessUpdate()
@@ -149,7 +158,7 @@ export default function BusinessDetailPage() {
   const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
   const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
   const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
-  const businessStakeholder = allStakeholders.find(s => s.business_id === id) || null
+  const businessStakeholder = allStakeholders.find(s => localBusinessId && s.business_id === localBusinessId) || null
   const owner = React.useMemo(() => {
     if (!biz) return null
     if (biz.owner_id) return profileMap.get(biz.owner_id) || null
@@ -168,9 +177,9 @@ export default function BusinessDetailPage() {
       .filter(item => item.material)
   }, [allGeneratedMaterials, businessStakeholder, materials])
   const helperAssignments = React.useMemo(() => assignments
-    .filter(assignment => assignment.entity_type === 'business' && assignment.entity_id === id && assignment.status === 'active')
+    .filter(assignment => assignment.entity_type === 'business' && assignment.entity_id === localEntityId && assignment.status === 'active')
     .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
-    .filter((item): item is { assignment: StakeholderAssignment; profile: Profile } => !!item.profile), [assignments, id, profileMap])
+    .filter((item): item is { assignment: StakeholderAssignment; profile: Profile } => !!item.profile), [assignments, localEntityId, profileMap])
 
   // ── Stage change handler ──
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
@@ -182,51 +191,56 @@ export default function BusinessDetailPage() {
   const [pendingCampaignId, setPendingCampaignId] = React.useState(biz?.campaign_id || '__none')
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
-    if (!biz) return
-    await updateBusiness(biz.id, { stage: newStage })
+    if (!biz || !localBusinessId || readOnly) return
+    await updateBusiness(localBusinessId, { stage: newStage })
     setStageDropdownOpen(false)
-    // Force a page reload to reflect change since useRecord doesn't have refetch
     window.location.reload()
-  }, [biz, updateBusiness])
+  }, [biz, localBusinessId, readOnly, updateBusiness])
 
   React.useEffect(() => {
     setPendingCauseId(biz?.linked_cause_id || '__none')
     setPendingCampaignId(biz?.campaign_id || '__none')
   }, [biz?.campaign_id, biz?.linked_cause_id])
 
+  React.useEffect(() => {
+    if (readOnly && activeTab !== 'overview') {
+      setActiveTab('overview')
+    }
+  }, [activeTab, readOnly])
+
   const handleNotDuplicate = async () => {
-    if (!biz) return
+    if (!biz || !localBusinessId || readOnly) return
     setReviewDupLoading(true)
-    await updateBusiness(biz.id, { duplicate_of: null })
+    await updateBusiness(localBusinessId, { duplicate_of: null })
     setReviewDupOpen(false)
     window.location.reload()
   }
 
   const handleArchiveAsDuplicate = async () => {
-    if (!biz) return
+    if (!biz || !localBusinessId || readOnly) return
     setReviewDupLoading(true)
-    await updateBusiness(biz.id, { status: 'archived' })
+    await updateBusiness(localBusinessId, { status: 'archived' })
     setReviewDupOpen(false)
     window.location.reload()
   }
 
   const handleCauseLinkSave = React.useCallback(async () => {
-    if (!biz) return
-    await updateBusiness(biz.id, {
+    if (!biz || !localBusinessId || readOnly) return
+    await updateBusiness(localBusinessId, {
       linked_cause_id: pendingCauseId === '__none' ? null : pendingCauseId,
     })
     setLinkCauseOpen(false)
     window.location.reload()
-  }, [biz, pendingCauseId, updateBusiness])
+  }, [biz, localBusinessId, pendingCauseId, readOnly, updateBusiness])
 
   const handleCampaignLinkSave = React.useCallback(async () => {
-    if (!biz) return
-    await updateBusiness(biz.id, {
+    if (!biz || !localBusinessId || readOnly) return
+    await updateBusiness(localBusinessId, {
       campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId,
     })
     setLinkCampaignOpen(false)
     window.location.reload()
-  }, [biz, pendingCampaignId, updateBusiness])
+  }, [biz, localBusinessId, pendingCampaignId, readOnly, updateBusiness])
 
   // ── Loading state ──
   if (bizLoading) {
@@ -243,7 +257,7 @@ export default function BusinessDetailPage() {
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <AlertTriangle className="mb-3 h-10 w-10 text-warning-500" />
         <p className="text-sm font-medium text-surface-700">Business not found</p>
-        <p className="mt-1 text-xs text-surface-400">The business record could not be loaded.</p>
+        <p className="mt-1 text-xs text-surface-400">{bizError || detailQaError || 'The business record could not be loaded.'}</p>
         <Link href="/crm/businesses" className="mt-4">
           <Button variant="outline" size="sm"><ArrowLeft className="h-3.5 w-3.5" /> Back to Businesses</Button>
         </Link>
@@ -261,18 +275,54 @@ export default function BusinessDetailPage() {
     { label: 'Live', completed: stageOrder >= 5, current: biz.stage === 'live' },
   ]
 
-  const tabs = [
-    { key: 'overview' as const, label: 'Overview' },
-    { key: 'activity' as const, label: 'Activity' },
-    { key: 'tasks' as const, label: 'Tasks' },
-    { key: 'notes' as const, label: 'Notes' },
-    { key: 'qr' as const, label: 'QR Codes' },
-    { key: 'materials' as const, label: 'Materials' },
-  ]
-  const qrGeneratorHref = `/qr/generator?businessId=${biz.id}&returnTo=${encodeURIComponent(`/crm/businesses/${biz.id}`)}`
+  const tabs = readOnly
+    ? [{ key: 'overview' as const, label: 'Overview' }]
+    : [
+        { key: 'overview' as const, label: 'Overview' },
+        { key: 'activity' as const, label: 'Activity' },
+        { key: 'tasks' as const, label: 'Tasks' },
+        { key: 'notes' as const, label: 'Notes' },
+        { key: 'qr' as const, label: 'QR Codes' },
+        { key: 'materials' as const, label: 'Materials' },
+      ]
+  const qrGeneratorHref = localBusinessId
+    ? `/qr/generator?businessId=${localBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
+    : '/qr/generator'
 
   return (
     <div className="space-y-6">
+      {bizError && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+          <div>
+            <p className="font-medium">Business detail warning</p>
+            <p className="mt-1 text-xs text-warning-700">{bizError}</p>
+          </div>
+        </div>
+      )}
+
+      {detailQaError && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+          <div>
+            <p className="font-medium">QA business sync warning</p>
+            <p className="mt-1 text-xs text-warning-700">{detailQaError}</p>
+          </div>
+        </div>
+      )}
+
+      {readOnly && (
+        <div className="flex items-start gap-3 rounded-lg border border-info-200 bg-info-50 px-4 py-3 text-sm text-info-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-info-600" />
+          <div>
+            <p className="font-medium">QA record loaded in read-only mode</p>
+            <p className="mt-1 text-xs text-info-700">
+              This business exists in QA, but it does not have a linked local dashboard record yet. Tasks, notes, and launch actions stay disabled until we import or link it.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Duplicate Warning Banner */}
       {biz.duplicate_of && (
         <div className="flex items-center gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
@@ -297,7 +347,9 @@ export default function BusinessDetailPage() {
       {/* Page Header */}
       <PageHeader
         title={biz.name}
-        description="Owner, city, campaign, linked cause, materials, QR, tasks, and outreach all in one place."
+        description={readOnly
+          ? 'Viewing the live QA business payload without a local dashboard link yet.'
+          : 'Owner, city, campaign, linked cause, materials, QR, tasks, and outreach all in one place.'}
         breadcrumb={[
           { label: 'CRM', href: '/crm/businesses' },
           { label: 'Businesses', href: '/crm/businesses' },
@@ -310,10 +362,10 @@ export default function BusinessDetailPage() {
               <button
                 onClick={() => setStageDropdownOpen(!stageDropdownOpen)}
                 className="flex items-center gap-1.5"
-                disabled={updateLoading}
+                disabled={updateLoading || readOnly}
               >
                 <Badge variant={STAGE_VARIANT[biz.stage]} dot className="text-sm">
-                  {updateLoading ? 'Updating...' : ONBOARDING_STAGES[biz.stage].label}
+                  {readOnly ? 'Read only' : updateLoading ? 'Updating...' : ONBOARDING_STAGES[biz.stage].label}
                 </Badge>
                 <ChevronDown className="h-3.5 w-3.5 text-surface-400" />
               </button>
@@ -337,11 +389,13 @@ export default function BusinessDetailPage() {
                 </>
               )}
             </div>
-            <span className="text-xs text-surface-400">owned by</span>
+            <span className="text-xs text-surface-400">{readOnly ? 'QA owner' : 'owned by'}</span>
             {owner ? (
               <Link href={`/admin/users/${owner.id}`} className="text-sm font-medium text-surface-700 transition-colors hover:text-brand-700">
                 {owner.full_name}
               </Link>
+            ) : qaBusiness?.ownerName ? (
+              <span className="text-sm font-medium text-surface-700">{qaBusiness.ownerName}</span>
             ) : (
               <span className="text-sm font-medium text-surface-700">Unassigned</span>
             )}
@@ -351,25 +405,33 @@ export default function BusinessDetailPage() {
 
       {/* Quick Action Buttons */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => setActiveTab('activity')}>
-          <Send className="h-3.5 w-3.5" /> Log Activity
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setActiveTab('tasks')}>
-          <CheckSquare className="h-3.5 w-3.5" /> Add Task
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setActiveTab('notes')}>
-          <StickyNote className="h-3.5 w-3.5" /> Add Note
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}>
-          <QrCodeIcon className="h-3.5 w-3.5" /> Generate QR Code
-        </Button>
-        <div className="ml-auto">
-          <LogInAsButton
-            userId={owner?.id || businessStakeholder?.profile_id || businessStakeholder?.owner_user_id || null}
-            userName={owner?.full_name || biz.name}
-            stakeholderType="Business"
-          />
-        </div>
+        {!readOnly ? (
+          <>
+            <Button size="sm" onClick={() => setActiveTab('activity')}>
+              <Send className="h-3.5 w-3.5" /> Log Activity
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setActiveTab('tasks')}>
+              <CheckSquare className="h-3.5 w-3.5" /> Add Task
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setActiveTab('notes')}>
+              <StickyNote className="h-3.5 w-3.5" /> Add Note
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}>
+              <QrCodeIcon className="h-3.5 w-3.5" /> Generate QR Code
+            </Button>
+            <div className="ml-auto">
+              <LogInAsButton
+                userId={owner?.id || businessStakeholder?.profile_id || businessStakeholder?.owner_user_id || null}
+                userName={owner?.full_name || biz.name}
+                stakeholderType="Business"
+              />
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-surface-500">
+            Dashboard actions will unlock after this QA record is linked to a local business.
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-4">
@@ -380,6 +442,11 @@ export default function BusinessDetailPage() {
               <Link href={`/admin/users/${owner.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
                 {owner.full_name}
               </Link>
+            ) : qaBusiness?.ownerName ? (
+              <div>
+                <p className="text-sm font-semibold text-surface-900">{qaBusiness.ownerName}</p>
+                <p className="text-xs text-surface-400">{qaBusiness.ownerEmail || 'QA owner email not provided'}</p>
+              </div>
             ) : (
               <p className="text-sm text-surface-500">No owner assigned yet.</p>
             )}
@@ -393,6 +460,10 @@ export default function BusinessDetailPage() {
               <Link href={`/crm/cities/${city.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
                 {city.name}, {city.state}
               </Link>
+            ) : qaBusiness?.city || qaBusiness?.state ? (
+              <p className="text-sm font-semibold text-surface-900">
+                {[qaBusiness?.city, qaBusiness?.state].filter(Boolean).join(', ')}
+              </p>
             ) : (
               <p className="text-sm text-surface-500">No city linked yet.</p>
             )}
@@ -402,13 +473,14 @@ export default function BusinessDetailPage() {
         <Card className="transition-colors hover:border-brand-200">
           <button
             type="button"
-            onClick={() => setLinkCauseOpen(true)}
+            onClick={() => !readOnly && setLinkCauseOpen(true)}
             className="block w-full text-left"
+            disabled={readOnly}
           >
             <CardContent className="space-y-2 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Linked Cause</p>
-                <span className="text-xs font-medium text-brand-700">{linkedCause ? 'Change' : 'Link now'}</span>
+                <span className="text-xs font-medium text-brand-700">{readOnly ? 'Read only' : linkedCause ? 'Change' : 'Link now'}</span>
               </div>
               {linkedCause ? (
                 <span className="inline-block text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
@@ -424,13 +496,14 @@ export default function BusinessDetailPage() {
         <Card className="transition-colors hover:border-brand-200">
           <button
             type="button"
-            onClick={() => setLinkCampaignOpen(true)}
+            onClick={() => !readOnly && setLinkCampaignOpen(true)}
             className="block w-full text-left"
+            disabled={readOnly}
           >
             <CardContent className="space-y-2 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
-                <span className="text-xs font-medium text-brand-700">{campaign ? 'Change' : 'Link now'}</span>
+                <span className="text-xs font-medium text-brand-700">{readOnly ? 'Read only' : campaign ? 'Change' : 'Link now'}</span>
               </div>
               {campaign ? (
                 <span className="inline-block text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
@@ -444,6 +517,10 @@ export default function BusinessDetailPage() {
           </button>
         </Card>
       </div>
+
+      {qaBusiness && (
+        <QaBusinessSnapshot qaBusiness={qaBusiness} />
+      )}
 
       {/* Tabs */}
       <div className="border-b border-surface-200">
@@ -466,16 +543,20 @@ export default function BusinessDetailPage() {
 
       {/* Tab Content */}
       {activeTab === 'overview' && (
-        <BusinessExecutionOverview
-          biz={biz}
-          city={city}
-          owner={owner}
-          linkedCause={linkedCause}
-          campaign={campaign}
-          helperAssignments={helperAssignments}
-          updateBusiness={updateBusiness}
-          updateLoading={updateLoading}
-        />
+        readOnly ? (
+          <ReadOnlyBusinessOverview biz={biz} qaBusiness={qaBusiness} />
+        ) : (
+          <BusinessExecutionOverview
+            biz={biz}
+            city={city}
+            owner={owner}
+            linkedCause={linkedCause}
+            campaign={campaign}
+            helperAssignments={helperAssignments}
+            updateBusiness={updateBusiness}
+            updateLoading={updateLoading}
+          />
+        )
       )}
 
       {activeTab === 'activity' && (
@@ -748,6 +829,96 @@ export default function BusinessDetailPage() {
 }
 
 // ─── Overview Tab ───────────────────────────────────────────
+
+function QaBusinessSnapshot({ qaBusiness }: { qaBusiness: QaBusinessDetail }) {
+  const facts = [
+    { label: 'QA business ID', value: String(qaBusiness.id) },
+    { label: 'Active', value: qaBusiness.active ? 'Yes' : 'No' },
+    { label: 'Headline', value: qaBusiness.headline },
+    { label: 'Owner name', value: qaBusiness.ownerName },
+    { label: 'Owner email', value: qaBusiness.ownerEmail },
+    { label: 'Owner phone', value: qaBusiness.ownerPhone },
+    { label: 'Address 1', value: qaBusiness.address1 },
+    { label: 'Address 2', value: qaBusiness.address2 },
+    { label: 'Full address', value: qaBusiness.fullAddress },
+    { label: 'City', value: qaBusiness.city },
+    { label: 'State', value: qaBusiness.state },
+    { label: 'Zip code', value: qaBusiness.zipCode },
+    { label: 'Country', value: qaBusiness.country },
+    { label: 'Marketing', value: qaBusiness.marketing !== null ? String(qaBusiness.marketing) : null },
+    { label: 'Transaction fee', value: qaBusiness.txFee !== null ? String(qaBusiness.txFee) : null },
+    { label: 'Sales tax', value: qaBusiness.salesTax !== null ? String(qaBusiness.salesTax) : null },
+    { label: 'Tax ID', value: qaBusiness.taxId },
+    { label: 'Time zone', value: qaBusiness.timeZone },
+    { label: 'Stripe onboarding', value: qaBusiness.hasStripeOnboarding ? 'Complete' : 'Not complete' },
+    { label: 'Image URL', value: qaBusiness.imageUrl },
+    { label: 'Created', value: formatDateTime(qaBusiness.createdDate) },
+  ].filter(item => item.value)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">QA Business Payload</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {qaBusiness.description && (
+          <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Description</p>
+            <p className="mt-2 text-sm text-surface-700">{qaBusiness.description}</p>
+          </div>
+        )}
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {facts.map(item => (
+            <div key={item.label} className="rounded-lg border border-surface-200 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{item.label}</p>
+              <p className="mt-2 break-words text-sm text-surface-900">{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ReadOnlyBusinessOverview({
+  biz,
+  qaBusiness,
+}: {
+  biz: Business
+  qaBusiness: QaBusinessDetail | null
+}) {
+  return (
+    <Card>
+      <CardContent className="space-y-4 py-5">
+        <div>
+          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Read-only summary</p>
+          <p className="mt-2 text-sm text-surface-700">
+            This page is rendering the live QA business payload. Dashboard actions remain disabled until the record is linked to a local business row.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Business name</p>
+            <p className="mt-2 text-sm font-semibold text-surface-900">{biz.name}</p>
+          </div>
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Primary contact</p>
+            <p className="mt-2 text-sm text-surface-900">{qaBusiness?.ownerName || 'No owner name'}</p>
+            <p className="mt-1 text-xs text-surface-500">{biz.email || qaBusiness?.ownerEmail || 'No email available'}</p>
+          </div>
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Phone</p>
+            <p className="mt-2 text-sm text-surface-900">{biz.phone || qaBusiness?.ownerPhone || 'No phone available'}</p>
+          </div>
+          <div className="rounded-lg border border-surface-200 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Address</p>
+            <p className="mt-2 text-sm text-surface-900">{biz.address || qaBusiness?.fullAddress || 'No address available'}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 function OverviewTab({
   biz,
