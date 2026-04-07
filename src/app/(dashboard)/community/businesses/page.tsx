@@ -4,7 +4,9 @@ import * as React from 'react'
 import Link from 'next/link'
 import {
   ArrowRight,
+  CheckCircle2,
   Megaphone,
+  Rocket,
   Store,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
@@ -15,7 +17,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
 import { useAuth } from '@/lib/auth/context'
 import { useBusinesses, useCauses } from '@/lib/supabase/hooks'
-import { ONBOARDING_STAGES } from '@/lib/constants'
+import { COMMUNITY_BUSINESS_STATUS } from '@/lib/constants'
 
 export default function CommunityBusinessesPage() {
   const { profile } = useAuth()
@@ -39,13 +41,13 @@ export default function CommunityBusinessesPage() {
   }
 
   const liveCount = supportingBusinesses.filter(b => b.stage === 'live').length
-  const inProgressCount = supportingBusinesses.filter(b => ['contacted', 'interested', 'in_progress'].includes(b.stage)).length
-  const onboardedCount = supportingBusinesses.filter(b => b.stage === 'onboarded').length
+  const settingUpCount = supportingBusinesses.filter(b => ['contacted', 'interested', 'in_progress', 'onboarded'].includes(b.stage)).length
+  const newCount = supportingBusinesses.filter(b => b.stage === 'lead').length
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Business Pipeline"
+        title="Supporting Businesses"
         description={isSchool ? 'Businesses supporting your school fundraising' : 'Businesses supporting your cause'}
         actions={
           <Button asChild size="sm">
@@ -58,9 +60,9 @@ export default function CommunityBusinessesPage() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Total" value={supportingBusinesses.length} icon={<Store className="h-5 w-5" />} />
-        <StatCard label="In Progress" value={inProgressCount} icon={<Store className="h-5 w-5" />} />
-        <StatCard label="Onboarded" value={onboardedCount} icon={<Store className="h-5 w-5" />} />
-        <StatCard label="Live" value={liveCount} icon={<Store className="h-5 w-5" />} />
+        <StatCard label="New" value={newCount} icon={<Rocket className="h-5 w-5" />} />
+        <StatCard label="Setting Up" value={settingUpCount} icon={<ArrowRight className="h-5 w-5" />} />
+        <StatCard label="Active" value={liveCount} icon={<CheckCircle2 className="h-5 w-5" />} />
       </div>
 
       {supportingBusinesses.length === 0 ? (
@@ -86,37 +88,40 @@ export default function CommunityBusinessesPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {supportingBusinesses.map(biz => (
-            <Card key={biz.id} className="transition-shadow hover:shadow-card-hover">
-              <CardContent className="p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-surface-900">{biz.name}</p>
-                      <Badge variant={biz.stage === 'live' ? 'success' : biz.stage === 'onboarded' ? 'info' : biz.stage === 'in_progress' ? 'warning' : 'default'}>
-                        {ONBOARDING_STAGES[biz.stage]?.label || biz.stage}
-                      </Badge>
+          {supportingBusinesses.map(biz => {
+            const status = COMMUNITY_BUSINESS_STATUS[biz.stage] || COMMUNITY_BUSINESS_STATUS.lead
+            return (
+              <Card key={biz.id} className="transition-shadow hover:shadow-card-hover">
+                <CardContent className="p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-surface-900">{biz.name}</p>
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </div>
+                      <p className="text-xs text-surface-500">
+                        {[biz.category, biz.address].filter(Boolean).join(' \u2022 ') || 'Local business'}
+                      </p>
+                      {(biz.email || biz.phone) && (
+                        <p className="text-xs text-surface-400">{[biz.email, biz.phone].filter(Boolean).join(' / ')}</p>
+                      )}
                     </div>
-                    <p className="text-xs text-surface-500">
-                      {[biz.category, biz.address].filter(Boolean).join(' \u2022 ') || 'Local business'}
-                    </p>
-                    {(biz.email || biz.phone) && (
-                      <p className="text-xs text-surface-400">{[biz.email, biz.phone].filter(Boolean).join(' / ')}</p>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {biz.stage === 'live' ? (
+                        <span className="flex items-center gap-1 text-xs font-medium text-green-600">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Live & earning
+                        </span>
+                      ) : biz.stage === 'onboarded' ? (
+                        <span className="text-xs text-surface-500">Almost there</span>
+                      ) : (
+                        <span className="text-xs text-surface-400">In progress</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {biz.stage === 'live' ? (
-                      <Badge variant="success" className="text-xs">Active &amp; Live</Badge>
-                    ) : biz.stage === 'onboarded' ? (
-                      <span className="text-xs text-surface-500">Ready for launch</span>
-                    ) : (
-                      <span className="text-xs text-surface-400">Needs movement</span>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

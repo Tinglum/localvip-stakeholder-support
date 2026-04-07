@@ -167,6 +167,30 @@ export const ONBOARDING_STAGES: Record<OnboardingStage, { label: string; color: 
   declined: { label: 'Declined', color: 'danger', order: 7 },
 }
 
+/** Community-friendly labels for cause/school leaders viewing business status */
+export const COMMUNITY_BUSINESS_STATUS: Record<OnboardingStage, { label: string; variant: 'default' | 'info' | 'warning' | 'success' | 'danger' }> = {
+  lead: { label: 'New', variant: 'default' },
+  contacted: { label: 'Reached Out', variant: 'info' },
+  interested: { label: 'Interested', variant: 'info' },
+  in_progress: { label: 'Setting Up', variant: 'warning' },
+  onboarded: { label: 'Ready', variant: 'success' },
+  live: { label: 'Active', variant: 'success' },
+  paused: { label: 'Paused', variant: 'warning' },
+  declined: { label: 'Not Participating', variant: 'danger' },
+}
+
+/** Community-friendly labels for the cause/school's own status */
+export const COMMUNITY_CAUSE_STATUS: Record<OnboardingStage, { label: string; variant: 'default' | 'info' | 'warning' | 'success' | 'danger' }> = {
+  lead: { label: 'Getting Started', variant: 'default' },
+  contacted: { label: 'Getting Started', variant: 'info' },
+  interested: { label: 'Getting Started', variant: 'info' },
+  in_progress: { label: 'Setting Up', variant: 'warning' },
+  onboarded: { label: 'Almost Ready', variant: 'success' },
+  live: { label: 'Live & Active', variant: 'success' },
+  paused: { label: 'Paused', variant: 'warning' },
+  declined: { label: 'Inactive', variant: 'danger' },
+}
+
 export const STATUS_COLORS: Record<EntityStatus, string> = {
   active: 'chip-success',
   inactive: 'chip-neutral',

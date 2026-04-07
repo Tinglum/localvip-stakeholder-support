@@ -59,7 +59,7 @@ import {
   getTabForReadinessCheck,
 } from '@/lib/cause-execution'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS, getMaterialLibraryFolderMeta } from '@/lib/material-engine'
-import { ONBOARDING_STAGES } from '@/lib/constants'
+import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
 
@@ -369,8 +369,8 @@ export function CommunityDashboardPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-surface-900">{scopedCause.name}</h1>
-              <Badge variant={scopedCause.stage === 'live' ? 'success' : 'info'}>
-                {ONBOARDING_STAGES[scopedCause.stage]?.label || scopedCause.stage}
+              <Badge variant={COMMUNITY_CAUSE_STATUS[scopedCause.stage]?.variant || 'info'}>
+                {COMMUNITY_CAUSE_STATUS[scopedCause.stage]?.label || 'Getting Started'}
               </Badge>
               <Badge variant="outline">{entityLabel}</Badge>
             </div>
@@ -457,7 +457,7 @@ export function CommunityDashboardPage() {
               <CardContent className="space-y-2">
                 {displayReadiness.checks.map((check, idx) => {
                   const routeMap: Record<string, string> = {
-                    mission: '/community',
+                    mission: '/dashboard',
                     codes: '/community/materials',
                     materials: '/community/materials',
                     businesses: '/community/businesses',
@@ -465,7 +465,7 @@ export function CommunityDashboardPage() {
                     tasks: '/community/tasks',
                   }
                   const tab = getTabForReadinessCheck(check.label)
-                  const href = routeMap[tab] || '/community'
+                  const href = routeMap[tab] || '/dashboard'
                   return (
                     <Link
                       key={idx}
@@ -501,14 +501,14 @@ export function CommunityDashboardPage() {
                 <ul className="space-y-1.5">
                   {nextActions.map((action, idx) => {
                     const routeMap: Record<string, string> = {
-                      mission: '/community',
+                      mission: '/dashboard',
                       codes: '/community/qr',
                       materials: '/community/materials',
                       businesses: '/community/businesses',
                       activity: '/community/activity',
                       tasks: '/community/tasks',
                     }
-                    const href = routeMap[action.tab] || '/community'
+                    const href = routeMap[action.tab] || '/dashboard'
                     return (
                       <li key={idx}>
                         <Link href={href} className="flex items-start gap-2 text-sm text-surface-600 hover:text-brand-700 transition-colors group">
@@ -553,8 +553,8 @@ export function CommunityDashboardPage() {
                         <p className="text-sm font-semibold text-surface-900">{biz.name}</p>
                         <p className="text-xs text-surface-500">{biz.category || 'Local business'}</p>
                       </div>
-                      <Badge variant={biz.stage === 'live' ? 'success' : biz.stage === 'onboarded' ? 'info' : 'default'}>
-                        {ONBOARDING_STAGES[biz.stage]?.label || biz.stage}
+                      <Badge variant={COMMUNITY_BUSINESS_STATUS[biz.stage]?.variant || 'default'}>
+                        {COMMUNITY_BUSINESS_STATUS[biz.stage]?.label || 'New'}
                       </Badge>
                     </div>
                   ))}
@@ -570,22 +570,26 @@ export function CommunityDashboardPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-surface-900">Business Pipeline</h2>
+              <h2 className="text-lg font-semibold text-surface-900">Supporting Businesses</h2>
               <p className="text-sm text-surface-500">
                 {isSchool ? 'Businesses supporting your school' : 'Businesses supporting your cause'}
               </p>
             </div>
           </div>
 
-          {/* Pipeline stats */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {(['lead', 'in_progress', 'onboarded', 'live'] as const).map(stage => {
-              const count = supportingBusinesses.filter(b => b.stage === stage).length
+          {/* Status summary */}
+          <div className="grid grid-cols-3 gap-3">
+            {([
+              { label: 'New', filter: (s: string) => s === 'lead' },
+              { label: 'Setting Up', filter: (s: string) => ['contacted', 'interested', 'in_progress', 'onboarded'].includes(s) },
+              { label: 'Active', filter: (s: string) => s === 'live' },
+            ] as const).map(group => {
+              const count = supportingBusinesses.filter(b => group.filter(b.stage)).length
               return (
-                <Card key={stage}>
+                <Card key={group.label}>
                   <CardContent className="p-4 text-center">
                     <p className="text-2xl font-bold text-surface-900">{count}</p>
-                    <p className="text-xs text-surface-500">{ONBOARDING_STAGES[stage]?.label || stage}</p>
+                    <p className="text-xs text-surface-500">{group.label}</p>
                   </CardContent>
                 </Card>
               )
@@ -616,36 +620,38 @@ export function CommunityDashboardPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {supportingBusinesses.map(biz => (
-                <Card key={biz.id} className="transition-shadow hover:shadow-card-hover">
-                  <CardContent className="p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-surface-900">{biz.name}</p>
-                          <Badge variant={biz.stage === 'live' ? 'success' : biz.stage === 'onboarded' ? 'info' : biz.stage === 'in_progress' ? 'warning' : 'default'}>
-                            {ONBOARDING_STAGES[biz.stage]?.label || biz.stage}
-                          </Badge>
+              {supportingBusinesses.map(biz => {
+                const status = COMMUNITY_BUSINESS_STATUS[biz.stage] || COMMUNITY_BUSINESS_STATUS.lead
+                return (
+                  <Card key={biz.id} className="transition-shadow hover:shadow-card-hover">
+                    <CardContent className="p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-surface-900">{biz.name}</p>
+                            <Badge variant={status.variant}>{status.label}</Badge>
+                          </div>
+                          <p className="text-xs text-surface-500">
+                            {[biz.category, biz.address].filter(Boolean).join(' \u2022 ') || 'Local business'}
+                          </p>
+                          {biz.email || biz.phone ? (
+                            <p className="text-xs text-surface-400">{[biz.email, biz.phone].filter(Boolean).join(' / ')}</p>
+                          ) : null}
                         </div>
-                        <p className="text-xs text-surface-500">
-                          {[biz.category, biz.address].filter(Boolean).join(' \u2022 ') || 'Local business'}
-                        </p>
-                        {biz.email || biz.phone ? (
-                          <p className="text-xs text-surface-400">{[biz.email, biz.phone].filter(Boolean).join(' / ')}</p>
-                        ) : null}
+                        <div className="flex items-center gap-2">
+                          {biz.stage === 'live' ? (
+                            <span className="text-xs font-medium text-green-600">Live & earning</span>
+                          ) : biz.stage === 'onboarded' ? (
+                            <span className="text-xs text-surface-500">Almost there</span>
+                          ) : (
+                            <span className="text-xs text-surface-400">In progress</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {biz.stage === 'live' && (
-                          <Badge variant="success" className="text-xs">Active</Badge>
-                        )}
-                        {biz.stage !== 'live' && biz.stage !== 'onboarded' && (
-                          <span className="text-xs text-surface-400">Needs movement</span>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           )}
         </div>
