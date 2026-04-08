@@ -138,15 +138,23 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
   }
 
   const handleSignOut = async () => {
+    let redirectTo: string | null = null
+
     try {
-      await fetch('/api/auth/logout', {
+      const response = await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       })
+      const payload = await response.json().catch(() => null)
+      redirectTo = payload && typeof payload.redirectTo === 'string' ? payload.redirectTo : null
     } catch {
       // Ignore QA logout errors and continue clearing demo auth.
     }
     await supabase.auth.signOut()
+    if (redirectTo) {
+      window.location.assign(redirectTo)
+      return
+    }
     router.push('/login')
     router.refresh()
   }

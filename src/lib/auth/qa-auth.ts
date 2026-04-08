@@ -25,10 +25,29 @@ export interface QaSession {
   claims: QaAuthClaims
 }
 
+function trimToNull(value: string | undefined | null) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, '')
+}
+
+function getConfiguredAppOrigin(fallbackOrigin?: string) {
+  const configured = trimToNull(process.env.NEXT_PUBLIC_APP_URL)
+  if (configured) return trimTrailingSlash(configured)
+  if (fallbackOrigin) return trimTrailingSlash(fallbackOrigin)
+  return null
+}
+
 export const QA_AUTH_CONFIG = {
-  baseUrl: process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com',
-  clientId: process.env.QA_AUTH_CLIENT_ID || 'swagger_ui',
-  scopes: process.env.QA_AUTH_SCOPES || 'openid profile email roles LVIPDashboardApiV1',
+  baseUrl: trimTrailingSlash(trimToNull(process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL) || 'https://qa.localvip.com'),
+  clientId: trimToNull(process.env.QA_AUTH_CLIENT_ID) || 'lvip_dashboard',
+  scopes: trimToNull(process.env.QA_AUTH_SCOPES) || 'openid profile email name LVIPDashboardApiV1 roles offline_access',
+  redirectUri: trimToNull(process.env.QA_AUTH_REDIRECT_URI),
+  postLogoutRedirectUri: trimToNull(process.env.QA_AUTH_POST_LOGOUT_REDIRECT_URI),
 }
 
 export const QA_COOKIE_NAMES = {
@@ -201,6 +220,40 @@ export function createOauthState() {
   return randomBase64Url(32)
 }
 
+export function getQaRedirectUri(origin?: string) {
+  if (QA_AUTH_CONFIG.redirectUri) return QA_AUTH_CONFIG.redirectUri
+
+  const appOrigin = getConfiguredAppOrigin(origin)
+  if (!appOrigin) {
+    throw new Error('No dashboard origin is available for QA redirect URI generation.')
+  }
+
+  return `${appOrigin}/login`
+}
+
+export function getQaPostLogoutRedirectUri(origin?: string) {
+  if (QA_AUTH_CONFIG.postLogoutRedirectUri) return QA_AUTH_CONFIG.postLogoutRedirectUri
+
+  const appOrigin = getConfiguredAppOrigin(origin)
+  if (!appOrigin) {
+    throw new Error('No dashboard origin is available for QA logout redirect URI generation.')
+  }
+
+  return `${appOrigin}/login`
+}
+
+export function getQaLogoutUrl(origin?: string, idToken?: string | null) {
+  const postLogoutRedirectUri = getQaPostLogoutRedirectUri(origin)
+  const url = new URL('/connect/endsession', QA_AUTH_CONFIG.baseUrl)
+  url.searchParams.set('post_logout_redirect_uri', postLogoutRedirectUri)
+
+  if (idToken) {
+    url.searchParams.set('id_token_hint', idToken)
+  }
+
+  return url.toString()
+}
+
 async function sha256Base64Url(value: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
   return bytesToBase64Url(new Uint8Array(digest))
@@ -210,7 +263,7 @@ export async function getQaAuthorizationUrl(origin: string, options?: { returnTo
   const state = options?.state || createOauthState()
   const verifier = options?.verifier || createPkcePair().verifier
   const challenge = options?.challenge || await sha256Base64Url(verifier)
-  const redirectUri = `${origin}/api/auth/qa/callback`
+  const redirectUri = getQaRedirectUri(origin)
   const url = new URL('/connect/authorize', QA_AUTH_CONFIG.baseUrl)
   url.searchParams.set('client_id', QA_AUTH_CONFIG.clientId)
   url.searchParams.set('response_type', 'code')

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   clearQaSessionCookies,
   exchangeCodeForSession,
+  getQaRedirectUri,
   QA_COOKIE_NAMES,
   sanitizeReturnTo,
   setQaSessionCookies,
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
     const session = await exchangeCodeForSession({
       code,
       verifier,
-      redirectUri: `${request.nextUrl.origin}/api/auth/qa/callback`,
+      redirectUri: getQaRedirectUri(request.nextUrl.origin),
     })
 
     setQaSessionCookies(cleanResponse, session)
