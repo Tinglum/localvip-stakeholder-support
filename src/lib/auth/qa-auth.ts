@@ -228,7 +228,7 @@ export function getQaRedirectUri(origin?: string) {
     throw new Error('No dashboard origin is available for QA redirect URI generation.')
   }
 
-  return `${appOrigin}/login`
+  return `${appOrigin}/api/auth/qa/callback`
 }
 
 export function getQaPostLogoutRedirectUri(origin?: string) {
