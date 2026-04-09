@@ -62,7 +62,8 @@ export async function POST(
       })
 
     if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 500 })
+      console.error('[business-media] storage upload error', uploadError)
+      return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 500 })
     }
 
     const { data: urlData } = supabase.storage.from('materials').getPublicUrl(filePath)
@@ -76,7 +77,18 @@ export async function POST(
       .update(patch)
       .eq('id', params.id)
 
-    if (updateError) throw updateError
+    if (updateError) {
+      console.error('[business-media] businesses update error', updateError)
+      return NextResponse.json(
+        {
+          error: `Business update failed: ${updateError.message || 'unknown error'}`,
+          details: updateError.details || null,
+          hint: updateError.hint || null,
+          code: updateError.code || null,
+        },
+        { status: 500 },
+      )
+    }
 
     // Auto-regenerate materials on branding change
     const { data: stakeholderData } = await supabase
@@ -92,8 +104,8 @@ export async function POST(
       try {
         await regenerateAllForStakeholder(supabase, stakeholder.id, profile.id)
         regenerated = true
-      } catch {
-        // Non-fatal
+      } catch (regenError) {
+        console.error('[business-media] regeneration error (non-fatal)', regenError)
       }
     }
 
@@ -104,7 +116,13 @@ export async function POST(
       regenerated,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Upload failed.'
+    console.error('[business-media] unhandled error', error)
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error !== null && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : 'Upload failed.'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
