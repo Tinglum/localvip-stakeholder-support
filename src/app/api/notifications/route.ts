@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient, createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import type { Notification } from '@/lib/types/database'
 
 export async function GET() {
-  const authSupabase = createServerSupabaseClient()
-  const { data: authData } = await authSupabase.auth.getUser()
-
-  if (!authData.user) {
+  const session = await getAuthenticatedSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
 
@@ -15,7 +14,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
-    .eq('user_id', authData.user.id)
+    .eq('user_id', session.userId)
     .order('created_at', { ascending: false })
     .limit(50)
 
@@ -27,10 +26,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
-  const authSupabase = createServerSupabaseClient()
-  const { data: authData } = await authSupabase.auth.getUser()
-
-  if (!authData.user) {
+  const session = await getAuthenticatedSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
 
@@ -46,7 +43,7 @@ export async function PATCH(request: NextRequest) {
   if (body.markAllRead) {
     const { error } = await (supabase.from('notifications') as any)
       .update({ is_read: true })
-      .eq('user_id', authData.user.id)
+      .eq('user_id', session.userId)
       .eq('is_read', false)
 
     if (error) {
@@ -60,7 +57,7 @@ export async function PATCH(request: NextRequest) {
     const { error } = await (supabase.from('notifications') as any)
       .update({ is_read: true })
       .eq('id', body.id)
-      .eq('user_id', authData.user.id)
+      .eq('user_id', session.userId)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

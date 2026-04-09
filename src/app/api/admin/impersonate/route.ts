@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createServerSupabaseClient, createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Profile } from '@/lib/types/database'
 
@@ -9,24 +10,17 @@ const schema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-  const authSupabase = createServerSupabaseClient()
-  const { data: authData } = await authSupabase.auth.getUser()
-
-  if (!authData.user) {
+  const session = await getAuthenticatedSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
 
-  const supabase = createServiceClient()
-
-  const { data: actingProfile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', authData.user.id)
-    .single<Profile>()
-
-  if (!actingProfile || getStakeholderShell(actingProfile) !== 'admin') {
+  const actingProfile = session.profile
+  if (getStakeholderShell(actingProfile) !== 'admin') {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
   }
+
+  const supabase = createServiceClient()
 
   let body: unknown
   try {

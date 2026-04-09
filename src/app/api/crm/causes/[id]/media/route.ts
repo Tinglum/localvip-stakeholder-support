@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient, createServiceClient } from '@/lib/supabase/server'
-import { getProfileForUser } from '@/lib/server/business-capture'
+import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { regenerateAllForStakeholder } from '@/lib/server/material-engine'
 import type { Cause, Stakeholder } from '@/lib/types/database'
@@ -9,19 +9,13 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const authSupabase = createServerSupabaseClient()
-  const { data: authData } = await authSupabase.auth.getUser()
-
-  if (!authData.user) {
+  const session = await getAuthenticatedSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
 
+  const { profile } = session
   const supabase = createServiceClient()
-  const profile = await getProfileForUser(supabase, authData.user.id)
-
-  if (!profile) {
-    return NextResponse.json({ error: 'Profile not found.' }, { status: 404 })
-  }
 
   const shell = getStakeholderShell(profile)
   if (!['admin', 'field', 'launch_partner'].includes(shell)) {

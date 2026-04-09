@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient, createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import {
   ensureBusinessJoinResource,
-  getProfileForUser,
   updateBusinessJoinQrAppearance,
   userCanManageBusinessJoin,
 } from '@/lib/server/business-capture'
@@ -45,24 +45,19 @@ async function loadBusinessAccess(request: NextRequest) {
     return { error: NextResponse.json({ error: 'businessId is required.' }, { status: 400 }) }
   }
 
-  const authSupabase = createServerSupabaseClient()
-  const { data: authData } = await authSupabase.auth.getUser()
-
-  if (!authData.user) {
+  const session = await getAuthenticatedSession()
+  if (!session) {
     return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
   }
 
+  const { profile } = session
   const supabase = createServiceClient()
-  const [profile, businessResult] = await Promise.all([
-    getProfileForUser(supabase, authData.user.id),
-    supabase
-      .from('businesses')
-      .select('*')
-      .eq('id', businessId)
-      .single(),
-  ])
 
-  const business = businessResult.data || null
+  const { data: business } = await supabase
+    .from('businesses')
+    .select('*')
+    .eq('id', businessId)
+    .single()
 
   if (!business) {
     return { error: NextResponse.json({ error: 'Business not found.' }, { status: 404 }) }
@@ -74,7 +69,7 @@ async function loadBusinessAccess(request: NextRequest) {
 
   return {
     error: null,
-    actorId: authData.user.id,
+    actorId: profile.id,
     supabase,
     business,
   }
