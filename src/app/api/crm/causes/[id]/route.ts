@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
+import { createCauseLifecycle } from '@/lib/server/stakeholder-lifecycle'
 import {
   buildCrmCauseDetail,
   fetchQaCauseDetail,
@@ -8,7 +9,133 @@ import {
   parseQaCauseId,
   qaCauseRouteError,
 } from '@/lib/server/qa-dashboard-causes'
+import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import type { Cause } from '@/lib/types/database'
+
+async function findLocalCauseByQaId(supabase: any, qaCauseId: number) {
+  const externalId = String(qaCauseId)
+
+  const { data: byExternalId } = await supabase
+    .from('causes')
+    .select('*')
+    .eq('external_id', externalId)
+    .maybeSingle()
+
+  if (byExternalId) return byExternalId as Cause
+
+  const { data: byMetadata } = await supabase
+    .from('causes')
+    .select('*')
+    .contains('metadata', { qaAccountId: qaCauseId })
+    .maybeSingle()
+
+  return (byMetadata || null) as Cause | null
+}
+
+function buildCauseMetadata(
+  existing: Cause['metadata'],
+  qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>,
+) {
+  return {
+    ...((existing as Record<string, unknown> | null) || {}),
+    qaAccountId: qaCause.id,
+    qaCauseId: qaCause.id,
+    qaImportedAt: new Date().toISOString(),
+    qaApi: buildQaAccountMetadata(qaCause),
+  }
+}
+
+function buildCauseQaSyncPatch(
+  localCause: Cause | null,
+  qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>,
+) {
+  return {
+    name: qaCause.name,
+    email: qaCause.ownerEmail || localCause?.email || null,
+    phone: qaCause.ownerPhone || localCause?.phone || null,
+    address:
+      qaCause.fullAddress ||
+      joinAddress([
+        qaCause.address1,
+        qaCause.address2,
+        qaCause.city,
+        qaCause.state,
+        qaCause.zipCode,
+        qaCause.country,
+      ]) ||
+      localCause?.address ||
+      null,
+    logo_url: resolveImageUrl(qaCause.imageUrl) || localCause?.logo_url || null,
+    external_id: String(qaCause.id),
+    status:
+      localCause?.status === 'archived'
+        ? 'archived'
+        : qaCause.active
+          ? 'active'
+          : 'inactive',
+    metadata: buildCauseMetadata(localCause?.metadata || null, qaCause),
+  } satisfies Partial<Cause>
+}
+
+async function ensureLinkedCause(supabase: any, actorId: string, qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>) {
+  const created = await createCauseLifecycle(supabase as any, {
+    actorId,
+    shell: 'admin',
+    cause: {
+      name: qaCause.name,
+      type: 'nonprofit',
+      organization_id: null,
+      website: null,
+      email: qaCause.ownerEmail || null,
+      phone: qaCause.ownerPhone || null,
+      address:
+        qaCause.fullAddress ||
+        joinAddress([
+          qaCause.address1,
+          qaCause.address2,
+          qaCause.city,
+          qaCause.state,
+          qaCause.zipCode,
+          qaCause.country,
+        ]) ||
+        null,
+      city_id: null,
+      brand: 'localvip',
+      stage: 'lead',
+      owner_id: null,
+      source: 'qa_server',
+      source_detail: 'linked_on_open',
+      campaign_id: null,
+      logo_url: resolveImageUrl(qaCause.imageUrl) || null,
+      cover_photo_url: null,
+      duplicate_of: null,
+      external_id: String(qaCause.id),
+      status: qaCause.active ? 'active' : 'inactive',
+      metadata: buildCauseMetadata(null, qaCause),
+    },
+  })
+
+  await supabase
+    .from('stakeholders')
+    .update({
+      owner_user_id: null,
+      profile_id: null,
+      metadata: {
+        auto_created: true,
+        source: 'crm_cause_create',
+        qa_auto_linked: true,
+      },
+    })
+    .eq('cause_id', created.id)
+
+  const { data: syncedCause } = await (supabase.from('causes') as any)
+    .update(buildCauseQaSyncPatch(created, qaCause))
+    .eq('id', created.id)
+    .select('*')
+    .single()
+
+  return (syncedCause || created) as Cause
+}
 
 export async function GET(
   request: NextRequest,
@@ -46,11 +173,31 @@ export async function GET(
 
   let qaCause = null
   if (qaCauseId !== null) {
+    if (!localCause) {
+      localCause = await findLocalCauseByQaId(context.supabase as any, qaCauseId)
+    }
+
     try {
       qaCause = await fetchQaCauseDetail(qaCauseId)
     } catch (error) {
       qaError = qaCauseRouteError(error)
     }
+  }
+
+  if (!localCause && qaCause) {
+    try {
+      localCause = await ensureLinkedCause(context.supabase as any, context.profile.id, qaCause)
+    } catch (error) {
+      qaError = qaError || qaCauseRouteError(error)
+    }
+  } else if (localCause && qaCause) {
+    const { data: syncedCause } = await (context.supabase.from('causes') as any)
+      .update(buildCauseQaSyncPatch(localCause, qaCause))
+      .eq('id', localCause.id)
+      .select('*')
+      .single()
+
+    localCause = (syncedCause || localCause) as Cause
   }
 
   const detail = buildCrmCauseDetail(localCause, qaCause, qaError)

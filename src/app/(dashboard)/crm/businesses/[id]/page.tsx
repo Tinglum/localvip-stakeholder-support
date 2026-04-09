@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Phone, Mail, Globe, MapPin, Clock,
   AlertTriangle, MessageSquare, CheckSquare, StickyNote, QrCode as QrCodeIcon,
@@ -24,6 +24,7 @@ import {
 import { ProgressSteps } from '@/components/ui/progress-steps'
 import { BusinessExecutionOverview } from '@/components/crm/business-execution-overview'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
+import { QaImportedFieldsPanel, QaWritebackWishlistTable, type QaImportedFact, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
 import {
   Select,
   SelectContent,
@@ -115,6 +116,7 @@ const STAGE_OPTIONS: OnboardingStage[] = [
 
 export default function BusinessDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const id = params.id as string
   const qaBusinessId = React.useMemo(() => {
@@ -180,6 +182,59 @@ export default function BusinessDetailPage() {
     .filter(assignment => assignment.entity_type === 'business' && assignment.entity_id === localEntityId && assignment.status === 'active')
     .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
     .filter((item): item is { assignment: StakeholderAssignment; profile: Profile } => !!item.profile), [assignments, localEntityId, profileMap])
+  const qaLinkedBusinessId = businessResponse?.qaBusinessId || biz?.qa_account_id || qaBusinessId || null
+  const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
+    if (!biz || !qaLinkedBusinessId) return []
+
+    return [
+      { label: 'QA business ID', value: String(qaLinkedBusinessId) },
+      { label: 'Business name', value: biz.name },
+      { label: 'Headline', value: biz.headline },
+      { label: 'Owner name', value: biz.owner_name },
+      { label: 'Owner email', value: biz.owner_email || biz.email },
+      { label: 'Owner phone', value: biz.owner_phone || biz.phone },
+      { label: 'Address 1', value: biz.address1 },
+      { label: 'Address 2', value: biz.address2 },
+      { label: 'Full address', value: biz.full_address || biz.address },
+      { label: 'City', value: biz.city_name },
+      { label: 'State', value: biz.state },
+      { label: 'Zip code', value: biz.zip_code },
+      { label: 'Country', value: biz.country },
+      { label: 'Description', value: biz.description || biz.public_description },
+      { label: 'Marketing', value: biz.marketing !== null && biz.marketing !== undefined ? String(biz.marketing) : null },
+      { label: 'Transaction fee', value: biz.tx_fee !== null && biz.tx_fee !== undefined ? String(biz.tx_fee) : null },
+      { label: 'Sales tax', value: biz.sales_tax !== null && biz.sales_tax !== undefined ? String(biz.sales_tax) : null },
+      { label: 'Tax ID', value: biz.tax_id },
+      { label: 'Time zone', value: biz.time_zone },
+      { label: 'Stripe onboarding', value: biz.stripe_onboarding_complete === null || biz.stripe_onboarding_complete === undefined ? null : biz.stripe_onboarding_complete ? 'Complete' : 'Not complete' },
+      { label: 'QA status', value: biz.active === null || biz.active === undefined ? null : biz.active ? 'Active' : 'Inactive' },
+    ]
+  }, [biz, qaLinkedBusinessId])
+  const writebackRows = React.useMemo<QaWritebackRow[]>(() => {
+    if (!biz) return []
+
+    const rows: QaWritebackRow[] = []
+    const pushRow = (field: string, currentValue: string | null | undefined, qaNeed: string, status = 'Needs QA field') => {
+      if (!currentValue || !String(currentValue).trim()) return
+      rows.push({ field, currentValue: String(currentValue), qaNeed, status })
+    }
+
+    pushRow('Dashboard stage', ONBOARDING_STAGES[biz.stage]?.label || biz.stage, 'onboarding_stage + write API')
+    pushRow('Campaign link', campaign?.name, 'campaign_id or account_campaign relation')
+    pushRow('Linked cause', linkedCause?.name, 'linked_nonprofit_account_id relation')
+    pushRow('Cover photo', biz.cover_photo_url, 'cover_photo_url')
+    pushRow('Average ticket', biz.avg_ticket, 'average_ticket')
+    pushRow('Products / services', biz.products_services?.join(', '), 'products_services')
+    pushRow('Activation status', biz.activation_status, 'activation_status')
+    pushRow('Launch phase', biz.launch_phase, 'launch_phase')
+    pushRow('Linked QR code', linkedQr?.name, 'qr_code relation / qr domain APIs')
+    pushRow('Linked material', linkedMaterial?.title, 'material relation / material APIs')
+    pushRow('Tasks', tasks.length > 0 ? `${tasks.length} tracked task${tasks.length === 1 ? '' : 's'}` : null, 'tasks table + read/write APIs', 'Needs QA workflow domain')
+    pushRow('Notes', notes.length > 0 ? `${notes.length} saved note${notes.length === 1 ? '' : 's'}` : null, 'notes table + read/write APIs', 'Needs QA workflow domain')
+    pushRow('Outreach activity', outreach.length > 0 ? `${outreach.length} logged ${outreach.length === 1 ? 'activity' : 'activities'}` : null, 'outreach activity table + read/write APIs', 'Needs QA workflow domain')
+
+    return rows
+  }, [biz, campaign?.name, linkedCause?.name, linkedMaterial?.title, linkedQr?.name, notes.length, outreach.length, tasks.length])
 
   // ── Stage change handler ──
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
@@ -207,6 +262,13 @@ export default function BusinessDetailPage() {
       setActiveTab('overview')
     }
   }, [activeTab, readOnly])
+
+  React.useEffect(() => {
+    if (!localBusinessId || localBusinessId === id) return
+    const nextQaId = businessResponse?.qaBusinessId || qaBusinessId
+    const nextHref = `/crm/businesses/${localBusinessId}${nextQaId !== null ? `?qaId=${nextQaId}` : ''}`
+    router.replace(nextHref)
+  }, [businessResponse?.qaBusinessId, id, localBusinessId, qaBusinessId, router])
 
   const handleNotDuplicate = async () => {
     if (!biz || !localBusinessId || readOnly) return
@@ -307,6 +369,18 @@ export default function BusinessDetailPage() {
           <div>
             <p className="font-medium">QA business sync warning</p>
             <p className="mt-1 text-xs text-warning-700">{detailQaError}</p>
+          </div>
+        </div>
+      )}
+
+      {qaLinkedBusinessId && (
+        <div className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+          <div>
+            <p className="font-medium">QA-linked business record</p>
+            <p className="mt-1 text-xs text-sky-800">
+              Blue cards on this page are imported live from the QA server every time this business is opened. Dashboard tabs like onboarding, tasks, notes, outreach, QR, and materials remain dashboard-managed for now.
+            </p>
           </div>
         </div>
       )}
@@ -518,8 +592,21 @@ export default function BusinessDetailPage() {
         </Card>
       </div>
 
-      {qaBusiness && (
-        <QaBusinessSnapshot qaBusiness={qaBusiness} />
+      {qaImportedFacts.length > 0 && (
+        <QaImportedFieldsPanel
+          title="Imported From QA"
+          description="These values are refreshed from QA whenever this business record is opened."
+          facts={qaImportedFacts}
+          accentLabel="QA business fields"
+        />
+      )}
+
+      {biz && (
+        <QaWritebackWishlistTable
+          title="Dashboard Info To Add To QA Later"
+          description="This is the dashboard-owned information attached to this business that still needs QA fields and write APIs before it can move fully server-side."
+          rows={writebackRows}
+        />
       )}
 
       {/* Tabs */}
@@ -856,22 +943,22 @@ function QaBusinessSnapshot({ qaBusiness }: { qaBusiness: QaBusinessDetail }) {
   ].filter(item => item.value)
 
   return (
-    <Card>
+    <Card className="border-sky-200 bg-sky-50/70">
       <CardHeader>
-        <CardTitle className="text-base">QA Business Payload</CardTitle>
+        <CardTitle className="text-base text-sky-950">QA Business Payload</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {qaBusiness.description && (
-          <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Description</p>
-            <p className="mt-2 text-sm text-surface-700">{qaBusiness.description}</p>
+          <div className="rounded-lg border border-sky-200 bg-white/80 px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.16em] text-sky-700">Description</p>
+            <p className="mt-2 text-sm text-sky-950">{qaBusiness.description}</p>
           </div>
         )}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {facts.map(item => (
-            <div key={item.label} className="rounded-lg border border-surface-200 px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{item.label}</p>
-              <p className="mt-2 break-words text-sm text-surface-900">{item.value}</p>
+            <div key={item.label} className="rounded-lg border border-sky-200 bg-white/80 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-sky-700">{item.label}</p>
+              <p className="mt-2 break-words text-sm text-sky-950">{item.value}</p>
             </div>
           ))}
         </div>

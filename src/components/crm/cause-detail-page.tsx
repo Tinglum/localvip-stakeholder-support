@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertTriangle,
   ArrowRight,
@@ -51,6 +51,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
+import { QaImportedFieldsPanel, QaWritebackWishlistTable, type QaImportedFact, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate, formatDateTime } from '@/lib/utils'
@@ -126,6 +127,7 @@ type DashboardTab = 'mission' | 'launch' | 'businesses' | 'community' | 'leaders
 
 export default function CauseDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const routeId = params.id as string
   const qaCauseId = React.useMemo(() => {
@@ -215,6 +217,78 @@ export default function CauseDetailPage() {
   const generationState = generatedCount > 0
     ? 'generated'
     : setupTask?.status || (codes?.referral_code ? 'ready' : 'needs codes')
+  const qaLinkedCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
+  const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
+    if (!cause || !qaLinkedCauseId) return []
+
+    return [
+      { label: 'QA nonprofit ID', value: String(qaLinkedCauseId) },
+      { label: 'Name', value: cause.name },
+      { label: 'Headline', value: cause.headline },
+      { label: 'Primary contact', value: cause.owner_name },
+      { label: 'Contact email', value: cause.owner_email || cause.email },
+      { label: 'Contact phone', value: cause.owner_phone || cause.phone },
+      { label: 'Address 1', value: cause.address1 },
+      { label: 'Address 2', value: cause.address2 },
+      { label: 'Full address', value: cause.full_address || cause.address },
+      { label: 'City', value: cause.city_name },
+      { label: 'State', value: cause.state },
+      { label: 'Zip code', value: cause.zip_code },
+      { label: 'Country', value: cause.country },
+      { label: 'Description', value: cause.description },
+      { label: 'Marketing', value: cause.marketing !== null && cause.marketing !== undefined ? String(cause.marketing) : null },
+      { label: 'Transaction fee', value: cause.tx_fee !== null && cause.tx_fee !== undefined ? String(cause.tx_fee) : null },
+      { label: 'Sales tax', value: cause.sales_tax !== null && cause.sales_tax !== undefined ? String(cause.sales_tax) : null },
+      { label: 'Tax ID', value: cause.tax_id },
+      { label: 'Time zone', value: cause.time_zone },
+      { label: 'QA status', value: cause.active === null || cause.active === undefined ? null : cause.active ? 'Active' : 'Inactive' },
+    ]
+  }, [cause, qaLinkedCauseId])
+
+  // â”€â”€ Codes + Material Engine â”€â”€
+
+  const [referralCode, setReferralCode] = React.useState('')
+  const [connectionCode, setConnectionCode] = React.useState('')
+  const [engineMessage, setEngineMessage] = React.useState<string | null>(null)
+  const [engineError, setEngineError] = React.useState<string | null>(null)
+  const [engineBusy, setEngineBusy] = React.useState<'codes' | 'generate' | null>(null)
+  const [stepBusyId, setStepBusyId] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    setReferralCode(codes?.referral_code || '')
+    setConnectionCode(codes?.connection_code || '')
+  }, [codes?.connection_code, codes?.referral_code])
+
+  const joinUrl = React.useMemo(() => {
+    if (codes?.join_url) return codes.join_url
+    if (!connectionCode.trim()) return ''
+    return buildStakeholderJoinUrl(isSchool ? 'school' : 'cause', connectionCode)
+  }, [codes?.join_url, connectionCode, isSchool])
+
+  const writebackRows = React.useMemo<QaWritebackRow[]>(() => {
+    if (!cause) return []
+
+    const rows: QaWritebackRow[] = []
+    const pushRow = (field: string, currentValue: string | null | undefined, qaNeed: string, status = 'Needs QA field') => {
+      if (!currentValue || !String(currentValue).trim()) return
+      rows.push({ field, currentValue: String(currentValue), qaNeed, status })
+    }
+
+    pushRow('Dashboard stage', ONBOARDING_STAGES[cause.stage]?.label || cause.stage, 'onboarding_stage + write API')
+    pushRow('Cause type', cause.type, 'cause_type / nonprofit_type')
+    pushRow('Campaign link', campaign?.name, 'campaign_id or account_campaign relation')
+    pushRow('Linked businesses', linkedBusinesses.length > 0 ? `${linkedBusinesses.length} linked business${linkedBusinesses.length === 1 ? '' : 'es'}` : null, 'business-to-cause relation table + APIs')
+    pushRow('Referral code', codes?.referral_code, 'referral_code field or stakeholder code domain')
+    pushRow('Connection code', codes?.connection_code, 'connection_code field or stakeholder code domain')
+    pushRow('Join URL', joinUrl, 'join_url field')
+    pushRow('Generated materials', generatedCount > 0 ? `${generatedCount} generated asset${generatedCount === 1 ? '' : 's'}` : null, 'materials domain + assignment APIs', 'Needs QA workflow domain')
+    pushRow('QR codes', causeQrCodes.length > 0 ? `${causeQrCodes.length} linked QR code${causeQrCodes.length === 1 ? '' : 's'}` : null, 'qr code domain + relation APIs', 'Needs QA workflow domain')
+    pushRow('Outreach activity', outreach.length > 0 ? `${outreach.length} logged ${outreach.length === 1 ? 'activity' : 'activities'}` : null, 'outreach activity table + read/write APIs', 'Needs QA workflow domain')
+    pushRow('Tasks', tasks.length > 0 ? `${tasks.length} tracked task${tasks.length === 1 ? '' : 's'}` : null, 'tasks table + read/write APIs', 'Needs QA workflow domain')
+    pushRow('Notes', notes.length > 0 ? `${notes.length} saved note${notes.length === 1 ? '' : 's'}` : null, 'notes table + read/write APIs', 'Needs QA workflow domain')
+
+    return rows
+  }, [campaign?.name, cause, causeQrCodes.length, codes?.connection_code, codes?.referral_code, generatedCount, joinUrl, linkedBusinesses.length, notes.length, outreach.length, tasks.length])
 
   // ── Execution engine ──
   const executionSteps = React.useMemo(() => {
@@ -268,6 +342,13 @@ export default function CauseDetailPage() {
     setPendingCampaignId(cause?.campaign_id || '__none')
   }, [cause?.campaign_id])
 
+  React.useEffect(() => {
+    if (!localCauseId || localCauseId === routeId) return
+    const nextQaId = causeResponse?.qaCauseId || qaCauseId
+    const nextHref = `/crm/causes/${localCauseId}${nextQaId !== null ? `?qaId=${nextQaId}` : ''}`
+    router.replace(nextHref)
+  }, [causeResponse?.qaCauseId, localCauseId, qaCauseId, routeId, router])
+
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
     if (!cause) return
     await updateCause(cause.id, { stage: newStage })
@@ -281,25 +362,6 @@ export default function CauseDetailPage() {
     setLinkCampaignOpen(false)
     window.location.reload()
   }, [cause, pendingCampaignId, updateCause])
-
-  // ── Codes + Material Engine ──
-  const [referralCode, setReferralCode] = React.useState('')
-  const [connectionCode, setConnectionCode] = React.useState('')
-  const [engineMessage, setEngineMessage] = React.useState<string | null>(null)
-  const [engineError, setEngineError] = React.useState<string | null>(null)
-  const [engineBusy, setEngineBusy] = React.useState<'codes' | 'generate' | null>(null)
-  const [stepBusyId, setStepBusyId] = React.useState<string | null>(null)
-
-  React.useEffect(() => {
-    setReferralCode(codes?.referral_code || '')
-    setConnectionCode(codes?.connection_code || '')
-  }, [codes?.connection_code, codes?.referral_code])
-
-  const joinUrl = React.useMemo(() => {
-    if (codes?.join_url) return codes.join_url
-    if (!connectionCode.trim()) return ''
-    return buildStakeholderJoinUrl(isSchool ? 'school' : 'cause', connectionCode)
-  }, [codes?.join_url, connectionCode, isSchool])
 
   async function refetchExecution() {
     refetchStakeholders({ silent: true })
@@ -538,6 +600,17 @@ export default function CauseDetailPage() {
           </div>
         </div>
       )}
+      {qaLinkedCauseId && (
+        <div className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+          <div>
+            <p className="font-medium">QA-linked cause record</p>
+            <p className="mt-1 text-xs text-sky-800">
+              Blue cards on this page are imported live from the QA server every time this cause is opened. Dashboard launch work like codes, tasks, notes, outreach, materials, and QR stays local until QA supports those domains.
+            </p>
+          </div>
+        </div>
+      )}
       {/* ── Duplicate warning ── */}
       {cause.duplicate_of && (
         <div className="flex items-center gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
@@ -669,6 +742,21 @@ export default function CauseDetailPage() {
       {/* ══════════════════════════════════════════════════════════
           TAB: MISSION CONTROL
          ══════════════════════════════════════════════════════════ */}
+      {qaImportedFacts.length > 0 && (
+        <QaImportedFieldsPanel
+          title="Imported From QA"
+          description="These values are refreshed from QA whenever this cause or nonprofit record is opened."
+          facts={qaImportedFacts}
+          accentLabel="QA cause fields"
+        />
+      )}
+
+      <QaWritebackWishlistTable
+        title="Dashboard Info To Add To QA Later"
+        description="This is the dashboard-only launch and follow-up data already attached to this record that still needs QA fields and write APIs."
+        rows={writebackRows}
+      />
+
       {activeTab === 'mission' && (
         <div className="space-y-6">
           {/* Status cards */}

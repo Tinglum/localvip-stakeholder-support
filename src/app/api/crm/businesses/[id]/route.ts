@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
+import { createBusinessLifecycle } from '@/lib/server/stakeholder-lifecycle'
 import {
   buildCrmBusinessDetail,
   fetchQaBusinessDetail,
@@ -8,7 +9,143 @@ import {
   parseQaBusinessId,
   qaBusinessRouteError,
 } from '@/lib/server/qa-dashboard-businesses'
+import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import type { Business } from '@/lib/types/database'
+
+async function findLocalBusinessByQaId(supabase: any, qaBusinessId: number) {
+  const externalId = String(qaBusinessId)
+
+  const { data: byExternalId } = await supabase
+    .from('businesses')
+    .select('*')
+    .eq('external_id', externalId)
+    .maybeSingle()
+
+  if (byExternalId) return byExternalId as Business
+
+  const { data: byMetadata } = await supabase
+    .from('businesses')
+    .select('*')
+    .contains('metadata', { qaAccountId: qaBusinessId })
+    .maybeSingle()
+
+  return (byMetadata || null) as Business | null
+}
+
+function buildBusinessMetadata(
+  existing: Business['metadata'],
+  qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>,
+) {
+  return {
+    ...((existing as Record<string, unknown> | null) || {}),
+    qaAccountId: qaBusiness.id,
+    qaBusinessId: qaBusiness.id,
+    qaImportedAt: new Date().toISOString(),
+    qaApi: buildQaAccountMetadata(qaBusiness),
+  }
+}
+
+function buildBusinessQaSyncPatch(
+  localBusiness: Business | null,
+  qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>,
+) {
+  return {
+    name: qaBusiness.name,
+    email: qaBusiness.ownerEmail || localBusiness?.email || null,
+    phone: qaBusiness.ownerPhone || localBusiness?.phone || null,
+    address:
+      qaBusiness.fullAddress ||
+      joinAddress([
+        qaBusiness.address1,
+        qaBusiness.address2,
+        qaBusiness.city,
+        qaBusiness.state,
+        qaBusiness.zipCode,
+        qaBusiness.country,
+      ]) ||
+      localBusiness?.address ||
+      null,
+    logo_url: resolveImageUrl(qaBusiness.imageUrl) || localBusiness?.logo_url || null,
+    public_description: qaBusiness.description || localBusiness?.public_description || null,
+    external_id: String(qaBusiness.id),
+    status:
+      localBusiness?.status === 'archived'
+        ? 'archived'
+        : qaBusiness.active
+          ? 'active'
+          : 'inactive',
+    metadata: buildBusinessMetadata(localBusiness?.metadata || null, qaBusiness),
+  } satisfies Partial<Business>
+}
+
+async function ensureLinkedBusiness(supabase: any, actorId: string, qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>) {
+  const created = await createBusinessLifecycle(supabase as any, {
+    actorId,
+    shell: 'admin',
+    business: {
+      name: qaBusiness.name,
+      website: null,
+      email: qaBusiness.ownerEmail || null,
+      phone: qaBusiness.ownerPhone || null,
+      address:
+        qaBusiness.fullAddress ||
+        joinAddress([
+          qaBusiness.address1,
+          qaBusiness.address2,
+          qaBusiness.city,
+          qaBusiness.state,
+          qaBusiness.zipCode,
+          qaBusiness.country,
+        ]) ||
+        null,
+      city_id: null,
+      category: null,
+      brand: 'localvip',
+      stage: 'lead',
+      owner_id: null,
+      owner_user_id: null,
+      source: 'qa_server',
+      source_detail: 'linked_on_open',
+      campaign_id: null,
+      linked_cause_id: null,
+      linked_material_id: null,
+      linked_qr_code_id: null,
+      logo_url: resolveImageUrl(qaBusiness.imageUrl) || null,
+      cover_photo_url: null,
+      linked_qr_collection_id: null,
+      duplicate_of: null,
+      external_id: String(qaBusiness.id),
+      public_description: qaBusiness.description || null,
+      avg_ticket: null,
+      products_services: null,
+      activation_status: null,
+      launch_phase: null,
+      status: qaBusiness.active ? 'active' : 'inactive',
+      metadata: buildBusinessMetadata(null, qaBusiness),
+    },
+  })
+
+  await supabase
+    .from('stakeholders')
+    .update({
+      owner_user_id: null,
+      profile_id: null,
+      metadata: {
+        auto_created: true,
+        source: 'crm_business_create',
+        qa_auto_linked: true,
+      },
+    })
+    .eq('business_id', created.id)
+
+  const { data: syncedBusiness } = await (supabase.from('businesses') as any)
+    .update(buildBusinessQaSyncPatch(created, qaBusiness))
+    .eq('id', created.id)
+    .select('*')
+    .single()
+
+  return (syncedBusiness || created) as Business
+}
 
 export async function GET(
   request: NextRequest,
@@ -46,11 +183,31 @@ export async function GET(
 
   let qaBusiness = null
   if (qaBusinessId !== null) {
+    if (!localBusiness) {
+      localBusiness = await findLocalBusinessByQaId(context.supabase as any, qaBusinessId)
+    }
+
     try {
       qaBusiness = await fetchQaBusinessDetail(qaBusinessId)
     } catch (error) {
       qaError = qaBusinessRouteError(error)
     }
+  }
+
+  if (!localBusiness && qaBusiness) {
+    try {
+      localBusiness = await ensureLinkedBusiness(context.supabase as any, context.profile.id, qaBusiness)
+    } catch (error) {
+      qaError = qaError || qaBusinessRouteError(error)
+    }
+  } else if (localBusiness && qaBusiness) {
+    const { data: syncedBusiness } = await (context.supabase.from('businesses') as any)
+      .update(buildBusinessQaSyncPatch(localBusiness, qaBusiness))
+      .eq('id', localBusiness.id)
+      .select('*')
+      .single()
+
+    localBusiness = (syncedBusiness || localBusiness) as Business
   }
 
   const detail = buildCrmBusinessDetail(localBusiness, qaBusiness, qaError)
