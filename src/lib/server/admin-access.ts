@@ -1,22 +1,51 @@
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getQaSessionFromCookieStore, resolveProfileForQaSession } from '@/lib/auth/qa-auth'
 import { createServerSupabaseClient, createServiceClient } from '@/lib/supabase/server'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Profile } from '@/lib/types/database'
 
-export async function getAdminRouteContext() {
-  const authSupabase = createServerSupabaseClient()
-  const { data: authData } = await authSupabase.auth.getUser()
-
-  if (!authData.user) {
-    return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
-  }
-
-  const supabase = createServiceClient()
-  const { data: profile } = await supabase
+async function loadProfileByEmail(
+  supabase: ReturnType<typeof createServiceClient>,
+  email: string,
+): Promise<Profile | null> {
+  const { data } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', authData.user.id)
-    .single<Profile>()
+    .ilike('email', email)
+    .limit(1)
+    .maybeSingle()
+
+  return (data || null) as Profile | null
+}
+
+export async function getAdminRouteContext() {
+  const supabase = createServiceClient()
+  const qaSession = getQaSessionFromCookieStore(cookies())
+
+  let profile: Profile | null = null
+
+  if (qaSession) {
+    profile = await resolveProfileForQaSession(
+      qaSession.claims,
+      (email) => loadProfileByEmail(supabase, email),
+    )
+  } else {
+    const authSupabase = createServerSupabaseClient()
+    const { data: authData } = await authSupabase.auth.getUser()
+
+    if (!authData.user) {
+      return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
+    }
+
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single<Profile>()
+
+    profile = (data || null) as Profile | null
+  }
 
   if (!profile || getStakeholderShell(profile) !== 'admin') {
     return { error: NextResponse.json({ error: 'Forbidden.' }, { status: 403 }) }
