@@ -127,7 +127,7 @@ export default function BusinessDetailPage() {
   const [activeTab, setActiveTab] = React.useState<'overview' | 'activity' | 'tasks' | 'notes' | 'qr' | 'materials'>('overview')
 
   // ── Data hooks ──
-  const { data: businessResponse, loading: bizLoading, error: bizError } = useCrmBusiness(id, qaBusinessId)
+  const { data: businessResponse, loading: bizLoading, error: bizError, refetch: refetchBusiness } = useCrmBusiness(id, qaBusinessId)
   const biz = businessResponse?.business || null
   const localBusinessId = businessResponse?.localBusinessId || null
   const qaBusiness = businessResponse?.qaBusiness || null
@@ -642,6 +642,7 @@ export default function BusinessDetailPage() {
             helperAssignments={helperAssignments}
             updateBusiness={updateBusiness}
             updateLoading={updateLoading}
+            refetchBusiness={refetchBusiness}
           />
         )
       )}
@@ -1016,6 +1017,7 @@ function OverviewTab({
   helperAssignments,
   updateBusiness,
   updateLoading,
+  refetchBusiness,
 }: {
   biz: Business
   city: City | null
@@ -1025,6 +1027,7 @@ function OverviewTab({
   helperAssignments: Array<{ assignment: StakeholderAssignment; profile: Profile }>
   updateBusiness: (id: string, changes: Partial<Business>) => Promise<Business | null>
   updateLoading: boolean
+  refetchBusiness?: () => void
 }) {
   return (
     <BusinessExecutionOverview
@@ -1036,6 +1039,7 @@ function OverviewTab({
       helperAssignments={helperAssignments}
       updateBusiness={updateBusiness}
       updateLoading={updateLoading}
+      refetchBusiness={refetchBusiness}
     />
   )
 }

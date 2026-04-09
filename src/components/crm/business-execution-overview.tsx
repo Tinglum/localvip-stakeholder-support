@@ -68,6 +68,7 @@ interface BusinessExecutionOverviewProps {
   helperAssignments: Array<{ assignment: StakeholderAssignment; profile: Profile }>
   updateBusiness: (id: string, changes: Partial<Business>) => Promise<Business | null>
   updateLoading: boolean
+  refetchBusiness?: () => void
 }
 
 function stepVariant(step: BusinessExecutionStepSummary) {
@@ -90,6 +91,7 @@ export function BusinessExecutionOverview({
   helperAssignments,
   updateBusiness,
   updateLoading,
+  refetchBusiness,
 }: BusinessExecutionOverviewProps) {
   const { profile } = useAuth()
   const { data: profiles } = useProfiles()
@@ -183,6 +185,7 @@ export function BusinessExecutionOverview({
   }, [codes?.join_url, connectionCode])
 
   async function refetchExecution() {
+    refetchBusiness?.()
     refetchStakeholders({ silent: true })
     refetchCodes({ silent: true })
     refetchGenerated({ silent: true })
