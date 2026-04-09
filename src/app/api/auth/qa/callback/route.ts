@@ -18,6 +18,20 @@ export async function GET(request: NextRequest) {
   const verifier = request.cookies.get(QA_COOKIE_NAMES.verifier)?.value || null
   const returnTo = sanitizeReturnTo(request.cookies.get(QA_COOKIE_NAMES.returnTo)?.value || '/dashboard')
 
+  // Diagnostic: list every cookie we can see so we know if the browser dropped them
+  const cookieNames = request.cookies.getAll().map((c) => c.name)
+  console.log('[qa-callback]', {
+    hasCode: !!code,
+    hasState: !!state,
+    hasStoredState: !!storedState,
+    hasVerifier: !!verifier,
+    stateMatches: !!(state && storedState && state === storedState),
+    error,
+    errorDescription,
+    origin: request.nextUrl.origin,
+    cookieNames,
+  })
+
   const cleanResponse = NextResponse.redirect(new URL(returnTo, request.nextUrl.origin))
   clearQaSessionCookies(cleanResponse)
 
@@ -30,8 +44,15 @@ export async function GET(request: NextRequest) {
   }
 
   if (!code || !state || !storedState || state !== storedState || !verifier) {
+    const missing: string[] = []
+    if (!code) missing.push('code')
+    if (!state) missing.push('state')
+    if (!storedState) missing.push('stored_state_cookie')
+    if (state && storedState && state !== storedState) missing.push('state_mismatch')
+    if (!verifier) missing.push('pkce_verifier_cookie')
+    const diagnostic = `QA login handshake failed. Missing: ${missing.join(', ')}. Seen cookies: ${cookieNames.join(', ') || 'none'}`
     const failure = NextResponse.redirect(
-      new URL('/login?error=The+QA+login+session+expired.+Please+try+again.', request.nextUrl.origin),
+      new URL(`/login?error=${encodeURIComponent(diagnostic)}`, request.nextUrl.origin),
     )
     clearQaSessionCookies(failure)
     return failure
