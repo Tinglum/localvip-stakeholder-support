@@ -283,19 +283,21 @@ export async function ensureBusinessStakeholderSetup(
     if (insertError) {
       console.error('[stakeholder-lifecycle] business stakeholder insert failed', {
         businessId: business.id,
+        businessCityId: business.city_id,
         actorId,
         code: insertError.code,
         message: insertError.message,
         details: insertError.details,
         hint: insertError.hint,
       })
-      // FK violation on owner_user_id (code 23503) — retry without the FK ref
-      if (insertError.code === '23503' && insertError.message?.includes('owner_user_id')) {
+      // FK violation (code 23503) — retry with all nullable FK refs set to null
+      if (insertError.code === '23503') {
+        console.warn('[stakeholder-lifecycle] FK violation — retrying with nullable FKs set to null')
         const { data: retryData, error: retryError } = await (supabase.from('stakeholders') as any)
           .insert({
             type: 'business',
             name: business.name,
-            city_id: business.city_id,
+            city_id: null,
             owner_user_id: null,
             profile_id: null,
             business_id: business.id,
@@ -305,7 +307,10 @@ export async function ensureBusinessStakeholderSetup(
             metadata: {
               auto_created: true,
               source: 'crm_business_create',
-              owner_fk_fallback: actorId,
+              fk_fallback: true,
+              original_city_id: business.city_id,
+              original_owner_id: actorId,
+              original_error: insertError.message,
             },
           })
           .select()
@@ -391,30 +396,38 @@ export async function ensureCauseStakeholderSetup(
     if (insertError) {
       console.error('[stakeholder-lifecycle] cause stakeholder insert failed', {
         causeId: cause.id,
+        causeCityId: cause.city_id,
+        causeOwnerId: cause.owner_id,
         actorId,
         code: insertError.code,
         message: insertError.message,
         details: insertError.details,
         hint: insertError.hint,
       })
-      // FK violation on owner_user_id (code 23503) — retry without the FK ref
-      if (insertError.code === '23503' && insertError.message?.includes('owner_user_id')) {
+      // FK violation (code 23503) — retry with all nullable FK refs set to null
+      if (insertError.code === '23503') {
+        console.warn('[stakeholder-lifecycle] FK violation — retrying with nullable FKs set to null')
         const { data: retryData, error: retryError } = await (supabase.from('stakeholders') as any)
           .insert({
             type: mapCauseToStakeholderType(cause),
             name: cause.name,
-            city_id: cause.city_id,
+            city_id: null,
             owner_user_id: null,
-            profile_id: cause.owner_id,
+            profile_id: null,
             business_id: null,
             cause_id: cause.id,
-            organization_id: cause.organization_id,
+            organization_id: null,
             status: 'pending',
             metadata: {
               auto_created: true,
               source: 'crm_cause_create',
               cause_type: cause.type,
-              owner_fk_fallback: actorId,
+              fk_fallback: true,
+              original_city_id: cause.city_id,
+              original_owner_id: actorId,
+              original_profile_id: cause.owner_id,
+              original_org_id: cause.organization_id,
+              original_error: insertError.message,
             },
           })
           .select()

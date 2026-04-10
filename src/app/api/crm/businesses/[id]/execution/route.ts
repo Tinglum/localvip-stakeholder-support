@@ -49,7 +49,7 @@ async function getExecutionContext(businessId: string) {
     return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
   }
 
-  const { profile } = session
+  const { profile, source: authSource } = session
   const supabase = createServiceClient()
 
   const shell = getStakeholderShell(profile)
@@ -68,12 +68,23 @@ async function getExecutionContext(businessId: string) {
     return { error: NextResponse.json({ error: 'Business not found.' }, { status: 404 }) }
   }
 
-  const [flow, stakeholder] = await Promise.all([
-    ensureBusinessOnboardingFlow(supabase, business, profile.id),
-    ensureBusinessStakeholderSetup(supabase, business, profile.id),
-  ])
+  try {
+    const [flow, stakeholder] = await Promise.all([
+      ensureBusinessOnboardingFlow(supabase, business, profile.id),
+      ensureBusinessStakeholderSetup(supabase, business, profile.id),
+    ])
 
-  return { supabase, profile, business, flow, stakeholder }
+    return { supabase, profile, business, flow, stakeholder }
+  } catch (setupError) {
+    // Surface full diagnostic so we can see exactly what's failing
+    const msg = setupError instanceof Error ? setupError.message
+      : typeof setupError === 'object' && setupError !== null && 'message' in setupError
+        ? String((setupError as { message: unknown }).message)
+        : String(setupError)
+    const debugInfo = `[auth=${authSource} profile=${profile.id.slice(0, 8)} email=${profile.email} role=${profile.role} shell=${shell} biz=${business.id.slice(0, 8)} city=${business.city_id?.slice(0, 8) || 'null'} owner=${business.owner_id?.slice(0, 8) || 'null'} meta=${JSON.stringify(profile.metadata)}]`
+    console.error('[business-execution] setup failed', msg, debugInfo)
+    return { error: NextResponse.json({ error: `${msg} ${debugInfo}` }, { status: 500 }) }
+  }
 }
 
 async function loadExecutionState(
