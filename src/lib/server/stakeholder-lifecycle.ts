@@ -261,7 +261,7 @@ export async function ensureBusinessStakeholderSetup(
   let stakeholder = await getStakeholderByLinkedRecord(supabase, 'business', business.id)
 
   if (!stakeholder) {
-    const { data } = await (supabase.from('stakeholders') as any)
+    const { data, error: insertError } = await (supabase.from('stakeholders') as any)
       .insert({
         type: 'business',
         name: business.name,
@@ -280,9 +280,47 @@ export async function ensureBusinessStakeholderSetup(
       .select()
       .single()
 
-    stakeholder = (data || null) as Stakeholder | null
+    if (insertError) {
+      console.error('[stakeholder-lifecycle] business stakeholder insert failed', {
+        businessId: business.id,
+        actorId,
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+      })
+      // FK violation on owner_user_id (code 23503) — retry without the FK ref
+      if (insertError.code === '23503' && insertError.message?.includes('owner_user_id')) {
+        const { data: retryData, error: retryError } = await (supabase.from('stakeholders') as any)
+          .insert({
+            type: 'business',
+            name: business.name,
+            city_id: business.city_id,
+            owner_user_id: null,
+            profile_id: null,
+            business_id: business.id,
+            cause_id: null,
+            organization_id: null,
+            status: 'pending',
+            metadata: {
+              auto_created: true,
+              source: 'crm_business_create',
+              owner_fk_fallback: actorId,
+            },
+          })
+          .select()
+          .single()
+
+        if (retryError) {
+          console.error('[stakeholder-lifecycle] business stakeholder FK-fallback insert also failed', retryError)
+        }
+        stakeholder = (retryData || null) as Stakeholder | null
+      }
+    } else {
+      stakeholder = (data || null) as Stakeholder | null
+    }
   } else {
-    const { data } = await (supabase.from('stakeholders') as any)
+    const { data, error: updateError } = await (supabase.from('stakeholders') as any)
       .update({
         type: 'business',
         name: business.name,
@@ -301,6 +339,9 @@ export async function ensureBusinessStakeholderSetup(
       .select()
       .single()
 
+    if (updateError) {
+      console.error('[stakeholder-lifecycle] business stakeholder update failed', updateError)
+    }
     stakeholder = (data || stakeholder) as Stakeholder
   }
 
@@ -327,7 +368,7 @@ export async function ensureCauseStakeholderSetup(
   let stakeholder = await getStakeholderByLinkedRecord(supabase, 'cause', cause.id)
 
   if (!stakeholder) {
-    const { data } = await (supabase.from('stakeholders') as any)
+    const { data, error: insertError } = await (supabase.from('stakeholders') as any)
       .insert({
         type: mapCauseToStakeholderType(cause),
         name: cause.name,
@@ -347,9 +388,48 @@ export async function ensureCauseStakeholderSetup(
       .select()
       .single()
 
-    stakeholder = (data || null) as Stakeholder | null
+    if (insertError) {
+      console.error('[stakeholder-lifecycle] cause stakeholder insert failed', {
+        causeId: cause.id,
+        actorId,
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+      })
+      // FK violation on owner_user_id (code 23503) — retry without the FK ref
+      if (insertError.code === '23503' && insertError.message?.includes('owner_user_id')) {
+        const { data: retryData, error: retryError } = await (supabase.from('stakeholders') as any)
+          .insert({
+            type: mapCauseToStakeholderType(cause),
+            name: cause.name,
+            city_id: cause.city_id,
+            owner_user_id: null,
+            profile_id: cause.owner_id,
+            business_id: null,
+            cause_id: cause.id,
+            organization_id: cause.organization_id,
+            status: 'pending',
+            metadata: {
+              auto_created: true,
+              source: 'crm_cause_create',
+              cause_type: cause.type,
+              owner_fk_fallback: actorId,
+            },
+          })
+          .select()
+          .single()
+
+        if (retryError) {
+          console.error('[stakeholder-lifecycle] cause stakeholder FK-fallback insert also failed', retryError)
+        }
+        stakeholder = (retryData || null) as Stakeholder | null
+      }
+    } else {
+      stakeholder = (data || null) as Stakeholder | null
+    }
   } else {
-    const { data } = await (supabase.from('stakeholders') as any)
+    const { data, error: updateError } = await (supabase.from('stakeholders') as any)
       .update({
         type: mapCauseToStakeholderType(cause),
         name: cause.name,
@@ -369,6 +449,9 @@ export async function ensureCauseStakeholderSetup(
       .select()
       .single()
 
+    if (updateError) {
+      console.error('[stakeholder-lifecycle] cause stakeholder update failed', updateError)
+    }
     stakeholder = (data || stakeholder) as Stakeholder
   }
 

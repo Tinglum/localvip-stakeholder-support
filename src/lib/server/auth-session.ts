@@ -48,10 +48,82 @@ async function loadProfileById(
 }
 
 /**
+ * Provision a real auth.users + profiles row for a QA OAuth user so that
+ * downstream FK-constrained inserts (stakeholders.owner_user_id →
+ * profiles.id → auth.users.id) work correctly.
+ *
+ * Returns the new profile row, or null if provisioning fails (caller should
+ * fall back to the synthetic profile for read-only rendering).
+ */
+async function provisionQaProfileRow(
+  service: ServiceClient,
+  claims: QaAuthClaims,
+): Promise<Profile | null> {
+  const email = claims.email?.toLowerCase()
+  if (!email) return null
+
+  // Build the desired profile shape from QA claims (reuse fallback builder for role mapping)
+  const fallback = buildFallbackQaProfile(claims)
+
+  try {
+    // 1. Create a Supabase auth user so we get a valid UUID (profiles.id FK → auth.users.id)
+    const { data: authResult, error: authError } = await service.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fallback.full_name,
+        role: fallback.role,
+        qa_provisioned: true,
+      },
+    })
+
+    if (authError || !authResult?.user) {
+      console.warn('[auth-session] Could not provision auth user for QA user', email, authError?.message || 'no user returned')
+      return null
+    }
+
+    const userId = authResult.user.id
+
+    // 2. Insert the profiles row with that real UUID
+    const { data: profile, error: profileError } = await (service.from('profiles') as any)
+      .insert({
+        id: userId,
+        email,
+        full_name: fallback.full_name,
+        role: fallback.role,
+        role_subtype: fallback.role_subtype,
+        brand_context: 'localvip',
+        status: 'active',
+        metadata: {
+          qa_provisioned: true,
+          qa_sub: claims.sub,
+          qa_roles: claims.roles,
+        },
+      })
+      .select()
+      .single()
+
+    if (profileError) {
+      console.error('[auth-session] Auth user created but profile insert failed', email, profileError)
+      return null
+    }
+
+    console.log('[auth-session] Provisioned DB profile for QA user', email, userId)
+    return profile as Profile
+  } catch (err) {
+    console.error('[auth-session] Unhandled error provisioning QA profile', err)
+    return null
+  }
+}
+
+/**
  * Resolve the currently authenticated user from either a QA OAuth session or
- * a Supabase session. Returns null if neither is present. When a QA session
- * is present but no local profile matches, a synthetic fallback profile is
- * returned so the role mapping from the QA claims still drives authorization.
+ * a Supabase session. Returns null if neither is present.
+ *
+ * For QA users without a local profile, we first attempt to **provision** a
+ * real auth.users + profiles row so that FK-constrained writes work. If that
+ * fails, a synthetic fallback profile is returned (adequate for read-only
+ * pages but will cause FK errors on stakeholder/code inserts).
  */
 export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | null> {
   const cookieStore = cookies()
@@ -62,12 +134,23 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
   if (qaSession) {
     const email = qaSession.claims.email?.toLowerCase() || null
     let profile: Profile | null = null
+
+    // a. Try to find an existing profile by email
     if (email) {
       profile = await loadProfileByEmail(service, email)
     }
+
+    // b. No match → provision a real auth user + profile row in the DB
     if (!profile) {
+      profile = await provisionQaProfileRow(service, qaSession.claims)
+    }
+
+    // c. Last resort → synthetic fallback (read-only safe, FK writes will fail)
+    if (!profile) {
+      console.warn('[auth-session] Using synthetic fallback for QA user — FK writes will fail', email)
       profile = buildFallbackQaProfile(qaSession.claims)
     }
+
     return {
       profile,
       userId: profile.id,
