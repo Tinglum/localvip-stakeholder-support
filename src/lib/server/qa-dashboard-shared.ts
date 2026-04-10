@@ -116,17 +116,7 @@ export function findLocalAccountForQa<T extends LocalQaAccountRecord>(
   qaAccount: QaDashboardAccountSummary | QaDashboardAccountDetail,
   index: ReturnType<typeof createAccountIndex<T>>,
 ) {
-  const externalMatch = index.byExternalId.get(String(qaAccount.id))
-  if (externalMatch) return externalMatch
-
-  const nameMatches = index.byName.get(normalizeName(qaAccount.name)) || []
-  if (nameMatches.length === 1) return nameMatches[0]
-
-  const normalizedEmail = normalizeText(qaAccount.ownerEmail)
-  if (!normalizedEmail) return null
-
-  const emailMatches = nameMatches.filter(item => normalizeText(item.email) === normalizedEmail)
-  return emailMatches.length === 1 ? emailMatches[0] : null
+  return index.byExternalId.get(String(qaAccount.id)) || null
 }
 
 export function findQaAccountForLocal<T extends LocalQaAccountRecord>(
@@ -134,19 +124,8 @@ export function findQaAccountForLocal<T extends LocalQaAccountRecord>(
   qaAccounts: QaDashboardAccountSummary[],
 ) {
   const qaId = getQaAccountIdFromLocal(localRecord)
-  if (qaId !== null) {
-    return qaAccounts.find(item => item.id === qaId) || null
-  }
-
-  const normalizedName = normalizeName(localRecord.name)
-  const nameMatches = qaAccounts.filter(item => normalizeName(item.name) === normalizedName)
-  if (nameMatches.length === 1) return nameMatches[0]
-
-  const normalizedEmail = normalizeText(localRecord.email)
-  if (!normalizedEmail) return null
-
-  const emailMatches = nameMatches.filter(item => normalizeText(item.ownerEmail) === normalizedEmail)
-  return emailMatches.length === 1 ? emailMatches[0] : null
+  if (qaId === null) return null
+  return qaAccounts.find(item => item.id === qaId) || null
 }
 
 export function joinAddress(parts: Array<string | null | undefined>) {

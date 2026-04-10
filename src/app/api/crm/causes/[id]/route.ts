@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
-import { createCauseLifecycle } from '@/lib/server/stakeholder-lifecycle'
+import {
+  createCauseLifecycle,
+  ensureCauseOnboardingFlow,
+  ensureCauseStakeholderSetup,
+} from '@/lib/server/stakeholder-lifecycle'
 import {
   buildCrmCauseDetail,
   fetchQaCauseDetail,
@@ -13,6 +17,7 @@ import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/serv
 import type { Cause } from '@/lib/types/database'
 
 function buildCauseCreatePayload(
+  actorId: string,
   qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>,
 ) {
   return {
@@ -36,14 +41,19 @@ function buildCauseCreatePayload(
     city_id: null,
     brand: 'localvip' as const,
     stage: 'lead' as const,
-    owner_id: null,
+    owner_id: actorId,
     source: 'qa_server',
-    source_detail: 'linked_on_open',
+    source_detail: 'Imported from QA on first open',
     campaign_id: null,
     duplicate_of: null,
     external_id: String(qaCause.id),
     status: qaCause.active ? ('active' as const) : ('inactive' as const),
-    metadata: buildCauseMetadata(null, qaCause),
+    metadata: {
+      created_from: 'qa_cause_import',
+      qa_import_mode: 'first_open',
+      imported_by: actorId,
+      ...buildCauseMetadata(null, qaCause),
+    },
   } satisfies Partial<Cause>
 }
 
@@ -115,25 +125,8 @@ async function ensureLinkedCause(supabase: any, actorId: string, qaCause: Awaite
   const created = await createCauseLifecycle(supabase as any, {
     actorId,
     shell: 'admin',
-    cause: buildCauseCreatePayload(qaCause),
+    cause: buildCauseCreatePayload(actorId, qaCause),
   })
-
-  try {
-    await supabase
-      .from('stakeholders')
-      .update({
-        owner_user_id: null,
-        profile_id: null,
-        metadata: {
-          auto_created: true,
-          source: 'crm_cause_create',
-          qa_auto_linked: true,
-        },
-      })
-      .eq('cause_id', created.id)
-  } catch {
-    // Keep the linked cause usable even if newer stakeholder columns are missing.
-  }
 
   try {
     const { data: syncedCause } = await (supabase.from('causes') as any)
@@ -145,6 +138,34 @@ async function ensureLinkedCause(supabase: any, actorId: string, qaCause: Awaite
     return (syncedCause || created) as Cause
   } catch {
     return created as Cause
+  }
+}
+
+async function ensureImportedCauseLifecycle(supabase: any, actorId: string, cause: Cause) {
+  await Promise.allSettled([
+    ensureCauseOnboardingFlow(supabase as any, cause, actorId),
+    ensureCauseStakeholderSetup(supabase as any, cause, actorId),
+  ])
+}
+
+async function repairImportedCauseRecord(supabase: any, actorId: string, cause: Cause) {
+  const patch: Partial<Cause> = {}
+  if (!cause.owner_id) patch.owner_id = actorId
+  if (!cause.source) patch.source = 'qa_server'
+  if (!cause.source_detail) patch.source_detail = 'Imported from QA on first open'
+
+  if (Object.keys(patch).length === 0) return cause
+
+  try {
+    const { data } = await (supabase.from('causes') as any)
+      .update(patch)
+      .eq('id', cause.id)
+      .select('*')
+      .single()
+
+    return (data || cause) as Cause
+  } catch {
+    return cause
   }
 }
 
@@ -202,7 +223,14 @@ export async function GET(
       qaError = qaError || qaCauseRouteError(error)
       localCause = await findLocalCauseByQaId(context.supabase as any, qaCause.id)
     }
-  } else if (localCause && qaCause) {
+  }
+
+  if (localCause) {
+    localCause = await repairImportedCauseRecord(context.supabase as any, context.profile.id, localCause)
+    await ensureImportedCauseLifecycle(context.supabase as any, context.profile.id, localCause)
+  }
+
+  if (localCause && qaCause) {
     try {
       const { data: syncedCause } = await (context.supabase.from('causes') as any)
         .update(buildCauseQaSyncPatch(localCause, qaCause))

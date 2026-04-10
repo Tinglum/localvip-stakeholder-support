@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
-import { createBusinessLifecycle } from '@/lib/server/stakeholder-lifecycle'
+import {
+  createBusinessLifecycle,
+  ensureBusinessOnboardingFlow,
+  ensureBusinessStakeholderSetup,
+} from '@/lib/server/stakeholder-lifecycle'
 import {
   buildCrmBusinessDetail,
   fetchQaBusinessDetail,
@@ -13,6 +17,7 @@ import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/serv
 import type { Business } from '@/lib/types/database'
 
 function buildBusinessCreatePayload(
+  actorId: string,
   qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>,
 ) {
   return {
@@ -35,14 +40,19 @@ function buildBusinessCreatePayload(
     category: null,
     brand: 'localvip' as const,
     stage: 'lead' as const,
-    owner_id: null,
+    owner_id: actorId,
     source: 'qa_server',
-    source_detail: 'linked_on_open',
+    source_detail: 'Imported from QA on first open',
     campaign_id: null,
     duplicate_of: null,
     external_id: String(qaBusiness.id),
     status: qaBusiness.active ? ('active' as const) : ('inactive' as const),
-    metadata: buildBusinessMetadata(null, qaBusiness),
+    metadata: {
+      created_from: 'qa_business_import',
+      qa_import_mode: 'first_open',
+      imported_by: actorId,
+      ...buildBusinessMetadata(null, qaBusiness),
+    },
   } satisfies Partial<Business>
 }
 
@@ -114,25 +124,8 @@ async function ensureLinkedBusiness(supabase: any, actorId: string, qaBusiness: 
   const created = await createBusinessLifecycle(supabase as any, {
     actorId,
     shell: 'admin',
-    business: buildBusinessCreatePayload(qaBusiness),
+    business: buildBusinessCreatePayload(actorId, qaBusiness),
   })
-
-  try {
-    await supabase
-      .from('stakeholders')
-      .update({
-        owner_user_id: null,
-        profile_id: null,
-        metadata: {
-          auto_created: true,
-          source: 'crm_business_create',
-          qa_auto_linked: true,
-        },
-      })
-      .eq('business_id', created.id)
-  } catch {
-    // Keep the linked business usable even if newer stakeholder columns are missing.
-  }
 
   try {
     const { data: syncedBusiness } = await (supabase.from('businesses') as any)
@@ -144,6 +137,34 @@ async function ensureLinkedBusiness(supabase: any, actorId: string, qaBusiness: 
     return (syncedBusiness || created) as Business
   } catch {
     return created as Business
+  }
+}
+
+async function ensureImportedBusinessLifecycle(supabase: any, actorId: string, business: Business) {
+  await Promise.allSettled([
+    ensureBusinessOnboardingFlow(supabase as any, business, actorId),
+    ensureBusinessStakeholderSetup(supabase as any, business, actorId),
+  ])
+}
+
+async function repairImportedBusinessRecord(supabase: any, actorId: string, business: Business) {
+  const patch: Partial<Business> = {}
+  if (!business.owner_id) patch.owner_id = actorId
+  if (!business.source) patch.source = 'qa_server'
+  if (!business.source_detail) patch.source_detail = 'Imported from QA on first open'
+
+  if (Object.keys(patch).length === 0) return business
+
+  try {
+    const { data } = await (supabase.from('businesses') as any)
+      .update(patch)
+      .eq('id', business.id)
+      .select('*')
+      .single()
+
+    return (data || business) as Business
+  } catch {
+    return business
   }
 }
 
@@ -201,7 +222,14 @@ export async function GET(
       qaError = qaError || qaBusinessRouteError(error)
       localBusiness = await findLocalBusinessByQaId(context.supabase as any, qaBusiness.id)
     }
-  } else if (localBusiness && qaBusiness) {
+  }
+
+  if (localBusiness) {
+    localBusiness = await repairImportedBusinessRecord(context.supabase as any, context.profile.id, localBusiness)
+    await ensureImportedBusinessLifecycle(context.supabase as any, context.profile.id, localBusiness)
+  }
+
+  if (localBusiness && qaBusiness) {
     try {
       const { data: syncedBusiness } = await (context.supabase.from('businesses') as any)
         .update(buildBusinessQaSyncPatch(localBusiness, qaBusiness))

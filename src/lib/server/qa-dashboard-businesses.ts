@@ -78,7 +78,7 @@ export function mergeBusinessRecord(
     linked_cause_id: localBusiness?.linked_cause_id || null,
     linked_material_id: localBusiness?.linked_material_id || null,
     linked_qr_code_id: localBusiness?.linked_qr_code_id || null,
-    logo_url: localBusiness?.logo_url || resolveImageUrl(qaFields.image_url) || null,
+    logo_url: resolveImageUrl(qaFields.image_url) || localBusiness?.logo_url || null,
     cover_photo_url: localBusiness?.cover_photo_url || null,
     linked_qr_collection_id: localBusiness?.linked_qr_collection_id || null,
     duplicate_of: localBusiness?.duplicate_of || null,
