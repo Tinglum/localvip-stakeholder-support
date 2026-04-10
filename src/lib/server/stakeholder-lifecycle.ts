@@ -594,26 +594,51 @@ async function createOnboardingFlowWithSteps(
     source: string
   },
 ) {
-  const { data, error } = await (supabase.from('onboarding_flows') as any)
-    .insert({
-      name: input.name,
-      entity_type: input.entityType,
-      entity_id: input.entityId,
-      brand: input.brand,
-      stage: input.stage,
-      owner_id: input.ownerId,
-      campaign_id: input.campaignId,
-      started_at: new Date().toISOString(),
-      completed_at: null,
-      metadata: {
-        auto_created: true,
-        source: input.source,
-      },
-    })
+  let data: Record<string, unknown> | null = null
+  let error: { message?: string; code?: string } | null = null
+
+  const flowPayload = {
+    name: input.name,
+    entity_type: input.entityType,
+    entity_id: input.entityId,
+    brand: input.brand,
+    stage: input.stage,
+    owner_id: input.ownerId,
+    campaign_id: input.campaignId,
+    started_at: new Date().toISOString(),
+    completed_at: null,
+    metadata: {
+      auto_created: true,
+      source: input.source,
+    },
+  }
+
+  const result = await (supabase.from('onboarding_flows') as any)
+    .insert(flowPayload)
     .select()
     .single()
 
+  data = result.data
+  error = result.error
+
+  // FK violation on owner_id (code 23503) — retry with null owner so the flow is still created
+  if (error && error.code === '23503') {
+    console.warn('[stakeholder-lifecycle] onboarding_flow FK violation on owner_id, retrying with null', {
+      ownerId: input.ownerId,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      message: error.message,
+    })
+    const retry = await (supabase.from('onboarding_flows') as any)
+      .insert({ ...flowPayload, owner_id: null, metadata: { ...flowPayload.metadata, owner_fk_fallback: input.ownerId } })
+      .select()
+      .single()
+    data = retry.data
+    error = retry.error
+  }
+
   if (error || !data) {
+    console.error('[stakeholder-lifecycle] onboarding flow creation failed', error)
     throw new Error(error?.message || 'Onboarding flow could not be created.')
   }
 
@@ -634,7 +659,7 @@ async function createOnboardingFlowWithSteps(
     })),
   )
 
-  return data as OnboardingFlow
+  return data as unknown as OnboardingFlow
 }
 
 async function getStakeholderByLinkedRecord(
