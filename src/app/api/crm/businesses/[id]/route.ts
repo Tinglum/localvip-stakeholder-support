@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
 import {
-  createBusinessLifecycle,
   ensureBusinessOnboardingFlow,
   ensureBusinessStakeholderSetup,
 } from '@/lib/server/stakeholder-lifecycle'
@@ -127,12 +126,47 @@ function buildBusinessQaSyncPatch(
   } satisfies Partial<Business>
 }
 
-async function ensureLinkedBusiness(supabase: any, actorId: string | null, qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>) {
-  const created = await createBusinessLifecycle(supabase as any, {
-    actorId,
-    shell: 'admin',
-    business: buildBusinessCreatePayload(actorId, qaBusiness),
-  })
+async function createImportedBusinessRecord(
+  supabase: any,
+  actorId: string | null,
+  qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>,
+) {
+  const { data, error } = await (supabase.from('businesses') as any)
+    .insert(buildBusinessCreatePayload(actorId, qaBusiness))
+    .select('*')
+    .single()
+
+  if (error || !data) {
+    throw new Error(error?.message || 'Business could not be imported.')
+  }
+
+  return data as Business
+}
+
+async function ensureLinkedBusiness(
+  supabase: any,
+  actorId: string | null,
+  qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>,
+) {
+  const created = await createImportedBusinessRecord(supabase, actorId, qaBusiness)
+
+  const lifecycleResults = await Promise.allSettled([
+    ensureBusinessOnboardingFlow(supabase as any, created, actorId),
+    ensureBusinessStakeholderSetup(supabase as any, created, actorId),
+  ])
+
+  for (const result of lifecycleResults) {
+    if (result.status === 'rejected') {
+      console.warn('[qa-business-import] lightweight lifecycle setup failed', {
+        qaBusinessId: qaBusiness.id,
+        localBusinessId: created.id,
+        error:
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason),
+      })
+    }
+  }
 
   try {
     const { data: syncedBusiness } = await (supabase.from('businesses') as any)
@@ -182,6 +216,7 @@ export async function GET(
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
   const localProfileId = asProfileUuid(context.profile.id)
+  let createdLocalBusiness = false
 
   const searchParams = request.nextUrl.searchParams
   const routeId = params.id
@@ -226,6 +261,7 @@ export async function GET(
   if (!localBusiness && qaBusiness) {
     try {
       localBusiness = await ensureLinkedBusiness(context.supabase as any, localProfileId, qaBusiness)
+      createdLocalBusiness = !!localBusiness
     } catch (error) {
       qaError = qaError || qaBusinessRouteError(error)
       localBusiness = await findLocalBusinessByQaId(context.supabase as any, qaBusiness.id)
@@ -234,7 +270,9 @@ export async function GET(
 
   if (localBusiness) {
     localBusiness = await repairImportedBusinessRecord(context.supabase as any, localProfileId, localBusiness)
-    await ensureImportedBusinessLifecycle(context.supabase as any, localProfileId, localBusiness)
+    if (!createdLocalBusiness) {
+      await ensureImportedBusinessLifecycle(context.supabase as any, localProfileId, localBusiness)
+    }
   }
 
   if (localBusiness && qaBusiness) {

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
 import {
-  createCauseLifecycle,
   ensureCauseOnboardingFlow,
   ensureCauseStakeholderSetup,
 } from '@/lib/server/stakeholder-lifecycle'
@@ -128,12 +127,47 @@ function buildCauseQaSyncPatch(
   } satisfies Partial<Cause>
 }
 
-async function ensureLinkedCause(supabase: any, actorId: string | null, qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>) {
-  const created = await createCauseLifecycle(supabase as any, {
-    actorId,
-    shell: 'admin',
-    cause: buildCauseCreatePayload(actorId, qaCause),
-  })
+async function createImportedCauseRecord(
+  supabase: any,
+  actorId: string | null,
+  qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>,
+) {
+  const { data, error } = await (supabase.from('causes') as any)
+    .insert(buildCauseCreatePayload(actorId, qaCause))
+    .select('*')
+    .single()
+
+  if (error || !data) {
+    throw new Error(error?.message || 'Cause could not be imported.')
+  }
+
+  return data as Cause
+}
+
+async function ensureLinkedCause(
+  supabase: any,
+  actorId: string | null,
+  qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>,
+) {
+  const created = await createImportedCauseRecord(supabase, actorId, qaCause)
+
+  const lifecycleResults = await Promise.allSettled([
+    ensureCauseOnboardingFlow(supabase as any, created, actorId),
+    ensureCauseStakeholderSetup(supabase as any, created, actorId),
+  ])
+
+  for (const result of lifecycleResults) {
+    if (result.status === 'rejected') {
+      console.warn('[qa-cause-import] lightweight lifecycle setup failed', {
+        qaCauseId: qaCause.id,
+        localCauseId: created.id,
+        error:
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason),
+      })
+    }
+  }
 
   try {
     const { data: syncedCause } = await (supabase.from('causes') as any)
@@ -183,6 +217,7 @@ export async function GET(
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
   const localProfileId = asProfileUuid(context.profile.id)
+  let createdLocalCause = false
 
   const searchParams = request.nextUrl.searchParams
   const routeId = params.id
@@ -227,6 +262,7 @@ export async function GET(
   if (!localCause && qaCause) {
     try {
       localCause = await ensureLinkedCause(context.supabase as any, localProfileId, qaCause)
+      createdLocalCause = !!localCause
     } catch (error) {
       qaError = qaError || qaCauseRouteError(error)
       localCause = await findLocalCauseByQaId(context.supabase as any, qaCause.id)
@@ -235,7 +271,9 @@ export async function GET(
 
   if (localCause) {
     localCause = await repairImportedCauseRecord(context.supabase as any, localProfileId, localCause)
-    await ensureImportedCauseLifecycle(context.supabase as any, localProfileId, localCause)
+    if (!createdLocalCause) {
+      await ensureImportedCauseLifecycle(context.supabase as any, localProfileId, localCause)
+    }
   }
 
   if (localCause && qaCause) {
