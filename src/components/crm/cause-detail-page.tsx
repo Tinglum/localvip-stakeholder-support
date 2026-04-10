@@ -114,6 +114,8 @@ const OUTREACH_TYPES: { value: OutreachType; label: string }[] = [
   { value: 'referral', label: 'Referral' }, { value: 'other', label: 'Other' },
 ]
 
+const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
+
 function stepVariant(step: CauseExecutionStepSummary) {
   if (step.state === 'completed') return 'success' as const
   if (step.state === 'active' && step.readyToComplete) return 'info' as const
@@ -143,7 +145,7 @@ export default function CauseDetailPage() {
   const localCauseId = causeResponse?.localCauseId || null
   const readOnly = causeResponse?.readOnly || false
   const detailQaError = causeResponse?.qaError || null
-  const causeId = localCauseId || routeId
+  const causeId = localCauseId || EMPTY_UUID
   const { data: profiles } = useProfiles()
   const { data: cities } = useCities()
   const { data: campaigns } = useCampaigns()
@@ -156,7 +158,7 @@ export default function CauseDetailPage() {
   const { data: causeQrCodes, refetch: refetchQrCodes } = useQrCodes({ cause_id: causeId })
   const { data: flows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'cause', entity_id: causeId })
   const flow = flows[0] || null
-  const { data: steps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || '__none__' })
+  const { data: steps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || EMPTY_UUID })
   const { data: outreach, refetch: refetchOutreach } = useOutreach({ entity_id: causeId })
   const { data: tasks, refetch: refetchTasks } = useTasks({ entity_id: causeId })
   const { data: notes, refetch: refetchNotes } = useNotes({ entity_id: causeId })
@@ -184,7 +186,7 @@ export default function CauseDetailPage() {
     allStakeholders.find(s => s.cause_id === causeId) || null,
     [allStakeholders, causeId],
   )
-  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: causeStakeholder?.id || '__none__' })
+  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: causeStakeholder?.id || EMPTY_UUID })
 
   // ── Owner resolution (fallback chain: cause.owner_id → stakeholder.profile_id → stakeholder.owner_user_id → assignment) ──
   const owner = React.useMemo(() => {
@@ -350,18 +352,18 @@ export default function CauseDetailPage() {
   }, [causeResponse?.qaCauseId, localCauseId, qaCauseId, routeId, router])
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
-    if (!cause) return
-    await updateCause(cause.id, { stage: newStage })
+    if (!cause || !localCauseId || readOnly) return
+    await updateCause(localCauseId, { stage: newStage })
     setStageDropdownOpen(false)
     window.location.reload()
-  }, [cause, updateCause])
+  }, [cause, localCauseId, readOnly, updateCause])
 
   const handleCampaignLinkSave = React.useCallback(async () => {
-    if (!cause) return
-    await updateCause(cause.id, { campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId })
+    if (!cause || !localCauseId || readOnly) return
+    await updateCause(localCauseId, { campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId })
     setLinkCampaignOpen(false)
     window.location.reload()
-  }, [cause, pendingCampaignId, updateCause])
+  }, [cause, localCauseId, pendingCampaignId, readOnly, updateCause])
 
   async function refetchExecution() {
     refetchStakeholders({ silent: true })
@@ -520,15 +522,17 @@ export default function CauseDetailPage() {
 
   // ── Duplicate review ──
   async function handleNotDuplicate() {
+    if (!localCauseId || readOnly) return
     setReviewDupLoading(true)
-    await updateCause(causeId, { duplicate_of: null })
+    await updateCause(localCauseId, { duplicate_of: null })
     setReviewDupOpen(false)
     window.location.reload()
   }
 
   async function handleArchiveAsDuplicate() {
+    if (!localCauseId || readOnly) return
     setReviewDupLoading(true)
-    await updateCause(causeId, { status: 'archived' })
+    await updateCause(localCauseId, { status: 'archived' })
     setReviewDupOpen(false)
     window.location.reload()
   }
@@ -564,7 +568,9 @@ export default function CauseDetailPage() {
   }
 
   const completedStepCount = executionSteps.filter(s => s.state === 'completed').length
-  const qrGeneratorHref = `/qr/generator?causeId=${cause.id}&returnTo=${encodeURIComponent(`/crm/causes/${cause.id}`)}`
+  const qrGeneratorHref = localCauseId
+    ? `/qr/generator?causeId=${localCauseId}&returnTo=${encodeURIComponent(`/crm/causes/${localCauseId}${qaCauseId !== null ? `?qaId=${qaCauseId}` : ''}`)}`
+    : '/qr/generator'
 
   // ── TAB CONFIG ──
   const tabs: Array<{ key: DashboardTab; label: string; icon: React.ReactNode; count?: number }> = [

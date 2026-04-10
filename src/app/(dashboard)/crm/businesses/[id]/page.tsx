@@ -112,6 +112,8 @@ const STAGE_OPTIONS: OnboardingStage[] = [
   'lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live', 'paused', 'declined',
 ]
 
+const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
+
 // ─── Component ──────────────────────────────────────────────
 
 export default function BusinessDetailPage() {
@@ -133,7 +135,7 @@ export default function BusinessDetailPage() {
   const qaBusiness = businessResponse?.qaBusiness || null
   const readOnly = businessResponse?.readOnly || false
   const detailQaError = businessResponse?.qaError || null
-  const localEntityId = localBusinessId || '__qa_unlinked__'
+  const localEntityId = localBusinessId || EMPTY_UUID
   const { data: profiles } = useProfiles()
   const { data: cities } = useCities()
   const { data: causes } = useCauses()
