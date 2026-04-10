@@ -16,8 +16,15 @@ import {
 import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import type { Cause } from '@/lib/types/database'
 
+function asProfileUuid(value: string | null | undefined) {
+  if (!value) return null
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null
+}
+
 function buildCauseCreatePayload(
-  actorId: string,
+  actorId: string | null,
   qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>,
 ) {
   return {
@@ -121,7 +128,7 @@ function buildCauseQaSyncPatch(
   } satisfies Partial<Cause>
 }
 
-async function ensureLinkedCause(supabase: any, actorId: string, qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>) {
+async function ensureLinkedCause(supabase: any, actorId: string | null, qaCause: Awaited<ReturnType<typeof fetchQaCauseDetail>>) {
   const created = await createCauseLifecycle(supabase as any, {
     actorId,
     shell: 'admin',
@@ -141,16 +148,16 @@ async function ensureLinkedCause(supabase: any, actorId: string, qaCause: Awaite
   }
 }
 
-async function ensureImportedCauseLifecycle(supabase: any, actorId: string, cause: Cause) {
+async function ensureImportedCauseLifecycle(supabase: any, actorId: string | null, cause: Cause) {
   await Promise.allSettled([
     ensureCauseOnboardingFlow(supabase as any, cause, actorId),
     ensureCauseStakeholderSetup(supabase as any, cause, actorId),
   ])
 }
 
-async function repairImportedCauseRecord(supabase: any, actorId: string, cause: Cause) {
+async function repairImportedCauseRecord(supabase: any, actorId: string | null, cause: Cause) {
   const patch: Partial<Cause> = {}
-  if (!cause.owner_id) patch.owner_id = actorId
+  if (!cause.owner_id && actorId) patch.owner_id = actorId
   if (!cause.source) patch.source = 'qa_server'
   if (!cause.source_detail) patch.source_detail = 'Imported from QA on first open'
 
@@ -175,6 +182,7 @@ export async function GET(
 ) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
+  const localProfileId = asProfileUuid(context.profile.id)
 
   const searchParams = request.nextUrl.searchParams
   const routeId = params.id
@@ -218,7 +226,7 @@ export async function GET(
 
   if (!localCause && qaCause) {
     try {
-      localCause = await ensureLinkedCause(context.supabase as any, context.profile.id, qaCause)
+      localCause = await ensureLinkedCause(context.supabase as any, localProfileId, qaCause)
     } catch (error) {
       qaError = qaError || qaCauseRouteError(error)
       localCause = await findLocalCauseByQaId(context.supabase as any, qaCause.id)
@@ -226,8 +234,8 @@ export async function GET(
   }
 
   if (localCause) {
-    localCause = await repairImportedCauseRecord(context.supabase as any, context.profile.id, localCause)
-    await ensureImportedCauseLifecycle(context.supabase as any, context.profile.id, localCause)
+    localCause = await repairImportedCauseRecord(context.supabase as any, localProfileId, localCause)
+    await ensureImportedCauseLifecycle(context.supabase as any, localProfileId, localCause)
   }
 
   if (localCause && qaCause) {

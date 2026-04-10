@@ -8,6 +8,13 @@ import {
 } from '@/lib/server/qa-dashboard-businesses'
 import type { Brand, Business, OnboardingStage } from '@/lib/types/database'
 
+function asProfileUuid(value: string | null | undefined) {
+  if (!value) return null
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null
+}
+
 export async function GET() {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
@@ -34,6 +41,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
+  const localProfileId = asProfileUuid(context.profile.id)
 
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {
@@ -47,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const business = await createBusinessLifecycle(context.supabase, {
-      actorId: context.profile.id,
+      actorId: localProfileId,
       shell: context.shell as 'admin' | 'field' | 'launch_partner',
       business: {
         name,
@@ -59,7 +67,7 @@ export async function POST(request: NextRequest) {
         city_id: asOptionalString(body.city_id),
         brand: isBrand(body.brand) ? body.brand : 'localvip',
         stage: isOnboardingStage(body.stage) ? body.stage : 'lead',
-        owner_id: context.profile.id,
+        owner_id: localProfileId,
         owner_user_id: null,
         status: 'active',
         metadata: {

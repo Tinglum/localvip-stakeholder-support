@@ -16,8 +16,15 @@ import {
 import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import type { Business } from '@/lib/types/database'
 
+function asProfileUuid(value: string | null | undefined) {
+  if (!value) return null
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null
+}
+
 function buildBusinessCreatePayload(
-  actorId: string,
+  actorId: string | null,
   qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>,
 ) {
   return {
@@ -120,7 +127,7 @@ function buildBusinessQaSyncPatch(
   } satisfies Partial<Business>
 }
 
-async function ensureLinkedBusiness(supabase: any, actorId: string, qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>) {
+async function ensureLinkedBusiness(supabase: any, actorId: string | null, qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>) {
   const created = await createBusinessLifecycle(supabase as any, {
     actorId,
     shell: 'admin',
@@ -140,16 +147,16 @@ async function ensureLinkedBusiness(supabase: any, actorId: string, qaBusiness: 
   }
 }
 
-async function ensureImportedBusinessLifecycle(supabase: any, actorId: string, business: Business) {
+async function ensureImportedBusinessLifecycle(supabase: any, actorId: string | null, business: Business) {
   await Promise.allSettled([
     ensureBusinessOnboardingFlow(supabase as any, business, actorId),
     ensureBusinessStakeholderSetup(supabase as any, business, actorId),
   ])
 }
 
-async function repairImportedBusinessRecord(supabase: any, actorId: string, business: Business) {
+async function repairImportedBusinessRecord(supabase: any, actorId: string | null, business: Business) {
   const patch: Partial<Business> = {}
-  if (!business.owner_id) patch.owner_id = actorId
+  if (!business.owner_id && actorId) patch.owner_id = actorId
   if (!business.source) patch.source = 'qa_server'
   if (!business.source_detail) patch.source_detail = 'Imported from QA on first open'
 
@@ -174,6 +181,7 @@ export async function GET(
 ) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
+  const localProfileId = asProfileUuid(context.profile.id)
 
   const searchParams = request.nextUrl.searchParams
   const routeId = params.id
@@ -217,7 +225,7 @@ export async function GET(
 
   if (!localBusiness && qaBusiness) {
     try {
-      localBusiness = await ensureLinkedBusiness(context.supabase as any, context.profile.id, qaBusiness)
+      localBusiness = await ensureLinkedBusiness(context.supabase as any, localProfileId, qaBusiness)
     } catch (error) {
       qaError = qaError || qaBusinessRouteError(error)
       localBusiness = await findLocalBusinessByQaId(context.supabase as any, qaBusiness.id)
@@ -225,8 +233,8 @@ export async function GET(
   }
 
   if (localBusiness) {
-    localBusiness = await repairImportedBusinessRecord(context.supabase as any, context.profile.id, localBusiness)
-    await ensureImportedBusinessLifecycle(context.supabase as any, context.profile.id, localBusiness)
+    localBusiness = await repairImportedBusinessRecord(context.supabase as any, localProfileId, localBusiness)
+    await ensureImportedBusinessLifecycle(context.supabase as any, localProfileId, localBusiness)
   }
 
   if (localBusiness && qaBusiness) {

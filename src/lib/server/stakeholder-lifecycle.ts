@@ -59,7 +59,7 @@ export async function createBusinessLifecycle(
   supabase: ServiceSupabaseClient,
   input: {
     business: Partial<Business>
-    actorId: string
+    actorId: string | null
     shell: OperatorShell
   },
 ) {
@@ -91,7 +91,7 @@ export async function createCauseLifecycle(
   supabase: ServiceSupabaseClient,
   input: {
     cause: Partial<Cause>
-    actorId: string
+    actorId: string | null
     shell: OperatorShell
   },
 ) {
@@ -122,10 +122,10 @@ export async function createCauseLifecycle(
 export async function ensureBusinessClaimAssignment(
   supabase: ServiceSupabaseClient,
   business: Business,
-  actorId: string,
+  actorId: string | null,
   shell: OperatorShell,
 ) {
-  if (!['field', 'launch_partner'].includes(shell)) return null
+  if (!actorId || !['field', 'launch_partner'].includes(shell)) return null
 
   const { data: existing } = await supabase
     .from('stakeholder_assignments')
@@ -169,10 +169,10 @@ export async function ensureBusinessClaimAssignment(
 export async function ensureCauseClaimAssignment(
   supabase: ServiceSupabaseClient,
   cause: Cause,
-  actorId: string,
+  actorId: string | null,
   shell: OperatorShell,
 ) {
-  if (!['field', 'launch_partner'].includes(shell)) return null
+  if (!actorId || !['field', 'launch_partner'].includes(shell)) return null
 
   const { data: existing } = await supabase
     .from('stakeholder_assignments')
@@ -216,7 +216,7 @@ export async function ensureCauseClaimAssignment(
 export async function ensureBusinessOnboardingFlow(
   supabase: ServiceSupabaseClient,
   business: Business,
-  actorId: string,
+  actorId: string | null,
 ) {
   const existing = await getOnboardingFlow(supabase, 'business', business.id)
   if (existing) return existing
@@ -236,7 +236,7 @@ export async function ensureBusinessOnboardingFlow(
 export async function ensureCauseOnboardingFlow(
   supabase: ServiceSupabaseClient,
   cause: Cause,
-  actorId: string,
+  actorId: string | null,
 ) {
   const existing = await getOnboardingFlow(supabase, 'cause', cause.id)
   if (existing) return existing
@@ -256,7 +256,7 @@ export async function ensureCauseOnboardingFlow(
 export async function ensureBusinessStakeholderSetup(
   supabase: ServiceSupabaseClient,
   business: Business,
-  actorId: string,
+  actorId: string | null,
 ) {
   let stakeholder = await getStakeholderByLinkedRecord(supabase, 'business', business.id)
 
@@ -368,7 +368,7 @@ export async function ensureBusinessStakeholderSetup(
 export async function ensureCauseStakeholderSetup(
   supabase: ServiceSupabaseClient,
   cause: Cause,
-  actorId: string,
+  actorId: string | null,
 ) {
   let stakeholder = await getStakeholderByLinkedRecord(supabase, 'cause', cause.id)
 
@@ -601,7 +601,7 @@ async function createOnboardingFlowWithSteps(
     entityId: string
     brand: Brand
     stage: OnboardingStage
-    ownerId: string
+    ownerId: string | null
     campaignId: string | null
     steps: ReadonlyArray<{ title: string; description: string }>
     source: string
