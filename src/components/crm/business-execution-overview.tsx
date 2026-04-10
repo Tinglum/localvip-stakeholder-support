@@ -25,6 +25,7 @@ import {
 import { useAuth } from '@/lib/auth/context'
 import { resolveBusinessOffer } from '@/lib/offers'
 import { buildStakeholderJoinUrl } from '@/lib/material-engine'
+import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { computeBusinessExecutionSteps, getBusinessNextActions, getTabForBusinessStepKey, type BusinessExecutionStepSummary } from '@/lib/business-execution'
 import {
   useAdminTasks,
@@ -94,16 +95,17 @@ export function BusinessExecutionOverview({
   refetchBusiness,
 }: BusinessExecutionOverviewProps) {
   const { profile } = useAuth()
+  const localProfileId = asUuid(profile.id)
   const { data: profiles } = useProfiles()
   const { data: stakeholders, refetch: refetchStakeholders } = useStakeholders({ business_id: biz.id })
   const stakeholder = stakeholders[0] || null
-  const { data: stakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || '__none__' })
+  const { data: stakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
   const codes = stakeholderCodes[0] || null
-  const { data: generatedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholder?.id || '__none__' })
-  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || '__none__' })
+  const { data: generatedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
+  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
   const { data: flows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: biz.id })
   const flow = flows[0] || null
-  const { data: steps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || '__none__' })
+  const { data: steps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || EMPTY_UUID })
   const { data: offers, refetch: refetchOffers } = useOffers({ business_id: biz.id })
   const { data: contacts, refetch: refetchContacts } = useContacts({ business_id: biz.id })
   const { data: qrCodes, refetch: refetchQrCodes } = useQrCodes({ business_id: biz.id })
@@ -345,7 +347,7 @@ export function BusinessExecutionOverview({
       entity_type: 'business',
       entity_id: biz.id,
       type: 'other',
-      performed_by: profile.id,
+      performed_by: localProfileId || undefined,
       subject: outreachSubject || null,
       body: outreachBody,
       outcome: outreachOutcome || null,

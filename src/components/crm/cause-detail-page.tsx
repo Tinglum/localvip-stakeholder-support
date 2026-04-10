@@ -54,6 +54,7 @@ import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { QaImportedFieldsPanel, QaWritebackWishlistTable, type QaImportedFact, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
+import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
 import { useCrmCause } from '@/lib/hooks/crm-businesses'
@@ -114,8 +115,6 @@ const OUTREACH_TYPES: { value: OutreachType; label: string }[] = [
   { value: 'referral', label: 'Referral' }, { value: 'other', label: 'Other' },
 ]
 
-const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
-
 function stepVariant(step: CauseExecutionStepSummary) {
   if (step.state === 'completed') return 'success' as const
   if (step.state === 'active' && step.readyToComplete) return 'info' as const
@@ -137,6 +136,7 @@ export default function CauseDetailPage() {
     return value && /^\d+$/.test(value) ? Number(value) : null
   }, [searchParams])
   const { profile, isAdmin } = useAuth()
+  const localProfileId = asUuid(profile.id)
   const [activeTab, setActiveTab] = React.useState<DashboardTab>('mission')
 
   // ── Data hooks ──
@@ -465,7 +465,7 @@ export default function CauseDetailPage() {
       entity_type: 'cause',
       entity_id: causeId,
       type: outreachType,
-      performed_by: profile.id,
+      performed_by: localProfileId || undefined,
       subject: outreachSubject || null,
       body: outreachBody,
       outcome: outreachOutcome || null,
@@ -489,7 +489,7 @@ export default function CauseDetailPage() {
       status: 'pending',
       entity_type: 'cause',
       entity_id: causeId,
-      created_by: profile.id,
+      created_by: localProfileId || undefined,
     })
     setTaskTitle('')
     refetchTasks({ silent: true })
@@ -513,7 +513,7 @@ export default function CauseDetailPage() {
       content: noteContent,
       entity_type: 'cause',
       entity_id: causeId,
-      created_by: profile.id,
+      created_by: localProfileId || undefined,
       is_internal: false,
     })
     setNoteContent('')

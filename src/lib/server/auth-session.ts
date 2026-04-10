@@ -6,6 +6,7 @@ import {
   type QaAuthClaims,
   type QaSession,
 } from '@/lib/auth/qa-auth'
+import { asUuid } from '@/lib/uuid'
 import type { Profile } from '@/lib/types/database'
 
 export type AuthSource = 'qa' | 'supabase'
@@ -13,6 +14,7 @@ export type AuthSource = 'qa' | 'supabase'
 export interface ResolvedAuthSession {
   profile: Profile
   userId: string
+  localProfileId: string | null
   source: AuthSource
   qaClaims?: QaAuthClaims
   qaSession?: QaSession
@@ -154,6 +156,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     return {
       profile,
       userId: profile.id,
+      localProfileId: asUuid(profile.id),
       source: 'qa',
       qaClaims: qaSession.claims,
       qaSession,
@@ -188,6 +191,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       return {
         profile,
         userId: user.id,
+        localProfileId: asUuid(user.id),
         source: 'supabase',
       }
     }

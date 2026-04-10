@@ -16,6 +16,7 @@ import {
 import { resolveBusinessOffer } from '@/lib/offers'
 import { BUSINESS_ACCENT_DARK_HEX, BUSINESS_ACCENT_HEX } from '@/lib/business-theme'
 import { generateShortCode, normalizePhone } from '@/lib/utils'
+import { asUuid, isUuid, pickFirstUuid } from '@/lib/uuid'
 
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>
 
@@ -61,6 +62,7 @@ export async function ensureBusinessJoinResource(
   business: Business,
   actorId: string | null,
 ) {
+  const actorUuid = asUuid(actorId)
   const capture = getBusinessJoinCaptureData(business)
   const joinSlug = capture.join_slug || getBusinessJoinSlug(business)
 
@@ -88,9 +90,9 @@ export async function ensureBusinessJoinResource(
   }
 
   if (!qrCode) {
-    qrCode = await createBusinessJoinQrCode(supabase, business, actorId, joinSlug)
+    qrCode = await createBusinessJoinQrCode(supabase, business, actorUuid, joinSlug)
   } else {
-    qrCode = await syncExistingBusinessJoinQrCode(supabase, business, actorId, joinSlug, qrCode)
+    qrCode = await syncExistingBusinessJoinQrCode(supabase, business, actorUuid, joinSlug, qrCode)
   }
 
   const linkedCauseName = await getLinkedCauseName(supabase, business.linked_cause_id)
@@ -140,7 +142,7 @@ export async function upsertBusinessJoinContact(
   },
 ) {
   const now = new Date().toISOString()
-  const ownerId = business.owner_user_id || business.owner_id || null
+  const ownerId = pickFirstUuid(business.owner_user_id, business.owner_id)
   const contacts = await getBusinessContacts(supabase, business.id)
   const offers = await getBusinessOffers(supabase, business.id)
   const captureOffer = resolveBusinessOffer(business, offers, 'capture')
@@ -227,7 +229,8 @@ export async function updateBusinessJoinQrAppearance(
   actorId: string | null,
   appearanceInput: Partial<BusinessJoinQrAppearance>,
 ) {
-  const resource = await ensureBusinessJoinResource(supabase, business, actorId)
+  const actorUuid = asUuid(actorId)
+  const resource = await ensureBusinessJoinResource(supabase, business, actorUuid)
   const { data } = await supabase
     .from('qr_codes')
     .select('*')
@@ -265,7 +268,7 @@ export async function updateBusinessJoinQrAppearance(
       logo_url: next.logoUrl,
       metadata: nextMetadata,
       version: (qrCode.version || 1) + 1,
-      created_by: qrCode.created_by || actorId,
+      created_by: pickFirstUuid(qrCode.created_by, actorUuid),
     })
     .eq('id', qrCode.id)
 
@@ -278,7 +281,7 @@ export async function updateBusinessJoinQrAppearance(
   return ensureBusinessJoinResource(
     supabase,
     (refreshedBusiness || business) as Business,
-    actorId,
+    actorUuid,
   )
 }
 
@@ -288,6 +291,7 @@ async function createBusinessJoinQrCode(
   actorId: string | null,
   joinSlug: string,
 ) {
+  actorId = asUuid(actorId)
   const shortCode = await createUniqueShortCode(supabase)
   const redirectUrl = getBusinessRedirectUrl(shortCode)
   const joinUrl = buildBusinessJoinResource(business, {
@@ -367,6 +371,7 @@ async function syncExistingBusinessJoinQrCode(
   joinSlug: string,
   qrCode: QrCode,
 ) {
+  const actorUuid = asUuid(actorId)
   const currentAppearance = getBusinessJoinQrAppearance(business, qrCode)
   const redirectUrl = qrCode.redirect_url || getBusinessRedirectUrl(qrCode.short_code)
   const joinUrl = buildBusinessJoinResource(business, {
@@ -401,13 +406,13 @@ async function syncExistingBusinessJoinQrCode(
       frame_text: currentAppearance.frameText,
       logo_url: currentAppearance.logoUrl,
       metadata: nextMetadata,
-      created_by: qrCode.created_by || actorId,
+      created_by: pickFirstUuid(qrCode.created_by, actorUuid),
     })
     .eq('id', qrCode.id)
     .select()
     .single()
 
-  await ensureRedirectRow(supabase, qrCode.short_code, joinUrl, qrCode.id, qrCode.created_by || actorId)
+  await ensureRedirectRow(supabase, qrCode.short_code, joinUrl, qrCode.id, pickFirstUuid(qrCode.created_by, actorUuid))
 
   return (data || { ...qrCode, destination_url: joinUrl, redirect_url: redirectUrl, metadata: nextMetadata }) as QrCode
 }
@@ -419,6 +424,7 @@ async function ensureRedirectRow(
   qrCodeId: string,
   actorId: string | null,
 ) {
+  actorId = asUuid(actorId)
   const { data: existing } = await (supabase
     .from('redirects') as any)
     .select('*')
@@ -493,10 +499,6 @@ async function getBusinessOffers(supabase: ServiceSupabaseClient, businessId: st
     .eq('business_id', businessId)
 
   return (data || []) as Offer[]
-}
-
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
 function isGradientColorPair(value: unknown): value is [string, string] {

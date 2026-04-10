@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { asUuid } from '@/lib/uuid'
 import {
   ensureCauseOnboardingFlow,
   ensureCauseStakeholderSetup,
@@ -49,7 +50,7 @@ async function getExecutionContext(causeId: string) {
     return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
   }
 
-  const { profile } = session
+  const { profile, localProfileId } = session
   const supabase = createServiceClient()
 
   const shell = getStakeholderShell(profile)
@@ -69,11 +70,11 @@ async function getExecutionContext(causeId: string) {
   }
 
   const [flow, stakeholder] = await Promise.all([
-    ensureCauseOnboardingFlow(supabase, cause, profile.id),
-    ensureCauseStakeholderSetup(supabase, cause, profile.id),
+    ensureCauseOnboardingFlow(supabase, cause, localProfileId),
+    ensureCauseStakeholderSetup(supabase, cause, localProfileId),
   ])
 
-  return { supabase, profile, cause, flow, stakeholder }
+  return { supabase, profile, cause, flow, stakeholder, localProfileId: localProfileId || asUuid(profile.id) }
 }
 
 async function loadExecutionState(
@@ -144,7 +145,7 @@ export async function POST(
       const result = await upsertStakeholderCodesAndGenerate(
         context.supabase,
         context.stakeholder.id,
-        context.profile.id,
+        context.localProfileId,
         {
           referralCode: parsed.data.referralCode,
           connectionCode: parsed.data.connectionCode,
@@ -155,12 +156,12 @@ export async function POST(
     }
 
     if (parsed.data.action === 'generate_materials') {
-      const result = await generateMaterialsForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      const result = await generateMaterialsForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
       return NextResponse.json({ success: true, result })
     }
 
     if (parsed.data.action === 'regenerate_all') {
-      const result = await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      const result = await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
       return NextResponse.json({ success: true, result })
     }
 
@@ -181,7 +182,7 @@ export async function POST(
 
       // Auto-regenerate materials when branding changes
       try {
-        await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+        await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
       } catch {
         // Regeneration failure is non-fatal for media upload
       }
@@ -224,7 +225,7 @@ export async function POST(
     const { error: stepError } = await (context.supabase.from('onboarding_steps') as any)
       .update({
         is_completed: true,
-        completed_by: context.profile.id,
+        completed_by: context.localProfileId,
         completed_at: completedAt,
       })
       .eq('id', completeStepAction.stepId)

@@ -10,6 +10,7 @@ import {
   mergeCommunitySupportMetadata,
 } from '@/lib/community-support'
 import { normalizePhone, generateShortCode } from '@/lib/utils'
+import { asUuid, isUuid, pickFirstUuid } from '@/lib/uuid'
 
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>
 
@@ -55,6 +56,7 @@ export async function ensureCommunitySupportResource(
   cause: Cause,
   actorId: string | null,
 ) {
+  const actorUuid = asUuid(actorId)
   const capture = getCommunitySupportCaptureData(cause)
   const supportSlug = capture.support_slug || getCommunitySupportSlug(cause)
 
@@ -82,9 +84,9 @@ export async function ensureCommunitySupportResource(
   }
 
   if (!qrCode) {
-    qrCode = await createCommunitySupportQrCode(supabase, cause, actorId, supportSlug)
+    qrCode = await createCommunitySupportQrCode(supabase, cause, actorUuid, supportSlug)
   } else {
-    qrCode = await syncExistingCommunitySupportQrCode(supabase, cause, actorId, supportSlug, qrCode)
+    qrCode = await syncExistingCommunitySupportQrCode(supabase, cause, actorUuid, supportSlug, qrCode)
   }
 
   const resource = buildCommunitySupportResource(cause, {
@@ -122,7 +124,7 @@ export async function upsertCommunitySupporter(
   },
 ) {
   const now = new Date().toISOString()
-  const ownerId = cause.owner_id || null
+  const ownerId = asUuid(cause.owner_id)
   const contacts = await getCommunityContacts(supabase, cause.id)
   const email = payload.email?.trim().toLowerCase() || null
   const phone = payload.phone?.trim() || null
@@ -200,6 +202,7 @@ async function createCommunitySupportQrCode(
   actorId: string | null,
   supportSlug: string,
 ) {
+  actorId = asUuid(actorId)
   const shortCode = await createUniqueShortCode(supabase)
   const redirectUrl = getCommunityRedirectUrl(shortCode)
   const supportUrl = buildCommunitySupportResource(cause, {
@@ -265,6 +268,7 @@ async function syncExistingCommunitySupportQrCode(
   supportSlug: string,
   qrCode: QrCode,
 ) {
+  const actorUuid = asUuid(actorId)
   const redirectUrl = qrCode.redirect_url || getCommunityRedirectUrl(qrCode.short_code)
   const supportUrl = buildCommunitySupportResource(cause, {
     supportSlug,
@@ -287,13 +291,13 @@ async function syncExistingCommunitySupportQrCode(
       redirect_url: redirectUrl,
       frame_text: qrCode.frame_text || 'SUPPORT US',
       metadata: nextMetadata,
-      created_by: qrCode.created_by || actorId,
+      created_by: pickFirstUuid(qrCode.created_by, actorUuid),
     })
     .eq('id', qrCode.id)
     .select()
     .single()
 
-  await ensureRedirectRow(supabase, qrCode.short_code, supportUrl, qrCode.id, qrCode.created_by || actorId)
+  await ensureRedirectRow(supabase, qrCode.short_code, supportUrl, qrCode.id, pickFirstUuid(qrCode.created_by, actorUuid))
 
   return (data || { ...qrCode, destination_url: supportUrl, redirect_url: redirectUrl, metadata: nextMetadata }) as QrCode
 }
@@ -305,6 +309,7 @@ async function ensureRedirectRow(
   qrCodeId: string,
   actorId: string | null,
 ) {
+  actorId = asUuid(actorId)
   const { data: existing } = await (supabase
     .from('redirects') as any)
     .select('*')
@@ -358,8 +363,4 @@ async function getCommunityContacts(supabase: ServiceSupabaseClient, causeId: st
     .limit(250)
 
   return (data || []) as Contact[]
-}
-
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }

@@ -16,6 +16,7 @@ import {
   syncMaterialAssetTemplatesForStakeholder,
 } from '@/lib/server/material-asset-template-engine'
 import type { createServiceClient } from '@/lib/supabase/server'
+import { asUuid, pickFirstUuid } from '@/lib/uuid'
 import { generateShortCode } from '@/lib/utils'
 import type {
   Business,
@@ -205,13 +206,15 @@ export async function createStakeholderRecord(
     metadata?: Record<string, unknown> | null
   },
 ) {
+  const ownerUserId = asUuid(payload.ownerUserId)
+  const profileId = asUuid(payload.profileId)
   const { data, error } = await (supabase.from('stakeholders') as any)
     .insert({
       type: payload.type,
       name: payload.name,
       city_id: payload.cityId || null,
-      owner_user_id: payload.ownerUserId || null,
-      profile_id: payload.profileId || null,
+      owner_user_id: ownerUserId,
+      profile_id: profileId,
       business_id: payload.businessId || null,
       cause_id: payload.causeId || null,
       organization_id: payload.organizationId || null,
@@ -348,6 +351,7 @@ export async function generateMaterialsForStakeholder(
     templateId?: string
   },
 ): Promise<GenerationResult> {
+  const actorUuid = asUuid(actorId)
   // Phase 1: Load stakeholder + codes in parallel
   const [stakeholder, codesResult] = await Promise.all([
     getStakeholderById(supabase, stakeholderId),
@@ -365,7 +369,7 @@ export async function generateMaterialsForStakeholder(
 
   // Phase 3: Ensure QR code + resolve templates in parallel (both depend on context)
   const [qrCode, templates] = await Promise.all([
-    ensureStakeholderQrCode(supabase, context, actorId),
+    ensureStakeholderQrCode(supabase, context, actorUuid),
     getTemplatesForStakeholder(supabase, stakeholder.type, options?.templateId, {
       tier: 'auto',
       cityId: stakeholder.city_id,
@@ -389,8 +393,8 @@ export async function generateMaterialsForStakeholder(
   const failures: Array<{ templateId: string; templateName: string; error: string }> = []
 
   for (const template of templates) {
-    try {
-      const generated = await generateOneMaterial(supabase, context, qrCode, template, actorId)
+      try {
+      const generated = await generateOneMaterial(supabase, context, qrCode, template, actorUuid)
       results.push(generated)
     } catch (error) {
       const message = extractErrorMessage(error, `Generation failed for template "${template.name}"`)
@@ -400,7 +404,7 @@ export async function generateMaterialsForStakeholder(
           context,
           qrCode,
           template,
-          actorId,
+          actorUuid,
           message,
         )
         results.push(fallbackGenerated)
@@ -489,6 +493,7 @@ async function generateOneMaterial(
   template: MaterialTemplate,
   actorId: string | null,
 ) {
+  const actorUuid = asUuid(actorId)
   const rawQrDataUrl = await QRCode.toDataURL(qrCode.redirect_url || context.joinUrl, {
     width: 1024,
     margin: 1,
@@ -588,7 +593,7 @@ async function generateOneMaterial(
   }
 
   const existingGenerated = existingVersions[0] || null
-  const ownerProfileId = await resolveStakeholderLibraryProfileId(supabase, context.stakeholder)
+  const ownerProfileId = asUuid(await resolveStakeholderLibraryProfileId(supabase, context.stakeholder))
   const title = fillTemplateText(getTemplateCopy(template).titlePattern, {
     ...getTemplateValueMap(context),
     template_name: template.name,
@@ -617,7 +622,7 @@ async function generateOneMaterial(
     is_template: false,
     version: nextVersion,
     status: 'active' as Material['status'],
-    created_by: actorId || context.stakeholder.owner_user_id || ownerProfileId || context.stakeholder.profile_id,
+    created_by: pickFirstUuid(actorUuid, context.stakeholder.owner_user_id, ownerProfileId, context.stakeholder.profile_id),
     metadata: {
       generated_by_engine: true,
       stakeholder_id: context.stakeholder.id,
@@ -647,7 +652,7 @@ async function generateOneMaterial(
   }
 
   if (ownerProfileId && materialId) {
-    await ensureMaterialAssignment(supabase, materialId, ownerProfileId, actorId)
+    await ensureMaterialAssignment(supabase, materialId, ownerProfileId, actorUuid)
   }
 
   const supportsActiveFlag = await supportsGeneratedMaterialsActiveFlag(supabase)
@@ -702,6 +707,7 @@ async function generateEmergencyFallbackMaterial(
   actorId: string | null,
   primaryError: string,
 ) {
+  const actorUuid = asUuid(actorId)
   const copy = getTemplateCopy(template)
   const valueMap = getTemplateValueMap(context)
   const qrDataUrl = await QRCode.toDataURL(qrCode.redirect_url || context.joinUrl, {
@@ -746,7 +752,7 @@ async function generateEmergencyFallbackMaterial(
   const generatedFileUrl = urlData.publicUrl
   const existingFallbackVersions = await getActiveGeneratedMaterials(supabase, context.stakeholder.id, template.id)
   const existingGenerated = existingFallbackVersions[0] || null
-  const ownerProfileId = await resolveStakeholderLibraryProfileId(supabase, context.stakeholder)
+  const ownerProfileId = asUuid(await resolveStakeholderLibraryProfileId(supabase, context.stakeholder))
   const title = fillTemplateText(copy.titlePattern, {
     ...valueMap,
     template_name: template.name,
@@ -775,7 +781,7 @@ async function generateEmergencyFallbackMaterial(
     is_template: false,
     version: 1,
     status: 'active' as Material['status'],
-    created_by: actorId || context.stakeholder.owner_user_id || ownerProfileId || context.stakeholder.profile_id,
+    created_by: pickFirstUuid(actorUuid, context.stakeholder.owner_user_id, ownerProfileId, context.stakeholder.profile_id),
     metadata: {
       generated_by_engine: true,
       generation_mode: 'emergency_fallback',
@@ -805,7 +811,7 @@ async function generateEmergencyFallbackMaterial(
   }
 
   if (ownerProfileId && materialId) {
-    await ensureMaterialAssignment(supabase, materialId, ownerProfileId, actorId)
+    await ensureMaterialAssignment(supabase, materialId, ownerProfileId, actorUuid)
   }
 
   // Archive old versions for fallback too
@@ -1117,12 +1123,18 @@ async function buildStakeholderMaterialContext(
   stakeholder: Stakeholder,
   codes: StakeholderCode,
 ): Promise<StakeholderMaterialContext> {
+  const businessId = asUuid(stakeholder.business_id)
+  const causeId = asUuid(stakeholder.cause_id)
+  const profileId = asUuid(stakeholder.profile_id)
+  const organizationId = asUuid(stakeholder.organization_id)
+  const cityId = asUuid(stakeholder.city_id)
+
   const [business, cause, profile, organization, city] = await Promise.all([
-    stakeholder.business_id ? getBusinessById(supabase, stakeholder.business_id) : Promise.resolve(null),
-    stakeholder.cause_id ? getCauseById(supabase, stakeholder.cause_id) : Promise.resolve(null),
-    stakeholder.profile_id ? getProfileById(supabase, stakeholder.profile_id) : Promise.resolve(null),
-    stakeholder.organization_id ? getOrganizationById(supabase, stakeholder.organization_id) : Promise.resolve(null),
-    stakeholder.city_id ? getCityById(supabase, stakeholder.city_id) : Promise.resolve(null),
+    businessId ? getBusinessById(supabase, businessId) : Promise.resolve(null),
+    causeId ? getCauseById(supabase, causeId) : Promise.resolve(null),
+    profileId ? getProfileById(supabase, profileId) : Promise.resolve(null),
+    organizationId ? getOrganizationById(supabase, organizationId) : Promise.resolve(null),
+    cityId ? getCityById(supabase, cityId) : Promise.resolve(null),
   ])
 
   const offers = business ? await getOffersForBusiness(supabase, business.id) : []
@@ -1161,7 +1173,8 @@ async function ensureStakeholderQrCode(
   actorId: string | null,
 ) {
   const purpose = getQrPurposeForStakeholderType(context.stakeholder.type)
-  const stakeholderProfileId = await resolveStakeholderQrProfileId(supabase, context.stakeholder)
+  const actorUuid = asUuid(actorId)
+  const stakeholderProfileId = asUuid(await resolveStakeholderQrProfileId(supabase, context.stakeholder))
   const existing = await getStakeholderQrCode(supabase, context.stakeholder, purpose, stakeholderProfileId)
   // Use connection code directly as the redirect short code
   const redirectShortCode = normalizeStakeholderCode(context.codes.connection_code || '') || await ensureUniqueShortCode(supabase, context.codes.connection_code, null)
@@ -1187,7 +1200,7 @@ async function ensureStakeholderQrCode(
     scan_count: existing?.scan_count || 0,
     version: existing?.version || 1,
     status: 'active' as QrCode['status'],
-    created_by: actorId || context.stakeholder.owner_user_id || context.stakeholder.profile_id,
+    created_by: pickFirstUuid(actorUuid, context.stakeholder.owner_user_id, context.stakeholder.profile_id),
     metadata: {
       purpose,
       stakeholder_id: context.stakeholder.id,
@@ -1230,7 +1243,7 @@ async function ensureStakeholderQrCode(
     qrCodeId!,
     redirectShortCode,
     context.joinUrl,
-    actorId || context.stakeholder.owner_user_id || context.stakeholder.profile_id,
+    pickFirstUuid(actorUuid, context.stakeholder.owner_user_id, context.stakeholder.profile_id),
   )
 
   const { data, error } = await supabase.from('qr_codes').select('*').eq('id', qrCodeId!).single()
@@ -1259,6 +1272,7 @@ async function ensureRedirectRow(
   destinationUrl: string,
   createdBy: string | null,
 ) {
+  createdBy = asUuid(createdBy)
   const { data: redirect } = await supabase.from('redirects').select('*').eq('short_code', shortCode).maybeSingle()
   const redirectRecord = (redirect || null) as { id: string } | null
 
@@ -1285,6 +1299,7 @@ async function ensureMaterialAssignment(
   stakeholderProfileId: string,
   actorId: string | null,
 ) {
+  actorId = asUuid(actorId)
   const { data } = await supabase
     .from('material_assignments')
     .select('id')
@@ -1541,27 +1556,37 @@ async function ensureUniqueStakeholderCodeValue(
 }
 
 async function getBusinessById(supabase: ServiceSupabaseClient, id: string) {
-  const { data } = await supabase.from('businesses').select('*').eq('id', id).single()
+  const businessId = asUuid(id)
+  if (!businessId) return null
+  const { data } = await supabase.from('businesses').select('*').eq('id', businessId).single()
   return (data || null) as Business | null
 }
 
 async function getCauseById(supabase: ServiceSupabaseClient, id: string) {
-  const { data } = await supabase.from('causes').select('*').eq('id', id).single()
+  const causeId = asUuid(id)
+  if (!causeId) return null
+  const { data } = await supabase.from('causes').select('*').eq('id', causeId).single()
   return (data || null) as Cause | null
 }
 
 async function getProfileById(supabase: ServiceSupabaseClient, id: string) {
-  const { data } = await supabase.from('profiles').select('*').eq('id', id).single()
+  const profileId = asUuid(id)
+  if (!profileId) return null
+  const { data } = await supabase.from('profiles').select('*').eq('id', profileId).single()
   return (data || null) as Profile | null
 }
 
 async function getOrganizationById(supabase: ServiceSupabaseClient, id: string) {
-  const { data } = await supabase.from('organizations').select('*').eq('id', id).single()
+  const organizationId = asUuid(id)
+  if (!organizationId) return null
+  const { data } = await supabase.from('organizations').select('*').eq('id', organizationId).single()
   return (data || null) as Organization | null
 }
 
 async function getCityById(supabase: ServiceSupabaseClient, id: string) {
-  const { data } = await supabase.from('cities').select('*').eq('id', id).single()
+  const cityId = asUuid(id)
+  if (!cityId) return null
+  const { data } = await supabase.from('cities').select('*').eq('id', cityId).single()
   return (data || null) as City | null
 }
 
@@ -1574,17 +1599,17 @@ async function resolveStakeholderLibraryProfileId(
   supabase: ServiceSupabaseClient,
   stakeholder: Stakeholder,
 ) {
-  if (stakeholder.profile_id) return stakeholder.profile_id
-  if (stakeholder.owner_user_id) return stakeholder.owner_user_id
+  const directStakeholderProfileId = pickFirstUuid(stakeholder.profile_id, stakeholder.owner_user_id)
+  if (directStakeholderProfileId) return directStakeholderProfileId
 
   if (stakeholder.business_id) {
     const business = await getBusinessById(supabase, stakeholder.business_id)
-    return business?.owner_user_id || business?.owner_id || null
+    return pickFirstUuid(business?.owner_user_id, business?.owner_id)
   }
 
   if (stakeholder.cause_id) {
     const cause = await getCauseById(supabase, stakeholder.cause_id)
-    return cause?.owner_id || null
+    return asUuid(cause?.owner_id)
   }
 
   return null
@@ -2120,7 +2145,7 @@ async function createMaterialNotification(
   stakeholder: Stakeholder,
   materialCount: number,
 ) {
-  const userId = stakeholder.owner_user_id || stakeholder.profile_id
+  const userId = pickFirstUuid(stakeholder.owner_user_id, stakeholder.profile_id)
   if (!userId) return
 
   await (supabase.from('notifications') as any).insert({

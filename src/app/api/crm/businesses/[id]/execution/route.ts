@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { asUuid } from '@/lib/uuid'
 import {
   ensureBusinessOnboardingFlow,
   ensureBusinessStakeholderSetup,
@@ -49,7 +50,7 @@ async function getExecutionContext(businessId: string) {
     return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
   }
 
-  const { profile, source: authSource } = session
+  const { profile, source: authSource, localProfileId } = session
   const supabase = createServiceClient()
 
   const shell = getStakeholderShell(profile)
@@ -70,18 +71,18 @@ async function getExecutionContext(businessId: string) {
 
   try {
     const [flow, stakeholder] = await Promise.all([
-      ensureBusinessOnboardingFlow(supabase, business, profile.id),
-      ensureBusinessStakeholderSetup(supabase, business, profile.id),
+      ensureBusinessOnboardingFlow(supabase, business, localProfileId),
+      ensureBusinessStakeholderSetup(supabase, business, localProfileId),
     ])
 
-    return { supabase, profile, business, flow, stakeholder }
+    return { supabase, profile, business, flow, stakeholder, localProfileId }
   } catch (setupError) {
     // Surface full diagnostic so we can see exactly what's failing
     const msg = setupError instanceof Error ? setupError.message
       : typeof setupError === 'object' && setupError !== null && 'message' in setupError
         ? String((setupError as { message: unknown }).message)
         : String(setupError)
-    const debugInfo = `[auth=${authSource} profile=${profile.id.slice(0, 8)} email=${profile.email} role=${profile.role} shell=${shell} biz=${business.id.slice(0, 8)} city=${business.city_id?.slice(0, 8) || 'null'} owner=${business.owner_id?.slice(0, 8) || 'null'} meta=${JSON.stringify(profile.metadata)}]`
+    const debugInfo = `[auth=${authSource} profile=${(localProfileId || asUuid(profile.id) || 'none').slice(0, 8)} email=${profile.email} role=${profile.role} shell=${shell} biz=${business.id.slice(0, 8)} city=${business.city_id?.slice(0, 8) || 'null'} owner=${business.owner_id?.slice(0, 8) || 'null'} meta=${JSON.stringify(profile.metadata)}]`
     console.error('[business-execution] setup failed', msg, debugInfo)
     return { error: NextResponse.json({ error: `${msg} ${debugInfo}` }, { status: 500 }) }
   }
@@ -154,7 +155,7 @@ export async function POST(
       const result = await upsertStakeholderCodesAndGenerate(
         context.supabase,
         context.stakeholder.id,
-        context.profile.id,
+        context.localProfileId,
         {
           referralCode: parsed.data.referralCode,
           connectionCode: parsed.data.connectionCode,
@@ -165,12 +166,12 @@ export async function POST(
     }
 
     if (parsed.data.action === 'generate_materials') {
-      const result = await generateMaterialsForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      const result = await generateMaterialsForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
       return NextResponse.json({ success: true, result })
     }
 
     if (parsed.data.action === 'regenerate_all') {
-      const result = await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+      const result = await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
       return NextResponse.json({ success: true, result })
     }
 
@@ -191,7 +192,7 @@ export async function POST(
 
       // Auto-regenerate materials when branding changes
       try {
-        await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.profile.id)
+        await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
       } catch {
         // Regeneration failure is non-fatal for media upload
       }
@@ -234,7 +235,7 @@ export async function POST(
     const { error: stepError } = await (context.supabase.from('onboarding_steps') as any)
       .update({
         is_completed: true,
-        completed_by: context.profile.id,
+        completed_by: context.localProfileId,
         completed_at: completedAt,
       })
       .eq('id', completeStepAction.stepId)

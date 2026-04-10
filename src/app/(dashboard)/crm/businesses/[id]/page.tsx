@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ONBOARDING_STAGES } from '@/lib/constants'
+import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
 import { useCrmBusiness } from '@/lib/hooks/crm-businesses'
@@ -112,8 +113,6 @@ const STAGE_OPTIONS: OnboardingStage[] = [
   'lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live', 'paused', 'declined',
 ]
 
-const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
-
 // ─── Component ──────────────────────────────────────────────
 
 export default function BusinessDetailPage() {
@@ -126,6 +125,7 @@ export default function BusinessDetailPage() {
     return value && /^\d+$/.test(value) ? Number(value) : null
   }, [searchParams])
   const { profile } = useAuth()
+  const localProfileId = asUuid(profile.id)
   const [activeTab, setActiveTab] = React.useState<'overview' | 'activity' | 'tasks' | 'notes' | 'qr' | 'materials'>('overview')
 
   // ── Data hooks ──
@@ -658,7 +658,7 @@ export default function BusinessDetailPage() {
           inserting={insertingOutreach}
           refetch={refetchOutreach}
           profileMap={profileMap}
-          userId={profile.id}
+          userId={localProfileId}
         />
       )}
 
@@ -672,7 +672,7 @@ export default function BusinessDetailPage() {
           onUpdate={updateTask}
           profileMap={profileMap}
           refetch={refetchTasks}
-          userId={profile.id}
+          userId={localProfileId}
         />
       )}
 
@@ -685,7 +685,7 @@ export default function BusinessDetailPage() {
           inserting={insertingNote}
           profileMap={profileMap}
           refetch={refetchNotes}
-          userId={profile.id}
+          userId={localProfileId}
         />
       )}
 
@@ -1065,7 +1065,7 @@ function ActivityTab({
   inserting: boolean
   refetch: () => void
   profileMap: Map<string, Profile>
-  userId: string
+  userId: string | null
 }) {
   const [showForm, setShowForm] = React.useState(false)
   const [formType, setFormType] = React.useState<OutreachType>('call')
@@ -1081,7 +1081,7 @@ function ActivityTab({
       body: formBody,
       entity_type: 'business',
       entity_id: biz.id,
-      performed_by: userId,
+      performed_by: userId || undefined,
       outcome: formOutcome || null,
     })
     setFormType('call')
@@ -1234,7 +1234,7 @@ function TasksTab({
   onUpdate: (id: string, changes: Partial<Task>) => Promise<Task | null>
   profileMap: Map<string, Profile>
   refetch: () => void
-  userId: string
+  userId: string | null
 }) {
   const [showForm, setShowForm] = React.useState(false)
   const [title, setTitle] = React.useState('')
@@ -1249,8 +1249,8 @@ function TasksTab({
       status: 'pending',
       entity_type: 'business',
       entity_id: biz.id,
-      created_by: userId,
-      assigned_to: userId,
+      created_by: userId || undefined,
+      assigned_to: userId || undefined,
       due_date: dueDate || null,
     })
     setTitle('')
@@ -1393,7 +1393,7 @@ function NotesTab({
   inserting: boolean
   profileMap: Map<string, Profile>
   refetch: () => void
-  userId: string
+  userId: string | null
 }) {
   const [newNote, setNewNote] = React.useState('')
 
@@ -1403,7 +1403,7 @@ function NotesTab({
       content: newNote,
       entity_type: 'business',
       entity_id: biz.id,
-      created_by: userId,
+      created_by: userId || undefined,
       is_internal: false,
     })
     setNewNote('')

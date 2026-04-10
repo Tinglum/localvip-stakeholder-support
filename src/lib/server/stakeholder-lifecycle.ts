@@ -13,6 +13,7 @@ import type {
 import type { createServiceClient } from '@/lib/supabase/server'
 import type { StakeholderShell } from '@/lib/stakeholder-access'
 import { ensureAutomatedStakeholderMaterials } from '@/lib/server/material-engine'
+import { asUuid } from '@/lib/uuid'
 
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>
 type OperatorShell = Extract<StakeholderShell, 'admin' | 'field' | 'launch_partner'>
@@ -63,6 +64,7 @@ export async function createBusinessLifecycle(
     shell: OperatorShell
   },
 ) {
+  const actorId = asUuid(input.actorId)
   const { data, error } = await (supabase.from('businesses') as any)
     .insert(input.business)
     .select()
@@ -75,13 +77,13 @@ export async function createBusinessLifecycle(
   const business = data as Business
 
   const [, , stakeholder] = await Promise.all([
-    ensureBusinessClaimAssignment(supabase, business, input.actorId, input.shell),
-    ensureBusinessOnboardingFlow(supabase, business, input.actorId),
-    ensureBusinessStakeholderSetup(supabase, business, input.actorId),
+    ensureBusinessClaimAssignment(supabase, business, actorId, input.shell),
+    ensureBusinessOnboardingFlow(supabase, business, actorId),
+    ensureBusinessStakeholderSetup(supabase, business, actorId),
   ])
 
   if (stakeholder) {
-    await ensureAutomatedStakeholderMaterials(supabase, stakeholder.id, input.actorId)
+    await ensureAutomatedStakeholderMaterials(supabase, stakeholder.id, actorId)
   }
 
   return business
@@ -95,6 +97,7 @@ export async function createCauseLifecycle(
     shell: OperatorShell
   },
 ) {
+  const actorId = asUuid(input.actorId)
   const { data, error } = await (supabase.from('causes') as any)
     .insert(input.cause)
     .select()
@@ -107,13 +110,13 @@ export async function createCauseLifecycle(
   const cause = data as Cause
 
   const [, , stakeholder] = await Promise.all([
-    ensureCauseClaimAssignment(supabase, cause, input.actorId, input.shell),
-    ensureCauseOnboardingFlow(supabase, cause, input.actorId),
-    ensureCauseStakeholderSetup(supabase, cause, input.actorId),
+    ensureCauseClaimAssignment(supabase, cause, actorId, input.shell),
+    ensureCauseOnboardingFlow(supabase, cause, actorId),
+    ensureCauseStakeholderSetup(supabase, cause, actorId),
   ])
 
   if (stakeholder) {
-    await ensureAutomatedStakeholderMaterials(supabase, stakeholder.id, input.actorId)
+    await ensureAutomatedStakeholderMaterials(supabase, stakeholder.id, actorId)
   }
 
   return cause
@@ -125,6 +128,7 @@ export async function ensureBusinessClaimAssignment(
   actorId: string | null,
   shell: OperatorShell,
 ) {
+  actorId = asUuid(actorId)
   if (!actorId || !['field', 'launch_partner'].includes(shell)) return null
 
   const { data: existing } = await supabase
@@ -172,6 +176,7 @@ export async function ensureCauseClaimAssignment(
   actorId: string | null,
   shell: OperatorShell,
 ) {
+  actorId = asUuid(actorId)
   if (!actorId || !['field', 'launch_partner'].includes(shell)) return null
 
   const { data: existing } = await supabase
@@ -218,6 +223,7 @@ export async function ensureBusinessOnboardingFlow(
   business: Business,
   actorId: string | null,
 ) {
+  actorId = asUuid(actorId)
   const existing = await getOnboardingFlow(supabase, 'business', business.id)
   if (existing) return existing
   return createOnboardingFlowWithSteps(supabase, {
@@ -238,6 +244,7 @@ export async function ensureCauseOnboardingFlow(
   cause: Cause,
   actorId: string | null,
 ) {
+  actorId = asUuid(actorId)
   const existing = await getOnboardingFlow(supabase, 'cause', cause.id)
   if (existing) return existing
   return createOnboardingFlowWithSteps(supabase, {
@@ -258,6 +265,7 @@ export async function ensureBusinessStakeholderSetup(
   business: Business,
   actorId: string | null,
 ) {
+  actorId = asUuid(actorId)
   let stakeholder = await getStakeholderByLinkedRecord(supabase, 'business', business.id)
 
   if (!stakeholder) {
@@ -370,6 +378,8 @@ export async function ensureCauseStakeholderSetup(
   cause: Cause,
   actorId: string | null,
 ) {
+  actorId = asUuid(actorId)
+  const causeOwnerId = asUuid(cause.owner_id)
   let stakeholder = await getStakeholderByLinkedRecord(supabase, 'cause', cause.id)
 
   if (!stakeholder) {
@@ -379,7 +389,7 @@ export async function ensureCauseStakeholderSetup(
         name: cause.name,
         city_id: cause.city_id,
         owner_user_id: actorId,
-        profile_id: cause.owner_id,
+        profile_id: causeOwnerId,
         business_id: null,
         cause_id: cause.id,
         organization_id: cause.organization_id,
@@ -425,7 +435,7 @@ export async function ensureCauseStakeholderSetup(
               fk_fallback: true,
               original_city_id: cause.city_id,
               original_owner_id: actorId,
-              original_profile_id: cause.owner_id,
+              original_profile_id: causeOwnerId,
               original_org_id: cause.organization_id,
               original_error: insertError.message,
             },
@@ -449,7 +459,7 @@ export async function ensureCauseStakeholderSetup(
         city_id: cause.city_id,
         cause_id: cause.id,
         organization_id: cause.organization_id,
-        profile_id: cause.owner_id,
+        profile_id: causeOwnerId,
         status: stakeholder.status || 'pending',
         metadata: {
           ...((stakeholder.metadata as Record<string, unknown> | null) || {}),
