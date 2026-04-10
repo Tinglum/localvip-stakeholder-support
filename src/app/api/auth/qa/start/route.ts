@@ -5,21 +5,31 @@ export async function GET(request: NextRequest) {
   const returnTo = sanitizeReturnTo(request.nextUrl.searchParams.get('returnTo'))
   const debug = request.nextUrl.searchParams.get('debug') === '1'
 
-  // If the request origin differs from NEXT_PUBLIC_APP_URL, the cookies we set
-  // here will never be sent back to the callback route (because QA will
-  // redirect to the canonical app URL, not wherever the user started). Send
-  // them to the canonical origin first so the cookies land on the right host.
+  // Use the canonical app URL (if configured) as the origin for the OAuth
+  // callback. On Netlify, request.nextUrl.origin reports the internal HTTP
+  // origin (http://...) while the browser is on HTTPS, so comparing full
+  // origins causes redirect loops. We compare hostnames instead and always
+  // prefer the configured URL so the OAuth redirect URI and cookies land on
+  // the correct external host.
   const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || null
   const requestOrigin = request.nextUrl.origin.replace(/\/+$/, '')
-  if (configuredAppUrl && configuredAppUrl !== requestOrigin && !debug) {
-    const redirectUrl = new URL('/api/auth/qa/start', configuredAppUrl)
+  const configuredHost = configuredAppUrl ? new URL(configuredAppUrl).hostname : null
+  const requestHost = new URL(requestOrigin).hostname
+
+  // If the request is coming from a different host (e.g. a deploy preview),
+  // redirect to the canonical host so cookies are set on the right domain.
+  if (configuredHost && configuredHost !== requestHost && !debug) {
+    const redirectUrl = new URL('/api/auth/qa/start', configuredAppUrl!)
     redirectUrl.searchParams.set('returnTo', returnTo)
     return NextResponse.redirect(redirectUrl)
   }
 
+  // Use the canonical URL as the OAuth base origin (preserves HTTPS)
+  const oauthOrigin = configuredAppUrl || requestOrigin
+
   const state = createOauthState()
   const pkce = createPkcePair()
-  const authorization = await getQaAuthorizationUrl(requestOrigin, {
+  const authorization = await getQaAuthorizationUrl(oauthOrigin, {
     returnTo,
     state,
     verifier: pkce.verifier,
@@ -29,7 +39,10 @@ export async function GET(request: NextRequest) {
 
   console.log('[qa-start]', {
     requestOrigin,
+    oauthOrigin,
     configuredAppUrl,
+    requestHost,
+    configuredHost,
     redirectUri: authorization.redirectUri,
     authorizeUrl: authorization.url,
     cookieSecure: secure,
@@ -41,7 +54,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       requestOrigin,
+      oauthOrigin,
       configuredAppUrl,
+      requestHost,
+      configuredHost,
       redirectUri: authorization.redirectUri,
       authorizeUrl: authorization.url,
       cookieSecure: secure,
