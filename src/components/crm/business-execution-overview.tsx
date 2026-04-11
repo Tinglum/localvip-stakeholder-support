@@ -213,7 +213,10 @@ export function BusinessExecutionOverview({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    const body = await response.json().catch(() => ({}))
+    const contentType = response.headers.get('content-type') || ''
+    const body = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : { error: await response.text().catch(() => 'The business action could not be completed.') }
     if (!response.ok) throw new Error(body.error || 'The business action could not be completed.')
     return body
   }

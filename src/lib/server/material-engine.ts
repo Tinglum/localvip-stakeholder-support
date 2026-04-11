@@ -191,6 +191,40 @@ async function supportsGeneratedMaterialsVersionNumber(
   return true
 }
 
+function isLegacyGeneratedMaterialsDuplicate(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+  const message = 'message' in error ? String((error as { message?: unknown }).message || '') : ''
+  return /idx_generated_materials_unique|generated_materials_stakeholder_id_template_id_key/i.test(message)
+}
+
+async function writeGeneratedMaterialRow(
+  supabase: ServiceSupabaseClient,
+  row: Record<string, unknown>,
+  supportsActiveFlag: boolean,
+) {
+  const initialWrite = supportsActiveFlag
+    ? (supabase.from('generated_materials') as any).insert(row)
+    : (supabase.from('generated_materials') as any).upsert(row, { onConflict: 'stakeholder_id,template_id' })
+
+  let { data, error } = await initialWrite.select().single()
+
+  if (!error) {
+    return data as GeneratedMaterial
+  }
+
+  if (supportsActiveFlag && isLegacyGeneratedMaterialsDuplicate(error)) {
+    const fallbackWrite = await (supabase.from('generated_materials') as any)
+      .upsert(row, { onConflict: 'stakeholder_id,template_id' })
+      .select()
+      .single()
+
+    if (fallbackWrite.error) throw fallbackWrite.error
+    return fallbackWrite.data as GeneratedMaterial
+  }
+
+  throw error
+}
+
 export async function createStakeholderRecord(
   supabase: ServiceSupabaseClient,
   payload: {
@@ -680,23 +714,19 @@ async function generateOneMaterial(
     },
   }
 
-  const generatedWrite = supportsActiveFlag
-    ? (supabase.from('generated_materials') as any).insert(generatedRow)
-    : (supabase.from('generated_materials') as any).upsert(generatedRow, { onConflict: 'stakeholder_id,template_id' })
-
-  const { data: generatedData, error: generatedError } = await generatedWrite
-    .select()
-    .single()
-
-  if (generatedError) throw generatedError
+  const generatedData = await writeGeneratedMaterialRow(
+    supabase,
+    generatedRow,
+    supportsActiveFlag,
+  )
 
   await syncLinkedStakeholderAssets(supabase, context.stakeholder, {
     qrCodeId: qrCode.id,
     materialId,
-    generatedMaterialId: (generatedData as GeneratedMaterial).id,
+    generatedMaterialId: generatedData.id,
   })
 
-  return generatedData as GeneratedMaterial
+  return generatedData
 }
 
 async function generateEmergencyFallbackMaterial(
@@ -859,23 +889,19 @@ async function generateEmergencyFallbackMaterial(
     }
 
   const supportsActiveFlag = await supportsGeneratedMaterialsActiveFlag(supabase)
-  const { data: generatedData, error: generatedError } = await (
-    supportsActiveFlag
-      ? (supabase.from('generated_materials') as any).insert(fallbackGeneratedRow)
-      : (supabase.from('generated_materials') as any).upsert(fallbackGeneratedRow, { onConflict: 'stakeholder_id,template_id' })
+  const generatedData = await writeGeneratedMaterialRow(
+    supabase,
+    fallbackGeneratedRow,
+    supportsActiveFlag,
   )
-    .select()
-    .single()
-
-  if (generatedError) throw generatedError
 
   await syncLinkedStakeholderAssets(supabase, context.stakeholder, {
     qrCodeId: qrCode.id,
     materialId,
-    generatedMaterialId: (generatedData as GeneratedMaterial).id,
+    generatedMaterialId: generatedData.id,
   })
 
-  return generatedData as GeneratedMaterial
+  return generatedData
 }
 
 async function upsertGeneratedMaterialFailure(
