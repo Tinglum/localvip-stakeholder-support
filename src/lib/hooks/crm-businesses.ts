@@ -1,6 +1,7 @@
 import * as React from 'react'
 import type {
   CrmBusinessDetailResponse,
+  CrmBusinessLocalStateResponse,
   CrmBusinessesResponse,
   CrmCauseDetailResponse,
   CrmCausesResponse,
@@ -91,6 +92,15 @@ export function useCrmBusiness(routeId: string | null, qaBusinessId: number | nu
   }, [qaBusinessId, routeId])
 
   return useApiJson<CrmBusinessDetailResponse>(url)
+}
+
+export function useCrmBusinessLocalState(localBusinessId: string | null) {
+  const url = React.useMemo(() => {
+    if (!localBusinessId) return null
+    return `/api/crm/businesses/${encodeURIComponent(localBusinessId)}/local-state`
+  }, [localBusinessId])
+
+  return useApiJson<CrmBusinessLocalStateResponse>(url)
 }
 
 export function useCrmCauses() {

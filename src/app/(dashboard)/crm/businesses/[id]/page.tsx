@@ -36,21 +36,12 @@ import { ONBOARDING_STAGES } from '@/lib/constants'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
-import { useCrmBusiness } from '@/lib/hooks/crm-businesses'
+import { useCrmBusiness, useCrmBusinessLocalState } from '@/lib/hooks/crm-businesses'
 import {
-  useCampaigns,
-  useCauses,
-  useCities,
-  useGeneratedMaterials,
-  useMaterials,
   useOutreach, useOutreachInsert,
   useTasks, useTaskInsert, useTaskUpdate,
   useNotes, useNoteInsert,
   useBusinessUpdate,
-  useProfiles,
-  useQrCodes,
-  useStakeholderAssignments,
-  useStakeholders,
 } from '@/lib/supabase/hooks'
 import type { CrmBusiness, QaBusinessDetail } from '@/lib/crm-api'
 import type {
@@ -136,18 +127,19 @@ export default function BusinessDetailPage() {
   const readOnly = businessResponse?.readOnly || false
   const detailQaError = businessResponse?.qaError || null
   const localEntityId = localBusinessId || EMPTY_UUID
-  const { data: profiles } = useProfiles()
-  const { data: cities } = useCities()
-  const { data: causes } = useCauses()
-  const { data: campaigns } = useCampaigns()
-  const { data: qrCodes } = useQrCodes()
-  const { data: materials } = useMaterials()
-  const { data: allStakeholders } = useStakeholders()
-  const { data: allGeneratedMaterials } = useGeneratedMaterials()
-  const { data: assignments } = useStakeholderAssignments({ entity_id: localEntityId })
-  const { data: outreach, loading: outreachLoading, refetch: refetchOutreach } = useOutreach({ entity_id: localEntityId })
-  const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks({ entity_id: localEntityId })
-  const { data: notes, loading: notesLoading, refetch: refetchNotes } = useNotes({ entity_id: localEntityId })
+  const { data: localState, loading: localStateLoading, error: localStateError, refetch: refetchLocalState } = useCrmBusinessLocalState(localBusinessId)
+  const profiles = localState?.profiles || []
+  const cities = localState?.cities || []
+  const causes = localState?.causes || []
+  const campaigns = localState?.campaigns || []
+  const qrCodes = localState?.qrCodes || []
+  const materials = localState?.materials || []
+  const allStakeholders = localState?.stakeholders || []
+  const allGeneratedMaterials = localState?.generatedMaterials || []
+  const assignments = localState?.assignments || []
+  const { data: outreach, loading: outreachLoading } = useOutreach({ entity_id: localEntityId })
+  const { data: tasks, loading: tasksLoading } = useTasks({ entity_id: localEntityId })
+  const { data: notes, loading: notesLoading } = useNotes({ entity_id: localEntityId })
 
   // ── Mutation hooks ──
   const { update: updateBusiness, loading: updateLoading } = useBusinessUpdate()
@@ -155,6 +147,13 @@ export default function BusinessDetailPage() {
   const { insert: insertTask, loading: insertingTask } = useTaskInsert()
   const { insert: insertNote, loading: insertingNote } = useNoteInsert()
   const { update: updateTask } = useTaskUpdate()
+
+  const outreachItems = localState?.outreach || outreach
+  const outreachBusy = localState ? false : outreachLoading
+  const taskItems = localState?.tasks || tasks
+  const tasksBusy = localState ? false : tasksLoading
+  const noteItems = localState?.notes || notes
+  const notesBusy = localState ? false : notesLoading
 
   const profileMap = React.useMemo(() => new Map(profiles.map(item => [item.id, item])), [profiles])
   const city = biz?.city_id ? cities.find(item => item.id === biz.city_id) || null : null
@@ -231,12 +230,17 @@ export default function BusinessDetailPage() {
     pushRow('Launch phase', biz.launch_phase, 'launch_phase')
     pushRow('Linked QR code', linkedQr?.name, 'qr_code relation / qr domain APIs')
     pushRow('Linked material', linkedMaterial?.title, 'material relation / material APIs')
-    pushRow('Tasks', tasks.length > 0 ? `${tasks.length} tracked task${tasks.length === 1 ? '' : 's'}` : null, 'tasks table + read/write APIs', 'Needs QA workflow domain')
-    pushRow('Notes', notes.length > 0 ? `${notes.length} saved note${notes.length === 1 ? '' : 's'}` : null, 'notes table + read/write APIs', 'Needs QA workflow domain')
-    pushRow('Outreach activity', outreach.length > 0 ? `${outreach.length} logged ${outreach.length === 1 ? 'activity' : 'activities'}` : null, 'outreach activity table + read/write APIs', 'Needs QA workflow domain')
+    pushRow('Tasks', taskItems.length > 0 ? `${taskItems.length} tracked task${taskItems.length === 1 ? '' : 's'}` : null, 'tasks table + read/write APIs', 'Needs QA workflow domain')
+    pushRow('Notes', noteItems.length > 0 ? `${noteItems.length} saved note${noteItems.length === 1 ? '' : 's'}` : null, 'notes table + read/write APIs', 'Needs QA workflow domain')
+    pushRow('Outreach activity', outreachItems.length > 0 ? `${outreachItems.length} logged ${outreachItems.length === 1 ? 'activity' : 'activities'}` : null, 'outreach activity table + read/write APIs', 'Needs QA workflow domain')
 
     return rows
-  }, [biz, campaign?.name, linkedCause?.name, linkedMaterial?.title, linkedQr?.name, notes.length, outreach.length, tasks.length])
+  }, [biz, campaign?.name, linkedCause?.name, linkedMaterial?.title, linkedQr?.name, noteItems.length, outreachItems.length, taskItems.length])
+
+  const refetchBusinessDetail = React.useCallback(() => {
+    refetchBusiness()
+    refetchLocalState()
+  }, [refetchBusiness, refetchLocalState])
 
   // ── Stage change handler ──
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
@@ -371,6 +375,16 @@ export default function BusinessDetailPage() {
           <div>
             <p className="font-medium">QA business sync warning</p>
             <p className="mt-1 text-xs text-warning-700">{detailQaError}</p>
+          </div>
+        </div>
+      )}
+
+      {localStateError && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+          <div>
+            <p className="font-medium">Business workspace warning</p>
+            <p className="mt-1 text-xs text-warning-700">{localStateError}</p>
           </div>
         </div>
       )}
@@ -634,10 +648,16 @@ export default function BusinessDetailPage() {
       {activeTab === 'overview' && (
         readOnly ? (
           <ReadOnlyBusinessOverview biz={biz} qaBusiness={qaBusiness} />
+        ) : localStateLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
+            <span className="ml-2 text-sm text-surface-500">Loading business workspace...</span>
+          </div>
         ) : (
         <BusinessExecutionOverview
           biz={biz}
           localBusinessId={localBusinessId}
+          localState={localState}
           city={city}
           owner={owner}
           linkedCause={linkedCause}
@@ -645,7 +665,7 @@ export default function BusinessDetailPage() {
             helperAssignments={helperAssignments}
             updateBusiness={updateBusiness}
             updateLoading={updateLoading}
-            refetchBusiness={refetchBusiness}
+            refetchBusiness={refetchBusinessDetail}
           />
         )
       )}
@@ -653,11 +673,11 @@ export default function BusinessDetailPage() {
       {activeTab === 'activity' && (
         <ActivityTab
           biz={biz}
-          outreach={outreach}
-          loading={outreachLoading}
+          outreach={outreachItems}
+          loading={outreachBusy}
           onInsert={insertOutreach}
           inserting={insertingOutreach}
-          refetch={refetchOutreach}
+          refetch={refetchBusinessDetail}
           profileMap={profileMap}
           userId={localProfileId}
         />
@@ -666,13 +686,13 @@ export default function BusinessDetailPage() {
       {activeTab === 'tasks' && (
         <TasksTab
           biz={biz}
-          tasks={tasks}
-          loading={tasksLoading}
+          tasks={taskItems}
+          loading={tasksBusy}
           onInsert={insertTask}
           inserting={insertingTask}
           onUpdate={updateTask}
           profileMap={profileMap}
-          refetch={refetchTasks}
+          refetch={refetchBusinessDetail}
           userId={localProfileId}
         />
       )}
@@ -680,12 +700,12 @@ export default function BusinessDetailPage() {
       {activeTab === 'notes' && (
         <NotesTab
           biz={biz}
-          notes={notes}
-          loading={notesLoading}
+          notes={noteItems}
+          loading={notesBusy}
           onInsert={insertNote}
           inserting={insertingNote}
           profileMap={profileMap}
-          refetch={refetchNotes}
+          refetch={refetchBusinessDetail}
           userId={localProfileId}
         />
       )}

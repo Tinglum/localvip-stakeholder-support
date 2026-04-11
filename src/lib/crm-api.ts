@@ -1,4 +1,26 @@
-import type { Business, Cause, EntityStatus, OnboardingStage } from '@/lib/types/database'
+import type {
+  AdminTask,
+  Business,
+  Campaign,
+  Cause,
+  City,
+  Contact,
+  EntityStatus,
+  GeneratedMaterial,
+  Material,
+  Note,
+  OnboardingFlow,
+  OnboardingStage,
+  OnboardingStep,
+  Offer,
+  OutreachActivity,
+  Profile,
+  QrCode,
+  Stakeholder,
+  StakeholderAssignment,
+  StakeholderCode,
+  Task,
+} from '@/lib/types/database'
 
 export interface QaDashboardAccountSummary {
   id: number
@@ -119,6 +141,28 @@ export interface CrmBusinessDetailResponse {
   qaBusiness: QaBusinessDetail | null
   qaError: string | null
   readOnly: boolean
+}
+
+export interface CrmBusinessLocalStateResponse {
+  businessId: string
+  profiles: Profile[]
+  cities: City[]
+  causes: Cause[]
+  campaigns: Campaign[]
+  qrCodes: QrCode[]
+  materials: Material[]
+  stakeholders: Stakeholder[]
+  generatedMaterials: GeneratedMaterial[]
+  assignments: StakeholderAssignment[]
+  outreach: OutreachActivity[]
+  tasks: Task[]
+  notes: Note[]
+  flows: OnboardingFlow[]
+  steps: OnboardingStep[]
+  offers: Offer[]
+  contacts: Contact[]
+  adminTasks: AdminTask[]
+  stakeholderCodes: StakeholderCode[]
 }
 
 export interface CrmCauseListItem {

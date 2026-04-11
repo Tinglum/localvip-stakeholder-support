@@ -23,6 +23,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth/context'
+import type { CrmBusinessLocalStateResponse } from '@/lib/crm-api'
 import { resolveBusinessOffer } from '@/lib/offers'
 import { buildStakeholderJoinUrl } from '@/lib/material-engine'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
@@ -63,6 +64,7 @@ import type {
 interface BusinessExecutionOverviewProps {
   biz: Business
   localBusinessId: string | null
+  localState?: CrmBusinessLocalStateResponse | null
   city: City | null
   owner: Profile | null
   linkedCause: Cause | null
@@ -87,6 +89,7 @@ function statReady(value: boolean) {
 export function BusinessExecutionOverview({
   biz,
   localBusinessId,
+  localState,
   city,
   owner,
   linkedCause,
@@ -98,24 +101,35 @@ export function BusinessExecutionOverview({
 }: BusinessExecutionOverviewProps) {
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
-  const { data: profiles } = useProfiles()
-  const { data: stakeholders, refetch: refetchStakeholders } = useStakeholders({ business_id: biz.id })
+  const { data: hookProfiles } = useProfiles()
+  const { data: hookStakeholders, refetch: refetchStakeholders } = useStakeholders({ business_id: biz.id })
+  const stakeholders = localState?.stakeholders ?? hookStakeholders
   const stakeholder = stakeholders[0] || null
-  const { data: stakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
+  const { data: hookStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
+  const stakeholderCodes = localState?.stakeholderCodes ?? hookStakeholderCodes
   const codes = stakeholderCodes[0] || null
-  const { data: generatedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
-  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
-  const { data: flows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: biz.id })
+  const { data: hookGeneratedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
+  const generatedMaterials = localState?.generatedMaterials ?? hookGeneratedMaterials
+  const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
+  const adminTasks = localState?.adminTasks ?? hookAdminTasks
+  const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: biz.id })
+  const flows = localState?.flows ?? hookFlows
   const flow = flows[0] || null
-  const { data: steps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || EMPTY_UUID })
-  const { data: offers, refetch: refetchOffers } = useOffers({ business_id: biz.id })
-  const { data: contacts, refetch: refetchContacts } = useContacts({ business_id: biz.id })
-  const { data: qrCodes, refetch: refetchQrCodes } = useQrCodes({ business_id: biz.id })
-  const { data: outreach, refetch: refetchOutreach } = useOutreach({ entity_type: 'business', entity_id: biz.id })
+  const { data: hookSteps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || EMPTY_UUID })
+  const steps = localState?.steps ?? hookSteps
+  const { data: hookOffers, refetch: refetchOffers } = useOffers({ business_id: biz.id })
+  const offers = localState?.offers ?? hookOffers
+  const { data: hookContacts, refetch: refetchContacts } = useContacts({ business_id: biz.id })
+  const contacts = localState?.contacts ?? hookContacts
+  const { data: hookQrCodes, refetch: refetchQrCodes } = useQrCodes({ business_id: biz.id })
+  const qrCodes = localState?.qrCodes ?? hookQrCodes
+  const { data: hookOutreach, refetch: refetchOutreach } = useOutreach({ entity_type: 'business', entity_id: biz.id })
+  const outreach = localState?.outreach ?? hookOutreach
   const { insert: insertOutreach, loading: savingOutreach } = useOutreachInsert()
   const { insert: insertOffer } = useOfferInsert()
   const { update: updateOffer } = useOfferUpdate()
 
+  const profiles = localState?.profiles ?? hookProfiles
   const profileMap = React.useMemo(() => new Map(profiles.map((item) => [item.id, item])), [profiles])
   const task = adminTasks[0] || null
   const captureOffer = resolveBusinessOffer(biz, offers, 'capture')
@@ -191,16 +205,18 @@ export function BusinessExecutionOverview({
 
   async function refetchExecution() {
     refetchBusiness?.()
-    refetchStakeholders({ silent: true })
-    refetchCodes({ silent: true })
-    refetchGenerated({ silent: true })
-    refetchAdminTasks({ silent: true })
-    refetchFlows({ silent: true })
-    refetchSteps({ silent: true })
-    refetchOffers({ silent: true })
-    refetchContacts({ silent: true })
-    refetchQrCodes({ silent: true })
-    refetchOutreach({ silent: true })
+    if (!localState) {
+      refetchStakeholders({ silent: true })
+      refetchCodes({ silent: true })
+      refetchGenerated({ silent: true })
+      refetchAdminTasks({ silent: true })
+      refetchFlows({ silent: true })
+      refetchSteps({ silent: true })
+      refetchOffers({ silent: true })
+      refetchContacts({ silent: true })
+      refetchQrCodes({ silent: true })
+      refetchOutreach({ silent: true })
+    }
   }
 
   async function callExecutionAction(payload: Record<string, unknown>) {
