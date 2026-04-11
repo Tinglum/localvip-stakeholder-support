@@ -635,11 +635,12 @@ export default function BusinessDetailPage() {
         readOnly ? (
           <ReadOnlyBusinessOverview biz={biz} qaBusiness={qaBusiness} />
         ) : (
-          <BusinessExecutionOverview
-            biz={biz}
-            city={city}
-            owner={owner}
-            linkedCause={linkedCause}
+        <BusinessExecutionOverview
+          biz={biz}
+          localBusinessId={localBusinessId}
+          city={city}
+          owner={owner}
+          linkedCause={linkedCause}
             campaign={campaign}
             helperAssignments={helperAssignments}
             updateBusiness={updateBusiness}
@@ -1034,6 +1035,7 @@ function OverviewTab({
   return (
     <BusinessExecutionOverview
       biz={biz}
+      localBusinessId={biz.id}
       city={city}
       owner={owner}
       linkedCause={linkedCause}

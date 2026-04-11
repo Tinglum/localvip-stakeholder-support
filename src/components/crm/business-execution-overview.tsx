@@ -62,6 +62,7 @@ import type {
 
 interface BusinessExecutionOverviewProps {
   biz: Business
+  localBusinessId: string | null
   city: City | null
   owner: Profile | null
   linkedCause: Cause | null
@@ -85,6 +86,7 @@ function statReady(value: boolean) {
 
 export function BusinessExecutionOverview({
   biz,
+  localBusinessId,
   city,
   owner,
   linkedCause,
@@ -167,6 +169,7 @@ export function BusinessExecutionOverview({
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
   const logoInputRef = React.useRef<HTMLInputElement>(null)
   const coverInputRef = React.useRef<HTMLInputElement>(null)
+  const writeBusinessId = localBusinessId || asUuid(biz.id)
 
   React.useEffect(() => {
     setReferralCode(codes?.referral_code || '')
@@ -201,7 +204,11 @@ export function BusinessExecutionOverview({
   }
 
   async function callExecutionAction(payload: Record<string, unknown>) {
-    const response = await fetch(`/api/crm/businesses/${biz.id}/execution`, {
+    if (!writeBusinessId) {
+      throw new Error('This business is not linked to a local dashboard record yet.')
+    }
+
+    const response = await fetch(`/api/crm/businesses/${writeBusinessId}/execution`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -385,15 +392,21 @@ export function BusinessExecutionOverview({
     setUploadBusy(mediaType === 'logo' ? 'logo' : 'cover')
     setUploadMessage(null)
     try {
+      if (!writeBusinessId) {
+        throw new Error('This business is not linked to a local dashboard record yet.')
+      }
       const formData = new FormData()
       formData.append('file', file)
       formData.append('mediaType', mediaType)
-      const response = await fetch(`/api/crm/businesses/${biz.id}/media`, {
+      const response = await fetch(`/api/crm/businesses/${writeBusinessId}/media`, {
         method: 'POST',
         body: formData,
       })
-      const body = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(body.error || 'Upload failed.')
+      const contentType = response.headers.get('content-type') || ''
+      const body = contentType.includes('application/json')
+        ? await response.json().catch(() => ({}))
+        : { error: await response.text().catch(() => 'Upload failed.') }
+      if (!response.ok) throw new Error(body.error || `Upload failed with ${response.status}.`)
       setUploadMessage(`${mediaType === 'logo' ? 'Logo' : 'Cover photo'} uploaded${body.regenerated ? ' and materials regenerated' : ''}.`)
       await refetchExecution()
     } catch (error) {
