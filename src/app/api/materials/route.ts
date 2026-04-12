@@ -4,6 +4,33 @@ import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Material } from '@/lib/types/database'
 
+export async function GET() {
+  const session = await getAuthenticatedSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+  }
+
+  const { profile } = session
+  const shell = getStakeholderShell(profile)
+
+  if (!['admin', 'field', 'launch_partner'].includes(shell)) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
+  }
+
+  const supabase = createServiceClient()
+  const { data, error } = await supabase
+    .from('materials')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('[materials-api] list failed', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json(data as Material[])
+}
+
 export async function POST(request: NextRequest) {
   const session = await getAuthenticatedSession()
   if (!session) {

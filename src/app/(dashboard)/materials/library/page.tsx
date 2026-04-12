@@ -40,7 +40,7 @@ import {
 import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
-import { useMaterials } from '@/lib/supabase/hooks'
+// Materials are fetched server-side via /api/materials to bypass RLS for QA users
 import { createClient } from '@/lib/supabase/client'
 import type { Material, MaterialLibraryFolder, StakeholderType } from '@/lib/types/database'
 
@@ -724,7 +724,35 @@ function UploadMaterialDialog({
 
 export default function MaterialsLibraryPage() {
   const { profile, isAdmin, localProfileId } = useAuth()
-  const { data: materials, loading, error, refetch } = useMaterials()
+  const [materials, setMaterials] = React.useState<Material[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+  const [fetchKey, setFetchKey] = React.useState(0)
+
+  const refetch = React.useCallback(() => setFetchKey((k) => k + 1), [])
+
+  React.useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch('/api/materials')
+      .then(async (res) => {
+        if (cancelled) return
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          setError(body.error || `Failed to load (${res.status})`)
+          setMaterials([])
+        } else {
+          const data = await res.json()
+          setMaterials(data)
+          setError(null)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || 'Failed to load materials.')
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [fetchKey])
   const [search, setSearch] = React.useState('')
   const [typeFilter, setTypeFilter] = React.useState('')
   const [brandFilter, setBrandFilter] = React.useState('')
