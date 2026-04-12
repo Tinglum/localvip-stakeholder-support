@@ -249,6 +249,69 @@ export async function requireAuthenticatedSession(): Promise<ResolvedAuthSession
   return session
 }
 
+/**
+ * Provision a real Supabase auth user + profile for a QA OAuth user and
+ * generate a Supabase session (access + refresh tokens). This makes the
+ * client-side Supabase work identically to demo/Supabase users — auth.uid()
+ * returns the real user ID and all RLS policies pass.
+ *
+ * Call from the QA callback route, then set the returned tokens as cookies.
+ */
+export async function provisionSupabaseSessionForQaUser(
+  claims: QaAuthClaims,
+): Promise<{
+  accessToken: string
+  refreshToken: string
+  userId: string
+  profile: Profile
+} | null> {
+  const service = createServiceClient()
+  const email = claims.email?.toLowerCase()
+  if (!email) return null
+
+  // 1. Ensure auth user + profile exist
+  const profile = await provisionQaProfileRow(service, claims)
+  if (!profile) {
+    console.warn('[auth-session] Cannot create Supabase session — profile provisioning failed', email)
+    return null
+  }
+
+  try {
+    // 2. Generate a magic link to get an OTP token
+    const { data: linkData, error: linkError } = await service.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+    })
+
+    if (linkError || !linkData?.properties?.hashed_token) {
+      console.warn('[auth-session] Failed to generate magic link for QA user', email, linkError?.message)
+      return null
+    }
+
+    // 3. Verify the OTP to create a real session
+    const { data: sessionData, error: sessionError } = await service.auth.verifyOtp({
+      type: 'magiclink',
+      token_hash: linkData.properties.hashed_token,
+    })
+
+    if (sessionError || !sessionData?.session) {
+      console.warn('[auth-session] Failed to verify OTP for QA user', email, sessionError?.message)
+      return null
+    }
+
+    console.log('[auth-session] Created Supabase session for QA user', email, profile.id)
+    return {
+      accessToken: sessionData.session.access_token,
+      refreshToken: sessionData.session.refresh_token,
+      userId: profile.id,
+      profile,
+    }
+  } catch (err) {
+    console.error('[auth-session] Unhandled error creating Supabase session for QA user', err)
+    return null
+  }
+}
+
 export class UnauthorizedError extends Error {
   constructor(message = 'Unauthorized.') {
     super(message)
