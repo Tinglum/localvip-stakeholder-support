@@ -111,7 +111,12 @@
       "Bash(wc -l src/app/\\\\\\(dashboard\\\\\\)/crm/scripts/page.tsx)",
       "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip -type f \\\\\\(-name *onboarding* -o -name *execution* -o -name *lifecycle* \\\\\\))",
       "Bash(wc -l /c/Users/kenne/Downloads/OnboardingLocalvip/src/components/onboarding/*.tsx /c/Users/kenne/Downloads/OnboardingLocalvip/src/lib/business-execution.ts /c/Users/kenne/Downloads/OnboardingLocalvip/src/lib/cause-execution.ts /c/Users/kenne/Downloads/OnboardingLocalvip/src/lib/server/stakeholder-lifecycle.ts /c/Users/kenne/Downloads/OnboardingLocalvip/src/components/crm/business-execution-overview.tsx)",
-      "Bash(grep -l \"ALTER TABLE businesses\" /c/Users/kenne/Downloads/OnboardingLocalvip/supabase/migrations/*.sql)"
+      "Bash(grep -l \"ALTER TABLE businesses\" /c/Users/kenne/Downloads/OnboardingLocalvip/supabase/migrations/*.sql)",
+      "Bash(grep -n \"CREATE TABLE stakeholders\\\\|CREATE TABLE stakeholder_codes\" \"C:\\\\Users\\\\kenne\\\\Downloads\\\\OnboardingLocalvip/supabase/migrations\"/*.sql)",
+      "Bash(grep -r \"NEXT_PUBLIC_QA\\\\|QA_AUTH\" /c/Users/kenne/Downloads/OnboardingLocalvip --include=*.ts --include=*.tsx --include=*.js --include=.env* --exclude-dir=node_modules)",
+      "Bash(grep -rn \"CORS\\\\|cors\\\\|redirect_uri\\\\|redirectUri\" C:UserskenneDownloadsOnboardingLocalvip/src --include=*.ts --include=*.tsx)",
+      "Bash(grep -rn \"cache\\\\|no-store\\\\|credentials\" C:UserskenneDownloadsOnboardingLocalvip/src/app --include=*.ts --include=*.tsx)",
+      "Bash(ls -la /c/Users/kenne/Downloads/OnboardingLocalvip/supabase/migrations/*.sql)"
     ]
   }
 }

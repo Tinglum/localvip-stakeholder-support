@@ -1,5 +1,6 @@
 import type { NextRequest, NextResponse } from 'next/server'
 import type { Profile, UserRole, UserRoleSubtype } from '@/lib/types/database'
+import { isUuid } from '@/lib/uuid'
 
 type CookieSource = {
   get: (name: string) => { value?: string } | undefined
@@ -112,6 +113,28 @@ function randomBase64Url(byteLength: number) {
   return bytesToBase64Url(bytes)
 }
 
+/**
+ * Generate a deterministic UUID from a non-UUID QA sub claim (e.g. "1").
+ * Uses a simple hash so the same QA user always maps to the same local UUID.
+ */
+function deterministicQaUuid(sub: string | null | undefined, email: string | null | undefined): string {
+  const seed = `qa-oauth:${sub || 'anonymous'}:${email || 'no-email'}`
+  // Simple deterministic hash → UUID v4-shaped string
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0
+  }
+  const hex = (v: number, len: number) => ((v >>> 0) % (16 ** len)).toString(16).padStart(len, '0')
+  const h = Math.abs(hash)
+  return [
+    hex(h, 8),
+    hex(h ^ 0x1234, 4),
+    '4' + hex(h ^ 0x5678, 3),
+    ((((h >>> 16) & 0x3f) | 0x80).toString(16)) + hex(h ^ 0x9abc, 2),
+    hex(h ^ 0xdef0, 4) + hex(h ^ 0x1357, 4) + hex(h ^ 0x2468, 4),
+  ].join('-')
+}
+
 function parseJwtPayload(token: string): Record<string, unknown> {
   const segments = token.split('.')
   if (segments.length < 2) return {}
@@ -215,7 +238,7 @@ export function buildFallbackQaProfile(claims: QaAuthClaims): Profile {
   const now = new Date().toISOString()
 
   return {
-    id: claims.sub || `qa-${randomBase64Url(12)}`,
+    id: isUuid(claims.sub) ? claims.sub : deterministicQaUuid(claims.sub, claims.email),
     email: claims.email || '',
     full_name: fullName,
     avatar_url: null,

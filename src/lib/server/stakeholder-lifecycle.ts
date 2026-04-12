@@ -298,8 +298,8 @@ export async function ensureBusinessStakeholderSetup(
         details: insertError.details,
         hint: insertError.hint,
       })
-      // FK violation (code 23503) — retry with all nullable FK refs set to null
-      if (insertError.code === '23503') {
+      // FK violation (23503) or invalid UUID syntax (22P02) — retry with all nullable FK refs set to null
+      if (insertError.code === '23503' || insertError.code === '22P02') {
         console.warn('[stakeholder-lifecycle] FK violation — retrying with nullable FKs set to null')
         const { data: retryData, error: retryError } = await (supabase.from('stakeholders') as any)
           .insert({
@@ -414,8 +414,8 @@ export async function ensureCauseStakeholderSetup(
         details: insertError.details,
         hint: insertError.hint,
       })
-      // FK violation (code 23503) — retry with all nullable FK refs set to null
-      if (insertError.code === '23503') {
+      // FK violation (23503) or invalid UUID syntax (22P02) — retry with all nullable FK refs set to null
+      if (insertError.code === '23503' || insertError.code === '22P02') {
         console.warn('[stakeholder-lifecycle] FK violation — retrying with nullable FKs set to null')
         const { data: retryData, error: retryError } = await (supabase.from('stakeholders') as any)
           .insert({
@@ -644,8 +644,8 @@ async function createOnboardingFlowWithSteps(
   data = result.data
   error = result.error
 
-  // FK violation on owner_id (code 23503) — retry with null owner so the flow is still created
-  if (error && error.code === '23503') {
+  // FK violation (23503) or invalid UUID syntax (22P02) — retry with null owner so the flow is still created
+  if (error && (error.code === '23503' || error.code === '22P02')) {
     console.warn('[stakeholder-lifecycle] onboarding_flow FK violation on owner_id, retrying with null', {
       ownerId: input.ownerId,
       entityType: input.entityType,

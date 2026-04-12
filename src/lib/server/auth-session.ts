@@ -79,14 +79,48 @@ async function provisionQaProfileRow(
       },
     })
 
-    if (authError || !authResult?.user) {
-      console.warn('[auth-session] Could not provision auth user for QA user', email, authError?.message || 'no user returned')
-      return null
+    let userId: string | null = authResult?.user?.id || null
+
+    if (authError || !userId) {
+      // If user already exists, look them up instead of failing
+      const alreadyRegistered = authError?.message?.toLowerCase().includes('already') ||
+        authError?.message?.toLowerCase().includes('registered') ||
+        authError?.message?.toLowerCase().includes('exists')
+
+      if (alreadyRegistered) {
+        const { data: listResult } = await service.auth.admin.listUsers({ perPage: 1, page: 1 })
+        // listUsers doesn't filter by email, so use getUserByEmail if available
+        // Fall back to listing and scanning
+        const { data: existingUser } = await (service.auth.admin as any).getUserByEmail?.(email)
+          .catch(() => ({ data: null })) ?? { data: null }
+        if (existingUser?.user?.id) {
+          userId = existingUser.user.id
+          console.log('[auth-session] Found existing auth user for QA user', email, userId)
+        } else {
+          // Try to find via listing users
+          const allUsers = listResult?.users || []
+          const match = allUsers.find((u: any) => u.email?.toLowerCase() === email)
+          if (match) {
+            userId = match.id
+            console.log('[auth-session] Found existing auth user via list for QA user', email, userId)
+          }
+        }
+      }
+
+      if (!userId) {
+        console.warn('[auth-session] Could not provision auth user for QA user', email, authError?.message || 'no user returned')
+        return null
+      }
     }
 
-    const userId = authResult.user.id
+    // 2. Check if a profiles row already exists for this auth user
+    const existingProfile = await loadProfileById(service, userId)
+    if (existingProfile) {
+      console.log('[auth-session] Profile already exists for auth user', email, userId)
+      return existingProfile
+    }
 
-    // 2. Insert the profiles row with that real UUID
+    // 3. Insert the profiles row with that real UUID
     const { data: profile, error: profileError } = await (service.from('profiles') as any)
       .insert({
         id: userId,

@@ -40,7 +40,7 @@ import {
 import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
-import { useMaterials, useMaterialInsert } from '@/lib/supabase/hooks'
+import { useMaterials } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
 import type { Material, MaterialLibraryFolder, StakeholderType } from '@/lib/types/database'
 
@@ -206,7 +206,8 @@ function UploadMaterialDialog({
   onSuccess: () => void
 }) {
   const { profile, isAdmin, localProfileId } = useAuth()
-  const { insert, loading: insertLoading, error } = useMaterialInsert()
+  const [insertLoading, setInsertLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -412,31 +413,45 @@ function UploadMaterialDialog({
       ? withUpdatedMaterialAutomationTemplate(baseMaterial, automationConfig)
       : (Object.keys(metadata).length > 0 ? metadata : null)
 
-    const result = await insert({
-      title,
-      description: description || null,
-      type,
-      brand,
-      category: category || null,
-      use_case: useCase || null,
-      file_url: fileUrl,
-      file_name: fileName,
-      file_size: fileSize,
-      mime_type: mimeType,
-      thumbnail_url: thumbnailUrl,
-      target_roles: [],
-      campaign_id: null,
-      city_id: null,
-      is_template: templateEnabled,
-      version: 1,
-      status: 'active',
-      created_by: localProfileId || undefined,
-      metadata: finalMetadata,
-    })
-    if (result) {
-      reset()
-      onSuccess()
-      onClose()
+    setInsertLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/materials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description: description || null,
+          type,
+          brand,
+          category: category || null,
+          use_case: useCase || null,
+          file_url: fileUrl,
+          file_name: fileName,
+          file_size: fileSize,
+          mime_type: mimeType,
+          thumbnail_url: thumbnailUrl,
+          target_roles: [],
+          campaign_id: null,
+          city_id: null,
+          is_template: templateEnabled,
+          version: 1,
+          status: 'active',
+          metadata: finalMetadata,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.error || `Upload failed (${res.status})`)
+      } else {
+        reset()
+        onSuccess()
+        onClose()
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed.')
+    } finally {
+      setInsertLoading(false)
     }
   }
 
@@ -710,9 +725,6 @@ function UploadMaterialDialog({
 export default function MaterialsLibraryPage() {
   const { profile, isAdmin, localProfileId } = useAuth()
   const { data: materials, loading, error, refetch } = useMaterials()
-  const { insert: insertMaterial } = useMaterialInsert()
-  const useMaterialInsertRef = React.useRef({ insert: insertMaterial })
-  useMaterialInsertRef.current.insert = insertMaterial
   const [search, setSearch] = React.useState('')
   const [typeFilter, setTypeFilter] = React.useState('')
   const [brandFilter, setBrandFilter] = React.useState('')
@@ -807,36 +819,42 @@ export default function MaterialsLibraryPage() {
     setActionMessage(null)
     setDeleteError(null)
 
-    const { insert } = useMaterialInsertRef.current
     let successCount = 0
     let failCount = 0
 
     for (const id of selectedIds) {
       const material = materials.find(m => m.id === id)
       if (!material) continue
-      const result = await insert({
-        title: `${material.title} (copy)`,
-        description: material.description,
-        type: material.type,
-        brand: material.brand,
-        category: material.category,
-        use_case: material.use_case,
-        file_url: material.file_url,
-        file_name: material.file_name,
-        file_size: material.file_size,
-        mime_type: material.mime_type,
-        thumbnail_url: material.thumbnail_url,
-        target_roles: material.target_roles,
-        campaign_id: material.campaign_id,
-        city_id: material.city_id,
-        is_template: material.is_template,
-        version: 1,
-        status: material.status,
-        created_by: localProfileId || undefined,
-        metadata: material.metadata,
-      })
-      if (result) successCount++
-      else failCount++
+      try {
+        const res = await fetch('/api/materials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `${material.title} (copy)`,
+            description: material.description,
+            type: material.type,
+            brand: material.brand,
+            category: material.category,
+            use_case: material.use_case,
+            file_url: material.file_url,
+            file_name: material.file_name,
+            file_size: material.file_size,
+            mime_type: material.mime_type,
+            thumbnail_url: material.thumbnail_url,
+            target_roles: material.target_roles,
+            campaign_id: material.campaign_id,
+            city_id: material.city_id,
+            is_template: material.is_template,
+            version: 1,
+            status: material.status,
+            metadata: material.metadata,
+          }),
+        })
+        if (res.ok) successCount++
+        else failCount++
+      } catch {
+        failCount++
+      }
     }
 
     setBulkCopying(false)
