@@ -124,6 +124,14 @@ function stepVariant(step: CauseExecutionStepSummary) {
 
 type DashboardTab = 'mission' | 'launch' | 'businesses' | 'community' | 'leadership' | 'materials' | 'codes' | 'activity' | 'tasks'
 
+interface GenerationTemplateSummary {
+  id: string
+  name: string
+  templateType: string
+  outputFormat: string
+  libraryFolder: string
+}
+
 // ─── Component ──────────────────────────────────────────────
 
 export default function CauseDetailPage() {
@@ -383,9 +391,68 @@ export default function CauseDetailPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    const body = await response.json().catch(() => ({}))
+    const contentType = response.headers.get('content-type') || ''
+    const body = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : { error: await response.text().catch(() => 'The cause action could not be completed.') }
     if (!response.ok) throw new Error(body.error || 'The cause action could not be completed.')
     return body
+  }
+
+  async function listGenerationTemplates() {
+    const body = await callExecutionAction({ action: 'list_generation_templates' })
+    return Array.isArray(body?.templates) ? (body.templates as GenerationTemplateSummary[]) : []
+  }
+
+  async function runMaterialGenerationBatch(
+    templates: GenerationTemplateSummary[],
+    options: {
+      progressPrefix: string
+      setProgress: (message: string | null) => void
+      setError: (message: string | null) => void
+      emptyMessage: string
+      successMessage: string
+    },
+  ) {
+    if (templates.length === 0) {
+      options.setProgress(options.emptyMessage)
+      options.setError(null)
+      return
+    }
+
+    const failures: Array<{ template: GenerationTemplateSummary; message: string }> = []
+
+    for (const [index, template] of templates.entries()) {
+      options.setProgress(`${options.progressPrefix} (${index + 1}/${templates.length}): ${template.name}`)
+      try {
+        await callExecutionAction({ action: 'generate_template', templateId: template.id })
+      } catch (error) {
+        failures.push({
+          template,
+          message: error instanceof Error ? error.message : 'Generation failed.',
+        })
+      }
+    }
+
+    await refetchExecution()
+
+    if (failures.length === templates.length) {
+      options.setProgress(null)
+      options.setError(failures[0]?.message || 'Materials could not be generated.')
+      return
+    }
+
+    if (failures.length > 0) {
+      options.setProgress(
+        `${options.successMessage} ${templates.length - failures.length}/${templates.length} finished. `
+        + `Some templates still need attention: ${failures.map((failure) => failure.template.name).join(', ')}.`
+      )
+      options.setError(failures[0]?.message || null)
+      return
+    }
+
+    options.setError(null)
+    options.setProgress(options.successMessage)
   }
 
   async function handleSaveCodes() {
@@ -393,20 +460,17 @@ export default function CauseDetailPage() {
     setEngineMessage(null)
     setEngineError(null)
     try {
-      const body = await callExecutionAction({ action: 'save_codes', referralCode, connectionCode })
-      const generationStatus = body?.result?.generationStatus
-      const generationError = body?.result?.generationError
-      const generatedMaterialsCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
-      const fallbackGenerated = Array.isArray(body?.result?.failures) && body.result.failures.length > 0 && generatedMaterialsCount > 0
-
-      if (generationStatus === 'failed' || generatedMaterialsCount === 0) {
-        setEngineError(generationError || 'Codes saved, but materials could not be generated.')
-      } else if (fallbackGenerated) {
-        setEngineMessage('Codes saved. Materials generated with fallback layouts where needed.')
-      } else {
-        setEngineMessage('Codes saved and materials generated.')
-      }
+      await callExecutionAction({ action: 'save_codes', referralCode, connectionCode })
       await refetchExecution()
+      setEngineMessage('Codes saved.')
+      const templates = await listGenerationTemplates()
+      await runMaterialGenerationBatch(templates, {
+        progressPrefix: 'Generating materials',
+        setProgress: setEngineMessage,
+        setError: setEngineError,
+        emptyMessage: 'Codes saved. No active auto-generation templates were found.',
+        successMessage: 'Codes saved and materials generated.',
+      })
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
     } finally {
@@ -419,17 +483,14 @@ export default function CauseDetailPage() {
     setEngineMessage(null)
     setEngineError(null)
     try {
-      const body = await callExecutionAction({ action: 'generate_materials' })
-      const generatedMaterialsCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
-      const fallbackGenerated = Array.isArray(body?.result?.failures) && body.result.failures.length > 0 && generatedMaterialsCount > 0
-      if (generatedMaterialsCount === 0) {
-        setEngineError(body?.result?.generationError || 'Materials could not be generated.')
-      } else if (fallbackGenerated) {
-        setEngineMessage('Materials generated with fallback layouts where needed.')
-      } else {
-        setEngineMessage(`${generatedMaterialsCount} material${generatedMaterialsCount > 1 ? 's' : ''} generated.`)
-      }
-      await refetchExecution()
+      const templates = await listGenerationTemplates()
+      await runMaterialGenerationBatch(templates, {
+        progressPrefix: 'Generating materials',
+        setProgress: setEngineMessage,
+        setError: setEngineError,
+        emptyMessage: 'No active auto-generation templates were found.',
+        successMessage: 'Materials generated.',
+      })
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Materials could not be generated.')
     } finally {

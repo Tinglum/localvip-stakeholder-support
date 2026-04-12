@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
-import { regenerateAllForStakeholder } from '@/lib/server/material-engine'
-import type { Cause, Stakeholder } from '@/lib/types/database'
+import type { Cause } from '@/lib/types/database'
 
 export async function POST(
   request: NextRequest,
@@ -90,30 +89,12 @@ export async function POST(
       )
     }
 
-    // Auto-regenerate materials on branding change
-    const { data: stakeholderData } = await supabase
-      .from('stakeholders')
-      .select('*')
-      .eq('cause_id', params.id)
-      .limit(1)
-
-    const stakeholder = ((stakeholderData || []) as Stakeholder[])[0] || null
-
-    let regenerated = false
-    if (stakeholder) {
-      try {
-        await regenerateAllForStakeholder(supabase, stakeholder.id, profile.id)
-        regenerated = true
-      } catch (regenError) {
-        console.error('[cause-media] regeneration error (non-fatal)', regenError)
-      }
-    }
-
     return NextResponse.json({
       success: true,
       mediaType,
       fileUrl: publicUrl,
-      regenerated,
+      regenerated: false,
+      needsRegeneration: true,
     })
   } catch (error) {
     console.error('[cause-media] unhandled error', error)

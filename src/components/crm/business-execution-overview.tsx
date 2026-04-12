@@ -75,6 +75,14 @@ interface BusinessExecutionOverviewProps {
   refetchBusiness?: () => void
 }
 
+interface GenerationTemplateSummary {
+  id: string
+  name: string
+  templateType: string
+  outputFormat: string
+  libraryFolder: string
+}
+
 function stepVariant(step: BusinessExecutionStepSummary) {
   if (step.state === 'completed') return 'success' as const
   if (step.state === 'active' && step.readyToComplete) return 'info' as const
@@ -181,6 +189,7 @@ export function BusinessExecutionOverview({
   const [regenMessage, setRegenMessage] = React.useState<string | null>(null)
   const [uploadBusy, setUploadBusy] = React.useState<'logo' | 'cover' | null>(null)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
+  const [uploadError, setUploadError] = React.useState<string | null>(null)
   const logoInputRef = React.useRef<HTMLInputElement>(null)
   const coverInputRef = React.useRef<HTMLInputElement>(null)
   const writeBusinessId = localBusinessId || asUuid(biz.id)
@@ -237,29 +246,88 @@ export function BusinessExecutionOverview({
     return body
   }
 
+  async function listGenerationTemplates() {
+    const body = await callExecutionAction({ action: 'list_generation_templates' })
+    if (!Array.isArray(body?.templates)) {
+      return [] as GenerationTemplateSummary[]
+    }
+    return body.templates as GenerationTemplateSummary[]
+  }
+
+  async function runMaterialGenerationBatch(
+    templates: GenerationTemplateSummary[],
+    options: {
+      progressPrefix: string
+      setProgress: (message: string | null) => void
+      setError: (message: string | null) => void
+      emptyMessage: string
+      successMessage: string
+    },
+  ) {
+    if (templates.length === 0) {
+      options.setProgress(options.emptyMessage)
+      options.setError(null)
+      return
+    }
+
+    const failures: Array<{ template: GenerationTemplateSummary; message: string }> = []
+
+    for (const [index, template] of templates.entries()) {
+      options.setProgress(`${options.progressPrefix} (${index + 1}/${templates.length}): ${template.name}`)
+      try {
+        await callExecutionAction({
+          action: 'generate_template',
+          templateId: template.id,
+        })
+      } catch (error) {
+        failures.push({
+          template,
+          message: error instanceof Error ? error.message : 'Generation failed.',
+        })
+      }
+    }
+
+    await refetchExecution()
+
+    if (failures.length === templates.length) {
+      options.setProgress(null)
+      options.setError(failures[0]?.message || 'Materials could not be generated.')
+      return
+    }
+
+    if (failures.length > 0) {
+      options.setProgress(
+        `${options.successMessage} ${templates.length - failures.length}/${templates.length} finished. `
+        + `Some templates still need attention: ${failures.map((failure) => failure.template.name).join(', ')}.`
+      )
+      options.setError(failures[0]?.message || null)
+      return
+    }
+
+    options.setError(null)
+    options.setProgress(options.successMessage)
+  }
+
   async function handleSaveCodes() {
     setEngineBusy('codes')
     setEngineMessage(null)
     setEngineError(null)
     try {
-      const body = await callExecutionAction({
+      await callExecutionAction({
         action: 'save_codes',
         referralCode,
         connectionCode,
       })
-      const generationStatus = body?.result?.generationStatus
-      const generationError = body?.result?.generationError
-      const generatedMaterialsCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
-      const fallbackGenerated = Array.isArray(body?.result?.failures) && body.result.failures.length > 0 && generatedMaterialsCount > 0
-
-      if (generationStatus === 'failed' || generatedMaterialsCount === 0) {
-        setEngineError(generationError || 'Codes saved, but materials could not be generated.')
-      } else if (fallbackGenerated) {
-        setEngineMessage('Codes saved. Materials generated with fallback layouts where needed.')
-      } else {
-        setEngineMessage('Codes saved and materials generated.')
-      }
       await refetchExecution()
+      setEngineMessage('Codes saved.')
+      const templates = await listGenerationTemplates()
+      await runMaterialGenerationBatch(templates, {
+        progressPrefix: 'Generating materials',
+        setProgress: setEngineMessage,
+        setError: setEngineError,
+        emptyMessage: 'Codes saved. No active auto-generation templates were found.',
+        successMessage: 'Codes saved and materials generated.',
+      })
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
     } finally {
@@ -272,17 +340,14 @@ export function BusinessExecutionOverview({
     setEngineMessage(null)
     setEngineError(null)
     try {
-      const body = await callExecutionAction({ action: 'generate_materials' })
-      const generatedMaterialsCount = Array.isArray(body?.result?.generatedMaterials) ? body.result.generatedMaterials.length : 0
-      const fallbackGenerated = Array.isArray(body?.result?.failures) && body.result.failures.length > 0 && generatedMaterialsCount > 0
-      if (generatedMaterialsCount === 0) {
-        setEngineError(body?.result?.generationError || 'Materials could not be generated.')
-      } else if (fallbackGenerated) {
-        setEngineMessage('Materials generated with fallback layouts where needed.')
-      } else {
-        setEngineMessage('Materials generated.')
-      }
-      await refetchExecution()
+      const templates = await listGenerationTemplates()
+      await runMaterialGenerationBatch(templates, {
+        progressPrefix: 'Generating materials',
+        setProgress: setEngineMessage,
+        setError: setEngineError,
+        emptyMessage: 'No active auto-generation templates were found.',
+        successMessage: 'Materials generated.',
+      })
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Materials could not be generated.')
     } finally {
@@ -388,9 +453,14 @@ export function BusinessExecutionOverview({
     setRegenBusy(true)
     setRegenMessage(null)
     try {
-      await callExecutionAction({ action: 'regenerate_all' })
-      setRegenMessage('All materials regenerated.')
-      await refetchExecution()
+      const templates = await listGenerationTemplates()
+      await runMaterialGenerationBatch(templates, {
+        progressPrefix: 'Refreshing materials',
+        setProgress: setRegenMessage,
+        setError: setEngineError,
+        emptyMessage: 'No active auto-generation templates were found.',
+        successMessage: 'All materials regenerated.',
+      })
     } catch (error) {
       setRegenMessage(error instanceof Error ? error.message : 'Regeneration failed.')
     } finally {
@@ -410,6 +480,7 @@ export function BusinessExecutionOverview({
   async function handleUploadMedia(mediaType: 'logo' | 'cover_photo', file: File) {
     setUploadBusy(mediaType === 'logo' ? 'logo' : 'cover')
     setUploadMessage(null)
+    setUploadError(null)
     try {
       if (!writeBusinessId) {
         throw new Error('This business is not linked to a local dashboard record yet.')
@@ -426,10 +497,22 @@ export function BusinessExecutionOverview({
         ? await response.json().catch(() => ({}))
         : { error: await response.text().catch(() => 'Upload failed.') }
       if (!response.ok) throw new Error(body.error || `Upload failed with ${response.status}.`)
-      setUploadMessage(`${mediaType === 'logo' ? 'Logo' : 'Cover photo'} uploaded${body.regenerated ? ' and materials regenerated' : ''}.`)
       await refetchExecution()
+      const label = mediaType === 'logo' ? 'Logo' : 'Cover photo'
+      setUploadMessage(`${label} uploaded.`)
+
+      if (body.needsRegeneration && codes?.connection_code) {
+        const templates = await listGenerationTemplates()
+        await runMaterialGenerationBatch(templates, {
+          progressPrefix: `${label} uploaded. Refreshing materials`,
+          setProgress: setUploadMessage,
+          setError: setUploadError,
+          emptyMessage: `${label} uploaded. No active auto-generation templates were found.`,
+          successMessage: `${label} uploaded and materials refreshed.`,
+        })
+      }
     } catch (error) {
-      setUploadMessage(error instanceof Error ? error.message : 'Upload failed.')
+      setUploadError(error instanceof Error ? error.message : 'Upload failed.')
     } finally {
       setUploadBusy(null)
     }
@@ -876,6 +959,9 @@ export function BusinessExecutionOverview({
                     />
                   </div>
 
+                  {uploadError ? (
+                    <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{uploadError}</div>
+                  ) : null}
                   {uploadMessage ? (
                     <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{uploadMessage}</div>
                   ) : null}

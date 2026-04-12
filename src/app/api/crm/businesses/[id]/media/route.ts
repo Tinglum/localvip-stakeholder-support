@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
-import { regenerateAllForStakeholder } from '@/lib/server/material-engine'
 import { asUuid } from '@/lib/uuid'
-import type { Business, Stakeholder } from '@/lib/types/database'
+import type { Business } from '@/lib/types/database'
 
 export async function POST(
   request: NextRequest,
@@ -16,7 +15,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
     }
 
-    const { profile, localProfileId } = session
+    const { profile } = session
     const supabase = createServiceClient()
 
     const shell = getStakeholderShell(profile)
@@ -106,30 +105,12 @@ export async function POST(
       )
     }
 
-    // Auto-regenerate materials on branding change
-    const { data: stakeholderData } = await supabase
-      .from('stakeholders')
-      .select('*')
-      .eq('business_id', businessId)
-      .limit(1)
-
-    const stakeholder = ((stakeholderData || []) as Stakeholder[])[0] || null
-
-    let regenerated = false
-    if (stakeholder) {
-      try {
-        await regenerateAllForStakeholder(supabase, stakeholder.id, localProfileId)
-        regenerated = true
-      } catch (regenError) {
-        console.error('[business-media] regeneration error (non-fatal)', regenError)
-      }
-    }
-
     return NextResponse.json({
       success: true,
       mediaType,
       fileUrl: publicUrl,
-      regenerated,
+      regenerated: false,
+      needsRegeneration: true,
     })
   } catch (error) {
     console.error('[business-media] unhandled error', error)

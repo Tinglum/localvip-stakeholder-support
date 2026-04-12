@@ -279,10 +279,9 @@ export async function ensureAutomatedStakeholderMaterials(
   })
 }
 
-export async function upsertStakeholderCodesAndGenerate(
+export async function upsertStakeholderCodes(
   supabase: ServiceSupabaseClient,
   stakeholderId: string,
-  actorId: string | null,
   payload: {
     referralCode: string
     connectionCode: string
@@ -353,20 +352,39 @@ export async function upsertStakeholderCodesAndGenerate(
     codes_saved_at: new Date().toISOString(),
   })
 
+  return {
+    stakeholder,
+    codes: savedCodes,
+    joinUrl,
+  }
+}
+
+export async function upsertStakeholderCodesAndGenerate(
+  supabase: ServiceSupabaseClient,
+  stakeholderId: string,
+  actorId: string | null,
+  payload: {
+    referralCode: string
+    connectionCode: string
+  },
+) {
+  const saveResult = await upsertStakeholderCodes(supabase, stakeholderId, payload)
+
   try {
     const generation = await generateMaterialsForStakeholder(supabase, stakeholderId, actorId)
     return {
       ...generation,
-      codes: savedCodes,
+      stakeholder: saveResult.stakeholder,
+      codes: saveResult.codes,
       generationStatus: 'generated' as const,
       generationError: null,
     }
   } catch (error) {
     const message = extractErrorMessage(error, 'Material generation failed (unknown error).')
-    await updateAdminTaskStatus(supabase, stakeholder.id, 'failed', {
-      referral_code: referralCode,
-      connection_code: connectionCode,
-      join_url: joinUrl,
+    await updateAdminTaskStatus(supabase, saveResult.stakeholder.id, 'failed', {
+      referral_code: saveResult.codes.referral_code,
+      connection_code: saveResult.codes.connection_code,
+      join_url: saveResult.joinUrl,
       last_error: message,
       codes_saved_at: new Date().toISOString(),
       attempted_at: new Date().toISOString(),
@@ -375,6 +393,33 @@ export async function upsertStakeholderCodesAndGenerate(
     // Re-throw so the caller (API route) gets the detailed message
     throw new Error(`Codes saved, but material generation failed: ${message}`)
   }
+}
+
+export async function listAutoGenerationTemplatesForStakeholder(
+  supabase: ServiceSupabaseClient,
+  stakeholderId: string,
+) {
+  const stakeholder = await getStakeholderById(supabase, stakeholderId)
+  if (!stakeholder) throw new Error('Stakeholder not found.')
+
+  const [businessResult, causeResult] = await Promise.all([
+    stakeholder.business_id
+      ? supabase.from('businesses').select('*').eq('id', stakeholder.business_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    stakeholder.cause_id
+      ? supabase.from('causes').select('*').eq('id', stakeholder.cause_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ])
+
+  const business = (businessResult.data || null) as Business | null
+  const cause = (causeResult.data || null) as Cause | null
+
+  return getTemplatesForStakeholder(supabase, stakeholder.type, undefined, {
+    tier: 'auto',
+    cityId: stakeholder.city_id,
+    campaignId: business?.campaign_id || cause?.campaign_id || null,
+    businessCategory: business?.category || null,
+  })
 }
 
 export async function generateMaterialsForStakeholder(

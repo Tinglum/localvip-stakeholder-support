@@ -9,7 +9,8 @@ import {
 } from '@/lib/server/stakeholder-lifecycle'
 import {
   generateMaterialsForStakeholder,
-  upsertStakeholderCodesAndGenerate,
+  listAutoGenerationTemplatesForStakeholder,
+  upsertStakeholderCodes,
   regenerateAllForStakeholder,
   restoreGeneratedMaterialVersion,
 } from '@/lib/server/material-engine'
@@ -25,6 +26,13 @@ const actionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('generate_materials'),
+  }),
+  z.object({
+    action: z.literal('list_generation_templates'),
+  }),
+  z.object({
+    action: z.literal('generate_template'),
+    templateId: z.string().uuid('A template is required.'),
   }),
   z.object({
     action: z.literal('complete_step'),
@@ -142,16 +150,39 @@ export async function POST(
     }
 
     if (parsed.data.action === 'save_codes') {
-      const result = await upsertStakeholderCodesAndGenerate(
+      const result = await upsertStakeholderCodes(
         context.supabase,
         context.stakeholder.id,
-        context.localProfileId,
         {
           referralCode: parsed.data.referralCode,
           connectionCode: parsed.data.connectionCode,
         },
       )
 
+      return NextResponse.json({ success: true, result })
+    }
+
+    if (parsed.data.action === 'list_generation_templates') {
+      const templates = await listAutoGenerationTemplatesForStakeholder(context.supabase, context.stakeholder.id)
+      return NextResponse.json({
+        success: true,
+        templates: templates.map((template) => ({
+          id: template.id,
+          name: template.name,
+          templateType: template.template_type,
+          outputFormat: template.output_format,
+          libraryFolder: template.library_folder,
+        })),
+      })
+    }
+
+    if (parsed.data.action === 'generate_template') {
+      const result = await generateMaterialsForStakeholder(
+        context.supabase,
+        context.stakeholder.id,
+        context.localProfileId,
+        { templateId: parsed.data.templateId },
+      )
       return NextResponse.json({ success: true, result })
     }
 
@@ -179,13 +210,6 @@ export async function POST(
         .update(patch)
         .eq('id', context.cause.id)
       if (updateError) throw updateError
-
-      // Auto-regenerate materials when branding changes
-      try {
-        await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
-      } catch {
-        // Regeneration failure is non-fatal for media upload
-      }
 
       return NextResponse.json({ success: true, mediaType: parsed.data.mediaType, fileUrl: parsed.data.fileUrl })
     }
