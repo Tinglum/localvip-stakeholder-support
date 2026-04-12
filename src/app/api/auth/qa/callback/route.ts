@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import {
   clearQaSessionCookies,
   exchangeCodeForSession,
@@ -74,27 +75,31 @@ export async function GET(request: NextRequest) {
     cleanResponse.cookies.set(QA_COOKIE_NAMES.verifier, '', { path: '/', maxAge: 0 })
     cleanResponse.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })
 
-    // Bridge QA user into a real Supabase session so client-side RLS works
+    // Bridge QA user into a real Supabase session so client-side RLS works.
+    // Use the SSR client to set cookies in the exact chunked format the browser client expects.
     try {
       const supabaseSession = await provisionSupabaseSessionForQaUser(session.claims)
       if (supabaseSession) {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-        const projectRef = new URL(supabaseUrl).hostname.split('.')[0]
-        const cookieName = `sb-${projectRef}-auth-token`
-        const cookieValue = JSON.stringify({
+        const ssrClient = createServerClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            cookies: {
+              get(name: string) {
+                return request.cookies.get(name)?.value
+              },
+              set(name: string, value: string, options: CookieOptions) {
+                cleanResponse.cookies.set({ name, value, ...options })
+              },
+              remove(name: string, options: CookieOptions) {
+                cleanResponse.cookies.set({ name, value: '', ...options })
+              },
+            },
+          },
+        )
+        await ssrClient.auth.setSession({
           access_token: supabaseSession.accessToken,
           refresh_token: supabaseSession.refreshToken,
-          token_type: 'bearer',
-          expires_in: 3600,
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-        })
-        // Supabase JS client reads this chunked cookie for auth
-        cleanResponse.cookies.set(cookieName, cookieValue, {
-          path: '/',
-          httpOnly: false,
-          secure: true,
-          sameSite: 'lax',
-          maxAge: 60 * 60 * 24 * 7, // 7 days
         })
         console.log('[qa-callback] Supabase session bridged for', session.claims.email)
       }

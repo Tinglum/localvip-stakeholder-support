@@ -22,6 +22,7 @@ export async function GET() {
     .from('materials')
     .select('*')
     .order('created_at', { ascending: false })
+    .limit(500)
 
   if (error) {
     console.error('[materials-api] list failed', error)
