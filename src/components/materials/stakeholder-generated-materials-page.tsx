@@ -32,9 +32,13 @@ import {
 import type { GeneratedMaterial, Material, MaterialLibraryFolder, Stakeholder } from '@/lib/types/database'
 import { formatDate } from '@/lib/utils'
 
-function resolveCurrentStakeholder(profile: ReturnType<typeof useAuth>['profile'], stakeholders: Stakeholder[]) {
+function resolveCurrentStakeholder(
+  profile: ReturnType<typeof useAuth>['profile'],
+  localProfileId: string | null,
+  stakeholders: Stakeholder[],
+) {
   return stakeholders.find((stakeholder) => {
-    if (stakeholder.profile_id === profile.id || stakeholder.owner_user_id === profile.id) return true
+    if (localProfileId && (stakeholder.profile_id === localProfileId || stakeholder.owner_user_id === localProfileId)) return true
     if (profile.business_id && stakeholder.business_id === profile.business_id) return true
     if (profile.organization_id && stakeholder.organization_id === profile.organization_id) return true
     return false
@@ -42,7 +46,7 @@ function resolveCurrentStakeholder(profile: ReturnType<typeof useAuth>['profile'
 }
 
 export function StakeholderGeneratedMaterialsPage() {
-  const { profile, shell, isAdmin } = useAuth()
+  const { profile, shell, isAdmin, localProfileId } = useAuth()
   const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
   const { data: generatedMaterials, loading: generatedLoading, refetch: refetchGenerated } = useGeneratedMaterials()
   const { data: materials, loading: materialsLoading, refetch } = useMaterials()
@@ -54,8 +58,8 @@ export function StakeholderGeneratedMaterialsPage() {
   const [confirmUpdate, setConfirmUpdate] = React.useState<{ generated: GeneratedMaterial; material: Material } | null>(null)
 
   const stakeholder = React.useMemo(
-    () => resolveCurrentStakeholder(profile, stakeholders),
-    [profile, stakeholders],
+    () => resolveCurrentStakeholder(profile, localProfileId, stakeholders),
+    [localProfileId, profile, stakeholders],
   )
 
   const linkedGenerated = React.useMemo(() => {
@@ -283,7 +287,7 @@ export function StakeholderGeneratedMaterialsPage() {
                     const customTags = getMaterialCustomTags(material)
                     const visibilityLabels = getMaterialVisibilityRoleLabels(material)
                     const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
-                    const canEdit = isAdmin || material.created_by === profile.id
+                    const canEdit = isAdmin || (!!localProfileId && material.created_by === localProfileId)
 
                     return (
                       <Card key={generated.id} className="overflow-hidden transition-shadow hover:shadow-card-hover">

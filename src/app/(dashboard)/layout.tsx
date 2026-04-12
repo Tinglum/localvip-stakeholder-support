@@ -11,6 +11,7 @@ import type { Profile } from '@/lib/types/database'
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [profile, setProfile] = React.useState<Profile | null>(null)
+  const [localProfileId, setLocalProfileId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
@@ -35,6 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       if (!cancelled) {
         setProfile(normalizeBusinessProfile(session.profile as Profile, []))
+        setLocalProfileId(typeof session.localProfileId === 'string' ? session.localProfileId : null)
         setLoading(false)
       }
     }
@@ -69,7 +71,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <ImpersonationProvider>
-      <AuthProvider profile={profile}>
+      <AuthProvider profile={profile} localProfileId={localProfileId}>
         <AppShell profile={profile}>
           {children}
         </AppShell>

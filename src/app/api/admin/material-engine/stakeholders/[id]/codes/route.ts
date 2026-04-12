@@ -14,6 +14,9 @@ export async function POST(
 ) {
   const context = await getAdminRouteContext()
   if ('error' in context) return context.error
+  if (!context.localProfileId) {
+    return NextResponse.json({ error: 'No local admin profile is linked to this QA session.' }, { status: 400 })
+  }
 
   let body: unknown
   try {
@@ -28,7 +31,7 @@ export async function POST(
   }
 
   try {
-    const result = await upsertStakeholderCodesAndGenerate(context.supabase, params.id, context.profile.id, parsed.data)
+    const result = await upsertStakeholderCodesAndGenerate(context.supabase, params.id, context.localProfileId, parsed.data)
     return NextResponse.json({
       success: true,
       result,

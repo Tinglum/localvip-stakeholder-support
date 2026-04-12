@@ -8,6 +8,7 @@ export async function getAdminRouteContext() {
   const supabase = createServiceClient()
   const session = await getAuthenticatedSession()
   const profile = session?.profile || null
+  const localProfileId = session?.localProfileId || null
 
   if (!profile || getStakeholderShell(profile) !== 'admin') {
     return { error: NextResponse.json({ error: 'Forbidden.' }, { status: 403 }) }
@@ -16,5 +17,6 @@ export async function getAdminRouteContext() {
   return {
     supabase,
     profile,
+    localProfileId,
   }
 }

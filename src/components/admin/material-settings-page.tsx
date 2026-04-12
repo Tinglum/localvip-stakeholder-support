@@ -78,7 +78,7 @@ const EMPTY_FORM: RuleFormState = {
 }
 
 export function MaterialSettingsPage() {
-  const { profile } = useAuth()
+  const { localProfileId } = useAuth()
   const { data: rules, refetch: refetchRules } = useTemplateRules()
   const { data: templates } = useMaterialTemplates()
   const { data: cities } = useCities()
@@ -175,7 +175,7 @@ export function MaterialSettingsPage() {
       rule_type: form.rule_type,
       priority: form.priority,
       is_active: true,
-      created_by: profile.id,
+      created_by: localProfileId || undefined,
     }
 
     if (editingId) {

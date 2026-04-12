@@ -205,7 +205,7 @@ function UploadMaterialDialog({
   onClose: () => void
   onSuccess: () => void
 }) {
-  const { profile, isAdmin } = useAuth()
+  const { profile, isAdmin, localProfileId } = useAuth()
   const { insert, loading: insertLoading, error } = useMaterialInsert()
 
   const [title, setTitle] = React.useState('')
@@ -229,6 +229,7 @@ function UploadMaterialDialog({
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
   const isPreviewableFile = file ? isMaterialPreviewable(file.type) : false
+  const storageOwnerKey = localProfileId || `qa-user-${String(profile.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`
 
   // Use the uploaded file itself as the preview source whenever it can render inline.
   const qrPreviewUrl = isPreviewableFile ? filePreviewUrl : null
@@ -319,7 +320,7 @@ function UploadMaterialDialog({
   async function uploadFile(fileToUpload: File, folder: string): Promise<string | null> {
     try {
       const supabase = createClient()
-      const filePath = `${folder}/${profile.id}/${Date.now()}-${fileToUpload.name}`
+      const filePath = `${folder}/${storageOwnerKey}/${Date.now()}-${fileToUpload.name}`
       const { error: uploadError } = await supabase.storage
         .from('materials')
         .upload(filePath, fileToUpload, { upsert: true })
@@ -393,7 +394,7 @@ function UploadMaterialDialog({
       is_template: templateEnabled,
       version: 1,
       status: 'active',
-      created_by: profile.id,
+      created_by: localProfileId || '',
       metadata: Object.keys(metadata).length > 0 ? metadata : null,
       created_at: '',
       updated_at: '',
@@ -429,7 +430,7 @@ function UploadMaterialDialog({
       is_template: templateEnabled,
       version: 1,
       status: 'active',
-      created_by: profile.id,
+      created_by: localProfileId || undefined,
       metadata: finalMetadata,
     })
     if (result) {
@@ -707,7 +708,7 @@ function UploadMaterialDialog({
 // ─── Main page ────────────────────────────────────────────────
 
 export default function MaterialsLibraryPage() {
-  const { profile, isAdmin } = useAuth()
+  const { profile, isAdmin, localProfileId } = useAuth()
   const { data: materials, loading, error, refetch } = useMaterials()
   const { insert: insertMaterial } = useMaterialInsert()
   const useMaterialInsertRef = React.useRef({ insert: insertMaterial })
@@ -831,7 +832,7 @@ export default function MaterialsLibraryPage() {
         is_template: material.is_template,
         version: 1,
         status: material.status,
-        created_by: profile.id,
+        created_by: localProfileId || undefined,
         metadata: material.metadata,
       })
       if (result) successCount++
@@ -1106,7 +1107,7 @@ export default function MaterialsLibraryPage() {
             const visibilityLabels = getMaterialVisibilityRoleLabels(material)
             const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
             const customTags = getMaterialCustomTags(material)
-            const canEdit = isAdmin || material.created_by === profile.id
+            const canEdit = isAdmin || (!!localProfileId && material.created_by === localProfileId)
             return (
               <Card key={material.id} className={`group transition-shadow hover:shadow-card-hover ${selectedIds.has(material.id) ? 'ring-2 ring-brand-500' : ''}`}>
                 {/* Thumbnail */}
@@ -1237,7 +1238,7 @@ export default function MaterialsLibraryPage() {
             const visibilityLabels = getMaterialVisibilityRoleLabels(material)
             const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
             const customTags = getMaterialCustomTags(material)
-            const canEdit = isAdmin || material.created_by === profile.id
+            const canEdit = isAdmin || (!!localProfileId && material.created_by === localProfileId)
             return (
               <Card key={material.id} className={`group transition-shadow hover:shadow-card-hover ${selectedIds.has(material.id) ? 'ring-2 ring-brand-500' : ''}`}>
                 <CardContent className="flex items-center gap-4 py-3">

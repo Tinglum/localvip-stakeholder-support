@@ -18,6 +18,9 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   const context = await getAdminRouteContext()
   if ('error' in context) return context.error
+  if (!context.localProfileId) {
+    return NextResponse.json({ error: 'No local admin profile is linked to this QA session.' }, { status: 400 })
+  }
 
   let body: unknown
   try {
@@ -43,7 +46,7 @@ export async function POST(request: NextRequest) {
     status: parsed.data.status || 'pending',
     metadata: {
       created_via: 'admin_material_engine',
-      created_by: context.profile.id,
+      created_by: context.localProfileId,
     },
   })
 

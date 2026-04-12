@@ -44,6 +44,7 @@ import {
 } from '@/lib/materials/material-targeting'
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { EMPTY_UUID } from '@/lib/uuid'
 import { formatDate } from '@/lib/utils'
 import { useMaterialAssignments, useMaterialInsert, useMaterials } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
@@ -89,7 +90,7 @@ function UploadMaterialDialog({
   onClose: () => void
   onSuccess: () => void
 }) {
-  const { profile } = useAuth()
+  const { profile, localProfileId } = useAuth()
   const { insert, loading: insertLoading, error } = useMaterialInsert()
 
   const [title, setTitle] = React.useState('')
@@ -104,6 +105,7 @@ function UploadMaterialDialog({
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
   const previewable = selectedFile ? isMaterialPreviewable(selectedFile.type) : false
+  const storageOwnerKey = localProfileId || `qa-user-${String(profile.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`
 
   React.useEffect(() => {
     return () => {
@@ -160,7 +162,7 @@ function UploadMaterialDialog({
 
       try {
         const supabase = createClient()
-        const filePath = `materials/${profile.id}/${Date.now()}-${selectedFile.name}`
+        const filePath = `materials/${storageOwnerKey}/${Date.now()}-${selectedFile.name}`
         const { error: storageError } = await supabase.storage
           .from('materials')
           .upload(filePath, selectedFile, { upsert: true })
@@ -204,7 +206,7 @@ function UploadMaterialDialog({
       is_template: false,
       version: 1,
       status: 'active',
-      created_by: profile.id,
+      created_by: localProfileId || undefined,
       metadata: null,
     })
 
@@ -350,9 +352,9 @@ export default function MyMaterialsPage() {
 }
 
 function StandardMaterialsPage() {
-  const { profile, isAdmin } = useAuth()
+  const { profile, isAdmin, localProfileId } = useAuth()
   const { data: allMaterials, loading: materialsLoading, error, refetch } = useMaterials()
-  const { data: assignments, loading: assignmentsLoading } = useMaterialAssignments({ stakeholder_id: profile.id })
+  const { data: assignments, loading: assignmentsLoading } = useMaterialAssignments({ stakeholder_id: localProfileId || EMPTY_UUID })
   const [uploadOpen, setUploadOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
@@ -367,7 +369,7 @@ function StandardMaterialsPage() {
     const shell = getStakeholderShell(profile)
 
     return allMaterials.filter(material => {
-      if (material.created_by === profile.id || assignedIds.has(material.id)) return true
+      if ((localProfileId && material.created_by === localProfileId) || assignedIds.has(material.id)) return true
       if (isAdmin) return true
 
       if (shell === 'field') {
@@ -391,7 +393,7 @@ function StandardMaterialsPage() {
 
       return false
     })
-  }, [allMaterials, assignments, isAdmin, profile])
+  }, [allMaterials, assignments, isAdmin, localProfileId, profile])
 
   const filtered = React.useMemo(() => {
     return materials.filter(material => {
@@ -405,14 +407,18 @@ function StandardMaterialsPage() {
   }, [materials, search])
 
   const loading = materialsLoading || assignmentsLoading
-  const uploadedCount = materials.filter(material => material.created_by === profile.id).length
-  const assignedCount = materials.filter(material => material.created_by !== profile.id).length
+  const uploadedCount = localProfileId
+    ? materials.filter(material => material.created_by === localProfileId).length
+    : 0
+  const assignedCount = localProfileId
+    ? materials.filter(material => material.created_by !== localProfileId).length
+    : materials.length
   const previewableCount = materials.filter(material =>
     isMaterialPreviewable(material.mime_type) || material.file_url?.toLowerCase().includes('.pdf')
   ).length
 
   async function handleDelete(material: Material) {
-    if (!(isAdmin || material.created_by === profile.id)) return
+    if (!(isAdmin || (!!localProfileId && material.created_by === localProfileId))) return
     if (!confirm('Delete this material? Any linked business or outreach references will be cleared when possible.')) return
 
     setDeletingId(material.id)
@@ -577,10 +583,10 @@ function StandardMaterialsPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map(material => {
-            const assigned = material.created_by !== profile.id
+            const assigned = !localProfileId || material.created_by !== localProfileId
             const previewSource = material.file_url || material.thumbnail_url
-            const canDelete = isAdmin || material.created_by === profile.id
-            const canEdit = isAdmin || material.created_by === profile.id
+            const canDelete = isAdmin || (!!localProfileId && material.created_by === localProfileId)
+            const canEdit = isAdmin || (!!localProfileId && material.created_by === localProfileId)
             const visibilityLabels = getMaterialVisibilityRoleLabels(material)
             const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
             const customTags = getMaterialCustomTags(material)
@@ -684,10 +690,10 @@ function StandardMaterialsPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map(material => {
-            const assigned = material.created_by !== profile.id
+            const assigned = !localProfileId || material.created_by !== localProfileId
             const previewSource = material.file_url || material.thumbnail_url
-            const canDelete = isAdmin || material.created_by === profile.id
-            const canEdit = isAdmin || material.created_by === profile.id
+            const canDelete = isAdmin || (!!localProfileId && material.created_by === localProfileId)
+            const canEdit = isAdmin || (!!localProfileId && material.created_by === localProfileId)
             const visibilityLabels = getMaterialVisibilityRoleLabels(material)
             const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
             const customTags = getMaterialCustomTags(material)

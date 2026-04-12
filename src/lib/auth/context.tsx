@@ -13,6 +13,7 @@ import {
 
 interface AuthContextValue {
   profile: Profile
+  localProfileId: string | null
   shell: StakeholderShell
   roleLabel: string
   isAdmin: boolean
@@ -27,9 +28,11 @@ const AuthContext = React.createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({
   profile,
+  localProfileId,
   children,
 }: {
   profile: Profile
+  localProfileId: string | null
   children: React.ReactNode
 }) {
   const value = React.useMemo<AuthContextValue>(() => {
@@ -37,6 +40,7 @@ export function AuthProvider({
 
     return {
       profile,
+      localProfileId,
       shell: access.shell,
       roleLabel: access.label,
       isAdmin: isAdminProfile(profile),
@@ -46,7 +50,7 @@ export function AuthProvider({
       hasMinLevel: (level) => getLevelForProfile(profile) >= level,
       hasRole: (roles) => roles.includes(profile.role),
     }
-  }, [profile])
+  }, [localProfileId, profile])
 
   return (
     <AuthContext.Provider value={value}>

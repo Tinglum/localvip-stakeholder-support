@@ -6,6 +6,9 @@ import type { Stakeholder, StakeholderCode, GeneratedMaterial } from '@/lib/type
 export async function POST() {
   const context = await getAdminRouteContext()
   if ('error' in context) return context.error
+  if (!context.localProfileId) {
+    return NextResponse.json({ error: 'No local admin profile is linked to this QA session.' }, { status: 400 })
+  }
 
   const supabase = context.supabase
 
@@ -47,7 +50,7 @@ export async function POST() {
     }
 
     try {
-      await generateMaterialsForStakeholder(supabase, stakeholder.id, context.profile.id)
+      await generateMaterialsForStakeholder(supabase, stakeholder.id, context.localProfileId)
       results.push({ stakeholderId: stakeholder.id, name: stakeholder.name, status: 'generated' })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Generation failed.'
