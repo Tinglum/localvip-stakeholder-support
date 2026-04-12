@@ -192,8 +192,9 @@ export function BusinessExecutionOverview({
   const [uploadBusy, setUploadBusy] = React.useState<'logo' | 'cover' | null>(null)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
   const [uploadError, setUploadError] = React.useState<string | null>(null)
-  const [brandingLogoUrl, setBrandingLogoUrl] = React.useState(biz.logo_url || '')
-  const [brandingCoverPhotoUrl, setBrandingCoverPhotoUrl] = React.useState(biz.cover_photo_url || '')
+  const workspaceBusiness = localState?.business ?? biz
+  const [brandingLogoUrl, setBrandingLogoUrl] = React.useState(workspaceBusiness.logo_url || '')
+  const [brandingCoverPhotoUrl, setBrandingCoverPhotoUrl] = React.useState(workspaceBusiness.cover_photo_url || '')
   const logoInputRef = React.useRef<HTMLInputElement>(null)
   const coverInputRef = React.useRef<HTMLInputElement>(null)
   const writeBusinessId = localBusinessId || asUuid(biz.id)
@@ -211,9 +212,9 @@ export function BusinessExecutionOverview({
   }, [captureOffer.description, captureOffer.headline, captureOffer.value_label, cashbackOffer.cashback_percent])
 
   React.useEffect(() => {
-    setBrandingLogoUrl(biz.logo_url || '')
-    setBrandingCoverPhotoUrl(biz.cover_photo_url || '')
-  }, [biz.cover_photo_url, biz.logo_url])
+    setBrandingLogoUrl(workspaceBusiness.logo_url || '')
+    setBrandingCoverPhotoUrl(workspaceBusiness.cover_photo_url || '')
+  }, [workspaceBusiness.cover_photo_url, workspaceBusiness.logo_url])
 
   const joinUrl = React.useMemo(() => {
     if (codes?.join_url) return codes.join_url
@@ -512,6 +513,7 @@ export function BusinessExecutionOverview({
       } else {
         setBrandingCoverPhotoUrl(uploadedUrl)
       }
+      refetchBusiness?.()
       refetchWorkspace?.()
       const label = mediaType === 'logo' ? 'Logo' : 'Cover photo'
       setUploadMessage(`${label} uploaded.`)

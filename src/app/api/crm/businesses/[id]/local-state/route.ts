@@ -158,6 +158,7 @@ export async function GET(
 
   const payload: CrmBusinessLocalStateResponse = {
     businessId,
+    business,
     profiles,
     cities,
     causes,

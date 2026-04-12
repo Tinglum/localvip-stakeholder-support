@@ -145,6 +145,7 @@ export interface CrmBusinessDetailResponse {
 
 export interface CrmBusinessLocalStateResponse {
   businessId: string
+  business: Business
   profiles: Profile[]
   cities: City[]
   causes: Cause[]
