@@ -398,6 +398,9 @@ export async function upsertStakeholderCodesAndGenerate(
 export async function listAutoGenerationTemplatesForStakeholder(
   supabase: ServiceSupabaseClient,
   stakeholderId: string,
+  options?: {
+    fastMode?: boolean
+  },
 ) {
   const stakeholder = await getStakeholderById(supabase, stakeholderId)
   if (!stakeholder) throw new Error('Stakeholder not found.')
@@ -419,6 +422,7 @@ export async function listAutoGenerationTemplatesForStakeholder(
     cityId: stakeholder.city_id,
     campaignId: business?.campaign_id || cause?.campaign_id || null,
     businessCategory: business?.category || null,
+    includeAssetTemplates: !options?.fastMode,
   })
 }
 
@@ -428,6 +432,7 @@ export async function generateMaterialsForStakeholder(
   actorId: string | null,
   options?: {
     templateId?: string
+    fastMode?: boolean
   },
 ): Promise<GenerationResult> {
   const actorUuid = asUuid(actorId)
@@ -454,6 +459,7 @@ export async function generateMaterialsForStakeholder(
       cityId: stakeholder.city_id,
       campaignId: context.business?.campaign_id || context.cause?.campaign_id || null,
       businessCategory: context.business?.category || null,
+      includeAssetTemplates: !options?.fastMode,
     }),
   ])
 
@@ -470,36 +476,53 @@ export async function generateMaterialsForStakeholder(
 
   const results: GeneratedMaterial[] = []
   const failures: Array<{ templateId: string; templateName: string; error: string }> = []
+  const fastMode = options?.fastMode ?? false
 
   for (const template of templates) {
-      try {
-      const generated = await generateOneMaterial(supabase, context, qrCode, template, actorUuid)
+    try {
+      const generated = fastMode
+        ? await generateEmergencyFallbackMaterial(
+            supabase,
+            context,
+            qrCode,
+            template,
+            actorUuid,
+            'Fast interactive generation mode.',
+            'fast',
+          )
+        : await generateOneMaterial(supabase, context, qrCode, template, actorUuid)
       results.push(generated)
     } catch (error) {
       const message = extractErrorMessage(error, `Generation failed for template "${template.name}"`)
-      try {
-        const fallbackGenerated = await generateEmergencyFallbackMaterial(
-          supabase,
-          context,
-          qrCode,
-          template,
-          actorUuid,
-          message,
-        )
-        results.push(fallbackGenerated)
-        failures.push({
-          templateId: template.id,
-          templateName: template.name,
-          error: `Primary render failed, but a fallback material was generated instead: ${message}`,
-        })
-      } catch (fallbackError) {
-        const fallbackMessage = extractErrorMessage(
-          fallbackError,
-          `Fallback generation also failed for template "${template.name}"`,
-        )
-        const combinedMessage = `${message} | Fallback failed: ${fallbackMessage}`
-        failures.push({ templateId: template.id, templateName: template.name, error: combinedMessage })
-        await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, combinedMessage)
+      if (fastMode) {
+        failures.push({ templateId: template.id, templateName: template.name, error: message })
+        await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, message)
+      } else {
+        try {
+          const fallbackGenerated = await generateEmergencyFallbackMaterial(
+            supabase,
+            context,
+            qrCode,
+            template,
+            actorUuid,
+            message,
+            'emergency_fallback',
+          )
+          results.push(fallbackGenerated)
+          failures.push({
+            templateId: template.id,
+            templateName: template.name,
+            error: `Primary render failed, but a fallback material was generated instead: ${message}`,
+          })
+        } catch (fallbackError) {
+          const fallbackMessage = extractErrorMessage(
+            fallbackError,
+            `Fallback generation also failed for template "${template.name}"`,
+          )
+          const combinedMessage = `${message} | Fallback failed: ${fallbackMessage}`
+          failures.push({ templateId: template.id, templateName: template.name, error: combinedMessage })
+          await upsertGeneratedMaterialFailure(supabase, stakeholder.id, template, combinedMessage)
+        }
       }
     }
   }
@@ -781,6 +804,7 @@ async function generateEmergencyFallbackMaterial(
   template: MaterialTemplate,
   actorId: string | null,
   primaryError: string,
+  mode: 'fast' | 'emergency_fallback' = 'emergency_fallback',
 ) {
   const actorUuid = asUuid(actorId)
   const copy = getTemplateCopy(template)
@@ -810,7 +834,8 @@ async function generateEmergencyFallbackMaterial(
   }
 
   const svg = renderStructuredTemplateSvg(emergencyTemplate, context, qrDataUrl)
-  const fileBase = `${sanitizeFilenamePart(context.stakeholder.name)}-${sanitizeFilenamePart(template.name)}-fallback`
+  const fallbackSuffix = mode === 'emergency_fallback' ? '-fallback' : ''
+  const fileBase = `${sanitizeFilenamePart(context.stakeholder.name)}-${sanitizeFilenamePart(template.name)}${fallbackSuffix}`
   const filePath = `generated-materials/${context.stakeholder.id}/${fileBase}.svg`
   const fileBuffer = Buffer.from(svg, 'utf8')
 
@@ -857,12 +882,12 @@ async function generateEmergencyFallbackMaterial(
     version: 1,
     status: 'active' as Material['status'],
     created_by: pickFirstUuid(actorUuid, context.stakeholder.owner_user_id, ownerProfileId, context.stakeholder.profile_id),
-    metadata: {
-      generated_by_engine: true,
-      generation_mode: 'emergency_fallback',
-      stakeholder_id: context.stakeholder.id,
-      template_id: template.id,
-      library_folder: template.library_folder,
+      metadata: {
+        generated_by_engine: true,
+        generation_mode: mode,
+        stakeholder_id: context.stakeholder.id,
+        template_id: template.id,
+        library_folder: template.library_folder,
       audience_tags: template.audience_tags,
       qr_code_id: qrCode.id,
       join_url: context.joinUrl,
@@ -928,7 +953,7 @@ async function generateEmergencyFallbackMaterial(
         join_url: context.joinUrl,
         display_url: context.displayUrl,
         output_format: 'svg',
-        generation_mode: 'emergency_fallback',
+        generation_mode: mode,
         primary_error: primaryError,
       },
     }
@@ -984,10 +1009,13 @@ async function getTemplatesForStakeholder(
     cityId?: string | null
     campaignId?: string | null
     businessCategory?: string | null
+    includeAssetTemplates?: boolean
   },
 ) {
   const tier = options?.tier || 'auto'
-  const syncedAssetTemplates = await syncMaterialAssetTemplatesForStakeholder(supabase, stakeholderType, templateId)
+  const syncedAssetTemplates = options?.includeAssetTemplates === false
+    ? []
+    : await syncMaterialAssetTemplatesForStakeholder(supabase, stakeholderType, templateId)
 
   let query = supabase
     .from('material_templates')
@@ -2300,8 +2328,13 @@ export async function regenerateAllForStakeholder(
   supabase: ServiceSupabaseClient,
   stakeholderId: string,
   actorId: string | null,
+  options?: {
+    fastMode?: boolean
+  },
 ): Promise<GenerationResult> {
-  return generateMaterialsForStakeholder(supabase, stakeholderId, actorId)
+  return generateMaterialsForStakeholder(supabase, stakeholderId, actorId, {
+    fastMode: options?.fastMode,
+  })
 }
 
 /** Restore an archived version to active, deactivating the current active. */

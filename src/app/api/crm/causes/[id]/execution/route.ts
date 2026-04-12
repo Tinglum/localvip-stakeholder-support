@@ -18,6 +18,9 @@ import { computeCauseExecutionSteps, computeCauseStageFromSteps } from '@/lib/ca
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Cause, OnboardingFlow, OnboardingStep, QrCode, Stakeholder, StakeholderCode } from '@/lib/types/database'
 
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
 const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('save_codes'),
@@ -163,7 +166,9 @@ export async function POST(
     }
 
     if (parsed.data.action === 'list_generation_templates') {
-      const templates = await listAutoGenerationTemplatesForStakeholder(context.supabase, context.stakeholder.id)
+      const templates = await listAutoGenerationTemplatesForStakeholder(context.supabase, context.stakeholder.id, {
+        fastMode: true,
+      })
       return NextResponse.json({
         success: true,
         templates: templates.map((template) => ({
@@ -181,18 +186,31 @@ export async function POST(
         context.supabase,
         context.stakeholder.id,
         context.localProfileId,
-        { templateId: parsed.data.templateId },
+        {
+          templateId: parsed.data.templateId,
+          fastMode: true,
+        },
       )
       return NextResponse.json({ success: true, result })
     }
 
     if (parsed.data.action === 'generate_materials') {
-      const result = await generateMaterialsForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
+      const result = await generateMaterialsForStakeholder(
+        context.supabase,
+        context.stakeholder.id,
+        context.localProfileId,
+        { fastMode: true },
+      )
       return NextResponse.json({ success: true, result })
     }
 
     if (parsed.data.action === 'regenerate_all') {
-      const result = await regenerateAllForStakeholder(context.supabase, context.stakeholder.id, context.localProfileId)
+      const result = await regenerateAllForStakeholder(
+        context.supabase,
+        context.stakeholder.id,
+        context.localProfileId,
+        { fastMode: true },
+      )
       return NextResponse.json({ success: true, result })
     }
 
