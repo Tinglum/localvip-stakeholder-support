@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   clearQaSessionCookies,
   exchangeCodeForSession,
+  getRequestPublicOrigin,
   getQaRedirectUri,
   QA_COOKIE_NAMES,
   sanitizeReturnTo,
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
   const storedState = request.cookies.get(QA_COOKIE_NAMES.state)?.value || null
   const verifier = request.cookies.get(QA_COOKIE_NAMES.verifier)?.value || null
   const returnTo = sanitizeReturnTo(request.cookies.get(QA_COOKIE_NAMES.returnTo)?.value || '/dashboard')
+  const publicOrigin = getRequestPublicOrigin(request)
 
   // Diagnostic: list every cookie we can see so we know if the browser dropped them
   const cookieNames = request.cookies.getAll().map((c) => c.name)
@@ -29,15 +31,16 @@ export async function GET(request: NextRequest) {
     error,
     errorDescription,
     origin: request.nextUrl.origin,
+    publicOrigin,
     cookieNames,
   })
 
-  const cleanResponse = NextResponse.redirect(new URL(returnTo, request.nextUrl.origin))
+  const cleanResponse = NextResponse.redirect(new URL(returnTo, publicOrigin))
   clearQaSessionCookies(cleanResponse)
 
   if (error) {
     const failure = NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(errorDescription || error)}`, request.nextUrl.origin),
+      new URL(`/login?error=${encodeURIComponent(errorDescription || error)}`, publicOrigin),
     )
     clearQaSessionCookies(failure)
     return failure
@@ -52,7 +55,7 @@ export async function GET(request: NextRequest) {
     if (!verifier) missing.push('pkce_verifier_cookie')
     const diagnostic = `QA login handshake failed. Missing: ${missing.join(', ')}. Seen cookies: ${cookieNames.join(', ') || 'none'}`
     const failure = NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(diagnostic)}`, request.nextUrl.origin),
+      new URL(`/login?error=${encodeURIComponent(diagnostic)}`, publicOrigin),
     )
     clearQaSessionCookies(failure)
     return failure
@@ -62,7 +65,7 @@ export async function GET(request: NextRequest) {
     const session = await exchangeCodeForSession({
       code,
       verifier,
-      redirectUri: getQaRedirectUri(request.nextUrl.origin),
+      redirectUri: getQaRedirectUri(publicOrigin),
     })
 
     setQaSessionCookies(cleanResponse, session)
@@ -74,7 +77,7 @@ export async function GET(request: NextRequest) {
     const failure = NextResponse.redirect(
       new URL(
         `/login?error=${encodeURIComponent(tokenError instanceof Error ? tokenError.message : 'QA login failed.')}`,
-        request.nextUrl.origin,
+        publicOrigin,
       ),
     )
     clearQaSessionCookies(failure)

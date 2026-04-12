@@ -1,31 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createOauthState, createPkcePair, getQaAuthorizationUrl, QA_COOKIE_NAMES, sanitizeReturnTo } from '@/lib/auth/qa-auth'
+import {
+  createOauthState,
+  createPkcePair,
+  getQaAuthorizationUrl,
+  getRequestPublicOrigin,
+  QA_COOKIE_NAMES,
+  sanitizeReturnTo,
+} from '@/lib/auth/qa-auth'
 
 export async function GET(request: NextRequest) {
   const returnTo = sanitizeReturnTo(request.nextUrl.searchParams.get('returnTo'))
   const debug = request.nextUrl.searchParams.get('debug') === '1'
 
-  // Use the canonical app URL (if configured) as the origin for the OAuth
-  // callback. On Netlify, request.nextUrl.origin reports the internal HTTP
-  // origin (http://...) while the browser is on HTTPS, so comparing full
-  // origins causes redirect loops. We compare hostnames instead and always
-  // prefer the configured URL so the OAuth redirect URI and cookies land on
-  // the correct external host.
   const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') || null
-  const requestOrigin = request.nextUrl.origin.replace(/\/+$/, '')
+  const publicOrigin = getRequestPublicOrigin(request)
   const configuredHost = configuredAppUrl ? new URL(configuredAppUrl).hostname : null
-  const requestHost = new URL(requestOrigin).hostname
+  const publicHost = new URL(publicOrigin).hostname
 
-  // If the request is coming from a different host (e.g. a deploy preview),
-  // redirect to the canonical host so cookies are set on the right domain.
-  if (configuredHost && configuredHost !== requestHost && !debug) {
+  // Only redirect when the browser is truly on a different public host.
+  // Netlify may report an internal origin through request.nextUrl.origin,
+  // so we rely on forwarded host/proto headers instead.
+  if (configuredHost && configuredHost !== publicHost && !debug) {
     const redirectUrl = new URL('/api/auth/qa/start', configuredAppUrl!)
     redirectUrl.searchParams.set('returnTo', returnTo)
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Use the canonical URL as the OAuth base origin (preserves HTTPS)
-  const oauthOrigin = configuredAppUrl || requestOrigin
+  const oauthOrigin = configuredAppUrl || publicOrigin
 
   const state = createOauthState()
   const pkce = createPkcePair()
@@ -38,10 +39,11 @@ export async function GET(request: NextRequest) {
   const secure = process.env.NODE_ENV === 'production'
 
   console.log('[qa-start]', {
-    requestOrigin,
+    requestOrigin: request.nextUrl.origin,
+    publicOrigin,
     oauthOrigin,
     configuredAppUrl,
-    requestHost,
+    publicHost,
     configuredHost,
     redirectUri: authorization.redirectUri,
     authorizeUrl: authorization.url,
@@ -53,10 +55,11 @@ export async function GET(request: NextRequest) {
   if (debug) {
     return NextResponse.json({
       ok: true,
-      requestOrigin,
+      requestOrigin: request.nextUrl.origin,
+      publicOrigin,
       oauthOrigin,
       configuredAppUrl,
-      requestHost,
+      publicHost,
       configuredHost,
       redirectUri: authorization.redirectUri,
       authorizeUrl: authorization.url,

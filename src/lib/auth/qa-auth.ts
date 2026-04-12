@@ -5,6 +5,15 @@ type CookieSource = {
   get: (name: string) => { value?: string } | undefined
 }
 
+type PublicOriginSource = {
+  headers: Headers
+  nextUrl?: {
+    origin?: string
+    protocol?: string
+  }
+  url?: string
+}
+
 export interface QaAuthClaims {
   sub: string
   email: string | null
@@ -40,6 +49,31 @@ function getConfiguredAppOrigin(fallbackOrigin?: string) {
   if (configured) return trimTrailingSlash(configured)
   if (fallbackOrigin) return trimTrailingSlash(fallbackOrigin)
   return null
+}
+
+export function getRequestPublicOrigin(source: PublicOriginSource) {
+  const forwardedHost = trimToNull(source.headers.get('x-forwarded-host'))?.split(',')[0]?.trim() || null
+  const forwardedProto = trimToNull(source.headers.get('x-forwarded-proto'))?.split(',')[0]?.trim() || null
+  const host = forwardedHost || trimToNull(source.headers.get('host'))
+  const nextProtocol = trimToNull(source.nextUrl?.protocol)?.replace(/:$/, '') || null
+  const fallbackOrigin = source.nextUrl?.origin || (source.url ? new URL(source.url).origin : null)
+  const fallbackProtocol = fallbackOrigin ? new URL(fallbackOrigin).protocol.replace(/:$/, '') : null
+  const protocol = forwardedProto || nextProtocol || fallbackProtocol || 'https'
+
+  if (host) {
+    return trimTrailingSlash(`${protocol}://${host}`)
+  }
+
+  if (fallbackOrigin) {
+    return trimTrailingSlash(fallbackOrigin)
+  }
+
+  const configuredOrigin = getConfiguredAppOrigin()
+  if (configuredOrigin) {
+    return configuredOrigin
+  }
+
+  throw new Error('No public dashboard origin is available for QA auth.')
 }
 
 export const QA_AUTH_CONFIG = {
