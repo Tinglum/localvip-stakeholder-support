@@ -1,9 +1,12 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { Database, FilePlus2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import type { QaBacklogRow } from '@/lib/qa-dashboard-backlog'
 
 export interface QaImportedFact {
   label: string
@@ -111,6 +114,71 @@ export function QaWritebackWishlistTable({
             ))}
           </div>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+export function QaUniversalBacklogTable({
+  title,
+  description,
+  rows,
+  actionHref,
+}: {
+  title: string
+  description: string
+  rows: QaBacklogRow[]
+  actionHref?: string
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">{title}</CardTitle>
+            <p className="mt-1 text-sm text-surface-500">{description}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              <FilePlus2 className="mr-1 h-3.5 w-3.5" />
+              {rows.length} tracked
+            </Badge>
+            {actionHref ? (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={actionHref}>Open full list</Link>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto rounded-xl border border-surface-200">
+          <div className="min-w-[980px]">
+            <div className="grid grid-cols-[0.9fr,1.3fr,1.2fr,1.2fr,0.8fr] gap-4 border-b border-surface-200 bg-surface-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
+              <span>Area</span>
+              <span>Dashboard functionality</span>
+              <span>Needs in QA</span>
+              <span>Needed APIs</span>
+              <span>Status</span>
+            </div>
+            {rows.map((row) => (
+              <div
+                key={`${row.area}-${row.feature}`}
+                className="grid grid-cols-[0.9fr,1.3fr,1.2fr,1.2fr,0.8fr] gap-4 border-b border-surface-100 px-4 py-3 text-sm last:border-b-0"
+              >
+                <div className="font-medium text-surface-900">{row.area}</div>
+                <div className="text-surface-700">{row.feature}</div>
+                <div className="text-surface-600">{row.qaNeed}</div>
+                <div className="text-surface-600">{row.neededApis}</div>
+                <div>
+                  <Badge variant="outline" className="justify-center">
+                    {row.status}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </CardContent>
     </Card>
   )

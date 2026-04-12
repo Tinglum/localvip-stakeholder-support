@@ -230,6 +230,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Tasks', href: '/crm/tasks', icon: 'CheckSquare', minLevel: 20 },
     ],
   },
+  { label: 'Add to QA', href: '/qa-backlog', icon: 'FolderKanban', minLevel: 40 },
   {
     label: 'QR Codes', href: '/qr', icon: 'QrCode', minLevel: 20,
     children: [

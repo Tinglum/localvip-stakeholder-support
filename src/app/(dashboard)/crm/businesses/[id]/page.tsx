@@ -24,7 +24,7 @@ import {
 import { ProgressSteps } from '@/components/ui/progress-steps'
 import { BusinessExecutionOverview } from '@/components/crm/business-execution-overview'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
-import { QaImportedFieldsPanel, QaWritebackWishlistTable, type QaImportedFact, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
+import { QaImportedFieldsPanel, QaUniversalBacklogTable, type QaImportedFact } from '@/components/crm/qa-linking-panels'
 import {
   Select,
   SelectContent,
@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ONBOARDING_STAGES } from '@/lib/constants'
+import { QA_DASHBOARD_BACKLOG_ROWS } from '@/lib/qa-dashboard-backlog'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
@@ -211,32 +212,6 @@ export default function BusinessDetailPage() {
       { label: 'QA status', value: biz.active === null || biz.active === undefined ? null : biz.active ? 'Active' : 'Inactive' },
     ]
   }, [biz, qaLinkedBusinessId])
-  const writebackRows = React.useMemo<QaWritebackRow[]>(() => {
-    if (!biz) return []
-
-    const rows: QaWritebackRow[] = []
-    const pushRow = (field: string, currentValue: string | null | undefined, qaNeed: string, status = 'Needs QA field') => {
-      if (!currentValue || !String(currentValue).trim()) return
-      rows.push({ field, currentValue: String(currentValue), qaNeed, status })
-    }
-
-    pushRow('Dashboard stage', ONBOARDING_STAGES[biz.stage]?.label || biz.stage, 'onboarding_stage + write API')
-    pushRow('Campaign link', campaign?.name, 'campaign_id or account_campaign relation')
-    pushRow('Linked cause', linkedCause?.name, 'linked_nonprofit_account_id relation')
-    pushRow('Cover photo', biz.cover_photo_url, 'cover_photo_url')
-    pushRow('Average ticket', biz.avg_ticket, 'average_ticket')
-    pushRow('Products / services', biz.products_services?.join(', '), 'products_services')
-    pushRow('Activation status', biz.activation_status, 'activation_status')
-    pushRow('Launch phase', biz.launch_phase, 'launch_phase')
-    pushRow('Linked QR code', linkedQr?.name, 'qr_code relation / qr domain APIs')
-    pushRow('Linked material', linkedMaterial?.title, 'material relation / material APIs')
-    pushRow('Tasks', taskItems.length > 0 ? `${taskItems.length} tracked task${taskItems.length === 1 ? '' : 's'}` : null, 'tasks table + read/write APIs', 'Needs QA workflow domain')
-    pushRow('Notes', noteItems.length > 0 ? `${noteItems.length} saved note${noteItems.length === 1 ? '' : 's'}` : null, 'notes table + read/write APIs', 'Needs QA workflow domain')
-    pushRow('Outreach activity', outreachItems.length > 0 ? `${outreachItems.length} logged ${outreachItems.length === 1 ? 'activity' : 'activities'}` : null, 'outreach activity table + read/write APIs', 'Needs QA workflow domain')
-
-    return rows
-  }, [biz, campaign?.name, linkedCause?.name, linkedMaterial?.title, linkedQr?.name, noteItems.length, outreachItems.length, taskItems.length])
-
   const refetchBusinessDetail = React.useCallback(() => {
     refetchBusiness()
     refetchLocalState()
@@ -608,23 +583,6 @@ export default function BusinessDetailPage() {
         </Card>
       </div>
 
-      {qaImportedFacts.length > 0 && (
-        <QaImportedFieldsPanel
-          title="Imported From QA"
-          description="These values are refreshed from QA whenever this business record is opened."
-          facts={qaImportedFacts}
-          accentLabel="QA business fields"
-        />
-      )}
-
-      {biz && (
-        <QaWritebackWishlistTable
-          title="Dashboard Info To Add To QA Later"
-          description="This is the dashboard-owned information attached to this business that still needs QA fields and write APIs before it can move fully server-side."
-          rows={writebackRows}
-        />
-      )}
-
       {/* Tabs */}
       <div className="border-b border-surface-200">
         <nav className="flex gap-6">
@@ -654,20 +612,36 @@ export default function BusinessDetailPage() {
             <span className="ml-2 text-sm text-surface-500">Loading business workspace...</span>
           </div>
         ) : (
-        <BusinessExecutionOverview
-          biz={biz}
-          localBusinessId={localBusinessId}
-          localState={localState}
-          city={city}
-          owner={owner}
-          linkedCause={linkedCause}
-            campaign={campaign}
-            helperAssignments={helperAssignments}
-            updateBusiness={updateBusiness}
-            updateLoading={updateLoading}
-            refetchBusiness={refetchBusinessDetail}
-            refetchWorkspace={refetchLocalState}
-          />
+          <div className="space-y-6">
+            <BusinessExecutionOverview
+              biz={biz}
+              localBusinessId={localBusinessId}
+              localState={localState}
+              city={city}
+              owner={owner}
+              linkedCause={linkedCause}
+              campaign={campaign}
+              helperAssignments={helperAssignments}
+              updateBusiness={updateBusiness}
+              updateLoading={updateLoading}
+              refetchBusiness={refetchBusinessDetail}
+              refetchWorkspace={refetchLocalState}
+            />
+            {qaImportedFacts.length > 0 ? (
+              <QaImportedFieldsPanel
+                title="Imported From QA"
+                description="These values are refreshed from QA whenever this business record is opened."
+                facts={qaImportedFacts}
+                accentLabel="QA business fields"
+              />
+            ) : null}
+            <QaUniversalBacklogTable
+              title="Add To QA"
+              description="This is the shared backlog of dashboard functionality that still needs QA fields, write support, or new APIs before the dashboard can run fully server-side."
+              rows={QA_DASHBOARD_BACKLOG_ROWS}
+              actionHref="/qa-backlog"
+            />
+          </div>
         )
       )}
 

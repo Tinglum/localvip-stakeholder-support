@@ -546,15 +546,15 @@ export function BusinessExecutionOverview({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-4">
+    <div className="flex flex-col gap-6">
+      <div className="order-2 grid gap-4 lg:grid-cols-4">
         <StatusCard label="Onboarding" value={`${executionSteps.filter((item) => item.state === 'completed').length}/${executionSteps.length}`} ready={executionSteps.every((item) => item.state === 'completed')} />
         <StatusCard label="QR status" value={qrCodes.length > 0 ? 'Ready' : 'Missing'} ready={qrCodes.length > 0} />
         <StatusCard label="100-list" value={`${joinedCount} / 100`} ready={joinedCount >= 100} />
         <StatusCard label="Cashback" value={`${cashbackPercent}%`} ready={cashbackPercent >= 5 && cashbackPercent <= 25} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
+      <div className="order-3 grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
         <Card>
           <CardHeader>
             <CardTitle>Business lifecycle</CardTitle>
@@ -672,7 +672,7 @@ export function BusinessExecutionOverview({
         </Card>
       </div>
 
-      <Card id="business-workspace-tabs">
+      <Card id="business-workspace-tabs" className="order-1">
         <CardHeader className="space-y-4">
           <div className="flex flex-col gap-1">
             <CardTitle>Business workspace</CardTitle>
