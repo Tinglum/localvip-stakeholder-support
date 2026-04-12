@@ -30,14 +30,12 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient()
 
-  // Ensure created_by is the real local profile ID
-  const record = { ...body }
-  if (session.localProfileId) {
-    record.created_by = session.localProfileId
-  }
-  delete (record as Record<string, unknown>).id
-  delete (record as Record<string, unknown>).created_at
-  delete (record as Record<string, unknown>).updated_at
+  // Ensure created_by is a real local profile ID (or null to avoid FK violation)
+  const record: Record<string, unknown> = { ...body }
+  record.created_by = session.localProfileId || null
+  delete record.id
+  delete record.created_at
+  delete record.updated_at
 
   const { data, error } = await (supabase.from('materials') as any)
     .insert(record)

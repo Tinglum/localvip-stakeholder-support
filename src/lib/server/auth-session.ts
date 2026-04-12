@@ -170,15 +170,18 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
   if (qaSession) {
     const email = qaSession.claims.email?.toLowerCase() || null
     let profile: Profile | null = null
+    let profileIsReal = false
 
     // a. Try to find an existing profile by email
     if (email) {
       profile = await loadProfileByEmail(service, email)
+      if (profile) profileIsReal = true
     }
 
     // b. No match → provision a real auth user + profile row in the DB
     if (!profile) {
       profile = await provisionQaProfileRow(service, qaSession.claims)
+      if (profile) profileIsReal = true
     }
 
     // c. Last resort → synthetic fallback (read-only safe, FK writes will fail)
@@ -190,7 +193,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     return {
       profile,
       userId: profile.id,
-      localProfileId: asUuid(profile.id),
+      localProfileId: profileIsReal ? asUuid(profile.id) : null,
       source: 'qa',
       qaClaims: qaSession.claims,
       qaSession,
