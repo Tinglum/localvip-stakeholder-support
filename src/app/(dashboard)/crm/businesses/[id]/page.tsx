@@ -666,6 +666,7 @@ export default function BusinessDetailPage() {
             updateBusiness={updateBusiness}
             updateLoading={updateLoading}
             refetchBusiness={refetchBusinessDetail}
+            refetchWorkspace={refetchLocalState}
           />
         )
       )}
@@ -1041,6 +1042,7 @@ function OverviewTab({
   updateBusiness,
   updateLoading,
   refetchBusiness,
+  refetchWorkspace,
 }: {
   biz: Business
   city: City | null
@@ -1051,6 +1053,7 @@ function OverviewTab({
   updateBusiness: (id: string, changes: Partial<Business>) => Promise<Business | null>
   updateLoading: boolean
   refetchBusiness?: () => void
+  refetchWorkspace?: () => void
 }) {
   return (
     <BusinessExecutionOverview
@@ -1064,6 +1067,7 @@ function OverviewTab({
       updateBusiness={updateBusiness}
       updateLoading={updateLoading}
       refetchBusiness={refetchBusiness}
+      refetchWorkspace={refetchWorkspace}
     />
   )
 }

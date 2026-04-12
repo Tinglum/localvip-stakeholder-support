@@ -73,6 +73,7 @@ interface BusinessExecutionOverviewProps {
   updateBusiness: (id: string, changes: Partial<Business>) => Promise<Business | null>
   updateLoading: boolean
   refetchBusiness?: () => void
+  refetchWorkspace?: () => void
 }
 
 interface GenerationTemplateSummary {
@@ -106,6 +107,7 @@ export function BusinessExecutionOverview({
   updateBusiness,
   updateLoading,
   refetchBusiness,
+  refetchWorkspace,
 }: BusinessExecutionOverviewProps) {
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
@@ -190,6 +192,8 @@ export function BusinessExecutionOverview({
   const [uploadBusy, setUploadBusy] = React.useState<'logo' | 'cover' | null>(null)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
   const [uploadError, setUploadError] = React.useState<string | null>(null)
+  const [brandingLogoUrl, setBrandingLogoUrl] = React.useState(biz.logo_url || '')
+  const [brandingCoverPhotoUrl, setBrandingCoverPhotoUrl] = React.useState(biz.cover_photo_url || '')
   const logoInputRef = React.useRef<HTMLInputElement>(null)
   const coverInputRef = React.useRef<HTMLInputElement>(null)
   const writeBusinessId = localBusinessId || asUuid(biz.id)
@@ -205,6 +209,11 @@ export function BusinessExecutionOverview({
     setCaptureValue(captureOffer.value_label || '')
     setCashbackPercent(cashbackOffer.cashback_percent || 10)
   }, [captureOffer.description, captureOffer.headline, captureOffer.value_label, cashbackOffer.cashback_percent])
+
+  React.useEffect(() => {
+    setBrandingLogoUrl(biz.logo_url || '')
+    setBrandingCoverPhotoUrl(biz.cover_photo_url || '')
+  }, [biz.cover_photo_url, biz.logo_url])
 
   const joinUrl = React.useMemo(() => {
     if (codes?.join_url) return codes.join_url
@@ -497,7 +506,13 @@ export function BusinessExecutionOverview({
         ? await response.json().catch(() => ({}))
         : { error: await response.text().catch(() => 'Upload failed.') }
       if (!response.ok) throw new Error(body.error || `Upload failed with ${response.status}.`)
-      await refetchExecution()
+      const uploadedUrl = typeof body.fileUrl === 'string' ? body.fileUrl : ''
+      if (mediaType === 'logo') {
+        setBrandingLogoUrl(uploadedUrl)
+      } else {
+        setBrandingCoverPhotoUrl(uploadedUrl)
+      }
+      refetchWorkspace?.()
       const label = mediaType === 'logo' ? 'Logo' : 'Cover photo'
       setUploadMessage(`${label} uploaded.`)
 
@@ -685,7 +700,7 @@ export function BusinessExecutionOverview({
             <WorkspaceTabButton
               active={activeWorkspaceTab === 'branding'}
               label="Branding"
-              meta={biz.logo_url ? 'Logo set' : 'Needs logo'}
+              meta={brandingLogoUrl ? 'Logo set' : 'Needs logo'}
               onClick={() => setActiveWorkspaceTab('branding')}
             />
           </div>
@@ -751,7 +766,7 @@ export function BusinessExecutionOverview({
                   {regenMessage ? (
                     <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">{regenMessage}</div>
                   ) : null}
-                  {!biz.logo_url ? (
+                  {!brandingLogoUrl ? (
                     <div className="flex items-center gap-3 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700">
                       <AlertTriangle className="h-4 w-4 shrink-0" />
                       <span>Upload a logo to embed it in QR codes and materials.</span>
@@ -880,10 +895,10 @@ export function BusinessExecutionOverview({
                   <div>
                     <label className="mb-2 block text-sm font-medium text-surface-700">Logo</label>
                     <p className="mb-3 text-xs text-surface-500">Used in QR codes, generated materials, and listing previews.</p>
-                    {biz.logo_url ? (
+                    {brandingLogoUrl ? (
                       <div className="flex items-center gap-4">
                         <div className="h-20 w-20 overflow-hidden rounded-2xl border border-surface-200 bg-surface-50">
-                          <img src={biz.logo_url} alt="Logo" className="h-full w-full object-contain" />
+                          <img src={brandingLogoUrl} alt="Logo" className="h-full w-full object-contain" />
                         </div>
                         <Button size="sm" variant="outline" onClick={() => logoInputRef.current?.click()} disabled={uploadBusy !== null}>
                           {uploadBusy === 'logo' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
@@ -921,10 +936,10 @@ export function BusinessExecutionOverview({
                   <div>
                     <label className="mb-2 block text-sm font-medium text-surface-700">Cover photo</label>
                     <p className="mb-3 text-xs text-surface-500">Used in listing previews and applicable materials.</p>
-                    {biz.cover_photo_url ? (
+                    {brandingCoverPhotoUrl ? (
                       <div className="space-y-3">
                         <div className="h-40 w-full overflow-hidden rounded-2xl border border-surface-200 bg-surface-50">
-                          <img src={biz.cover_photo_url} alt="Cover" className="h-full w-full object-cover" />
+                          <img src={brandingCoverPhotoUrl} alt="Cover" className="h-full w-full object-cover" />
                         </div>
                         <Button size="sm" variant="outline" onClick={() => coverInputRef.current?.click()} disabled={uploadBusy !== null}>
                           {uploadBusy === 'cover' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
@@ -974,9 +989,9 @@ export function BusinessExecutionOverview({
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-hidden rounded-2xl border border-surface-200 bg-white">
-                    {biz.cover_photo_url ? (
+                    {brandingCoverPhotoUrl ? (
                       <div className="h-36 w-full overflow-hidden bg-surface-100">
-                        <img src={biz.cover_photo_url} alt="Cover" className="h-full w-full object-cover" />
+                        <img src={brandingCoverPhotoUrl} alt="Cover" className="h-full w-full object-cover" />
                       </div>
                     ) : (
                       <div className="flex h-36 w-full items-center justify-center bg-gradient-to-br from-brand-100 to-brand-50">
@@ -985,9 +1000,9 @@ export function BusinessExecutionOverview({
                     )}
                     <div className="relative px-4 pb-4">
                       <div className="-mt-8 mb-3 flex items-end gap-3">
-                        {biz.logo_url ? (
+                        {brandingLogoUrl ? (
                           <div className="h-16 w-16 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-sm">
-                            <img src={biz.logo_url} alt="Logo" className="h-full w-full object-contain" />
+                            <img src={brandingLogoUrl} alt="Logo" className="h-full w-full object-contain" />
                           </div>
                         ) : (
                           <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-white bg-surface-100 shadow-sm">
