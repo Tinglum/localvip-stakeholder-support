@@ -222,8 +222,11 @@ export function BusinessExecutionOverview({
     return buildStakeholderJoinUrl('business', connectionCode)
   }, [codes?.join_url, connectionCode])
 
-  async function refetchExecution() {
-    refetchBusiness?.()
+  async function refetchExecution(options?: { includeBusiness?: boolean }) {
+    refetchWorkspace?.()
+    if (options?.includeBusiness) {
+      refetchBusiness?.()
+    }
     if (!localState) {
       refetchStakeholders({ silent: true })
       refetchCodes({ silent: true })
@@ -256,8 +259,26 @@ export function BusinessExecutionOverview({
     return body
   }
 
+  async function callMaterialsAction(payload: Record<string, unknown>) {
+    if (!writeBusinessId) {
+      throw new Error('This business is not linked to a local dashboard record yet.')
+    }
+
+    const response = await fetch(`/api/crm/businesses/${writeBusinessId}/materials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const contentType = response.headers.get('content-type') || ''
+    const body = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : { error: await response.text().catch(() => 'The material action could not be completed.') }
+    if (!response.ok) throw new Error(body.error || 'The material action could not be completed.')
+    return body
+  }
+
   async function listGenerationTemplates() {
-    const body = await callExecutionAction({ action: 'list_generation_templates' })
+    const body = await callMaterialsAction({ action: 'list_generation_templates' })
     if (!Array.isArray(body?.templates)) {
       return [] as GenerationTemplateSummary[]
     }
@@ -272,6 +293,7 @@ export function BusinessExecutionOverview({
       setError: (message: string | null) => void
       emptyMessage: string
       successMessage: string
+      refreshBusiness?: boolean
     },
   ) {
     if (templates.length === 0) {
@@ -285,7 +307,7 @@ export function BusinessExecutionOverview({
     for (const [index, template] of templates.entries()) {
       options.setProgress(`${options.progressPrefix} (${index + 1}/${templates.length}): ${template.name}`)
       try {
-        await callExecutionAction({
+        await callMaterialsAction({
           action: 'generate_template',
           templateId: template.id,
         })
@@ -297,7 +319,7 @@ export function BusinessExecutionOverview({
       }
     }
 
-    await refetchExecution()
+    await refetchExecution({ includeBusiness: options.refreshBusiness })
 
     if (failures.length === templates.length) {
       options.setProgress(null)
@@ -323,7 +345,7 @@ export function BusinessExecutionOverview({
     setEngineMessage(null)
     setEngineError(null)
     try {
-      await callExecutionAction({
+      await callMaterialsAction({
         action: 'save_codes',
         referralCode,
         connectionCode,
@@ -480,7 +502,7 @@ export function BusinessExecutionOverview({
 
   async function handleRestoreVersion(generatedMaterialId: string) {
     try {
-      await callExecutionAction({ action: 'restore_version', generatedMaterialId })
+      await callMaterialsAction({ action: 'restore_version', generatedMaterialId })
       await refetchExecution()
     } catch {
       // silent
@@ -513,7 +535,6 @@ export function BusinessExecutionOverview({
       } else {
         setBrandingCoverPhotoUrl(uploadedUrl)
       }
-      refetchBusiness?.()
       refetchWorkspace?.()
       const label = mediaType === 'logo' ? 'Logo' : 'Cover photo'
       setUploadMessage(`${label} uploaded.`)
