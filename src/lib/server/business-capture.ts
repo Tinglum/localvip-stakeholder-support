@@ -95,8 +95,10 @@ export async function ensureBusinessJoinResource(
     qrCode = await syncExistingBusinessJoinQrCode(supabase, business, actorUuid, joinSlug, qrCode)
   }
 
-  const linkedCauseName = await getLinkedCauseName(supabase, business.linked_cause_id)
-  const offers = await getBusinessOffers(supabase, business.id)
+  const [linkedCauseName, offers] = await Promise.all([
+    getLinkedCauseName(supabase, business.linked_cause_id),
+    getBusinessOffers(supabase, business.id),
+  ])
   const captureOffer = resolveBusinessOffer(business, offers, 'capture')
 
   const resource = buildBusinessJoinResource(business, {
@@ -143,8 +145,10 @@ export async function upsertBusinessJoinContact(
 ) {
   const now = new Date().toISOString()
   const ownerId = pickFirstUuid(business.owner_user_id, business.owner_id)
-  const contacts = await getBusinessContacts(supabase, business.id)
-  const offers = await getBusinessOffers(supabase, business.id)
+  const [contacts, offers] = await Promise.all([
+    getBusinessContacts(supabase, business.id),
+    getBusinessOffers(supabase, business.id),
+  ])
   const captureOffer = resolveBusinessOffer(business, offers, 'capture')
   const email = payload.email?.trim().toLowerCase() || null
   const phone = payload.phone?.trim() || null

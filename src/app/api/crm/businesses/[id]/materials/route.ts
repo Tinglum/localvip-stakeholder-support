@@ -59,26 +59,18 @@ async function getMaterialsContext(businessId: string) {
     return { error: NextResponse.json({ error: 'Forbidden.' }, { status: 403 }) }
   }
 
-  const { data: businessData, error: businessError } = await supabase
-    .from('businesses')
-    .select('*')
-    .eq('id', businessId)
-    .single()
+  const [bizRes, stkRes] = await Promise.all([
+    supabase.from('businesses').select('*').eq('id', businessId).single(),
+    supabase.from('stakeholders').select('*').eq('business_id', businessId).maybeSingle(),
+  ])
 
-  if (businessError || !businessData) {
+  const businessData = (bizRes as any).data
+  if ((bizRes as any).error || !businessData) {
     return { error: NextResponse.json({ error: 'Business not found.' }, { status: 404 }) }
   }
 
   const business = businessData as Business
-
-  let stakeholder: Stakeholder | null = null
-  const { data: stakeholderData } = await supabase
-    .from('stakeholders')
-    .select('*')
-    .eq('business_id', business.id)
-    .maybeSingle()
-
-  stakeholder = (stakeholderData || null) as Stakeholder | null
+  let stakeholder = ((stkRes as any).data || null) as Stakeholder | null
 
   if (!stakeholder) {
     try {

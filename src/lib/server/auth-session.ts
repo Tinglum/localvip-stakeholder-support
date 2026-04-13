@@ -165,7 +165,45 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
   const cookieStore = cookies()
   const service = createServiceClient()
 
-  // 1. Try QA session first
+  // 1. Try Supabase session FIRST — fastest path (just getUser + profile lookup).
+  //    QA users with a bridged session will hit this path and skip the slow QA provisioning.
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    const supabase = createServerSupabaseClient()
+    const { data } = await supabase.auth.getUser()
+    const user = data.user
+    if (user) {
+      const qaSession = getQaSessionFromCookieStore(cookieStore)
+      const profile = (await loadProfileById(service, user.id)) || ({
+        id: user.id,
+        email: user.email || '',
+        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+        avatar_url: null,
+        role: (user.user_metadata?.role as Profile['role']) || 'field',
+        role_subtype: (user.user_metadata?.role_subtype as Profile['role_subtype']) || null,
+        brand_context: 'localvip',
+        organization_id: null,
+        city_id: null,
+        business_id: user.user_metadata?.business_id || null,
+        phone: null,
+        referral_code: null,
+        status: 'active',
+        metadata: { auth_source: 'supabase_fallback' },
+        created_at: user.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as Profile)
+
+      return {
+        profile,
+        userId: user.id,
+        localProfileId: asUuid(user.id),
+        source: qaSession ? 'qa' : 'supabase',
+        qaClaims: qaSession?.claims,
+        qaSession: qaSession || undefined,
+      }
+    }
+  }
+
+  // 2. No Supabase session — try QA session (slower: email lookup + provisioning)
   const qaSession = getQaSessionFromCookieStore(cookieStore)
   if (qaSession) {
     const email = qaSession.claims.email?.toLowerCase() || null
@@ -197,40 +235,6 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       source: 'qa',
       qaClaims: qaSession.claims,
       qaSession,
-    }
-  }
-
-  // 2. Fall back to Supabase session
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    const supabase = createServerSupabaseClient()
-    const { data } = await supabase.auth.getUser()
-    const user = data.user
-    if (user) {
-      const profile = (await loadProfileById(service, user.id)) || ({
-        id: user.id,
-        email: user.email || '',
-        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-        avatar_url: null,
-        role: (user.user_metadata?.role as Profile['role']) || 'field',
-        role_subtype: (user.user_metadata?.role_subtype as Profile['role_subtype']) || null,
-        brand_context: 'localvip',
-        organization_id: null,
-        city_id: null,
-        business_id: user.user_metadata?.business_id || null,
-        phone: null,
-        referral_code: null,
-        status: 'active',
-        metadata: { auth_source: 'supabase_fallback' },
-        created_at: user.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as Profile)
-
-      return {
-        profile,
-        userId: user.id,
-        localProfileId: asUuid(user.id),
-        source: 'supabase',
-      }
     }
   }
 
