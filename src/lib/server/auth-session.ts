@@ -267,25 +267,32 @@ export async function provisionSupabaseSessionForQaUser(
   accessToken: string
   refreshToken: string
   userId: string
-  profile: Profile
 } | null> {
   const service = createServiceClient()
   const email = claims.email?.toLowerCase()
   if (!email) return null
 
-  // 1. Ensure auth user + profile exist
-  const profile = await provisionQaProfileRow(service, claims)
-  if (!profile) {
-    console.warn('[auth-session] Cannot create Supabase session — profile provisioning failed', email)
-    return null
-  }
-
   try {
-    // 2. Generate a magic link to get an OTP token
-    const { data: linkData, error: linkError } = await service.auth.admin.generateLink({
-      type: 'magiclink',
-      email,
-    })
+    // 1. Try generating a magic link directly — works if auth user already exists
+    let linkData: any = null
+    let linkError: any = null
+
+    const firstTry = await service.auth.admin.generateLink({ type: 'magiclink', email })
+    linkData = firstTry.data
+    linkError = firstTry.error
+
+    // 2. If user doesn't exist yet, provision them first then retry
+    if (linkError) {
+      console.log('[auth-session] Magic link failed, provisioning auth user first', email, linkError.message)
+      const profile = await provisionQaProfileRow(service, claims)
+      if (!profile) {
+        console.warn('[auth-session] Cannot create Supabase session — provisioning failed', email)
+        return null
+      }
+      const retry = await service.auth.admin.generateLink({ type: 'magiclink', email })
+      linkData = retry.data
+      linkError = retry.error
+    }
 
     if (linkError || !linkData?.properties?.hashed_token) {
       console.warn('[auth-session] Failed to generate magic link for QA user', email, linkError?.message)
@@ -303,12 +310,19 @@ export async function provisionSupabaseSessionForQaUser(
       return null
     }
 
-    console.log('[auth-session] Created Supabase session for QA user', email, profile.id)
+    const userId = sessionData.session.user?.id || sessionData.user?.id || ''
+    console.log('[auth-session] Created Supabase session for QA user', email, userId)
+
+    // 4. Ensure profile row exists for this auth user (may already exist)
+    const existingProfile = await loadProfileByEmail(service, email)
+    if (!existingProfile) {
+      await provisionQaProfileRow(service, claims)
+    }
+
     return {
       accessToken: sessionData.session.access_token,
       refreshToken: sessionData.session.refresh_token,
-      userId: profile.id,
-      profile,
+      userId,
     }
   } catch (err) {
     console.error('[auth-session] Unhandled error creating Supabase session for QA user', err)
