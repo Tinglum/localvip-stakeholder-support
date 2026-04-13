@@ -263,13 +263,19 @@ export async function requireAuthenticatedSession(): Promise<ResolvedAuthSession
  */
 export async function prepareSupabaseSessionForQaUser(
   claims: QaAuthClaims,
-): Promise<{ hashedToken: string } | null> {
+): Promise<{ email: string; token: string } | null> {
   const service = createServiceClient()
   const email = claims.email?.toLowerCase()
   if (!email) return null
 
   try {
-    // 1. Try generating a magic link directly — works if auth user already exists
+    // 1. Ensure profile row exists first
+    const existingProfile = await loadProfileByEmail(service, email)
+    if (!existingProfile) {
+      await provisionQaProfileRow(service, claims)
+    }
+
+    // 2. Generate a magic link — extract the raw token from action_link
     let linkData: any = null
     let linkError: any = null
 
@@ -277,7 +283,7 @@ export async function prepareSupabaseSessionForQaUser(
     linkData = firstTry.data
     linkError = firstTry.error
 
-    // 2. If user doesn't exist yet, provision them first then retry
+    // If user doesn't exist in auth yet, provision and retry
     if (linkError) {
       console.log('[auth-session] Magic link failed, provisioning auth user first', email, linkError.message)
       const profile = await provisionQaProfileRow(service, claims)
@@ -290,19 +296,29 @@ export async function prepareSupabaseSessionForQaUser(
       linkError = retry.error
     }
 
-    if (linkError || !linkData?.properties?.hashed_token) {
+    const actionLink = linkData?.properties?.action_link
+    if (linkError || !actionLink) {
       console.warn('[auth-session] Failed to generate magic link for QA user', email, linkError?.message)
       return null
     }
 
-    // 3. Ensure profile row exists for this auth user
-    const existingProfile = await loadProfileByEmail(service, email)
-    if (!existingProfile) {
-      await provisionQaProfileRow(service, claims)
+    // 3. Extract raw token from the action_link URL
+    const url = new URL(actionLink)
+    const token = url.searchParams.get('token')
+    if (!token) {
+      // Try extracting from hash fragment or path
+      const hashParams = new URLSearchParams(url.hash.replace('#', ''))
+      const hashToken = hashParams.get('token')
+      if (!hashToken) {
+        console.warn('[auth-session] No token found in action_link', actionLink.substring(0, 80))
+        return null
+      }
+      console.log('[auth-session] Prepared Supabase token (from hash) for QA user', email)
+      return { email, token: hashToken }
     }
 
-    console.log('[auth-session] Prepared Supabase magic link for QA user', email)
-    return { hashedToken: linkData.properties.hashed_token }
+    console.log('[auth-session] Prepared Supabase token for QA user', email)
+    return { email, token }
   } catch (err) {
     console.error('[auth-session] Unhandled error preparing Supabase session for QA user', err)
     return null

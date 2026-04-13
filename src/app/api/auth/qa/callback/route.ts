@@ -76,8 +76,8 @@ export async function GET(request: NextRequest) {
     cleanResponse.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })
 
     // Bridge QA user into a real Supabase session so client-side RLS works.
-    // 1. Service client generates a magic link OTP hash (admin operation)
-    // 2. SSR client (anon key) verifies the OTP — this writes proper session cookies
+    // 1. Service client generates a magic link and extracts the raw OTP token
+    // 2. SSR client (anon key) verifies with email+token — writes proper session cookies
     try {
       const prepared = await prepareSupabaseSessionForQaUser(session.claims)
       if (prepared) {
@@ -98,15 +98,15 @@ export async function GET(request: NextRequest) {
             },
           },
         )
-        // Verify OTP on the SSR client so it writes proper session cookies
         const { data: otpData, error: otpError } = await ssrClient.auth.verifyOtp({
-          type: 'magiclink',
-          token_hash: prepared.hashedToken,
+          type: 'email',
+          email: prepared.email,
+          token: prepared.token,
         })
         if (otpError || !otpData?.session) {
-          console.warn('[qa-callback] Supabase OTP verify failed', otpError?.message)
+          console.warn('[qa-callback] Supabase OTP verify failed', otpError?.message, 'email:', prepared.email)
         } else {
-          console.log('[qa-callback] Supabase session bridged for', session.claims.email, otpData.session.user?.id)
+          console.log('[qa-callback] Supabase session bridged for', prepared.email, otpData.session.user?.id)
         }
       }
     } catch (bridgeError) {
