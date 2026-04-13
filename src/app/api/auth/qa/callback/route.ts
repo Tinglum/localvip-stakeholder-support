@@ -9,7 +9,7 @@ import {
   sanitizeReturnTo,
   setQaSessionCookies,
 } from '@/lib/auth/qa-auth'
-import { provisionSupabaseSessionForQaUser } from '@/lib/server/auth-session'
+import { prepareSupabaseSessionForQaUser } from '@/lib/server/auth-session'
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
@@ -76,10 +76,11 @@ export async function GET(request: NextRequest) {
     cleanResponse.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })
 
     // Bridge QA user into a real Supabase session so client-side RLS works.
-    // Use the SSR client to set cookies in the exact chunked format the browser client expects.
+    // 1. Service client generates a magic link OTP hash (admin operation)
+    // 2. SSR client (anon key) verifies the OTP — this writes proper session cookies
     try {
-      const supabaseSession = await provisionSupabaseSessionForQaUser(session.claims)
-      if (supabaseSession) {
+      const prepared = await prepareSupabaseSessionForQaUser(session.claims)
+      if (prepared) {
         const ssrClient = createServerClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -97,11 +98,16 @@ export async function GET(request: NextRequest) {
             },
           },
         )
-        await ssrClient.auth.setSession({
-          access_token: supabaseSession.accessToken,
-          refresh_token: supabaseSession.refreshToken,
+        // Verify OTP on the SSR client so it writes proper session cookies
+        const { data: otpData, error: otpError } = await ssrClient.auth.verifyOtp({
+          type: 'magiclink',
+          token_hash: prepared.hashedToken,
         })
-        console.log('[qa-callback] Supabase session bridged for', session.claims.email)
+        if (otpError || !otpData?.session) {
+          console.warn('[qa-callback] Supabase OTP verify failed', otpError?.message)
+        } else {
+          console.log('[qa-callback] Supabase session bridged for', session.claims.email, otpData.session.user?.id)
+        }
       }
     } catch (bridgeError) {
       // Non-fatal — QA session still works, just client-side RLS won't pass

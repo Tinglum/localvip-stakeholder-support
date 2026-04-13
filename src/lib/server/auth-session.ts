@@ -254,20 +254,16 @@ export async function requireAuthenticatedSession(): Promise<ResolvedAuthSession
 }
 
 /**
- * Provision a real Supabase auth user + profile for a QA OAuth user and
- * generate a Supabase session (access + refresh tokens). This makes the
- * client-side Supabase work identically to demo/Supabase users — auth.uid()
- * returns the real user ID and all RLS policies pass.
+ * Ensure a real Supabase auth user + profile exist for a QA OAuth user
+ * and generate a magic link OTP hash. The caller (QA callback) should
+ * verify the OTP using the SSR client (anon key) so that proper session
+ * cookies are written to the browser.
  *
- * Call from the QA callback route, then set the returned tokens as cookies.
+ * Returns the hashed_token for verifyOtp, or null if provisioning failed.
  */
-export async function provisionSupabaseSessionForQaUser(
+export async function prepareSupabaseSessionForQaUser(
   claims: QaAuthClaims,
-): Promise<{
-  accessToken: string
-  refreshToken: string
-  userId: string
-} | null> {
+): Promise<{ hashedToken: string } | null> {
   const service = createServiceClient()
   const email = claims.email?.toLowerCase()
   if (!email) return null
@@ -299,33 +295,16 @@ export async function provisionSupabaseSessionForQaUser(
       return null
     }
 
-    // 3. Verify the OTP to create a real session
-    const { data: sessionData, error: sessionError } = await service.auth.verifyOtp({
-      type: 'magiclink',
-      token_hash: linkData.properties.hashed_token,
-    })
-
-    if (sessionError || !sessionData?.session) {
-      console.warn('[auth-session] Failed to verify OTP for QA user', email, sessionError?.message)
-      return null
-    }
-
-    const userId = sessionData.session.user?.id || sessionData.user?.id || ''
-    console.log('[auth-session] Created Supabase session for QA user', email, userId)
-
-    // 4. Ensure profile row exists for this auth user (may already exist)
+    // 3. Ensure profile row exists for this auth user
     const existingProfile = await loadProfileByEmail(service, email)
     if (!existingProfile) {
       await provisionQaProfileRow(service, claims)
     }
 
-    return {
-      accessToken: sessionData.session.access_token,
-      refreshToken: sessionData.session.refresh_token,
-      userId,
-    }
+    console.log('[auth-session] Prepared Supabase magic link for QA user', email)
+    return { hashedToken: linkData.properties.hashed_token }
   } catch (err) {
-    console.error('[auth-session] Unhandled error creating Supabase session for QA user', err)
+    console.error('[auth-session] Unhandled error preparing Supabase session for QA user', err)
     return null
   }
 }
