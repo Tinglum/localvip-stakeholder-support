@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         const { data: otpData, error: otpError } = await ssrClient.auth.verifyOtp({
           type: 'email',
           email: prepared.email,
-          token: prepared.token,
+          token: prepared.otp,
         })
         if (otpError || !otpData?.session) {
           console.warn('[qa-callback] Supabase OTP verify failed', otpError?.message, 'email:', prepared.email)

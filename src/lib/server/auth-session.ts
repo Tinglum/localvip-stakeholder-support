@@ -82,28 +82,19 @@ async function provisionQaProfileRow(
     let userId: string | null = authResult?.user?.id || null
 
     if (authError || !userId) {
-      // If user already exists, look them up instead of failing
+      // If user already exists, look them up via listUsers
       const alreadyRegistered = authError?.message?.toLowerCase().includes('already') ||
         authError?.message?.toLowerCase().includes('registered') ||
         authError?.message?.toLowerCase().includes('exists')
 
       if (alreadyRegistered) {
-        const { data: listResult } = await service.auth.admin.listUsers({ perPage: 1, page: 1 })
-        // listUsers doesn't filter by email, so use getUserByEmail if available
-        // Fall back to listing and scanning
-        const { data: existingUser } = await (service.auth.admin as any).getUserByEmail?.(email)
-          .catch(() => ({ data: null })) ?? { data: null }
-        if (existingUser?.user?.id) {
-          userId = existingUser.user.id
+        // Scan through users to find by email (listUsers doesn't support email filter)
+        const { data: listResult } = await service.auth.admin.listUsers({ perPage: 1000, page: 1 })
+        const allUsers = listResult?.users || []
+        const match = allUsers.find((u) => u.email?.toLowerCase() === email)
+        if (match) {
+          userId = match.id
           console.log('[auth-session] Found existing auth user for QA user', email, userId)
-        } else {
-          // Try to find via listing users
-          const allUsers = listResult?.users || []
-          const match = allUsers.find((u: any) => u.email?.toLowerCase() === email)
-          if (match) {
-            userId = match.id
-            console.log('[auth-session] Found existing auth user via list for QA user', email, userId)
-          }
         }
       }
 
@@ -263,7 +254,7 @@ export async function requireAuthenticatedSession(): Promise<ResolvedAuthSession
  */
 export async function prepareSupabaseSessionForQaUser(
   claims: QaAuthClaims,
-): Promise<{ email: string; token: string } | null> {
+): Promise<{ email: string; otp: string } | null> {
   const service = createServiceClient()
   const email = claims.email?.toLowerCase()
   if (!email) return null
@@ -275,50 +266,26 @@ export async function prepareSupabaseSessionForQaUser(
       await provisionQaProfileRow(service, claims)
     }
 
-    // 2. Generate a magic link — extract the raw token from action_link
-    let linkData: any = null
-    let linkError: any = null
+    // 2. Generate a magic link — use the email_otp property (raw 6-digit code)
+    const { data: linkData, error: linkError } = await service.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+    })
 
-    const firstTry = await service.auth.admin.generateLink({ type: 'magiclink', email })
-    linkData = firstTry.data
-    linkError = firstTry.error
-
-    // If user doesn't exist in auth yet, provision and retry
     if (linkError) {
-      console.log('[auth-session] Magic link failed, provisioning auth user first', email, linkError.message)
-      const profile = await provisionQaProfileRow(service, claims)
-      if (!profile) {
-        console.warn('[auth-session] Cannot create Supabase session — provisioning failed', email)
-        return null
-      }
-      const retry = await service.auth.admin.generateLink({ type: 'magiclink', email })
-      linkData = retry.data
-      linkError = retry.error
-    }
-
-    const actionLink = linkData?.properties?.action_link
-    if (linkError || !actionLink) {
-      console.warn('[auth-session] Failed to generate magic link for QA user', email, linkError?.message)
+      console.warn('[auth-session] Failed to generate magic link for QA user', email, linkError.message)
       return null
     }
 
-    // 3. Extract raw token from the action_link URL
-    const url = new URL(actionLink)
-    const token = url.searchParams.get('token')
-    if (!token) {
-      // Try extracting from hash fragment or path
-      const hashParams = new URLSearchParams(url.hash.replace('#', ''))
-      const hashToken = hashParams.get('token')
-      if (!hashToken) {
-        console.warn('[auth-session] No token found in action_link', actionLink.substring(0, 80))
-        return null
-      }
-      console.log('[auth-session] Prepared Supabase token (from hash) for QA user', email)
-      return { email, token: hashToken }
+    const otp = (linkData as any)?.properties?.email_otp
+    if (!otp) {
+      console.warn('[auth-session] No email_otp in generateLink response for', email,
+        'keys:', Object.keys((linkData as any)?.properties || {}))
+      return null
     }
 
-    console.log('[auth-session] Prepared Supabase token for QA user', email)
-    return { email, token }
+    console.log('[auth-session] Prepared Supabase OTP for QA user', email)
+    return { email, otp }
   } catch (err) {
     console.error('[auth-session] Unhandled error preparing Supabase session for QA user', err)
     return null
