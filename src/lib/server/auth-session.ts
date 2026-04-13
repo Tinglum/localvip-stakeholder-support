@@ -112,20 +112,15 @@ async function provisionQaProfileRow(
     }
 
     // 3. Insert the profiles row with that real UUID
+    //    Only include columns that exist in the profiles table schema.
     const { data: profile, error: profileError } = await (service.from('profiles') as any)
       .insert({
         id: userId,
         email,
         full_name: fallback.full_name,
         role: fallback.role,
-        role_subtype: fallback.role_subtype,
         brand_context: 'localvip',
         status: 'active',
-        metadata: {
-          qa_provisioned: true,
-          qa_sub: claims.sub,
-          qa_roles: claims.roles,
-        },
       })
       .select()
       .single()
