@@ -116,7 +116,10 @@
       "Bash(grep -r \"NEXT_PUBLIC_QA\\\\|QA_AUTH\" /c/Users/kenne/Downloads/OnboardingLocalvip --include=*.ts --include=*.tsx --include=*.js --include=.env* --exclude-dir=node_modules)",
       "Bash(grep -rn \"CORS\\\\|cors\\\\|redirect_uri\\\\|redirectUri\" C:UserskenneDownloadsOnboardingLocalvip/src --include=*.ts --include=*.tsx)",
       "Bash(grep -rn \"cache\\\\|no-store\\\\|credentials\" C:UserskenneDownloadsOnboardingLocalvip/src/app --include=*.ts --include=*.tsx)",
-      "Bash(ls -la /c/Users/kenne/Downloads/OnboardingLocalvip/supabase/migrations/*.sql)"
+      "Bash(ls -la /c/Users/kenne/Downloads/OnboardingLocalvip/supabase/migrations/*.sql)",
+      "Bash(for m:*)",
+      "Bash(do npx:*)",
+      "Bash(done)"
     ]
   }
 }
