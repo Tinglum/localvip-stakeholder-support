@@ -22,6 +22,12 @@ import {
   Users,
   Wallet,
 } from 'lucide-react'
+import {
+  InitialConnectionModal,
+  OwnerConversationModal,
+  MaterialsQrModal,
+  LaunchDecisionModal,
+} from '@/components/crm/business-lifecycle-modals'
 import { useAuth } from '@/lib/auth/context'
 import type { CrmBusinessLocalStateResponse } from '@/lib/crm-api'
 import { resolveBusinessOffer } from '@/lib/offers'
@@ -42,6 +48,7 @@ import {
   useProfiles,
   useQrCodes,
   useStakeholders,
+  useCities,
   useStakeholderCodes,
 } from '@/lib/supabase/hooks'
 import { formatDate, formatDateTime } from '@/lib/utils'
@@ -57,6 +64,7 @@ import type {
   City,
   GeneratedMaterial,
   Offer,
+  OutreachActivity,
   Profile,
   StakeholderAssignment,
 } from '@/lib/types/database'
@@ -74,6 +82,8 @@ interface BusinessExecutionOverviewProps {
   updateLoading: boolean
   refetchBusiness?: () => void
   refetchWorkspace?: () => void
+  /** Switch the parent page's tab (activity, tasks, notes, qr, overview). */
+  onNavigateTab?: (tab: string) => void
 }
 
 interface GenerationTemplateSummary {
@@ -108,6 +118,7 @@ export function BusinessExecutionOverview({
   updateLoading,
   refetchBusiness,
   refetchWorkspace,
+  onNavigateTab,
 }: BusinessExecutionOverviewProps) {
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
@@ -186,6 +197,8 @@ export function BusinessExecutionOverview({
   const [outreachBody, setOutreachBody] = React.useState('')
   const [outreachOutcome, setOutreachOutcome] = React.useState('')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'outreach' | 'branding'>('materials')
+  const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision' | null>(null)
+  const { data: allCities } = useCities()
   const [showArchive, setShowArchive] = React.useState(false)
   const [regenBusy, setRegenBusy] = React.useState(false)
   const [regenMessage, setRegenMessage] = React.useState<string | null>(null)
@@ -556,16 +569,52 @@ export function BusinessExecutionOverview({
     }
   }
 
-  function openWorkspaceTab(tab: 'materials' | 'offers' | 'outreach' | 'branding') {
-    setActiveWorkspaceTab(tab)
-    if (typeof window !== 'undefined') {
-      requestAnimationFrame(() => {
-        document.getElementById('business-workspace-tabs')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
+  /** Map any lifecycle / next-action tab key to the right scroll target. */
+  function navigateToArea(tab: string) {
+    const workspaceTabs = ['materials', 'offers', 'outreach', 'branding']
+    const parentTabs = ['activity', 'tasks', 'notes', 'qr']
+
+    // 'codes' maps to the materials workspace tab
+    const resolved = tab === 'codes' ? 'materials' : tab
+
+    if (workspaceTabs.includes(resolved)) {
+      setActiveWorkspaceTab(resolved as 'materials' | 'offers' | 'outreach' | 'branding')
+      if (typeof window !== 'undefined') {
+        requestAnimationFrame(() => {
+          document.getElementById('business-workspace-tabs')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          })
         })
-      })
+      }
+    } else if (parentTabs.includes(resolved)) {
+      // Switch the parent page tab and scroll to the tab bar
+      onNavigateTab?.(resolved)
+      if (typeof window !== 'undefined') {
+        requestAnimationFrame(() => {
+          document.getElementById('business-page-tabs')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          })
+        })
+      }
+    } else if (resolved === 'overview') {
+      // Scroll to the business info cards at the top of the page
+      onNavigateTab?.('overview')
+      if (typeof window !== 'undefined') {
+        requestAnimationFrame(() => {
+          document.getElementById('business-info-cards')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          })
+        })
+      }
     }
+  }
+
+  /** Convenience: open a workspace tab (backwards compat for internal callers). */
+  function openWorkspaceTab(tab: 'materials' | 'offers' | 'outreach' | 'branding') {
+    navigateToArea(tab)
   }
 
   return (
@@ -584,7 +633,16 @@ export function BusinessExecutionOverview({
           </CardHeader>
           <CardContent className="space-y-3">
             {executionSteps.map((item) => (
-              <div key={item.step.id} className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+              <button
+                key={item.step.id}
+                type="button"
+                onClick={() => item.state !== 'locked' && setLifecycleModal(item.key)}
+                className={`w-full rounded-2xl border p-4 text-left transition-colors ${
+                  item.state === 'locked'
+                    ? 'border-surface-200 bg-surface-50 opacity-60 cursor-default'
+                    : 'border-surface-200 bg-surface-50 hover:border-brand-200 hover:bg-brand-50/30 cursor-pointer'
+                }`}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -598,48 +656,22 @@ export function BusinessExecutionOverview({
                         {item.step.completed_by ? ` by ${profileMap.get(item.step.completed_by)?.full_name || 'a team member'}` : ''}
                       </p>
                     ) : item.blocker ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const tab = getTabForBusinessStepKey(item.key)
-                          if (['materials', 'offers', 'outreach', 'branding'].includes(tab)) {
-                            openWorkspaceTab(tab as 'materials' | 'offers' | 'outreach' | 'branding')
-                          } else if (tab === 'codes') {
-                            openWorkspaceTab('materials')
-                          }
-                        }}
-                        className="text-xs text-warning-700 underline decoration-warning-300 underline-offset-2 hover:text-warning-900 hover:decoration-warning-500 transition-colors cursor-pointer text-left"
-                      >
+                      <p className="text-xs text-warning-700">
                         {item.blocker} →
-                      </button>
+                      </p>
                     ) : (
                       <p className="text-xs text-surface-500">Ready for the next action.</p>
                     )}
                   </div>
                   {item.state === 'active' ? (
                     item.readyToComplete ? (
-                      <Button size="sm" onClick={() => void handleCompleteStep(item.step.id)} disabled={stepBusyId === item.step.id}>
-                        {stepBusyId === item.step.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                        Complete
-                      </Button>
+                      <Badge variant="success">Ready to complete</Badge>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openWorkspaceTab(
-                          item.key === 'materials_qr'
-                            ? 'materials'
-                            : item.key === 'launch_decision'
-                              ? 'offers'
-                              : 'outreach',
-                        )}
-                      >
-                        Open area
-                      </Button>
+                      <Badge variant="info">Open →</Badge>
                     )
                   ) : null}
                 </div>
-              </div>
+              </button>
             ))}
           </CardContent>
         </Card>
@@ -661,15 +693,16 @@ export function BusinessExecutionOverview({
                 key={action.text}
                 type="button"
                 onClick={() => {
-                  const tabMap: Record<string, 'materials' | 'offers' | 'outreach' | 'branding'> = {
-                    codes: 'materials',
-                    materials: 'materials',
-                    offers: 'offers',
-                    outreach: 'outreach',
-                    branding: 'branding',
+                  const modalMap: Record<string, typeof lifecycleModal> = {
+                    overview: 'initial_connection',
+                    outreach: 'owner_conversation',
+                    codes: 'materials_qr',
+                    materials: 'materials_qr',
+                    offers: 'launch_decision',
                   }
-                  const wsTab = tabMap[action.tab]
-                  if (wsTab) openWorkspaceTab(wsTab)
+                  const modal = modalMap[action.tab]
+                  if (modal) setLifecycleModal(modal)
+                  else navigateToArea(action.tab)
                 }}
                 className="flex w-full items-start gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50 transition-colors cursor-pointer group"
               >
@@ -1086,6 +1119,112 @@ export function BusinessExecutionOverview({
           ) : null}
         </CardContent>
       </Card>
+
+      {/* ── Lifecycle Modals ── */}
+      <InitialConnectionModal
+        open={lifecycleModal === 'initial_connection'}
+        onOpenChange={(open) => !open && setLifecycleModal(null)}
+        biz={biz}
+        city={city}
+        linkedCause={linkedCause}
+        helperCount={helperAssignments.length}
+        cities={allCities}
+        saving={updateLoading}
+        blocker={executionSteps.find((s) => s.key === 'initial_connection')?.blocker ?? null}
+        readyToComplete={executionSteps.find((s) => s.key === 'initial_connection')?.readyToComplete ?? false}
+        onSave={async (changes) => {
+          if (writeBusinessId) {
+            await updateBusiness(writeBusinessId, changes)
+            refetchExecution({ includeBusiness: true })
+          }
+        }}
+        onCompleteStep={() => {
+          const step = executionSteps.find((s) => s.key === 'initial_connection')
+          if (step) void handleCompleteStep(step.step.id)
+          setLifecycleModal(null)
+        }}
+      />
+
+      <OwnerConversationModal
+        open={lifecycleModal === 'owner_conversation'}
+        onOpenChange={(open) => !open && setLifecycleModal(null)}
+        outreach={outreach}
+        profileMap={profileMap}
+        saving={savingOutreach}
+        blocker={executionSteps.find((s) => s.key === 'owner_conversation')?.blocker ?? null}
+        readyToComplete={executionSteps.find((s) => s.key === 'owner_conversation')?.readyToComplete ?? false}
+        onLogOutreach={async ({ type, subject, body, outcome, nextStep, nextStepDate }) => {
+          await insertOutreach({
+            entity_type: 'business',
+            entity_id: biz.id,
+            type: type as OutreachActivity['type'],
+            performed_by: localProfileId || undefined,
+            subject: subject || null,
+            body,
+            outcome: outcome || null,
+            next_step: nextStep || null,
+            next_step_date: nextStepDate || null,
+          })
+          refetchOutreach({ silent: true })
+        }}
+        onCompleteStep={() => {
+          const step = executionSteps.find((s) => s.key === 'owner_conversation')
+          if (step) void handleCompleteStep(step.step.id)
+          setLifecycleModal(null)
+        }}
+      />
+
+      <MaterialsQrModal
+        open={lifecycleModal === 'materials_qr'}
+        onOpenChange={(open) => !open && setLifecycleModal(null)}
+        codes={codes}
+        generatedMaterials={generatedMaterials}
+        qrCodes={qrCodes}
+        joinUrl={joinUrl}
+        engineBusy={engineBusy}
+        regenBusy={regenBusy}
+        saving={stepBusyId !== null}
+        blocker={executionSteps.find((s) => s.key === 'materials_qr')?.blocker ?? null}
+        readyToComplete={executionSteps.find((s) => s.key === 'materials_qr')?.readyToComplete ?? false}
+        onSaveCodes={async (ref, conn) => {
+          setReferralCode(ref)
+          setConnectionCode(conn)
+          await handleSaveCodes()
+        }}
+        onGenerateMaterials={handleGenerateMaterials}
+        onRegenerateAll={handleRegenerateAll}
+        onCompleteStep={() => {
+          const step = executionSteps.find((s) => s.key === 'materials_qr')
+          if (step) void handleCompleteStep(step.step.id)
+          setLifecycleModal(null)
+        }}
+      />
+
+      <LaunchDecisionModal
+        open={lifecycleModal === 'launch_decision'}
+        onOpenChange={(open) => !open && setLifecycleModal(null)}
+        biz={biz}
+        captureOffer={captureOffer}
+        cashbackOffer={cashbackOffer}
+        joinedCount={joinedCount}
+        generatedCount={generatedCount}
+        qrCount={qrCodes.length}
+        saving={offerSaving || updateLoading}
+        blocker={executionSteps.find((s) => s.key === 'launch_decision')?.blocker ?? null}
+        readyToComplete={executionSteps.find((s) => s.key === 'launch_decision')?.readyToComplete ?? false}
+        onSaveOffers={async ({ headline, description, valueLabel, cashbackPercent: cp }) => {
+          setCaptureHeadline(headline)
+          setCaptureDescription(description)
+          setCaptureValue(valueLabel)
+          setCashbackPercent(cp)
+          await handleSaveOffers()
+        }}
+        onCompleteStep={() => {
+          const step = executionSteps.find((s) => s.key === 'launch_decision')
+          if (step) void handleCompleteStep(step.step.id)
+          setLifecycleModal(null)
+        }}
+      />
     </div>
   )
 }

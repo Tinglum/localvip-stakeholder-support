@@ -321,16 +321,6 @@ export default function CausesPage() {
         )}
       />
 
-      {(error || qaError) && (
-        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
-          <div>
-            <p className="font-medium">QA nonprofit sync warning</p>
-            <p className="mt-1 text-xs text-warning-700">{error || qaError}</p>
-          </div>
-        </div>
-      )}
-
       <DataTable
         columns={columns}
         data={filtered}
@@ -355,6 +345,16 @@ export default function CausesPage() {
           />
         )}
       />
+
+      {(error || qaError) && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+          <div>
+            <p className="font-medium">QA nonprofit sync warning</p>
+            <p className="mt-1 text-xs text-warning-700">{error || qaError}</p>
+          </div>
+        </div>
+      )}
 
       <Dialog
         open={addOpen}

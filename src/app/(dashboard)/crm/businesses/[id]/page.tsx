@@ -499,7 +499,7 @@ export default function BusinessDetailPage() {
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div id="business-info-cards" className="grid gap-4 lg:grid-cols-4">
         <Card>
           <CardContent className="space-y-2 p-4">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Primary Owner</p>
@@ -584,7 +584,7 @@ export default function BusinessDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-surface-200">
+      <div id="business-page-tabs" className="border-b border-surface-200">
         <nav className="flex gap-6">
           {tabs.map((tab) => (
             <button
@@ -626,6 +626,7 @@ export default function BusinessDetailPage() {
               updateLoading={updateLoading}
               refetchBusiness={refetchBusinessDetail}
               refetchWorkspace={refetchLocalState}
+              onNavigateTab={(tab) => setActiveTab(tab as typeof activeTab)}
             />
             {qaImportedFacts.length > 0 ? (
               <QaImportedFieldsPanel

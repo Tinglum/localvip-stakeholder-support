@@ -119,7 +119,18 @@
       "Bash(ls -la /c/Users/kenne/Downloads/OnboardingLocalvip/supabase/migrations/*.sql)",
       "Bash(for m:*)",
       "Bash(do npx:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(grep -n \"QaUniversalBacklogTable\\\\|qa-backlog\\\\|QA_DASHBOARD_BACKLOG\" /c/Users/kenne/Downloads/OnboardingLocalvip/src/app/\\\\\\(dashboard\\\\\\)/crm/businesses/[id]/page.tsx)",
+      "Bash(python build_backlog.py)",
+      "Bash(where python3:*)",
+      "Bash(where python:*)",
+      "Bash(ls /c/Python*)",
+      "Read(//c/Users/kenne/AppData/Local/Programs/**)",
+      "Bash(pip --version)",
+      "Bash(/c/Users/kenne/AppData/Local/Microsoft/WindowsApps/python3 --version)",
+      "Bash(npm ls:*)",
+      "Bash(node scripts/export-qa-backlog.mjs)",
+      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))"
     ]
   }
 }
