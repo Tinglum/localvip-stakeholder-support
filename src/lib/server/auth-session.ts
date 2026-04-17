@@ -6,7 +6,9 @@ import {
   type QaAuthClaims,
   type QaSession,
 } from '@/lib/auth/qa-auth'
+import { fetchQaUserProfile } from '@/lib/auth/qa-api'
 import { asUuid } from '@/lib/uuid'
+import { normalizeStakeholderCode } from '@/lib/material-engine'
 import type { Profile } from '@/lib/types/database'
 
 export type AuthSource = 'qa' | 'supabase'
@@ -139,6 +141,52 @@ async function provisionQaProfileRow(
 }
 
 /**
+ * When the user has a live QA token, fetch their referral data and store it
+ * in the profile row so it's available even after the QA token expires.
+ */
+async function syncQaReferralToProfile(
+  service: ServiceClient,
+  profileId: string,
+  profile: Profile,
+): Promise<Profile> {
+  try {
+    const qaProfile = await fetchQaUserProfile()
+    if (!qaProfile?.referralCode) return profile
+
+    const referralCode = normalizeStakeholderCode(qaProfile.referralCode)
+    if (!referralCode) return profile
+
+    // Only update if the profile doesn't already have it (avoid unnecessary writes)
+    const metadataAlreadySet =
+      profile.referral_code === referralCode &&
+      (profile.metadata as Record<string, unknown> | null)?.qa_shared_url === qaProfile.sharedURL
+
+    if (metadataAlreadySet) return profile
+
+    const patch = {
+      referral_code: referralCode,
+      metadata: {
+        ...((profile.metadata as Record<string, unknown> | null) || {}),
+        qa_shared_url: qaProfile.sharedURL,
+        qa_referral_link: qaProfile.referralLink,
+        qa_referral_synced_at: new Date().toISOString(),
+      },
+    }
+
+    const { data } = await (service.from('profiles') as any)
+      .update(patch)
+      .eq('id', profileId)
+      .select()
+      .single()
+
+    return (data as Profile | null) || { ...profile, ...patch }
+  } catch {
+    // non-fatal — profile will still work, codes just won't be pre-filled
+    return profile
+  }
+}
+
+/**
  * Resolve the currently authenticated user from either a QA OAuth session or
  * a Supabase session. Returns null if neither is present.
  *
@@ -159,7 +207,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     const user = data.user
     if (user) {
       const qaSession = getQaSessionFromCookieStore(cookieStore)
-      const profile = (await loadProfileById(service, user.id)) || ({
+      let profile = (await loadProfileById(service, user.id)) || ({
         id: user.id,
         email: user.email || '',
         full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
@@ -177,6 +225,12 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
         created_at: user.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       } as Profile)
+
+      // While the QA token is still live, sync referral code into the profile
+      // so it's available even after the token expires.
+      if (qaSession) {
+        profile = await syncQaReferralToProfile(service, user.id, profile)
+      }
 
       return {
         profile,
