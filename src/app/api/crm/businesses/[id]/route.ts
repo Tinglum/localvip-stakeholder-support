@@ -13,6 +13,8 @@ import {
   qaBusinessRouteError,
 } from '@/lib/server/qa-dashboard-businesses'
 import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
+import { fetchQaUserProfile } from '@/lib/auth/qa-api'
+import { normalizeStakeholderCode, buildStakeholderJoinUrl } from '@/lib/material-engine'
 import type { Business } from '@/lib/types/database'
 
 function asProfileUuid(value: string | null | undefined) {
@@ -147,12 +149,13 @@ async function ensureLinkedBusiness(
   supabase: any,
   actorId: string | null,
   qaBusiness: Awaited<ReturnType<typeof fetchQaBusinessDetail>>,
+  initialCodes?: { referral_code?: string | null; connection_code?: string | null; join_url?: string | null },
 ) {
   const created = await createImportedBusinessRecord(supabase, actorId, qaBusiness)
 
   const lifecycleResults = await Promise.allSettled([
     ensureBusinessOnboardingFlow(supabase as any, created, actorId),
-    ensureBusinessStakeholderSetup(supabase as any, created, actorId),
+    ensureBusinessStakeholderSetup(supabase as any, created, actorId, initialCodes),
   ])
 
   for (const result of lifecycleResults) {
@@ -181,10 +184,15 @@ async function ensureLinkedBusiness(
   }
 }
 
-async function ensureImportedBusinessLifecycle(supabase: any, actorId: string | null, business: Business) {
+async function ensureImportedBusinessLifecycle(
+  supabase: any,
+  actorId: string | null,
+  business: Business,
+  initialCodes?: { referral_code?: string | null; connection_code?: string | null; join_url?: string | null },
+) {
   await Promise.allSettled([
     ensureBusinessOnboardingFlow(supabase as any, business, actorId),
-    ensureBusinessStakeholderSetup(supabase as any, business, actorId),
+    ensureBusinessStakeholderSetup(supabase as any, business, actorId, initialCodes),
   ])
 }
 
@@ -217,6 +225,26 @@ export async function GET(
   if ('error' in context) return context.error
   const localProfileId = asProfileUuid(context.profile.id)
   let createdLocalBusiness = false
+
+  // Fetch QA user profile to pre-fill referral code and link on import
+  let qaInitialCodes: { referral_code: string; connection_code: string; join_url: string } | undefined
+  try {
+    const qaProfile = await fetchQaUserProfile()
+    if (qaProfile?.referralCode) {
+      const normalized = normalizeStakeholderCode(qaProfile.referralCode)
+      if (normalized) {
+        qaInitialCodes = {
+          referral_code: normalized,
+          connection_code: normalized,
+          // sharedURL is the Branch.io deep link — best for QR destination (opens app or web)
+          // fall back to referralLink, then to our local join URL
+          join_url: qaProfile.sharedURL || qaProfile.referralLink || buildStakeholderJoinUrl('business', normalized),
+        }
+      }
+    }
+  } catch {
+    // non-fatal — codes will be set manually later
+  }
 
   const searchParams = request.nextUrl.searchParams
   const routeId = params.id
@@ -260,7 +288,7 @@ export async function GET(
 
   if (!localBusiness && qaBusiness) {
     try {
-      localBusiness = await ensureLinkedBusiness(context.supabase as any, localProfileId, qaBusiness)
+      localBusiness = await ensureLinkedBusiness(context.supabase as any, localProfileId, qaBusiness, qaInitialCodes)
       createdLocalBusiness = !!localBusiness
     } catch (error) {
       qaError = qaError || qaBusinessRouteError(error)
@@ -271,7 +299,7 @@ export async function GET(
   if (localBusiness) {
     localBusiness = await repairImportedBusinessRecord(context.supabase as any, localProfileId, localBusiness)
     if (!createdLocalBusiness) {
-      await ensureImportedBusinessLifecycle(context.supabase as any, localProfileId, localBusiness)
+      await ensureImportedBusinessLifecycle(context.supabase as any, localProfileId, localBusiness, qaInitialCodes)
     }
   }
 

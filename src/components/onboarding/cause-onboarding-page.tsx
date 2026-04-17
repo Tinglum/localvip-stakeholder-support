@@ -25,7 +25,14 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react'
+import {
+  CauseInitialConnectionModal,
+  LeaderConversationModal,
+  CauseMaterialsQrModal,
+  ActivationDecisionModal,
+} from '@/components/crm/cause-lifecycle-modals'
 import { useAuth } from '@/lib/auth/context'
+import { asUuid } from '@/lib/uuid'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -63,6 +70,7 @@ import {
   useProfiles,
   useQrCodes,
   useStakeholderAssignments,
+  useOutreachInsert,
   useStakeholderCodeInsert,
   useStakeholderCodes,
   useStakeholders,
@@ -1549,6 +1557,15 @@ function CauseDetailModal({
   onCreateSetup: () => void
   onStageChanged: () => void
 }) {
+  const { profile } = useAuth()
+  const localProfileId = asUuid(profile.id)
+  const { data: allCities } = useCities()
+  const { update: updateCause, loading: updateLoading } = useCauseUpdate()
+  const { insert: insertOutreach, loading: savingOutreach } = useOutreachInsert()
+  const { data: freshOutreach, refetch: refetchOutreach } = useOutreach({ entity_type: 'cause', entity_id: cause.id })
+  const outreachList = freshOutreach.length > 0 ? freshOutreach : detail.outreach
+
+  const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'leader_conversation' | 'materials_qr' | 'activation_decision' | null>(null)
   const [showChecklist, setShowChecklist] = React.useState(false)
   const [activeSection, setActiveSection] = React.useState<CauseModalSection | null>(null)
   const sectionRefs = React.useRef<Partial<Record<CauseModalSection, HTMLDivElement | null>>>({})
@@ -1684,11 +1701,9 @@ function CauseDetailModal({
           >
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Mission Profile</p>
-              <Link href={`/crm/causes/${cause.id}`}>
-                <Button variant="outline" size="sm">
-                  Open CRM <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" onClick={() => setLifecycleModal('initial_connection')}>
+                Edit info <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <InlineDetail label="Organization name" value={cause.name || 'Missing'} />
@@ -1706,11 +1721,9 @@ function CauseDetailModal({
           >
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Brand Assets</p>
-              <Link href={`/crm/causes/${cause.id}`}>
-                <Button variant="outline" size="sm">
-                  Review assets <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" onClick={() => setLifecycleModal('materials_qr')}>
+                Review assets <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <InlineDetail label="Logo" value={cause.logo_url ? 'Uploaded' : 'Missing'} />
@@ -1761,11 +1774,13 @@ function CauseDetailModal({
                       </p>
                     </div>
                     {step.current ? (
-                      <Link href={`/crm/causes/${cause.id}`}>
-                        <Button size="sm" variant="outline">
-                          Fix <ArrowRight className="h-3.5 w-3.5" />
-                        </Button>
-                      </Link>
+                      <Button size="sm" variant="outline" onClick={() => {
+                        const key = (step as any).key as typeof lifecycleModal
+                        if (key) setLifecycleModal(key)
+                        else setLifecycleModal('initial_connection')
+                      }}>
+                        Fix <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
                     ) : null}
                   </div>
                 </div>
@@ -1791,13 +1806,13 @@ function CauseDetailModal({
             <div>
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Helpers</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {detail.helperAssignments.length > 0 ? detail.helperAssignments.map(({ assignment, profile }) => (
+                {detail.helperAssignments.length > 0 ? detail.helperAssignments.map(({ assignment, profile: helper }) => (
                   <Link
-                    key={profile.id}
-                    href={`/admin/users/${profile.id}`}
+                    key={helper.id}
+                    href={`/admin/users/${helper.id}`}
                     className="rounded-full border border-surface-200 bg-white px-2.5 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900"
                   >
-                    {profile.full_name}
+                    {helper.full_name}
                     {assignment.role ? ` - ${assignment.role}` : ''}
                   </Link>
                 )) : (
@@ -1892,47 +1907,23 @@ function CauseDetailModal({
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-surface-100 pt-2">
-          <Link href={`/crm/causes/${cause.id}`}>
-            <Button variant="outline" size="sm">
-              <School className="h-3.5 w-3.5" /> Open CRM
-            </Button>
-          </Link>
-          <Link href={detail.qrGeneratorHref}>
-            <Button size="sm">
-              <QrCode className="h-3.5 w-3.5" /> QR Code
-            </Button>
-          </Link>
+          <Button variant="outline" size="sm" onClick={() => setLifecycleModal('initial_connection')}>
+            <School className="h-3.5 w-3.5" /> Org Info
+          </Button>
+          <Button size="sm" onClick={() => setLifecycleModal('materials_qr')}>
+            <QrCode className="h-3.5 w-3.5" /> Materials & QR
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setLifecycleModal('leader_conversation')}>
+            <MessageSquare className="h-3.5 w-3.5" /> Log Outreach
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setLifecycleModal('activation_decision')}>
+            <Heart className="h-3.5 w-3.5" /> Activation
+          </Button>
           {!detail.stakeholder || !detail.taskStatus ? (
             <Button variant="outline" size="sm" onClick={onCreateSetup} disabled={detail.setupLoading}>
               {detail.setupLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
               {!detail.stakeholder ? 'Create Material Setup' : 'Create Setup Task'}
             </Button>
-          ) : null}
-          <Link href={`/crm/outreach?cause=${cause.id}`}>
-            <Button variant="outline" size="sm">
-              <MessageSquare className="h-3.5 w-3.5" /> Log Outreach
-            </Button>
-          </Link>
-          {detail.owner ? (
-            <Link href={`/admin/users/${detail.owner.id}`}>
-              <Button variant="outline" size="sm">
-                <Users className="h-3.5 w-3.5" /> Owner
-              </Button>
-            </Link>
-          ) : null}
-          {detail.campaign ? (
-            <Link href={`/campaigns/${detail.campaign.id}`}>
-              <Button variant="outline" size="sm">
-                Campaign
-              </Button>
-            </Link>
-          ) : null}
-          {detail.city ? (
-            <Link href={`/crm/cities/${detail.city.id}`}>
-              <Button variant="outline" size="sm">
-                <MapPin className="h-3.5 w-3.5" /> City
-              </Button>
-            </Link>
           ) : null}
           {detail.joinUrl ? (
             <a href={detail.joinUrl} target="_blank" rel="noopener noreferrer">
@@ -1941,6 +1932,11 @@ function CauseDetailModal({
               </Button>
             </a>
           ) : null}
+          <Link href={`/crm/causes/${cause.id}`}>
+            <Button variant="outline" size="sm">
+              <ArrowRight className="h-3.5 w-3.5" /> Full CRM
+            </Button>
+          </Link>
         </div>
 
         {detail.setupMessage ? (
@@ -1949,6 +1945,78 @@ function CauseDetailModal({
           </div>
         ) : null}
       </div>
+
+      {/* ── Lifecycle Modals (stay in onboarding, don't navigate away) ── */}
+      <CauseInitialConnectionModal
+        open={lifecycleModal === 'initial_connection'}
+        onOpenChange={(v) => !v && setLifecycleModal(null)}
+        cause={cause}
+        city={detail.city}
+        linkedBusinessCount={detail.linkedBusinesses.length}
+        helperCount={detail.helperAssignments.length}
+        cities={allCities}
+        saving={updateLoading}
+        blocker={null}
+        readyToComplete={false}
+        onSave={async (changes) => {
+          await updateCause(cause.id, changes)
+        }}
+      />
+
+      <LeaderConversationModal
+        open={lifecycleModal === 'leader_conversation'}
+        onOpenChange={(v) => !v && setLifecycleModal(null)}
+        outreach={outreachList}
+        profileMap={new Map()}
+        saving={savingOutreach}
+        blocker={null}
+        readyToComplete={outreachList.length > 0}
+        onLogOutreach={async ({ type, subject, body, outcome, nextStep, nextStepDate }) => {
+          await insertOutreach({
+            entity_type: 'cause',
+            entity_id: cause.id,
+            type: type as OutreachActivity['type'],
+            performed_by: localProfileId || undefined,
+            subject: subject || null,
+            body,
+            outcome: outcome || null,
+            next_step: nextStep || null,
+            next_step_date: nextStepDate || null,
+          })
+          refetchOutreach({ silent: true })
+        }}
+      />
+
+      <CauseMaterialsQrModal
+        open={lifecycleModal === 'materials_qr'}
+        onOpenChange={(v) => !v && setLifecycleModal(null)}
+        codes={detail.codes}
+        generatedMaterials={detail.generated}
+        qrCodes={[]}
+        joinUrl={detail.joinUrl}
+        engineBusy={null}
+        regenBusy={false}
+        saving={false}
+        blocker={null}
+        readyToComplete={false}
+        onSaveCodes={async () => {}}
+        onGenerateMaterials={async () => {}}
+        onRegenerateAll={async () => {}}
+      />
+
+      <ActivationDecisionModal
+        open={lifecycleModal === 'activation_decision'}
+        onOpenChange={(v) => !v && setLifecycleModal(null)}
+        cause={cause}
+        linkedBusinessCount={detail.linkedBusinesses.length}
+        generatedCount={detail.generatedCount}
+        qrCount={detail.qrCount}
+        codesReady={detail.codesReady}
+        stakeholderReady={!!detail.stakeholder}
+        saving={false}
+        blocker={null}
+        readyToComplete={detail.codesReady && detail.generatedCount > 0}
+      />
     </div>
   )
 }

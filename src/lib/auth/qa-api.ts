@@ -25,3 +25,27 @@ export async function fetchQaApi(path: string, init?: RequestInit) {
     cache: 'no-store',
   })
 }
+
+export interface QaUserProfile {
+  email: string
+  phoneNumber: string | null
+  firstName: string
+  middleName: string | null
+  lastName: string
+  accountType: string
+  role: string
+  referralCode: string | null
+  sharedURL: string | null
+  referralLink: string | null
+  isStripeOnboardingComplete: boolean
+}
+
+export async function fetchQaUserProfile(): Promise<QaUserProfile | null> {
+  try {
+    const res = await fetchQaApi('/api/dashboard/v1/User/profile')
+    if (!res.ok) return null
+    return res.json() as Promise<QaUserProfile>
+  } catch {
+    return null
+  }
+}

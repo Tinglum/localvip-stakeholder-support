@@ -264,6 +264,7 @@ export async function ensureBusinessStakeholderSetup(
   supabase: ServiceSupabaseClient,
   business: Business,
   actorId: string | null,
+  initialCodes?: { referral_code?: string | null; connection_code?: string | null; join_url?: string | null },
 ) {
   actorId = asUuid(actorId)
   let stakeholder = await getStakeholderByLinkedRecord(supabase, 'business', business.id)
@@ -361,7 +362,7 @@ export async function ensureBusinessStakeholderSetup(
   if (!stakeholder) throw new Error('Business stakeholder setup could not be created.')
 
   await Promise.all([
-    ensureStakeholderCodesRow(supabase, stakeholder.id),
+    ensureStakeholderCodesRow(supabase, stakeholder.id, initialCodes),
     ensureStakeholderSetupTask(supabase, stakeholder.id, {
       title: `Complete setup for ${business.name}`,
       stakeholderType: 'business',
@@ -496,14 +497,29 @@ export async function ensureCauseStakeholderSetup(
 export async function ensureStakeholderCodesRow(
   supabase: ServiceSupabaseClient,
   stakeholderId: string,
+  initialCodes?: { referral_code?: string | null; connection_code?: string | null; join_url?: string | null },
 ) {
-  const { data: existing } = await supabase
+  const { data: existingRaw } = await supabase
     .from('stakeholder_codes')
     .select('*')
     .eq('stakeholder_id', stakeholderId)
     .maybeSingle()
 
-  if (existing) return existing
+  const existing = existingRaw as { referral_code: string | null; connection_code: string | null; join_url: string | null } | null
+
+  if (existing) {
+    // Back-fill codes if the row exists but codes are still null and we now have real values
+    if (initialCodes) {
+      const patch: Record<string, string | null> = {}
+      if (!existing.referral_code && initialCodes.referral_code) patch.referral_code = initialCodes.referral_code
+      if (!existing.connection_code && initialCodes.connection_code) patch.connection_code = initialCodes.connection_code
+      if (!existing.join_url && initialCodes.join_url) patch.join_url = initialCodes.join_url
+      if (Object.keys(patch).length > 0) {
+        await (supabase.from('stakeholder_codes') as any).update(patch).eq('stakeholder_id', stakeholderId)
+      }
+    }
+    return existing
+  }
 
   // Try inserting a placeholder row — if the table has NOT NULL constraints on code columns,
   // skip gracefully since the codes will be set later by upsertStakeholderCodesAndGenerate.
@@ -511,9 +527,9 @@ export async function ensureStakeholderCodesRow(
     const { data, error } = await (supabase.from('stakeholder_codes') as any)
       .insert({
         stakeholder_id: stakeholderId,
-        referral_code: null,
-        connection_code: null,
-        join_url: null,
+        referral_code: initialCodes?.referral_code ?? null,
+        connection_code: initialCodes?.connection_code ?? null,
+        join_url: initialCodes?.join_url ?? null,
       })
       .select()
       .single()
