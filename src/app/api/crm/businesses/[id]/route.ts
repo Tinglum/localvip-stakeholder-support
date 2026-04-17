@@ -227,18 +227,23 @@ export async function GET(
   let createdLocalBusiness = false
 
   // Fetch QA user profile to pre-fill referral code and link on import
+  // referral_code  = referralCode (e.g. "B3275049")
+  // connection_code = last path segment of sharedURL (e.g. "mskyS8Kto2b" from "https://1up7r.test-app.link/mskyS8Kto2b")
+  // join_url        = referralLink (e.g. "https://localvip.com/?ref=B3275049&mskyS8Kto2b")
   let qaInitialCodes: { referral_code: string; connection_code: string; join_url: string } | undefined
   try {
     const qaProfile = await fetchQaUserProfile()
     if (qaProfile?.referralCode) {
-      const normalized = normalizeStakeholderCode(qaProfile.referralCode)
-      if (normalized) {
+      const referralCode = normalizeStakeholderCode(qaProfile.referralCode)
+      // Extract Branch.io short code from the end of sharedURL path
+      const connectionCode = qaProfile.sharedURL
+        ? normalizeStakeholderCode(qaProfile.sharedURL.split('/').pop() || '')
+        : referralCode
+      if (referralCode && connectionCode) {
         qaInitialCodes = {
-          referral_code: normalized,
-          connection_code: normalized,
-          // sharedURL is the Branch.io deep link — best for QR destination (opens app or web)
-          // fall back to referralLink, then to our local join URL
-          join_url: qaProfile.sharedURL || qaProfile.referralLink || buildStakeholderJoinUrl('business', normalized),
+          referral_code: referralCode,
+          connection_code: connectionCode,
+          join_url: qaProfile.referralLink || buildStakeholderJoinUrl('business', connectionCode),
         }
       }
     }
