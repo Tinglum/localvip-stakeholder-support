@@ -10,6 +10,7 @@ import {
   setQaSessionCookies,
 } from '@/lib/auth/qa-auth'
 import { prepareSupabaseSessionForQaUser } from '@/lib/server/auth-session'
+import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
@@ -74,6 +75,30 @@ export async function GET(request: NextRequest) {
     cleanResponse.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })
     cleanResponse.cookies.set(QA_COOKIE_NAMES.verifier, '', { path: '/', maxAge: 0 })
     cleanResponse.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })
+
+    // Check if Stripe onboarding is complete. If not, send them to qa.localvip.com
+    // which auto-opens the Stripe form and redirects back after completion.
+    try {
+      const profileRes = await fetch(`${QA_AUTH_CONFIG.baseUrl}/api/dashboard/v1/User/profile`, {
+        headers: { authorization: `Bearer ${session.accessToken}` },
+        cache: 'no-store',
+      })
+      if (profileRes.ok) {
+        const qaProfile = await profileRes.json() as { isStripeOnboardingComplete?: boolean }
+        if (qaProfile.isStripeOnboardingComplete === false) {
+          const stripeOnboardingRedirect = NextResponse.redirect('https://qa.localvip.com/')
+          // Copy all cookies set on cleanResponse so the session is preserved
+          cleanResponse.cookies.getAll().forEach((cookie) => {
+            stripeOnboardingRedirect.cookies.set(cookie)
+          })
+          console.log('[qa-callback] Stripe onboarding incomplete — redirecting to qa.localvip.com')
+          return stripeOnboardingRedirect
+        }
+      }
+    } catch (stripeCheckError) {
+      // Non-fatal — proceed with normal login flow
+      console.warn('[qa-callback] Stripe onboarding check failed (non-fatal)', stripeCheckError)
+    }
 
     // Bridge QA user into a real Supabase session so client-side RLS works.
     // 1. Service client generates a magic link and extracts the raw OTP token
