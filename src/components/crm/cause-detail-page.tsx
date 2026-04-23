@@ -20,6 +20,7 @@ import {
   Mail,
   MapPin,
   MessageSquare,
+  Pencil,
   Phone,
   Plus,
   QrCode,
@@ -52,6 +53,12 @@ import {
 } from '@/components/ui/dialog'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { QaImportedFieldsPanel, QaWritebackWishlistTable, type QaImportedFact, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
+import {
+  CauseInitialConnectionModal,
+  LeaderConversationModal,
+  CauseMaterialsQrModal,
+  ActivationDecisionModal,
+} from '@/components/crm/cause-lifecycle-modals'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
@@ -598,6 +605,51 @@ export default function CauseDetailPage() {
     window.location.reload()
   }
 
+  // ── Lifecycle modals ──
+  const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'leader_conversation' | 'materials_qr' | 'activation_decision' | null>(null)
+
+  function getExecutionStep(key: string) {
+    return executionSteps.find(s => s.key === key) || null
+  }
+
+  async function handleSaveCodesWithValues(ref: string, conn: string) {
+    setReferralCode(ref)
+    setConnectionCode(conn)
+    setEngineBusy('codes')
+    setEngineMessage(null)
+    setEngineError(null)
+    try {
+      await callExecutionAction({ action: 'save_codes', referralCode: ref, connectionCode: conn })
+      await refetchExecution()
+      setEngineMessage('Codes saved.')
+      const templates = await listGenerationTemplates()
+      await runMaterialGenerationBatch(templates, {
+        progressPrefix: 'Generating materials',
+        setProgress: setEngineMessage,
+        setError: setEngineError,
+        emptyMessage: 'Codes saved. No active auto-generation templates were found.',
+        successMessage: 'Codes saved and materials generated.',
+      })
+    } catch (error) {
+      setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
+    } finally {
+      setEngineBusy(null)
+    }
+  }
+
+  async function handleLogOutreachFromModal(data: { type: string; subject: string; body: string; outcome: string; nextStep: string; nextStepDate: string }) {
+    await insertOutreach({
+      entity_type: 'cause',
+      entity_id: causeId,
+      type: data.type as OutreachType,
+      performed_by: localProfileId || undefined,
+      subject: data.subject || null,
+      body: data.body,
+      outcome: data.outcome || null,
+    } as any)
+    refetchOutreach({ silent: true })
+  }
+
   // ── Loading / error states ──
   if (causeLoading) {
     return (
@@ -730,7 +782,7 @@ export default function CauseDetailPage() {
                 </div>
               )}
             </div>
-            <Button size="sm" onClick={() => setActiveTab('activity')}>
+            <Button size="sm" onClick={() => setLifecycleModal('leader_conversation')}>
               <Send className="h-3.5 w-3.5" /> Log Activity
             </Button>
             <Button variant="outline" size="sm" onClick={() => setActiveTab('tasks')}>
@@ -753,21 +805,30 @@ export default function CauseDetailPage() {
             <p className="mt-1 text-sm font-semibold text-surface-900 truncate">{campaign?.name || 'Not linked'}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('initial_connection')}>
           <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Owner</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Owner</p>
+              <Pencil className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />
+            </div>
             <p className="mt-1 text-sm font-semibold text-surface-900 truncate">{owner?.full_name || 'Unassigned'}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('initial_connection')}>
           <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">City</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">City</p>
+              <Pencil className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />
+            </div>
             <p className="mt-1 text-sm font-semibold text-surface-900 truncate">{city ? `${city.name}, ${city.state}` : 'No city'}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('activation_decision')}>
           <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Readiness</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Readiness</p>
+              <ArrowRight className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />
+            </div>
             <div className="mt-1 flex items-center gap-2">
               <div className="flex-1 h-2 rounded-full bg-surface-100 overflow-hidden">
                 <div
@@ -809,29 +870,14 @@ export default function CauseDetailPage() {
       {/* ══════════════════════════════════════════════════════════
           TAB: MISSION CONTROL
          ══════════════════════════════════════════════════════════ */}
-      {qaImportedFacts.length > 0 && (
-        <QaImportedFieldsPanel
-          title="Imported From QA"
-          description="These values are refreshed from QA whenever this cause or nonprofit record is opened."
-          facts={qaImportedFacts}
-          accentLabel="QA cause fields"
-        />
-      )}
-
-      <QaWritebackWishlistTable
-        title="Dashboard Info To Add To QA Later"
-        description="This is the dashboard-only launch and follow-up data already attached to this record that still needs QA fields and write APIs."
-        rows={writebackRows}
-      />
-
       {activeTab === 'mission' && (
         <div className="space-y-6">
           {/* Status cards */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatusCard label="Activation" value={`${completedStepCount}/${executionSteps.length}`} ready={executionSteps.every(s => s.state === 'completed')} />
-            <StatusCard label="QR Assets" value={causeQrCodes.length > 0 ? 'Ready' : 'Missing'} ready={causeQrCodes.length > 0} />
-            <StatusCard label="Businesses" value={`${linkedBusinesses.length}`} ready={linkedBusinesses.length > 0} />
-            <StatusCard label="Materials" value={`${generatedCount} ready`} ready={generatedCount > 0} />
+            <StatusCard label="Activation" value={`${completedStepCount}/${executionSteps.length}`} ready={executionSteps.every(s => s.state === 'completed')} onClick={() => setLifecycleModal('activation_decision')} />
+            <StatusCard label="QR Assets" value={causeQrCodes.length > 0 ? 'Ready' : 'Missing'} ready={causeQrCodes.length > 0} onClick={() => setLifecycleModal('materials_qr')} />
+            <StatusCard label="Businesses" value={`${linkedBusinesses.length}`} ready={linkedBusinesses.length > 0} onClick={() => setActiveTab('businesses')} />
+            <StatusCard label="Materials" value={`${generatedCount} ready`} ready={generatedCount > 0} onClick={() => setActiveTab('materials')} />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
@@ -944,10 +990,10 @@ export default function CauseDetailPage() {
                   <Button variant="outline" size="sm" className="justify-start" onClick={() => setActiveTab('businesses')}>
                     <Store className="h-3.5 w-3.5" /> Add Business
                   </Button>
-                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setActiveTab('activity')}>
+                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setLifecycleModal('leader_conversation')}>
                     <Send className="h-3.5 w-3.5" /> Log Outreach
                   </Button>
-                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setActiveTab('codes')}>
+                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setLifecycleModal('materials_qr')}>
                     <QrCode className="h-3.5 w-3.5" /> Setup Codes
                   </Button>
                   <Button variant="outline" size="sm" className="justify-start" onClick={() => setActiveTab('materials')}>
@@ -980,81 +1026,111 @@ export default function CauseDetailPage() {
               {[
                 {
                   group: 'Setup',
+                  tab: 'codes' as DashboardTab,
+                  modal: 'initial_connection' as const,
                   icon: <Target className="h-5 w-5 text-brand-600" />,
                   items: [
-                    { label: 'Profile complete (city + contact)', done: !!(cause.city_id && (cause.owner_email || cause.email || cause.owner_phone || cause.phone)) },
-                    { label: 'Referral & connection codes saved', done: !!(codes?.referral_code && codes?.connection_code) },
-                    { label: 'Materials generated', done: generatedCount > 0 },
-                    { label: 'QR code created', done: causeQrCodes.length > 0 },
+                    { label: 'Profile complete (city + contact)', done: !!(cause.city_id && (cause.owner_email || cause.email || cause.owner_phone || cause.phone)), modal: 'initial_connection' as const },
+                    { label: 'Referral & connection codes saved', done: !!(codes?.referral_code && codes?.connection_code), modal: 'materials_qr' as const },
+                    { label: 'Materials generated', done: generatedCount > 0, tab: 'materials' as DashboardTab },
+                    { label: 'QR code created', done: causeQrCodes.length > 0, modal: 'materials_qr' as const },
                   ],
                 },
                 {
-                  group: isSchool ? 'Internal Alignment' : 'Internal Alignment',
+                  group: 'Internal Alignment',
+                  tab: 'activity' as DashboardTab,
+                  modal: 'leader_conversation' as const,
                   icon: <Users className="h-5 w-5 text-violet-600" />,
                   items: [
-                    { label: isSchool ? 'Principal / decision-maker identified' : 'Board / decision-maker identified', done: outreach.length >= 1 },
-                    { label: isSchool ? 'PTA leadership engaged' : 'Leadership engaged', done: outreach.length >= 2 },
-                    { label: 'Internal champion confirmed', done: executionSteps.some(s => s.key === 'leader_conversation' && s.state === 'completed') },
+                    { label: isSchool ? 'Principal / decision-maker identified' : 'Board / decision-maker identified', done: outreach.length >= 1, modal: 'leader_conversation' as const },
+                    { label: isSchool ? 'PTA leadership engaged' : 'Leadership engaged', done: outreach.length >= 2, modal: 'leader_conversation' as const },
+                    { label: 'Internal champion confirmed', done: executionSteps.some(s => s.key === 'leader_conversation' && s.state === 'completed'), modal: 'leader_conversation' as const },
                   ],
                 },
                 {
                   group: 'First Business',
+                  tab: 'businesses' as DashboardTab,
                   icon: <Store className="h-5 w-5 text-amber-600" />,
                   items: [
-                    { label: 'First business prospect identified', done: linkedBusinesses.length >= 1 },
-                    { label: 'First business contacted', done: linkedBusinesses.some(b => b.stage !== 'lead') },
-                    { label: 'First business onboarded', done: linkedBusinesses.some(b => b.stage === 'onboarded' || b.stage === 'live') },
+                    { label: 'First business prospect identified', done: linkedBusinesses.length >= 1, tab: 'businesses' as DashboardTab },
+                    { label: 'First business contacted', done: linkedBusinesses.some(b => b.stage !== 'lead'), tab: 'businesses' as DashboardTab },
+                    { label: 'First business onboarded', done: linkedBusinesses.some(b => b.stage === 'onboarded' || b.stage === 'live'), tab: 'businesses' as DashboardTab },
                   ],
                 },
                 {
                   group: isSchool ? 'Parent / Community Activation' : 'Supporter Activation',
+                  tab: 'community' as DashboardTab,
                   icon: <Heart className="h-5 w-5 text-pink-600" />,
                   items: [
-                    { label: isSchool ? 'Parent materials ready' : 'Supporter materials ready', done: generatedMaterials.some(m => m.library_folder === 'share_with_parents' && m.generation_status === 'generated') },
-                    { label: isSchool ? 'Flyer sent home / shared in group' : 'Supporter flyer shared', done: false },
-                    { label: isSchool ? 'Parent engagement started' : 'Community engagement started', done: outreach.length >= 3 },
+                    { label: isSchool ? 'Parent materials ready' : 'Supporter materials ready', done: generatedMaterials.some(m => m.library_folder === 'share_with_parents' && m.generation_status === 'generated'), modal: 'materials_qr' as const },
+                    { label: isSchool ? 'Flyer sent home / shared in group' : 'Supporter flyer shared', done: false, tab: 'community' as DashboardTab },
+                    { label: isSchool ? 'Parent engagement started' : 'Community engagement started', done: outreach.length >= 3, modal: 'leader_conversation' as const },
                   ],
                 },
                 {
                   group: isSchool ? 'PTA / Leadership Activation' : 'Board / Leadership Activation',
+                  tab: 'leadership' as DashboardTab,
                   icon: <BookOpen className="h-5 w-5 text-indigo-600" />,
                   items: [
-                    { label: isSchool ? 'PTA one-pager shared' : 'Leadership one-pager shared', done: generatedMaterials.some(m => m.library_folder === 'share_with_pta' && m.generation_status === 'generated') },
-                    { label: 'Meeting scheduled or completed', done: false },
-                    { label: 'Support secured', done: executionSteps.some(s => s.key === 'activation_decision' && s.state === 'completed') },
+                    { label: isSchool ? 'PTA one-pager shared' : 'Leadership one-pager shared', done: generatedMaterials.some(m => m.library_folder === 'share_with_pta' && m.generation_status === 'generated'), modal: 'materials_qr' as const },
+                    { label: 'Meeting scheduled or completed', done: false, modal: 'leader_conversation' as const },
+                    { label: 'Support secured', done: executionSteps.some(s => s.key === 'activation_decision' && s.state === 'completed'), modal: 'activation_decision' as const },
                   ],
                 },
                 {
                   group: 'Launch Readiness',
+                  tab: 'mission' as DashboardTab,
+                  modal: 'activation_decision' as const,
                   icon: <Rocket className="h-5 w-5 text-success-600" />,
                   items: [
-                    { label: '3+ businesses linked', done: linkedBusinesses.length >= 3 },
-                    { label: 'All activation steps complete', done: executionSteps.every(s => s.state === 'completed') },
-                    { label: `${entityLabel} is live`, done: cause.stage === 'live' },
+                    { label: '3+ businesses linked', done: linkedBusinesses.length >= 3, tab: 'businesses' as DashboardTab },
+                    { label: 'All activation steps complete', done: executionSteps.every(s => s.state === 'completed'), modal: 'activation_decision' as const },
+                    { label: `${entityLabel} is live`, done: cause.stage === 'live', modal: 'activation_decision' as const },
                   ],
                 },
               ].map(section => {
                 const doneCount = section.items.filter(i => i.done).length
                 return (
                   <div key={section.group} className="rounded-2xl border border-surface-200 bg-surface-50 p-5">
-                    <div className="flex items-center justify-between mb-3">
+                    <button
+                      type="button"
+                      onClick={() => { const m = (section as any).modal; const t = section.tab; if (m) setLifecycleModal(m); else if (t) setActiveTab(t) }}
+                      className="flex w-full items-center justify-between mb-3 text-left group"
+                    >
                       <div className="flex items-center gap-3">
                         {section.icon}
-                        <h3 className="font-semibold text-surface-900">{section.group}</h3>
+                        <h3 className="font-semibold text-surface-900 group-hover:text-brand-700 transition-colors">{section.group}</h3>
                       </div>
-                      <Badge variant={doneCount === section.items.length ? 'success' : doneCount > 0 ? 'warning' : 'default'}>
-                        {doneCount}/{section.items.length}
-                      </Badge>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={doneCount === section.items.length ? 'success' : doneCount > 0 ? 'warning' : 'default'}>
+                          {doneCount}/{section.items.length}
+                        </Badge>
+                        <ArrowRight className="h-4 w-4 text-surface-300 group-hover:text-brand-500 transition-colors" />
+                      </div>
+                    </button>
                     <div className="space-y-2">
-                      {section.items.map(item => (
-                        <div key={item.label} className="flex items-center gap-3 rounded-lg bg-white px-3 py-2">
-                          {item.done
-                            ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" />
-                            : <div className="h-4 w-4 shrink-0 rounded-full border-2 border-surface-300" />}
-                          <span className={`text-sm ${item.done ? 'text-surface-700 line-through' : 'text-surface-900'}`}>{item.label}</span>
-                        </div>
-                      ))}
+                      {section.items.map(item => {
+                        const itemAction = () => {
+                          const m = (item as any).modal
+                          const t = (item as any).tab
+                          if (m) setLifecycleModal(m as typeof lifecycleModal)
+                          else if (t) setActiveTab(t as DashboardTab)
+                        }
+                        return (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={itemAction}
+                            className={`flex w-full items-center gap-3 rounded-lg bg-white px-3 py-2 text-left transition-colors hover:bg-surface-50 hover:border-surface-300 border border-transparent`}
+                          >
+                            {item.done
+                              ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" />
+                              : <div className="h-4 w-4 shrink-0 rounded-full border-2 border-surface-300" />}
+                            <span className={`flex-1 text-sm ${item.done ? 'text-surface-500 line-through' : 'text-surface-900'}`}>{item.label}</span>
+                            {!item.done && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-300" />}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 )
@@ -1141,16 +1217,22 @@ export default function CauseDetailPage() {
                 </p>
                 <div className="space-y-3">
                   {[
-                    { label: isSchool ? 'Share the parent flyer in school groups' : 'Share the supporter flyer in community groups', icon: <Send className="h-4 w-4 text-brand-500" /> },
-                    { label: isSchool ? 'Send the flyer home with students' : 'Distribute flyers at community events', icon: <FileText className="h-4 w-4 text-brand-500" /> },
-                    { label: 'Post in Facebook / WhatsApp groups', icon: <Globe className="h-4 w-4 text-brand-500" /> },
-                    { label: isSchool ? 'Announce at PTA meetings' : 'Announce at community gatherings', icon: <Users className="h-4 w-4 text-brand-500" /> },
-                    { label: 'Use QR code at events for instant sign-up', icon: <QrCode className="h-4 w-4 text-brand-500" /> },
+                    { label: isSchool ? 'Share the parent flyer in school groups' : 'Share the supporter flyer in community groups', icon: <Send className="h-4 w-4 text-brand-500" />, modal: 'materials_qr' as const },
+                    { label: isSchool ? 'Send the flyer home with students' : 'Distribute flyers at community events', icon: <FileText className="h-4 w-4 text-brand-500" />, tab: 'materials' as DashboardTab },
+                    { label: 'Post in Facebook / WhatsApp groups', icon: <Globe className="h-4 w-4 text-brand-500" />, modal: 'materials_qr' as const },
+                    { label: isSchool ? 'Announce at PTA meetings' : 'Announce at community gatherings', icon: <Users className="h-4 w-4 text-brand-500" />, modal: 'leader_conversation' as const },
+                    { label: 'Use QR code at events for instant sign-up', icon: <QrCode className="h-4 w-4 text-brand-500" />, modal: 'materials_qr' as const },
                   ].map(item => (
-                    <div key={item.label} className="flex items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3">
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => { const m = (item as any).modal; const t = (item as any).tab; if (m) setLifecycleModal(m); else if (t) setActiveTab(t as DashboardTab) }}
+                      className="flex w-full items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50 transition-colors group"
+                    >
                       {item.icon}
-                      <span className="text-sm text-surface-700">{item.label}</span>
-                    </div>
+                      <span className="flex-1 text-sm text-surface-700 group-hover:text-brand-700">{item.label}</span>
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-300 group-hover:text-brand-500 transition-colors" />
+                    </button>
                   ))}
                 </div>
               </CardContent>
@@ -1176,20 +1258,30 @@ export default function CauseDetailPage() {
                     )
                   }
                   return parentMats.map(mat => (
-                    <div key={mat.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-surface-900">{mat.generated_file_name || 'Material'}</p>
-                          <p className="text-xs text-surface-500">{mat.library_folder.replace(/_/g, ' ')}</p>
+                    mat.generated_file_url ? (
+                      <a key={mat.id} href={mat.generated_file_url} target="_blank" rel="noopener noreferrer" className="block rounded-xl border border-surface-200 bg-white px-4 py-3 hover:border-brand-300 hover:bg-brand-50 transition-colors group">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-900 group-hover:text-brand-700">{mat.generated_file_name || 'Material'}</p>
+                            <p className="text-xs text-surface-500">{mat.library_folder.replace(/_/g, ' ')}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="success">Ready</Badge>
+                            <ExternalLink className="h-3.5 w-3.5 text-surface-300 group-hover:text-brand-500" />
+                          </div>
                         </div>
-                        <Badge variant="success">Ready</Badge>
+                      </a>
+                    ) : (
+                      <div key={mat.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-900">{mat.generated_file_name || 'Material'}</p>
+                            <p className="text-xs text-surface-500">{mat.library_folder.replace(/_/g, ' ')}</p>
+                          </div>
+                          <Badge variant="success">Ready</Badge>
+                        </div>
                       </div>
-                      {mat.generated_file_url && (
-                        <a href={mat.generated_file_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline">
-                          <ExternalLink className="h-3.5 w-3.5" /> Open file
-                        </a>
-                      )}
-                    </div>
+                    )
                   ))
                 })()}
               </CardContent>
@@ -1216,16 +1308,22 @@ export default function CauseDetailPage() {
                 </p>
                 <div className="space-y-3">
                   {[
-                    { label: isSchool ? 'Identify the PTA president or key decision-maker' : 'Identify the board chair or key decision-maker', done: outreach.length >= 1 },
-                    { label: isSchool ? 'Share the PTA one-pager' : 'Share the leadership one-pager', done: generatedMaterials.some(m => m.library_folder === 'share_with_pta' && m.generation_status === 'generated') },
-                    { label: 'Schedule a 15-minute intro meeting', done: false },
-                    { label: 'Present the value proposition', done: false },
-                    { label: 'Get verbal or formal support', done: executionSteps.some(s => s.key === 'activation_decision' && s.state === 'completed') },
+                    { label: isSchool ? 'Identify the PTA president or key decision-maker' : 'Identify the board chair or key decision-maker', done: outreach.length >= 1, modal: 'leader_conversation' as const },
+                    { label: isSchool ? 'Share the PTA one-pager' : 'Share the leadership one-pager', done: generatedMaterials.some(m => m.library_folder === 'share_with_pta' && m.generation_status === 'generated'), tab: 'materials' as DashboardTab },
+                    { label: 'Schedule a 15-minute intro meeting', done: false, modal: 'leader_conversation' as const },
+                    { label: 'Present the value proposition', done: false, modal: 'leader_conversation' as const },
+                    { label: 'Get verbal or formal support', done: executionSteps.some(s => s.key === 'activation_decision' && s.state === 'completed'), modal: 'activation_decision' as const },
                   ].map(item => (
-                    <div key={item.label} className="flex items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3">
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => { const m = (item as any).modal; const t = (item as any).tab; if (m) setLifecycleModal(m); else if (t) setActiveTab(t as DashboardTab) }}
+                      className="flex w-full items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50 transition-colors group"
+                    >
                       {item.done ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" /> : <div className="h-4 w-4 shrink-0 rounded-full border-2 border-surface-300" />}
-                      <span className={`text-sm ${item.done ? 'text-surface-700' : 'text-surface-900'}`}>{item.label}</span>
-                    </div>
+                      <span className={`flex-1 text-sm ${item.done ? 'text-surface-700' : 'text-surface-900 group-hover:text-brand-700'}`}>{item.label}</span>
+                      {!item.done && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-300 group-hover:text-brand-500 transition-colors" />}
+                    </button>
                   ))}
                 </div>
               </CardContent>
@@ -1251,20 +1349,30 @@ export default function CauseDetailPage() {
                     )
                   }
                   return ptaMats.map(mat => (
-                    <div key={mat.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-surface-900">{mat.generated_file_name || 'Material'}</p>
-                          <p className="text-xs text-surface-500">{mat.library_folder.replace(/_/g, ' ')}</p>
+                    mat.generated_file_url ? (
+                      <a key={mat.id} href={mat.generated_file_url} target="_blank" rel="noopener noreferrer" className="block rounded-xl border border-surface-200 bg-white px-4 py-3 hover:border-brand-300 hover:bg-brand-50 transition-colors group">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-900 group-hover:text-brand-700">{mat.generated_file_name || 'Material'}</p>
+                            <p className="text-xs text-surface-500">{mat.library_folder.replace(/_/g, ' ')}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="success">Ready</Badge>
+                            <ExternalLink className="h-3.5 w-3.5 text-surface-300 group-hover:text-brand-500" />
+                          </div>
                         </div>
-                        <Badge variant="success">Ready</Badge>
+                      </a>
+                    ) : (
+                      <div key={mat.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-900">{mat.generated_file_name || 'Material'}</p>
+                            <p className="text-xs text-surface-500">{mat.library_folder.replace(/_/g, ' ')}</p>
+                          </div>
+                          <Badge variant="success">Ready</Badge>
+                        </div>
                       </div>
-                      {mat.generated_file_url && (
-                        <a href={mat.generated_file_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline">
-                          <ExternalLink className="h-3.5 w-3.5" /> Open file
-                        </a>
-                      )}
-                    </div>
+                    )
                   ))
                 })()}
               </CardContent>
@@ -1303,30 +1411,38 @@ export default function CauseDetailPage() {
                       <p className="text-sm text-surface-500">{folder.description}</p>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {folderPairs.map(({ generated, material }) => (
-                        <div key={generated.id} className="flex items-center justify-between gap-4 rounded-xl border border-surface-200 bg-white px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-surface-900 truncate">
-                              {material?.title || generated.generated_file_name || 'Generated asset'}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              {material?.description && (
-                                <span className="text-xs text-surface-500 truncate max-w-[200px]">{material.description}</span>
-                              )}
-                              {generated.tags?.map(tag => <Badge key={tag} variant="default">{tag}</Badge>)}
+                      {folderPairs.map(({ generated, material }) => {
+                        const fileUrl = generated.generated_file_url || material?.file_url || null
+                        const Inner = (
+                          <>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-surface-900 truncate group-hover:text-brand-700 transition-colors">
+                                {material?.title || generated.generated_file_name || 'Generated asset'}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                {material?.description && (
+                                  <span className="text-xs text-surface-500 truncate max-w-[200px]">{material.description}</span>
+                                )}
+                                {generated.tags?.map(tag => <Badge key={tag} variant="default">{tag}</Badge>)}
+                              </div>
                             </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {generated.is_outdated && <Badge variant="warning">Update available</Badge>}
+                              <Badge variant="success">Ready</Badge>
+                              <ExternalLink className="h-3.5 w-3.5 text-surface-300 group-hover:text-brand-500 transition-colors" />
+                            </div>
+                          </>
+                        )
+                        return fileUrl ? (
+                          <a key={generated.id} href={fileUrl} target="_blank" rel="noopener noreferrer" className="flex group items-center justify-between gap-4 rounded-xl border border-surface-200 bg-white px-4 py-3 hover:border-brand-300 hover:bg-brand-50 transition-colors">
+                            {Inner}
+                          </a>
+                        ) : (
+                          <div key={generated.id} className="group flex items-center justify-between gap-4 rounded-xl border border-surface-200 bg-white px-4 py-3">
+                            {Inner}
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {generated.is_outdated && <Badge variant="warning">Update available</Badge>}
-                            <Badge variant="success">Ready</Badge>
-                            {(generated.generated_file_url || material?.file_url) && (
-                              <a href={generated.generated_file_url || material?.file_url || ''} target="_blank" rel="noopener noreferrer">
-                                <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open</Button>
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </CardContent>
                   </Card>
                 )
@@ -1479,12 +1595,15 @@ export default function CauseDetailPage() {
                           <p className="text-sm font-semibold text-surface-900">{qr.name}</p>
                           <p className="text-xs text-surface-500">{qr.scan_count} scans</p>
                         </div>
-                        <Badge variant={qr.status === 'active' ? 'success' : 'default'}>{qr.status}</Badge>
-                      </div>
-                      <div className="mt-2 flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(qr.redirect_url)}>
-                          <Copy className="h-3.5 w-3.5" /> Copy Link
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={qr.status === 'active' ? 'success' : 'default'}>{qr.status}</Badge>
+                          <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(qr.redirect_url)}>
+                            <Copy className="h-3.5 w-3.5" /> Copy Link
+                          </Button>
+                          <a href={qr.redirect_url} target="_blank" rel="noopener noreferrer">
+                            <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /></Button>
+                          </a>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1541,9 +1660,14 @@ export default function CauseDetailPage() {
                   No outreach logged yet. Start tracking your conversations above.
                 </div>
               ) : outreach.map(item => (
-                <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setLifecycleModal('leader_conversation')}
+                  className="w-full text-left rounded-xl border border-surface-200 bg-white px-4 py-3 hover:border-brand-300 hover:bg-brand-50 transition-colors group"
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-surface-900">{item.subject || item.type.replace(/_/g, ' ')}</p>
+                    <p className="text-sm font-semibold text-surface-900 group-hover:text-brand-700">{item.subject || item.type.replace(/_/g, ' ')}</p>
                     <p className="text-xs text-surface-500">{formatDateTime(item.created_at)}</p>
                   </div>
                   {item.body && <p className="mt-2 text-sm text-surface-600">{item.body}</p>}
@@ -1552,7 +1676,7 @@ export default function CauseDetailPage() {
                     {item.outcome && <Badge variant="info">{item.outcome}</Badge>}
                     <Badge variant="outline">{profileMap.get(item.performed_by)?.full_name || 'Team member'}</Badge>
                   </div>
-                </div>
+                </button>
               ))}
             </CardContent>
           </Card>
@@ -1657,6 +1781,116 @@ export default function CauseDetailPage() {
       )}
 
       {/* ══════════════════════════════════════════════════════════
+          QA PANELS (bottom — for reference only)
+         ══════════════════════════════════════════════════════════ */}
+      {qaImportedFacts.length > 0 && (
+        <QaImportedFieldsPanel
+          title="Imported From QA"
+          description="These values are refreshed from QA whenever this cause or nonprofit record is opened."
+          facts={qaImportedFacts}
+          accentLabel="QA cause fields"
+        />
+      )}
+
+      <QaWritebackWishlistTable
+        title="Dashboard Info To Add To QA Later"
+        description="This is the dashboard-only launch and follow-up data already attached to this record that still needs QA fields and write APIs."
+        rows={writebackRows}
+      />
+
+      {/* ══════════════════════════════════════════════════════════
+          LIFECYCLE MODALS
+         ══════════════════════════════════════════════════════════ */}
+      {cause && (
+        <>
+          <CauseInitialConnectionModal
+            open={lifecycleModal === 'initial_connection'}
+            onOpenChange={(open) => setLifecycleModal(open ? 'initial_connection' : null)}
+            cause={cause as any}
+            city={city}
+            linkedBusinessCount={linkedBusinesses.length}
+            helperCount={assignments.length}
+            onSave={async (changes) => {
+              if (localCauseId) {
+                await updateCause(localCauseId, changes as any)
+                window.location.reload()
+              }
+            }}
+            onCompleteStep={(() => {
+              const step = getExecutionStep('initial_connection')
+              return step?.step.id && step.state === 'active' && step.readyToComplete
+                ? () => void handleCompleteStep(step.step.id)
+                : undefined
+            })()}
+            readyToComplete={getExecutionStep('initial_connection')?.readyToComplete ?? false}
+            saving={updateLoading || stepBusyId !== null}
+            blocker={getExecutionStep('initial_connection')?.blocker ?? null}
+            cities={cities}
+          />
+
+          <LeaderConversationModal
+            open={lifecycleModal === 'leader_conversation'}
+            onOpenChange={(open) => setLifecycleModal(open ? 'leader_conversation' : null)}
+            outreach={outreach}
+            profileMap={profileMap}
+            onLogOutreach={handleLogOutreachFromModal}
+            onCompleteStep={(() => {
+              const step = getExecutionStep('leader_conversation')
+              return step?.step.id && step.state === 'active' && step.readyToComplete
+                ? () => void handleCompleteStep(step.step.id)
+                : undefined
+            })()}
+            readyToComplete={getExecutionStep('leader_conversation')?.readyToComplete ?? false}
+            saving={stepBusyId !== null}
+            blocker={getExecutionStep('leader_conversation')?.blocker ?? null}
+          />
+
+          <CauseMaterialsQrModal
+            open={lifecycleModal === 'materials_qr'}
+            onOpenChange={(open) => setLifecycleModal(open ? 'materials_qr' : null)}
+            codes={codes}
+            generatedMaterials={generatedMaterials}
+            qrCodes={causeQrCodes}
+            joinUrl={joinUrl || null}
+            onSaveCodes={handleSaveCodesWithValues}
+            onGenerateMaterials={handleGenerateMaterials}
+            onRegenerateAll={handleGenerateMaterials}
+            onCompleteStep={(() => {
+              const step = getExecutionStep('materials_qr')
+              return step?.step.id && step.state === 'active' && step.readyToComplete
+                ? () => void handleCompleteStep(step.step.id)
+                : undefined
+            })()}
+            readyToComplete={getExecutionStep('materials_qr')?.readyToComplete ?? false}
+            saving={stepBusyId !== null}
+            blocker={getExecutionStep('materials_qr')?.blocker ?? null}
+            engineBusy={engineBusy}
+            regenBusy={engineBusy === 'generate'}
+          />
+
+          <ActivationDecisionModal
+            open={lifecycleModal === 'activation_decision'}
+            onOpenChange={(open) => setLifecycleModal(open ? 'activation_decision' : null)}
+            cause={cause as any}
+            linkedBusinessCount={linkedBusinesses.length}
+            generatedCount={generatedCount}
+            qrCount={causeQrCodes.length}
+            codesReady={!!(codes?.referral_code && codes?.connection_code)}
+            stakeholderReady={!!causeStakeholder}
+            onCompleteStep={(() => {
+              const step = getExecutionStep('activation_decision')
+              return step?.step.id && step.state === 'active' && step.readyToComplete
+                ? () => void handleCompleteStep(step.step.id)
+                : undefined
+            })()}
+            readyToComplete={getExecutionStep('activation_decision')?.readyToComplete ?? false}
+            saving={stepBusyId !== null}
+            blocker={getExecutionStep('activation_decision')?.blocker ?? null}
+          />
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════
           DIALOGS
          ══════════════════════════════════════════════════════════ */}
 
@@ -1715,11 +1949,17 @@ export default function CauseDetailPage() {
 
 // ─── Shared small components ────────────────────────────────
 
-function StatusCard({ label, value, ready }: { label: string; value: string; ready: boolean }) {
+function StatusCard({ label, value, ready, onClick }: { label: string; value: string; ready: boolean; onClick?: () => void }) {
   return (
-    <Card>
+    <Card
+      className={onClick ? 'group cursor-pointer hover:shadow-card-hover transition-shadow' : ''}
+      onClick={onClick}
+    >
       <CardContent className="p-4">
-        <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
+          {onClick && <ArrowRight className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />}
+        </div>
         <div className="mt-2 flex items-center justify-between gap-3">
           <p className="text-2xl font-semibold text-surface-900">{value}</p>
           <Badge variant={ready ? 'success' : 'warning'}>{ready ? 'Ready' : 'Needs work'}</Badge>
