@@ -76,16 +76,24 @@ export async function GET(request: NextRequest) {
     cleanResponse.cookies.set(QA_COOKIE_NAMES.verifier, '', { path: '/', maxAge: 0 })
     cleanResponse.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })
 
-    // Check if Stripe onboarding is complete. If not, send them to qa.localvip.com
-    // which auto-opens the Stripe form and redirects back after completion.
+    // Check if Stripe onboarding is complete for Business accounts only.
+    // Admin/System Admin users are never blocked by this check.
+    // If incomplete, send them to qa.localvip.com which auto-opens the Stripe form.
     try {
       const profileRes = await fetch(`${QA_AUTH_CONFIG.baseUrl}/api/dashboard/v1/User/profile`, {
         headers: { authorization: `Bearer ${session.accessToken}` },
         cache: 'no-store',
       })
       if (profileRes.ok) {
-        const qaProfile = await profileRes.json() as { isStripeOnboardingComplete?: boolean }
-        if (qaProfile.isStripeOnboardingComplete === false) {
+        const qaProfile = await profileRes.json() as {
+          isStripeOnboardingComplete?: boolean
+          accountType?: string
+          role?: string
+        }
+        const isBusinessAccount = qaProfile.accountType === 'Business'
+        const stripeIncomplete = qaProfile.isStripeOnboardingComplete === false
+        console.log('[qa-callback] profile check', { accountType: qaProfile.accountType, role: qaProfile.role, isStripeOnboardingComplete: qaProfile.isStripeOnboardingComplete })
+        if (isBusinessAccount && stripeIncomplete) {
           const stripeOnboardingRedirect = NextResponse.redirect('https://qa.localvip.com/')
           // Copy all cookies set on cleanResponse so the session is preserved
           cleanResponse.cookies.getAll().forEach((cookie) => {
