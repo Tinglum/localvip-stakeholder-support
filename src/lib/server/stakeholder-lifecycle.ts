@@ -378,6 +378,7 @@ export async function ensureCauseStakeholderSetup(
   supabase: ServiceSupabaseClient,
   cause: Cause,
   actorId: string | null,
+  initialCodes?: { referral_code?: string | null; connection_code?: string | null; join_url?: string | null },
 ) {
   actorId = asUuid(actorId)
   const causeOwnerId = asUuid(cause.owner_id)
@@ -482,7 +483,7 @@ export async function ensureCauseStakeholderSetup(
   if (!stakeholder) throw new Error('Cause stakeholder setup could not be created.')
 
   await Promise.all([
-    ensureStakeholderCodesRow(supabase, stakeholder.id),
+    ensureStakeholderCodesRow(supabase, stakeholder.id, initialCodes),
     ensureStakeholderSetupTask(supabase, stakeholder.id, {
       title: `Complete setup for ${cause.name}`,
       stakeholderType: mapCauseToStakeholderType(cause),

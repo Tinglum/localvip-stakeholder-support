@@ -5,7 +5,7 @@ import NextImage from 'next/image'
 import Link from 'next/link'
 import {
   QrCode, Download, Copy, Grid, List,
-  BarChart3, Edit, Plus, Trash2,
+  BarChart3, ExternalLink, Key, Plus, Trash2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -14,17 +14,40 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
 import { useQrCodes, useQrCodeDelete } from '@/lib/supabase/hooks'
+import { createClient } from '@/lib/supabase/client'
 import { BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { generateQRDataURL } from '@/lib/qr/generate'
 
+interface StakeholderCodeEntry {
+  stakeholder_id: string
+  referral_code: string | null
+  connection_code: string | null
+  join_url: string | null
+}
+
 export default function MyQrCodesPage() {
   const { profile } = useAuth()
+  const supabase = React.useMemo(() => createClient(), [])
   const { data: qrCodes, loading, error, refetch } = useQrCodes({ created_by: profile.id })
   const { remove } = useQrCodeDelete()
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [qrPreviews, setQrPreviews] = React.useState<Record<string, string>>({})
   const [deleting, setDeleting] = React.useState<string | null>(null)
+  const [stakeholderCodes, setStakeholderCodes] = React.useState<Map<string, StakeholderCodeEntry>>(new Map())
+
+  // Load stakeholder codes for the listed QR codes
+  React.useEffect(() => {
+    const ids = qrCodes.map(q => q.stakeholder_id).filter(Boolean) as string[]
+    if (ids.length === 0) return
+    void (supabase as any)
+      .from('stakeholder_codes')
+      .select('stakeholder_id, referral_code, connection_code, join_url')
+      .in('stakeholder_id', ids)
+      .then(({ data }: { data: StakeholderCodeEntry[] | null }) => {
+        setStakeholderCodes(new Map((data || []).map(c => [c.stakeholder_id, c])))
+      })
+  }, [supabase, qrCodes])
 
   // Generate preview images when qrCodes change
   React.useEffect(() => {
@@ -154,6 +177,44 @@ export default function MyQrCodesPage() {
                   </div>
                   <span className="text-xs text-surface-400">{formatDate(qr.created_at)}</span>
                 </div>
+                {/* Codes display */}
+                {qr.stakeholder_id && stakeholderCodes.get(qr.stakeholder_id) && (() => {
+                  const c = stakeholderCodes.get(qr.stakeholder_id!)!
+                  return (
+                    <div className="mt-3 rounded-lg border border-surface-100 bg-surface-50 p-2.5 space-y-1.5">
+                      <p className="text-[10px] uppercase tracking-wide font-medium text-surface-400 flex items-center gap-1">
+                        <Key className="h-2.5 w-2.5" /> Referral codes
+                      </p>
+                      {c.referral_code && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-surface-500">Referral</span>
+                          <div className="flex items-center gap-1">
+                            <code className="rounded bg-white border border-surface-200 px-1.5 py-0.5 text-xs font-mono text-surface-800">{c.referral_code}</code>
+                            <button onClick={() => copyToClipboard(c.referral_code!)} className="text-surface-300 hover:text-brand-600 transition-colors" title="Copy"><Copy className="h-3 w-3" /></button>
+                          </div>
+                        </div>
+                      )}
+                      {c.connection_code && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-surface-500">Connection</span>
+                          <div className="flex items-center gap-1">
+                            <code className="rounded bg-white border border-surface-200 px-1.5 py-0.5 text-xs font-mono text-surface-800">{c.connection_code}</code>
+                            <button onClick={() => copyToClipboard(c.connection_code!)} className="text-surface-300 hover:text-brand-600 transition-colors" title="Copy"><Copy className="h-3 w-3" /></button>
+                          </div>
+                        </div>
+                      )}
+                      {c.join_url && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-surface-500">Join URL</span>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => copyToClipboard(c.join_url!)} className="text-surface-300 hover:text-brand-600 transition-colors" title="Copy link"><Copy className="h-3 w-3" /></button>
+                            <a href={c.join_url} target="_blank" rel="noopener noreferrer" className="text-surface-300 hover:text-brand-600 transition-colors" title="Open join page"><ExternalLink className="h-3 w-3" /></a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
                 <div className="mt-3 flex gap-1">
                   <Button variant="ghost" size="icon-sm" title="Copy link" onClick={() => copyToClipboard(qr.redirect_url || qr.destination_url)}>
                     <Copy className="h-3.5 w-3.5" />
@@ -189,7 +250,7 @@ export default function MyQrCodesPage() {
         <div className="space-y-2">
           {qrCodes.map(qr => (
             <Card key={qr.id} className="transition-shadow hover:shadow-card-hover">
-              <CardContent className="flex items-center gap-4 py-3">
+              <CardContent className="flex flex-wrap items-center gap-4 py-3">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-50 border border-surface-100">
                   {qrPreviews[qr.id] ? (
                     <NextImage
@@ -210,6 +271,29 @@ export default function MyQrCodesPage() {
                     <Badge variant={qr.brand === 'hato' ? 'hato' : 'info'}>{BRANDS[qr.brand]?.label ?? qr.brand}</Badge>
                   </div>
                   <p className="text-xs text-surface-400 truncate">{qr.destination_url}</p>
+                  {/* Inline codes for list view */}
+                  {qr.stakeholder_id && stakeholderCodes.get(qr.stakeholder_id) && (() => {
+                    const c = stakeholderCodes.get(qr.stakeholder_id!)!
+                    return (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        {c.referral_code && (
+                          <span className="flex items-center gap-1 text-[10px] text-surface-500">
+                            <Key className="h-2.5 w-2.5" />
+                            <code className="rounded bg-surface-100 px-1 py-0.5 font-mono">{c.referral_code}</code>
+                            <button onClick={() => copyToClipboard(c.referral_code!)} className="text-surface-300 hover:text-brand-600" title="Copy referral code"><Copy className="h-2.5 w-2.5" /></button>
+                          </span>
+                        )}
+                        {c.join_url && (
+                          <span className="flex items-center gap-1 text-[10px] text-surface-500">
+                            <a href={c.join_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-brand-600 hover:underline">
+                              <ExternalLink className="h-2.5 w-2.5" /> Join page
+                            </a>
+                            <button onClick={() => copyToClipboard(c.join_url!)} className="text-surface-300 hover:text-brand-600" title="Copy join URL"><Copy className="h-2.5 w-2.5" /></button>
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
                 <div className="flex items-center gap-4 text-xs text-surface-500 shrink-0">
                   <span className="flex items-center gap-1"><BarChart3 className="h-3.5 w-3.5" />{qr.scan_count} scans</span>

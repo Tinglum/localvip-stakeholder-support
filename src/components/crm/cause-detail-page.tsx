@@ -798,7 +798,7 @@ export default function CauseDetailPage() {
       />
 
       {/* ── Quick info cards ── */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
         <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLinkCampaignOpen(true)}>
           <CardContent className="p-4">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
@@ -838,6 +838,28 @@ export default function CauseDetailPage() {
               </div>
               <span className="text-sm font-bold text-surface-900">{readiness.percent}%</span>
             </div>
+          </CardContent>
+        </Card>
+        {/* Codes card */}
+        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('materials_qr')}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Referral Code</p>
+              {codes?.referral_code
+                ? <button type="button" onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(codes.referral_code!) }} className="text-surface-300 hover:text-brand-500 transition-colors" title="Copy referral code"><Copy className="h-3 w-3" /></button>
+                : <Pencil className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />}
+            </div>
+            {codes?.referral_code ? (
+              <p className="mt-1 font-mono text-sm font-semibold text-surface-900 truncate">{codes.referral_code}</p>
+            ) : (
+              <p className="mt-1 text-sm text-surface-400">Not set</p>
+            )}
+            {joinUrl ? (
+              <div className="mt-1 flex items-center gap-1">
+                <p className="text-xs text-brand-600 truncate">{joinUrl.replace('https://', '')}</p>
+                <button type="button" onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(joinUrl) }} className="shrink-0 text-surface-300 hover:text-brand-500 transition-colors" title="Copy join URL"><Copy className="h-2.5 w-2.5" /></button>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

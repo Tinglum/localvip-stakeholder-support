@@ -10,9 +10,11 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Copy,
   ExternalLink,
   Globe,
   Heart,
+  Key,
   Laptop,
   Loader2,
   MousePointer,
@@ -33,6 +35,12 @@ import { useQrCodes } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
 import { formatDateTime } from '@/lib/utils'
 import type { QrCodeEvent } from '@/lib/types/database'
+
+interface StakeholderCodeEntry {
+  referral_code: string | null
+  connection_code: string | null
+  join_url: string | null
+}
 
 // ─── Parsing helpers ─────────────────────────────────────────
 
@@ -206,9 +214,24 @@ export default function QrAnalyticsPage() {
   const [expandedQr, setExpandedQr] = React.useState<string | null>(null)
   const [showAllEvents, setShowAllEvents] = React.useState(false)
 
+  const supabase = React.useMemo(() => createClient(), [])
   const { data: allQrCodes, loading: qrLoading } = useQrCodes()
   const { events, businessNames, causeNames, loading: dataLoading } = useAnalyticsData(timeRange)
   const loading = qrLoading || dataLoading
+
+  // Load stakeholder codes keyed by stakeholder_id
+  const [stakeholderCodes, setStakeholderCodes] = React.useState<Map<string, StakeholderCodeEntry>>(new Map())
+  React.useEffect(() => {
+    const ids = allQrCodes.map(q => q.stakeholder_id).filter(Boolean) as string[]
+    if (ids.length === 0) return
+    void (supabase as any)
+      .from('stakeholder_codes')
+      .select('stakeholder_id, referral_code, connection_code, join_url')
+      .in('stakeholder_id', ids)
+      .then(({ data }: { data: (StakeholderCodeEntry & { stakeholder_id: string })[] | null }) => {
+        setStakeholderCodes(new Map((data || []).map(c => [c.stakeholder_id, c])))
+      })
+  }, [supabase, allQrCodes])
 
   // Apply entity filter to QR codes
   const qrCodes = React.useMemo(() => {
@@ -383,8 +406,9 @@ export default function QrAnalyticsPage() {
             : null,
         entityType: qr.business_id ? 'business' : qr.cause_id ? 'cause' : null,
         entityId: qr.business_id || qr.cause_id || null,
+        codes: qr.stakeholder_id ? (stakeholderCodes.get(qr.stakeholder_id) || null) : null,
       }))
-  }, [qrCodes, filteredEvents, businessNames, causeNames])
+  }, [qrCodes, filteredEvents, businessNames, causeNames, stakeholderCodes])
 
   // ── Recent events feed ──
   const recentEvents = React.useMemo(() => {
@@ -682,7 +706,7 @@ export default function QrAnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-50">
-                  {qrPerformance.map(({ qr, periodScans: ps, unique, signups, lastScan, recentEvents, entityLabel, entityType, entityId }) => {
+                  {qrPerformance.map(({ qr, periodScans: ps, unique, signups, lastScan, recentEvents, entityLabel, entityType, entityId, codes: qrCodes }) => {
                     const allTime = qr.scan_count || 0
                     const rate = ps > 0 ? ((signups / ps) * 100).toFixed(1) : '0.0'
                     const isExpanded = expandedQr === qr.id
@@ -789,7 +813,74 @@ export default function QrAnalyticsPage() {
                                     </tbody>
                                   </table>
                                 )}
-                                <div className="px-4 py-2 border-t border-surface-100 bg-surface-50 flex items-center justify-between">
+                                {/* Codes section */}
+                              {qrCodes && (qrCodes.referral_code || qrCodes.connection_code || qrCodes.join_url) && (
+                                <div className="px-4 py-3 border-t border-surface-100 bg-brand-50 space-y-2">
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 flex items-center gap-1.5">
+                                    <Key className="h-3 w-3" /> Stakeholder Codes
+                                  </p>
+                                  <div className="grid gap-2 sm:grid-cols-3">
+                                    {qrCodes.referral_code && (
+                                      <div className="flex items-center gap-2 rounded-lg border border-brand-100 bg-white px-3 py-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-[10px] uppercase tracking-wide text-surface-400">Referral Code</p>
+                                          <p className="font-mono text-xs font-semibold text-surface-900 truncate">{qrCodes.referral_code}</p>
+                                        </div>
+                                        <button
+                                          onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(qrCodes.referral_code!) }}
+                                          className="shrink-0 text-surface-300 hover:text-brand-600 transition-colors"
+                                          title="Copy referral code"
+                                        >
+                                          <Copy className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    )}
+                                    {qrCodes.connection_code && (
+                                      <div className="flex items-center gap-2 rounded-lg border border-brand-100 bg-white px-3 py-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-[10px] uppercase tracking-wide text-surface-400">Connection Code</p>
+                                          <p className="font-mono text-xs font-semibold text-surface-900 truncate">{qrCodes.connection_code}</p>
+                                        </div>
+                                        <button
+                                          onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(qrCodes.connection_code!) }}
+                                          className="shrink-0 text-surface-300 hover:text-brand-600 transition-colors"
+                                          title="Copy connection code"
+                                        >
+                                          <Copy className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    )}
+                                    {qrCodes.join_url && (
+                                      <div className="flex items-center gap-2 rounded-lg border border-brand-100 bg-white px-3 py-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-[10px] uppercase tracking-wide text-surface-400">Join URL</p>
+                                          <p className="font-mono text-xs text-surface-700 truncate">{qrCodes.join_url}</p>
+                                        </div>
+                                        <div className="flex shrink-0 gap-1">
+                                          <button
+                                            onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(qrCodes.join_url!) }}
+                                            className="text-surface-300 hover:text-brand-600 transition-colors"
+                                            title="Copy join URL"
+                                          >
+                                            <Copy className="h-3 w-3" />
+                                          </button>
+                                          <a
+                                            href={qrCodes.join_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={e => e.stopPropagation()}
+                                            className="text-surface-300 hover:text-brand-600 transition-colors"
+                                            title="Open join page"
+                                          >
+                                            <ExternalLink className="h-3 w-3" />
+                                          </a>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              <div className="px-4 py-2 border-t border-surface-100 bg-surface-50 flex items-center justify-between">
                                   <p className="text-xs text-surface-500">Showing last {recentEvents.length} scan events</p>
                                   <Link
                                     href={`/qr/mine`}

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, Phone, Mail, Globe, MapPin, Clock,
-  AlertTriangle, MessageSquare, CheckSquare, StickyNote, QrCode as QrCodeIcon,
+  AlertTriangle, Copy, Key, MessageSquare, CheckSquare, StickyNote, QrCode as QrCodeIcon,
   FileText, Send, Plus, ExternalLink, MoreHorizontal, User,
   Check, ChevronDown, Loader2,
 } from 'lucide-react'
@@ -163,6 +163,17 @@ export default function BusinessDetailPage() {
   const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
   const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
   const businessStakeholder = allStakeholders.find(s => localBusinessId && s.business_id === localBusinessId) || null
+  const businessStakeholderCodes = React.useMemo(() => {
+    if (!businessStakeholder || !localState?.stakeholderCodes) return null
+    return (localState.stakeholderCodes as Array<{ stakeholder_id: string; referral_code: string | null; connection_code: string | null; join_url: string | null }>).find(sc => sc.stakeholder_id === businessStakeholder.id) || null
+  }, [businessStakeholder, localState?.stakeholderCodes])
+  const businessJoinUrl = React.useMemo(() => {
+    if (businessStakeholderCodes?.join_url) return businessStakeholderCodes.join_url
+    if (businessStakeholderCodes?.connection_code) {
+      return `https://localvip.com/?ref=${businessStakeholderCodes.referral_code || ''}/${businessStakeholderCodes.connection_code}`
+    }
+    return null
+  }, [businessStakeholderCodes])
   const owner = React.useMemo(() => {
     if (!biz) return null
     if (biz.owner_id) return profileMap.get(biz.owner_id) || null
@@ -499,7 +510,7 @@ export default function BusinessDetailPage() {
         )}
       </div>
 
-      <div id="business-info-cards" className="grid gap-4 lg:grid-cols-4">
+      <div id="business-info-cards" className="grid gap-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardContent className="space-y-2 p-4">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Primary Owner</p>
@@ -580,6 +591,46 @@ export default function BusinessDetailPage() {
               <p className="text-xs text-surface-400">{campaign?.status || 'Click to link this business into a launch campaign.'}</p>
             </CardContent>
           </button>
+        </Card>
+        {/* Referral codes card */}
+        <Card className="group transition-colors hover:border-brand-200 cursor-pointer" onClick={() => setActiveTab('overview')}>
+          <CardContent className="space-y-2 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500 flex items-center gap-1">
+                <Key className="h-3 w-3" /> Referral Code
+              </p>
+              {businessStakeholderCodes?.referral_code && (
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(businessStakeholderCodes.referral_code!) }}
+                  className="text-surface-300 hover:text-brand-600 transition-colors"
+                  title="Copy referral code"
+                >
+                  <Copy className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            {businessStakeholderCodes?.referral_code ? (
+              <p className="font-mono text-sm font-semibold text-surface-900 truncate">{businessStakeholderCodes.referral_code}</p>
+            ) : (
+              <p className="text-sm text-surface-500">Not set</p>
+            )}
+            {businessJoinUrl ? (
+              <div className="flex items-center gap-1">
+                <p className="text-xs text-brand-600 truncate">{businessJoinUrl.replace('https://', '')}</p>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(businessJoinUrl) }}
+                  className="shrink-0 text-surface-300 hover:text-brand-600 transition-colors"
+                  title="Copy join URL"
+                >
+                  <Copy className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-surface-400">Go to Overview → Materials to set codes</p>
+            )}
+          </CardContent>
         </Card>
       </div>
 
