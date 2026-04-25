@@ -13,6 +13,7 @@ import {
   qaCauseRouteError,
 } from '@/lib/server/qa-dashboard-causes'
 import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
+import { buildStakeholderJoinUrl, normalizeStakeholderCode } from '@/lib/material-engine'
 import type { Cause } from '@/lib/types/database'
 
 function asProfileUuid(value: string | null | undefined) {
@@ -225,6 +226,31 @@ export async function GET(
   const localProfileId = asProfileUuid(context.profile.id)
   let createdLocalCause = false
 
+  // Seed codes from the operator's QA profile (synced at login by syncQaReferralToProfile).
+  // referral_code   = profile.referral_code   (e.g. "B3275049")
+  // connection_code = last segment of qa_shared_url (e.g. "mskyS8Kto2b")
+  // join_url        = qa_referral_link with /join/ replaced by /support/
+  let qaInitialCodes: { referral_code: string; connection_code: string; join_url: string } | undefined
+  const profileMeta = (context.profile.metadata || {}) as Record<string, unknown>
+  const profileReferralCode = context.profile.referral_code
+  if (profileReferralCode) {
+    const sharedUrl = typeof profileMeta.qa_shared_url === 'string' ? profileMeta.qa_shared_url : null
+    const referralLink = typeof profileMeta.qa_referral_link === 'string' ? profileMeta.qa_referral_link : null
+    const connectionCode = sharedUrl
+      ? normalizeStakeholderCode(sharedUrl.split('/').pop() || '') || normalizeStakeholderCode(profileReferralCode)
+      : normalizeStakeholderCode(profileReferralCode)
+    if (connectionCode) {
+      qaInitialCodes = {
+        referral_code: profileReferralCode,
+        connection_code: connectionCode,
+        // Causes use /support/<code>, not /join/<code>
+        join_url: referralLink
+          ? referralLink.replace('/join/', '/support/')
+          : buildStakeholderJoinUrl('cause', connectionCode),
+      }
+    }
+  }
+
   const searchParams = request.nextUrl.searchParams
   const routeId = params.id
   const qaRouteId = routeId.startsWith('qa-') ? routeId.slice(3) : routeId
@@ -267,7 +293,7 @@ export async function GET(
 
   if (!localCause && qaCause) {
     try {
-      localCause = await ensureLinkedCause(context.supabase as any, localProfileId, qaCause)
+      localCause = await ensureLinkedCause(context.supabase as any, localProfileId, qaCause, qaInitialCodes)
       createdLocalCause = !!localCause
     } catch (error) {
       qaError = qaError || qaCauseRouteError(error)
@@ -278,7 +304,7 @@ export async function GET(
   if (localCause) {
     localCause = await repairImportedCauseRecord(context.supabase as any, localProfileId, localCause)
     if (!createdLocalCause) {
-      await ensureImportedCauseLifecycle(context.supabase as any, localProfileId, localCause)
+      await ensureImportedCauseLifecycle(context.supabase as any, localProfileId, localCause, qaInitialCodes)
     }
   }
 

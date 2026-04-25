@@ -13,6 +13,7 @@ import {
   qaBusinessRouteError,
 } from '@/lib/server/qa-dashboard-businesses'
 import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
+import { buildStakeholderJoinUrl } from '@/lib/material-engine'
 import type { Business } from '@/lib/types/database'
 
 function asProfileUuid(value: string | null | undefined) {
@@ -224,6 +225,28 @@ export async function GET(
   const localProfileId = asProfileUuid(context.profile.id)
   let createdLocalBusiness = false
 
+  // Seed codes from the operator's QA profile (synced at login by syncQaReferralToProfile).
+  // referral_code   = profile.referral_code   (e.g. "B3275049")
+  // connection_code = last segment of qa_shared_url (e.g. "mskyS8Kto2b")
+  // join_url        = qa_referral_link         (e.g. "https://localvip.com/?ref=B3275049&mskyS8Kto2b")
+  let qaInitialCodes: { referral_code: string; connection_code: string; join_url: string } | undefined
+  const profileMeta = (context.profile.metadata || {}) as Record<string, unknown>
+  const profileReferralCode = context.profile.referral_code
+  if (profileReferralCode) {
+    const sharedUrl = typeof profileMeta.qa_shared_url === 'string' ? profileMeta.qa_shared_url : null
+    const referralLink = typeof profileMeta.qa_referral_link === 'string' ? profileMeta.qa_referral_link : null
+    const connectionCode = sharedUrl
+      ? (sharedUrl.split('/').pop() || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      : profileReferralCode
+    if (connectionCode) {
+      qaInitialCodes = {
+        referral_code: profileReferralCode,
+        connection_code: connectionCode,
+        join_url: referralLink || buildStakeholderJoinUrl('business', connectionCode),
+      }
+    }
+  }
+
   const searchParams = request.nextUrl.searchParams
   const routeId = params.id
   const qaRouteId = routeId.startsWith('qa-') ? routeId.slice(3) : routeId
@@ -266,7 +289,7 @@ export async function GET(
 
   if (!localBusiness && qaBusiness) {
     try {
-      localBusiness = await ensureLinkedBusiness(context.supabase as any, localProfileId, qaBusiness)
+      localBusiness = await ensureLinkedBusiness(context.supabase as any, localProfileId, qaBusiness, qaInitialCodes)
       createdLocalBusiness = !!localBusiness
     } catch (error) {
       qaError = qaError || qaBusinessRouteError(error)
@@ -277,7 +300,7 @@ export async function GET(
   if (localBusiness) {
     localBusiness = await repairImportedBusinessRecord(context.supabase as any, localProfileId, localBusiness)
     if (!createdLocalBusiness) {
-      await ensureImportedBusinessLifecycle(context.supabase as any, localProfileId, localBusiness)
+      await ensureImportedBusinessLifecycle(context.supabase as any, localProfileId, localBusiness, qaInitialCodes)
     }
   }
 
