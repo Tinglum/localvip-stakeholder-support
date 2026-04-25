@@ -31,7 +31,7 @@ import {
 import { useAuth } from '@/lib/auth/context'
 import type { CrmBusinessLocalStateResponse } from '@/lib/crm-api'
 import { resolveBusinessOffer } from '@/lib/offers'
-import { buildStakeholderJoinUrl, normalizeStakeholderCode } from '@/lib/material-engine'
+import { buildStakeholderJoinUrl } from '@/lib/material-engine'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { computeBusinessExecutionSteps, getBusinessNextActions, getTabForBusinessStepKey, type BusinessExecutionStepSummary } from '@/lib/business-execution'
 import {
@@ -213,20 +213,9 @@ export function BusinessExecutionOverview({
   const writeBusinessId = localBusinessId || asUuid(biz.id)
 
   React.useEffect(() => {
-    if (codes?.referral_code || codes?.connection_code) {
-      setReferralCode(codes.referral_code || '')
-      setConnectionCode(codes.connection_code || '')
-    } else {
-      // Fall back to operator profile codes when stakeholder_codes row has no values yet
-      const profileMeta = (profile?.metadata || {}) as Record<string, unknown>
-      const sharedUrl = typeof profileMeta.qa_shared_url === 'string' ? profileMeta.qa_shared_url : null
-      const profileConnectionCode = sharedUrl
-        ? normalizeStakeholderCode(sharedUrl.split('/').pop() || '') || normalizeStakeholderCode(profile?.referral_code || '')
-        : normalizeStakeholderCode(profile?.referral_code || '')
-      setReferralCode(profile?.referral_code || '')
-      setConnectionCode(profileConnectionCode || '')
-    }
-  }, [codes?.connection_code, codes?.referral_code, profile?.referral_code, profile?.metadata])
+    setReferralCode(codes?.referral_code || '')
+    setConnectionCode(codes?.connection_code || '')
+  }, [codes?.connection_code, codes?.referral_code])
 
   React.useEffect(() => {
     setCaptureHeadline(captureOffer.headline || '')

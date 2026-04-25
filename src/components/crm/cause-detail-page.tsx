@@ -60,7 +60,7 @@ import {
   ActivationDecisionModal,
 } from '@/components/crm/cause-lifecycle-modals'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
-import { buildStakeholderJoinUrl, normalizeStakeholderCode, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
+import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
@@ -272,20 +272,9 @@ export default function CauseDetailPage() {
   const [stepBusyId, setStepBusyId] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    if (codes?.referral_code || codes?.connection_code) {
-      setReferralCode(codes.referral_code || '')
-      setConnectionCode(codes.connection_code || '')
-    } else {
-      // Fall back to operator profile codes when stakeholder_codes row has no values yet
-      const profileMeta = (profile?.metadata || {}) as Record<string, unknown>
-      const sharedUrl = typeof profileMeta.qa_shared_url === 'string' ? profileMeta.qa_shared_url : null
-      const profileConnectionCode = sharedUrl
-        ? normalizeStakeholderCode(sharedUrl.split('/').pop() || '') || normalizeStakeholderCode(profile?.referral_code || '')
-        : normalizeStakeholderCode(profile?.referral_code || '')
-      setReferralCode(profile?.referral_code || '')
-      setConnectionCode(profileConnectionCode || '')
-    }
-  }, [codes?.connection_code, codes?.referral_code, profile?.referral_code, profile?.metadata])
+    setReferralCode(codes?.referral_code || '')
+    setConnectionCode(codes?.connection_code || '')
+  }, [codes?.connection_code, codes?.referral_code])
 
   const joinUrl = React.useMemo(() => {
     if (codes?.join_url) return codes.join_url
