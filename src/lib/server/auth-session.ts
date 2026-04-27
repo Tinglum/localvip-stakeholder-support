@@ -268,6 +268,11 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       profile = buildFallbackQaProfile(qaSession.claims)
     }
 
+    // Sync referral codes into the profile row while the QA token is still live
+    if (profileIsReal && profile) {
+      profile = await syncQaReferralToProfile(service, profile.id, profile)
+    }
+
     return {
       profile,
       userId: profile.id,

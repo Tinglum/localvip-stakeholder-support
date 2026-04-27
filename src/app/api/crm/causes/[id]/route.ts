@@ -14,6 +14,7 @@ import {
 } from '@/lib/server/qa-dashboard-causes'
 import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import { buildStakeholderJoinUrl, normalizeStakeholderCode } from '@/lib/material-engine'
+import { fetchQaUserProfile } from '@/lib/auth/qa-api'
 import type { Cause } from '@/lib/types/database'
 
 function asProfileUuid(value: string | null | undefined) {
@@ -248,6 +249,31 @@ export async function GET(
           ? referralLink.replace('/join/', '/support/')
           : buildStakeholderJoinUrl('cause', connectionCode),
       }
+    }
+  }
+  // Profile may not have stored codes yet — fetch live from QA API as a fallback
+  if (!qaInitialCodes) {
+    try {
+      const qaProfile = await fetchQaUserProfile()
+      if (qaProfile?.referralCode) {
+        const refCode = normalizeStakeholderCode(qaProfile.referralCode)
+        const sharedUrl = qaProfile.sharedURL || null
+        const referralLink = qaProfile.referralLink || null
+        const connectionCode = sharedUrl
+          ? normalizeStakeholderCode(sharedUrl.split('/').pop() || '') || refCode
+          : refCode
+        if (refCode && connectionCode) {
+          qaInitialCodes = {
+            referral_code: refCode,
+            connection_code: connectionCode,
+            join_url: referralLink
+              ? referralLink.replace('/join/', '/support/')
+              : buildStakeholderJoinUrl('cause', connectionCode),
+          }
+        }
+      }
+    } catch {
+      // QA session not active — codes will need to be entered manually
     }
   }
 

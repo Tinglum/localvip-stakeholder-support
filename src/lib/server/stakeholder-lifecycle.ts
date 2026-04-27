@@ -516,7 +516,13 @@ export async function ensureStakeholderCodesRow(
       if (!existing.connection_code && initialCodes.connection_code) patch.connection_code = initialCodes.connection_code
       if (!existing.join_url && initialCodes.join_url) patch.join_url = initialCodes.join_url
       if (Object.keys(patch).length > 0) {
-        await (supabase.from('stakeholder_codes') as any).update(patch).eq('stakeholder_id', stakeholderId)
+        try {
+          await (supabase.from('stakeholder_codes') as any).update(patch).eq('stakeholder_id', stakeholderId)
+        } catch (updateErr) {
+          // Unique constraint: another stakeholder already has this code — leave this row as-is
+          const msg = updateErr instanceof Error ? updateErr.message : String(updateErr)
+          if (!msg.includes('23505') && !msg.includes('unique') && !msg.includes('duplicate')) throw updateErr
+        }
       }
     }
     return existing
@@ -536,18 +542,21 @@ export async function ensureStakeholderCodesRow(
       .single()
 
     if (error) {
-      // If it's a NOT NULL violation, the row will be created properly later when codes are set
       const msg = String(error.message || error.code || '')
-      if (msg.includes('not-null') || msg.includes('null value') || msg.includes('23502')) {
-        return null
-      }
+      // NOT NULL violation — the codes row will be created properly when codes are set
+      if (msg.includes('not-null') || msg.includes('null value') || msg.includes('23502')) return null
+      // Unique constraint — another stakeholder already has this code; leave null for now
+      if (msg.includes('23505') || msg.includes('unique') || msg.includes('duplicate')) return null
       throw error
     }
     return data
   } catch (insertError) {
     // Tolerate insert failures — the codes row will be created by the material engine
     const msg = insertError instanceof Error ? insertError.message : String(insertError)
-    if (msg.includes('not-null') || msg.includes('null value') || msg.includes('23502')) {
+    if (
+      msg.includes('not-null') || msg.includes('null value') || msg.includes('23502') ||
+      msg.includes('23505') || msg.includes('unique') || msg.includes('duplicate')
+    ) {
       return null
     }
     throw insertError
