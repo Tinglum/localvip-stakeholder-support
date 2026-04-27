@@ -110,6 +110,23 @@ async function provisionQaProfileRow(
     const existingProfile = await loadProfileById(service, userId)
     if (existingProfile) {
       console.log('[auth-session] Profile already exists for auth user', email, userId)
+      // If the existing profile has the wrong role for this QA account type, correct it.
+      // This handles cases where role mapping was wrong on a previous login.
+      if (existingProfile.role !== fallback.role && fallback.role !== 'field') {
+        try {
+          const { data: updatedProfile } = await (service.from('profiles') as any)
+            .update({ role: fallback.role, role_subtype: fallback.role_subtype ?? null })
+            .eq('id', userId)
+            .select()
+            .single()
+          if (updatedProfile) {
+            console.log('[auth-session] Corrected role for', email, existingProfile.role, '→', fallback.role)
+            return updatedProfile as Profile
+          }
+        } catch {
+          // Non-fatal — return existing profile unchanged
+        }
+      }
       return existingProfile
     }
 
@@ -216,6 +233,23 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     const user = data.user
     if (user) {
       const qaSession = getQaSessionFromCookieStore(cookieStore)
+
+      // Guard: if the QA token is for a DIFFERENT email than the Supabase session,
+      // the Supabase session is stale (e.g. operator logged into QA as a business user
+      // but the bridge didn't fully overwrite the old session). Fall through to the
+      // QA-only path which will provision the correct identity.
+      if (
+        qaSession?.claims.email &&
+        user.email &&
+        qaSession.claims.email.toLowerCase() !== user.email.toLowerCase()
+      ) {
+        console.log(
+          '[auth-session] QA session email differs from Supabase user email — using QA path',
+          { qaEmail: qaSession.claims.email, supabaseEmail: user.email },
+        )
+        // fall through to path 2 below
+      } else {
+
       let profile = (await loadProfileById(service, user.id)) || ({
         id: user.id,
         email: user.email || '',
@@ -249,6 +283,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
         qaClaims: qaSession?.claims,
         qaSession: qaSession || undefined,
       }
+      } // end else (emails match)
     }
   }
 

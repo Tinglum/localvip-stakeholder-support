@@ -189,18 +189,13 @@ function normalizeQaClaims(accessToken: string, idToken?: string | null): QaAuth
 function mapQaRole(claims: QaAuthClaims): { role: UserRole; roleSubtype?: UserRoleSubtype } {
   const normalizedRoles = claims.roles.map((role) => role.toLowerCase())
 
+  // Super-admin check first (most specific)
   if (normalizedRoles.some((role) => role.includes('super') && role.includes('admin'))) {
     return { role: 'admin', roleSubtype: 'super' }
   }
 
-  if (normalizedRoles.some((role) => role.includes('admin'))) {
-    return { role: 'admin', roleSubtype: 'internal' }
-  }
-
-  if (normalizedRoles.some((role) => role.includes('launch') || role.includes('partner') || role.includes('onboarding'))) {
-    return { role: 'launch_partner', roleSubtype: null }
-  }
-
+  // Entity-type checks come BEFORE the generic admin check so that roles like
+  // "BusinessAdmin" or "SchoolAdmin" are not misclassified as platform admins.
   if (normalizedRoles.some((role) => role.includes('business'))) {
     return { role: 'business', roleSubtype: null }
   }
@@ -209,8 +204,21 @@ function mapQaRole(claims: QaAuthClaims): { role: UserRole; roleSubtype?: UserRo
     return { role: 'community', roleSubtype: 'school' }
   }
 
-  if (normalizedRoles.some((role) => role.includes('cause') || role.includes('community'))) {
+  if (normalizedRoles.some((role) => role.includes('cause') || (role.includes('community') && !role.includes('admin')))) {
     return { role: 'community', roleSubtype: 'cause' }
+  }
+
+  if (normalizedRoles.some((role) => role.includes('nonprofit'))) {
+    return { role: 'community', roleSubtype: 'cause' }
+  }
+
+  // Generic admin — only reached if no entity-type role matched above
+  if (normalizedRoles.some((role) => role.includes('admin'))) {
+    return { role: 'admin', roleSubtype: 'internal' }
+  }
+
+  if (normalizedRoles.some((role) => role.includes('launch') || role.includes('partner') || role.includes('onboarding'))) {
+    return { role: 'launch_partner', roleSubtype: null }
   }
 
   if (normalizedRoles.some((role) => role.includes('intern'))) {
