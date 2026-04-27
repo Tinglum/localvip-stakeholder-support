@@ -7,7 +7,7 @@ import type {
   QaBusinessDetail,
   QaBusinessListItem,
 } from '@/lib/crm-api'
-import { fetchQaApi } from '@/lib/auth/qa-api'
+import { QaApiError, fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import {
   buildQaAccountFields,
   buildQaAccountMetadata,
@@ -182,6 +182,41 @@ export async function fetchQaBusinessList() {
 export async function fetchQaBusinessDetail(qaBusinessId: number) {
   const response = await fetchQaApi(`/api/dashboard/v1/Business/${qaBusinessId}`)
   return parseJsonResponse<QaBusinessDetail>(response)
+}
+
+function shouldRetryLogoUpload(error: unknown) {
+  return error instanceof QaApiError && (error.status === 404 || error.status === 405 || error.status === 409)
+}
+
+export async function uploadQaBusinessLogo(
+  qaBusinessId: number,
+  logoImage: File,
+  method: 'POST' | 'PUT' = 'PUT',
+) {
+  const formData = new FormData()
+  formData.append('logoImage', logoImage, logoImage.name || `business-${qaBusinessId}-logo`)
+
+  const response = await fetchQaApi(`/api/dashboard/v1/Business/${qaBusinessId}/upload-logo`, {
+    method,
+    body: formData,
+  })
+
+  await parseQaResponse(response, 'The QA business logo upload failed.')
+  return fetchQaBusinessDetail(qaBusinessId)
+}
+
+export async function syncQaBusinessLogo(
+  qaBusinessId: number,
+  logoImage: File,
+  preferredMethod: 'POST' | 'PUT',
+) {
+  try {
+    return await uploadQaBusinessLogo(qaBusinessId, logoImage, preferredMethod)
+  } catch (error) {
+    const fallbackMethod = preferredMethod === 'POST' ? 'PUT' : 'POST'
+    if (!shouldRetryLogoUpload(error)) throw error
+    return uploadQaBusinessLogo(qaBusinessId, logoImage, fallbackMethod)
+  }
 }
 
 export function parseQaBusinessId(value: string | null | undefined) {

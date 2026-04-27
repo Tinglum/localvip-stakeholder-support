@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { getQaAccountIdFromLocal, isRecord, resolveImageUrl, buildQaAccountMetadata } from '@/lib/server/qa-dashboard-shared'
+import { syncQaBusinessLogo } from '@/lib/server/qa-dashboard-businesses'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { asUuid } from '@/lib/uuid'
 import type { Business } from '@/lib/types/database'
@@ -55,6 +57,42 @@ export async function POST(
 
     if (!file || !mediaType || !['logo', 'cover_photo'].includes(mediaType)) {
       return NextResponse.json({ error: 'File and mediaType (logo or cover_photo) required.' }, { status: 400 })
+    }
+
+    const qaBusinessId = getQaAccountIdFromLocal(business)
+    if (mediaType === 'logo' && qaBusinessId !== null) {
+      const preferredMethod = business.logo_url ? 'PUT' : 'POST'
+      const qaBusiness = await syncQaBusinessLogo(qaBusinessId, file, preferredMethod)
+      const metadata = isRecord(business.metadata) ? business.metadata : {}
+      const fileUrl = resolveImageUrl(qaBusiness.imageUrl) || business.logo_url || null
+
+      const { error: updateError } = await (supabase.from('businesses') as any)
+        .update({
+          logo_url: fileUrl,
+          metadata: {
+            ...metadata,
+            qaAccountId: qaBusiness.id,
+            qaBusinessId: qaBusiness.id,
+            qaImportedAt: new Date().toISOString(),
+            qaApi: buildQaAccountMetadata(qaBusiness),
+          },
+        })
+        .eq('id', businessId)
+
+      if (updateError) {
+        console.error('[business-media] QA logo sync update error', updateError)
+        return NextResponse.json({ error: `Business update failed: ${updateError.message}` }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        mediaType,
+        fileUrl,
+        regenerated: false,
+        needsRegeneration: true,
+        syncedToQa: true,
+        qaBusinessId,
+      })
     }
 
     const ext = file.name.split('.').pop() || 'png'

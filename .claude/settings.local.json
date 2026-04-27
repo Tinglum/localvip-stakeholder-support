@@ -130,7 +130,10 @@
       "Bash(/c/Users/kenne/AppData/Local/Microsoft/WindowsApps/python3 --version)",
       "Bash(npm ls:*)",
       "Bash(node scripts/export-qa-backlog.mjs)",
-      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))"
+      "Bash(find /c/Users/kenne/Downloads/OnboardingLocalvip/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(git show *)",
+      "Bash(git log *)"
     ]
   }
 }

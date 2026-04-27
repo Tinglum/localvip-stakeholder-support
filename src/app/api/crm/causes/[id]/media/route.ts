@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { getQaAccountIdFromLocal, isRecord, resolveImageUrl, buildQaAccountMetadata } from '@/lib/server/qa-dashboard-shared'
+import { syncQaCauseLogo } from '@/lib/server/qa-dashboard-causes'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Cause } from '@/lib/types/database'
 
@@ -39,6 +41,42 @@ export async function POST(
 
     if (!file || !mediaType || !['logo', 'cover_photo'].includes(mediaType)) {
       return NextResponse.json({ error: 'File and mediaType (logo or cover_photo) required.' }, { status: 400 })
+    }
+
+    const qaCauseId = getQaAccountIdFromLocal(cause)
+    if (mediaType === 'logo' && qaCauseId !== null) {
+      const preferredMethod = cause.logo_url ? 'PUT' : 'POST'
+      const qaCause = await syncQaCauseLogo(qaCauseId, file, preferredMethod)
+      const metadata = isRecord(cause.metadata) ? cause.metadata : {}
+      const fileUrl = resolveImageUrl(qaCause.imageUrl) || cause.logo_url || null
+
+      const { error: updateError } = await (supabase.from('causes') as any)
+        .update({
+          logo_url: fileUrl,
+          metadata: {
+            ...metadata,
+            qaAccountId: qaCause.id,
+            qaCauseId: qaCause.id,
+            qaImportedAt: new Date().toISOString(),
+            qaApi: buildQaAccountMetadata(qaCause),
+          },
+        })
+        .eq('id', params.id)
+
+      if (updateError) {
+        console.error('[cause-media] QA logo sync update error', updateError)
+        return NextResponse.json({ error: `Cause update failed: ${updateError.message}` }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        mediaType,
+        fileUrl,
+        regenerated: false,
+        needsRegeneration: true,
+        syncedToQa: true,
+        qaCauseId,
+      })
     }
 
     const ext = file.name.split('.').pop() || 'png'

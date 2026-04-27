@@ -7,7 +7,7 @@ import type {
   QaCauseDetail,
   QaCauseListItem,
 } from '@/lib/crm-api'
-import { fetchQaApi } from '@/lib/auth/qa-api'
+import { QaApiError, fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import {
   buildQaAccountFields,
   buildQaAccountMetadata,
@@ -174,6 +174,41 @@ export async function fetchQaCauseList() {
 export async function fetchQaCauseDetail(qaCauseId: number) {
   const response = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${qaCauseId}`)
   return parseJsonResponse<QaCauseDetail>(response)
+}
+
+function shouldRetryLogoUpload(error: unknown) {
+  return error instanceof QaApiError && (error.status === 404 || error.status === 405 || error.status === 409)
+}
+
+export async function uploadQaCauseLogo(
+  qaCauseId: number,
+  logoImage: File,
+  method: 'POST' | 'PUT' = 'PUT',
+) {
+  const formData = new FormData()
+  formData.append('logoImage', logoImage, logoImage.name || `nonprofit-${qaCauseId}-logo`)
+
+  const response = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${qaCauseId}/upload-logo`, {
+    method,
+    body: formData,
+  })
+
+  await parseQaResponse(response, 'The QA nonprofit logo upload failed.')
+  return fetchQaCauseDetail(qaCauseId)
+}
+
+export async function syncQaCauseLogo(
+  qaCauseId: number,
+  logoImage: File,
+  preferredMethod: 'POST' | 'PUT',
+) {
+  try {
+    return await uploadQaCauseLogo(qaCauseId, logoImage, preferredMethod)
+  } catch (error) {
+    const fallbackMethod = preferredMethod === 'POST' ? 'PUT' : 'POST'
+    if (!shouldRetryLogoUpload(error)) throw error
+    return uploadQaCauseLogo(qaCauseId, logoImage, fallbackMethod)
+  }
 }
 
 export function parseQaCauseId(value: string | null | undefined) {
