@@ -148,9 +148,17 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
       const payload = await response.json().catch(() => null)
       redirectTo = payload && typeof payload.redirectTo === 'string' ? payload.redirectTo : null
     } catch {
-      // Ignore QA logout errors and continue clearing demo auth.
+      // Non-fatal — server logout failed; still clear local session below.
     }
-    await supabase.auth.signOut()
+
+    // Belt-and-suspenders: also clear local Supabase state in case the
+    // browser client has anything the server route didn't reach.
+    try {
+      await supabase.auth.signOut()
+    } catch {
+      // Ignore — server already cleared the authoritative session cookies.
+    }
+
     if (redirectTo) {
       window.location.assign(redirectTo)
       return
