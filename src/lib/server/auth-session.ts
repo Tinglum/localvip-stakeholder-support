@@ -269,9 +269,28 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
         updated_at: new Date().toISOString(),
       } as Profile)
 
-      // While the QA token is still live, sync referral code into the profile
-      // so it's available even after the token expires.
+      // While the QA token is still live, QA is the source of truth for role.
+      // Always apply the QA-derived role to the in-memory profile, and persist
+      // it to the DB if it differs (best-effort, non-fatal).
       if (qaSession) {
+        const expectedFromQa = buildFallbackQaProfile(qaSession.claims)
+        const storedRole = profile.role
+        // Apply QA role immediately so the returned profile is always correct,
+        // regardless of what's stored in the DB row.
+        profile = { ...profile, role: expectedFromQa.role, role_subtype: expectedFromQa.role_subtype ?? null }
+        // Persist to DB if the stored role was wrong, so future non-QA sessions
+        // also get the right role.
+        if (storedRole !== expectedFromQa.role) {
+          try {
+            await (service.from('profiles') as any)
+              .update({ role: expectedFromQa.role, role_subtype: expectedFromQa.role_subtype ?? null })
+              .eq('id', user.id)
+            console.log('[auth-session] Synced role (path-1) for', user.email, storedRole, '→', expectedFromQa.role)
+          } catch {
+            // Non-fatal.
+          }
+        }
+
         profile = await syncQaReferralToProfile(service, user.id, profile)
       }
 
@@ -310,6 +329,21 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     if (!profile) {
       console.warn('[auth-session] Using synthetic fallback for QA user — FK writes will fail', email)
       profile = buildFallbackQaProfile(qaSession.claims)
+    }
+
+    // QA is the source of truth for role — always apply the QA-derived role.
+    const expectedFromQa = buildFallbackQaProfile(qaSession.claims)
+    const storedRole = profile.role
+    profile = { ...profile, role: expectedFromQa.role, role_subtype: expectedFromQa.role_subtype ?? null }
+    if (profileIsReal && storedRole !== expectedFromQa.role) {
+      try {
+        await (service.from('profiles') as any)
+          .update({ role: expectedFromQa.role, role_subtype: expectedFromQa.role_subtype ?? null })
+          .eq('id', profile.id)
+        console.log('[auth-session] Synced role (path-2) for', email, storedRole, '→', expectedFromQa.role)
+      } catch {
+        // Non-fatal.
+      }
     }
 
     // Sync referral codes into the profile row while the QA token is still live
