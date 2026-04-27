@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { getQaAccountIdFromLocal, isRecord, resolveImageUrl, buildQaAccountMetadata } from '@/lib/server/qa-dashboard-shared'
+import { buildQaAccountMetadata, buildQaCauseLogoUrl, getQaAccountIdFromLocal, isRecord, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import { syncQaCauseLogo } from '@/lib/server/qa-dashboard-causes'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Cause } from '@/lib/types/database'
@@ -48,7 +48,7 @@ export async function POST(
       const preferredMethod = cause.logo_url ? 'PUT' : 'POST'
       const qaCause = await syncQaCauseLogo(qaCauseId, file, preferredMethod)
       const metadata = isRecord(cause.metadata) ? cause.metadata : {}
-      const fileUrl = resolveImageUrl(qaCause.imageUrl) || cause.logo_url || null
+      const fileUrl = buildQaCauseLogoUrl(qaCause) || resolveImageUrl(qaCause.imageUrl) || cause.logo_url || null
 
       const { error: updateError } = await (supabase.from('causes') as any)
         .update({
@@ -76,6 +76,7 @@ export async function POST(
         needsRegeneration: true,
         syncedToQa: true,
         qaCauseId,
+        qaImageUrl: qaCause.imageUrl || null,
       })
     }
 

@@ -9,6 +9,7 @@ import type {
 } from '@/lib/crm-api'
 import { QaApiError, fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import {
+  buildQaCauseLogoUrl,
   buildQaAccountFields,
   buildQaAccountMetadata,
   createAccountIndex,
@@ -75,7 +76,7 @@ export function mergeCauseRecord(
     source: localCause?.source || null,
     source_detail: localCause?.source_detail || null,
     campaign_id: localCause?.campaign_id || null,
-    logo_url: resolveImageUrl(qaFields.image_url) || localCause?.logo_url || null,
+    logo_url: buildQaCauseLogoUrl(qaCause) || resolveImageUrl(qaFields.image_url) || localCause?.logo_url || null,
     cover_photo_url: localCause?.cover_photo_url || null,
     duplicate_of: localCause?.duplicate_of || null,
     external_id: qaCause ? String(qaCause.id) : localCause?.external_id || null,

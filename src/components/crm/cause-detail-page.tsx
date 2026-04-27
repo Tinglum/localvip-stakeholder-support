@@ -60,7 +60,8 @@ import {
   ActivationDecisionModal,
 } from '@/components/crm/cause-lifecycle-modals'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
-import { buildStakeholderJoinUrl, normalizeStakeholderCode, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
+import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
+import { sanitizeStakeholderCodeFields } from '@/lib/stakeholder-codes'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
@@ -212,10 +213,10 @@ export default function CauseDetailPage() {
     if (assignments.length > 0) return profileMap.get(assignments[0].stakeholder_id) || null
     return null
   }, [cause, causeStakeholder, assignments, profileMap])
-  const codes = React.useMemo(() =>
-    causeStakeholder ? allStakeholderCodes.find(c => c.stakeholder_id === causeStakeholder.id) || null : null,
-    [allStakeholderCodes, causeStakeholder],
-  )
+  const codes = React.useMemo(() => {
+    const existing = causeStakeholder ? allStakeholderCodes.find(c => c.stakeholder_id === causeStakeholder.id) || null : null
+    return existing ? sanitizeStakeholderCodeFields(existing) : null
+  }, [allStakeholderCodes, causeStakeholder])
   const generatedMaterials = React.useMemo(() =>
     causeStakeholder
       ? allGeneratedMaterials.filter(gm => gm.stakeholder_id === causeStakeholder.id)
@@ -272,20 +273,10 @@ export default function CauseDetailPage() {
   const [stepBusyId, setStepBusyId] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    if (codes?.referral_code || codes?.connection_code) {
-      setReferralCode(codes.referral_code || '')
-      setConnectionCode(codes.connection_code || '')
-    } else {
+    setReferralCode(codes?.referral_code || '')
+    setConnectionCode(codes?.connection_code || '')
       // No per-cause codes saved yet — pre-fill from operator's QA profile as a starting suggestion
-      const profileMeta = (profile?.metadata || {}) as Record<string, unknown>
-      const sharedUrl = typeof profileMeta.qa_shared_url === 'string' ? profileMeta.qa_shared_url : null
-      const suggestedConnection = sharedUrl
-        ? normalizeStakeholderCode(sharedUrl.split('/').pop() || '') || normalizeStakeholderCode(profile?.referral_code || '')
-        : normalizeStakeholderCode(profile?.referral_code || '')
-      setReferralCode(profile?.referral_code || '')
-      setConnectionCode(suggestedConnection || '')
-    }
-  }, [codes?.connection_code, codes?.referral_code, profile?.referral_code, profile?.metadata])
+  }, [codes?.connection_code, codes?.referral_code])
 
   const joinUrl = React.useMemo(() => {
     if (codes?.join_url) return codes.join_url

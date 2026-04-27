@@ -13,6 +13,7 @@ import type {
 import type { createServiceClient } from '@/lib/supabase/server'
 import type { StakeholderShell } from '@/lib/stakeholder-access'
 import { ensureAutomatedStakeholderMaterials } from '@/lib/server/material-engine'
+import { sanitizeStakeholderCodeFields } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
 
 type ServiceSupabaseClient = ReturnType<typeof createServiceClient>
@@ -500,6 +501,7 @@ export async function ensureStakeholderCodesRow(
   stakeholderId: string,
   initialCodes?: { referral_code?: string | null; connection_code?: string | null; join_url?: string | null },
 ) {
+  const sanitizedInitialCodes = initialCodes ? sanitizeStakeholderCodeFields(initialCodes) : undefined
   const { data: existingRaw } = await supabase
     .from('stakeholder_codes')
     .select('*')
@@ -509,23 +511,35 @@ export async function ensureStakeholderCodesRow(
   const existing = existingRaw as { referral_code: string | null; connection_code: string | null; join_url: string | null } | null
 
   if (existing) {
+    const sanitizedExisting = sanitizeStakeholderCodeFields(existing)
+    const patch: Record<string, string | null> = {}
+
+    if (existing.referral_code !== sanitizedExisting.referral_code) patch.referral_code = sanitizedExisting.referral_code
+    if (existing.connection_code !== sanitizedExisting.connection_code) patch.connection_code = sanitizedExisting.connection_code
+    if (existing.join_url !== sanitizedExisting.join_url) patch.join_url = sanitizedExisting.join_url
+
     // Back-fill codes if the row exists but codes are still null and we now have real values
-    if (initialCodes) {
-      const patch: Record<string, string | null> = {}
-      if (!existing.referral_code && initialCodes.referral_code) patch.referral_code = initialCodes.referral_code
-      if (!existing.connection_code && initialCodes.connection_code) patch.connection_code = initialCodes.connection_code
-      if (!existing.join_url && initialCodes.join_url) patch.join_url = initialCodes.join_url
-      if (Object.keys(patch).length > 0) {
-        try {
-          await (supabase.from('stakeholder_codes') as any).update(patch).eq('stakeholder_id', stakeholderId)
-        } catch (updateErr) {
-          // Unique constraint: another stakeholder already has this code — leave this row as-is
-          const msg = updateErr instanceof Error ? updateErr.message : String(updateErr)
-          if (!msg.includes('23505') && !msg.includes('unique') && !msg.includes('duplicate')) throw updateErr
-        }
+    if (sanitizedInitialCodes) {
+      if (!sanitizedExisting.referral_code && sanitizedInitialCodes.referral_code) patch.referral_code = sanitizedInitialCodes.referral_code
+      if (!sanitizedExisting.connection_code && sanitizedInitialCodes.connection_code) patch.connection_code = sanitizedInitialCodes.connection_code
+      if (!sanitizedExisting.join_url && sanitizedInitialCodes.join_url) patch.join_url = sanitizedInitialCodes.join_url
+    }
+
+    if (Object.keys(patch).length > 0) {
+      try {
+        await (supabase.from('stakeholder_codes') as any).update(patch).eq('stakeholder_id', stakeholderId)
+      } catch (updateErr) {
+        // Unique constraint: another stakeholder already has this code — leave this row as-is
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr)
+        if (!msg.includes('23505') && !msg.includes('unique') && !msg.includes('duplicate')) throw updateErr
       }
     }
-    return existing
+
+    return {
+      ...existing,
+      ...sanitizedExisting,
+      ...patch,
+    }
   }
 
   // Try inserting a placeholder row — if the table has NOT NULL constraints on code columns,
@@ -534,9 +548,9 @@ export async function ensureStakeholderCodesRow(
     const { data, error } = await (supabase.from('stakeholder_codes') as any)
       .insert({
         stakeholder_id: stakeholderId,
-        referral_code: initialCodes?.referral_code ?? null,
-        connection_code: initialCodes?.connection_code ?? null,
-        join_url: initialCodes?.join_url ?? null,
+        referral_code: sanitizedInitialCodes?.referral_code ?? null,
+        connection_code: sanitizedInitialCodes?.connection_code ?? null,
+        join_url: sanitizedInitialCodes?.join_url ?? null,
       })
       .select()
       .single()

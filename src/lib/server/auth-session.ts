@@ -7,8 +7,8 @@ import {
   type QaSession,
 } from '@/lib/auth/qa-auth'
 import { fetchQaUserProfile } from '@/lib/auth/qa-api'
+import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
-import { normalizeStakeholderCode } from '@/lib/material-engine'
 import type { Profile } from '@/lib/types/database'
 
 export type AuthSource = 'qa' | 'supabase'
@@ -151,24 +151,33 @@ async function syncQaReferralToProfile(
 ): Promise<Profile> {
   try {
     const qaProfile = await fetchQaUserProfile()
-    if (!qaProfile?.referralCode) return profile
 
-    const referralCode = normalizeStakeholderCode(qaProfile.referralCode)
-    if (!referralCode) return profile
+    const profileMetadata = ((profile.metadata as Record<string, unknown> | null) || {})
+    const currentSharedUrl = typeof profileMetadata.qa_shared_url === 'string' ? profileMetadata.qa_shared_url : null
+    const currentReferralLink = typeof profileMetadata.qa_referral_link === 'string' ? profileMetadata.qa_referral_link : null
+
+    const nextReferralCode = sanitizeStakeholderCodeValue(qaProfile?.referralCode)
+    const nextSharedUrl = sanitizeStakeholderUrl(qaProfile?.sharedURL)
+    const nextReferralLink = sanitizeStakeholderUrl(qaProfile?.referralLink)
+
+    const referralCode = nextReferralCode ?? sanitizeStakeholderCodeValue(profile.referral_code)
+    const sharedUrl = nextSharedUrl ?? sanitizeStakeholderUrl(currentSharedUrl)
+    const referralLink = nextReferralLink ?? sanitizeStakeholderUrl(currentReferralLink)
 
     // Only update if the profile doesn't already have it (avoid unnecessary writes)
     const metadataAlreadySet =
       profile.referral_code === referralCode &&
-      (profile.metadata as Record<string, unknown> | null)?.qa_shared_url === qaProfile.sharedURL
+      currentSharedUrl === sharedUrl &&
+      currentReferralLink === referralLink
 
     if (metadataAlreadySet) return profile
 
     const patch = {
       referral_code: referralCode,
       metadata: {
-        ...((profile.metadata as Record<string, unknown> | null) || {}),
-        qa_shared_url: qaProfile.sharedURL,
-        qa_referral_link: qaProfile.referralLink,
+        ...profileMetadata,
+        qa_shared_url: sharedUrl,
+        qa_referral_link: referralLink,
         qa_referral_synced_at: new Date().toISOString(),
       },
     }

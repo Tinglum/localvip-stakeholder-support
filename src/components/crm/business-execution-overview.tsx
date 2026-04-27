@@ -31,7 +31,8 @@ import {
 import { useAuth } from '@/lib/auth/context'
 import type { CrmBusinessLocalStateResponse } from '@/lib/crm-api'
 import { resolveBusinessOffer } from '@/lib/offers'
-import { buildStakeholderJoinUrl, normalizeStakeholderCode } from '@/lib/material-engine'
+import { buildStakeholderJoinUrl } from '@/lib/material-engine'
+import { sanitizeStakeholderCodeFields } from '@/lib/stakeholder-codes'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { computeBusinessExecutionSteps, getBusinessNextActions, getTabForBusinessStepKey, type BusinessExecutionStepSummary } from '@/lib/business-execution'
 import {
@@ -128,7 +129,10 @@ export function BusinessExecutionOverview({
   const stakeholder = stakeholders[0] || null
   const { data: hookStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
   const stakeholderCodes = localState?.stakeholderCodes ?? hookStakeholderCodes
-  const codes = stakeholderCodes[0] || null
+  const codes = React.useMemo(() => {
+    const first = stakeholderCodes[0]
+    return first ? sanitizeStakeholderCodeFields(first) : null
+  }, [stakeholderCodes])
   const { data: hookGeneratedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
   const generatedMaterials = localState?.generatedMaterials ?? hookGeneratedMaterials
   const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
@@ -213,20 +217,10 @@ export function BusinessExecutionOverview({
   const writeBusinessId = localBusinessId || asUuid(biz.id)
 
   React.useEffect(() => {
-    if (codes?.referral_code || codes?.connection_code) {
-      setReferralCode(codes.referral_code || '')
-      setConnectionCode(codes.connection_code || '')
-    } else {
+    setReferralCode(codes?.referral_code || '')
+    setConnectionCode(codes?.connection_code || '')
       // No per-business codes saved yet — pre-fill from operator's QA profile as a starting suggestion
-      const profileMeta = (profile?.metadata || {}) as Record<string, unknown>
-      const sharedUrl = typeof profileMeta.qa_shared_url === 'string' ? profileMeta.qa_shared_url : null
-      const suggestedConnection = sharedUrl
-        ? normalizeStakeholderCode(sharedUrl.split('/').pop() || '') || normalizeStakeholderCode(profile?.referral_code || '')
-        : normalizeStakeholderCode(profile?.referral_code || '')
-      setReferralCode(profile?.referral_code || '')
-      setConnectionCode(suggestedConnection || '')
-    }
-  }, [codes?.connection_code, codes?.referral_code, profile?.referral_code, profile?.metadata])
+  }, [codes?.connection_code, codes?.referral_code])
 
   React.useEffect(() => {
     setCaptureHeadline(captureOffer.headline || '')

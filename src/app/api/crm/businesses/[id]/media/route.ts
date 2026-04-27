@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { getQaAccountIdFromLocal, isRecord, resolveImageUrl, buildQaAccountMetadata } from '@/lib/server/qa-dashboard-shared'
+import { buildQaAccountMetadata, buildQaBusinessLogoUrl, getQaAccountIdFromLocal, isRecord, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import { syncQaBusinessLogo } from '@/lib/server/qa-dashboard-businesses'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { asUuid } from '@/lib/uuid'
@@ -64,7 +64,7 @@ export async function POST(
       const preferredMethod = business.logo_url ? 'PUT' : 'POST'
       const qaBusiness = await syncQaBusinessLogo(qaBusinessId, file, preferredMethod)
       const metadata = isRecord(business.metadata) ? business.metadata : {}
-      const fileUrl = resolveImageUrl(qaBusiness.imageUrl) || business.logo_url || null
+      const fileUrl = buildQaBusinessLogoUrl(qaBusiness) || resolveImageUrl(qaBusiness.imageUrl) || business.logo_url || null
 
       const { error: updateError } = await (supabase.from('businesses') as any)
         .update({
@@ -92,6 +92,7 @@ export async function POST(
         needsRegeneration: true,
         syncedToQa: true,
         qaBusinessId,
+        qaImageUrl: qaBusiness.imageUrl || null,
       })
     }
 

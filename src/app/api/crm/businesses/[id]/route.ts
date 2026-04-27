@@ -13,8 +13,6 @@ import {
   qaBusinessRouteError,
 } from '@/lib/server/qa-dashboard-businesses'
 import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
-import { buildStakeholderJoinUrl, normalizeStakeholderCode } from '@/lib/material-engine'
-import { fetchQaUserProfile } from '@/lib/auth/qa-api'
 import type { Business } from '@/lib/types/database'
 
 function asProfileUuid(value: string | null | undefined) {
@@ -225,51 +223,7 @@ export async function GET(
   if ('error' in context) return context.error
   const localProfileId = asProfileUuid(context.profile.id)
   let createdLocalBusiness = false
-
-  // Seed codes from the operator's QA profile (synced at login by syncQaReferralToProfile).
-  // referral_code   = profile.referral_code   (e.g. "B3275049")
-  // connection_code = last segment of qa_shared_url (e.g. "mskyS8Kto2b")
-  // join_url        = qa_referral_link         (e.g. "https://localvip.com/?ref=B3275049&mskyS8Kto2b")
-  let qaInitialCodes: { referral_code: string; connection_code: string; join_url: string } | undefined
-  const profileMeta = (context.profile.metadata || {}) as Record<string, unknown>
-  const profileReferralCode = context.profile.referral_code
-  if (profileReferralCode) {
-    const sharedUrl = typeof profileMeta.qa_shared_url === 'string' ? profileMeta.qa_shared_url : null
-    const referralLink = typeof profileMeta.qa_referral_link === 'string' ? profileMeta.qa_referral_link : null
-    const connectionCode = sharedUrl
-      ? normalizeStakeholderCode(sharedUrl.split('/').pop() || '') || normalizeStakeholderCode(profileReferralCode)
-      : normalizeStakeholderCode(profileReferralCode)
-    if (connectionCode) {
-      qaInitialCodes = {
-        referral_code: profileReferralCode,
-        connection_code: connectionCode,
-        join_url: referralLink || buildStakeholderJoinUrl('business', connectionCode),
-      }
-    }
-  }
-  // Profile may not have stored codes yet — fetch live from QA API as a fallback
-  if (!qaInitialCodes) {
-    try {
-      const qaProfile = await fetchQaUserProfile()
-      if (qaProfile?.referralCode) {
-        const refCode = normalizeStakeholderCode(qaProfile.referralCode)
-        const sharedUrl = qaProfile.sharedURL || null
-        const referralLink = qaProfile.referralLink || null
-        const connectionCode = sharedUrl
-          ? normalizeStakeholderCode(sharedUrl.split('/').pop() || '') || refCode
-          : refCode
-        if (refCode && connectionCode) {
-          qaInitialCodes = {
-            referral_code: refCode,
-            connection_code: connectionCode,
-            join_url: referralLink || buildStakeholderJoinUrl('business', connectionCode),
-          }
-        }
-      }
-    } catch {
-      // QA session not active — codes will need to be entered manually
-    }
-  }
+  const qaInitialCodes: { referral_code: string; connection_code: string; join_url: string } | undefined = undefined
 
   const searchParams = request.nextUrl.searchParams
   const routeId = params.id

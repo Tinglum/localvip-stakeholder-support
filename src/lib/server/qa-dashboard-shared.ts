@@ -139,6 +139,31 @@ export function resolveImageUrl(imageUrl: string | null | undefined) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : null
 }
 
+function hasQaImageFilename(imageUrl: string | null | undefined) {
+  const trimmed = imageUrl?.trim()
+  return !!trimmed && !/^https?:\/\//i.test(trimmed)
+}
+
+export function buildQaBusinessLogoUrl(qaBusiness: QaDashboardAccountSummary | QaDashboardAccountDetail | null) {
+  if (!qaBusiness) return null
+  const absolute = resolveImageUrl('imageUrl' in qaBusiness ? qaBusiness.imageUrl : null)
+  if (absolute) return absolute
+  if (hasQaImageFilename('imageUrl' in qaBusiness ? qaBusiness.imageUrl : null)) {
+    return `/api/qa/businesses/${qaBusiness.id}/logo`
+  }
+  return null
+}
+
+export function buildQaCauseLogoUrl(qaCause: QaDashboardAccountSummary | QaDashboardAccountDetail | null) {
+  if (!qaCause) return null
+  const absolute = resolveImageUrl('imageUrl' in qaCause ? qaCause.imageUrl : null)
+  if (absolute) return absolute
+  if (hasQaImageFilename('imageUrl' in qaCause ? qaCause.imageUrl : null)) {
+    return `/api/qa/nonprofits/${qaCause.id}/logo`
+  }
+  return null
+}
+
 export function buildQaAccountMetadata(qaAccount: QaDashboardAccountSummary | QaDashboardAccountDetail | null) {
   if (!qaAccount) return null
 

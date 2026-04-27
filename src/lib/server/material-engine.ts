@@ -11,6 +11,7 @@ import {
   toDisplayUrl,
 } from '@/lib/material-engine'
 import { resolveBusinessOffer } from '@/lib/offers'
+import { sanitizeStakeholderCodeValue } from '@/lib/stakeholder-codes'
 import {
   renderMaterialAssetTemplate,
   syncMaterialAssetTemplatesForStakeholder,
@@ -290,8 +291,8 @@ export async function upsertStakeholderCodes(
   const stakeholder = await getStakeholderById(supabase, stakeholderId)
   if (!stakeholder) throw new Error('Stakeholder not found.')
 
-  const referralCode = normalizeStakeholderCode(payload.referralCode)
-  const connectionCode = normalizeStakeholderCode(payload.connectionCode)
+  const referralCode = sanitizeStakeholderCodeValue(payload.referralCode)
+  const connectionCode = sanitizeStakeholderCodeValue(payload.connectionCode)
 
   if (!referralCode || !connectionCode) {
     throw new Error('Referral code and connection code are required after cleanup. Use letters or numbers.')
