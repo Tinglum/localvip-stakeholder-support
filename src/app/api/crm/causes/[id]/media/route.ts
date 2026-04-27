@@ -45,39 +45,50 @@ export async function POST(
 
     const qaCauseId = getQaAccountIdFromLocal(cause)
     if (mediaType === 'logo' && qaCauseId !== null) {
-      const preferredMethod = cause.logo_url ? 'PUT' : 'POST'
-      const qaCause = await syncQaCauseLogo(qaCauseId, file, preferredMethod)
-      const metadata = isRecord(cause.metadata) ? cause.metadata : {}
-      const fileUrl = buildQaCauseLogoUrl(qaCause) || resolveImageUrl(qaCause.imageUrl) || cause.logo_url || null
+      // Try to push the logo to QA first so both systems stay in sync.
+      // If the QA token is unavailable or the upload fails for any reason,
+      // fall through to the Supabase Storage path below.
+      try {
+        const preferredMethod = cause.logo_url ? 'PUT' : 'POST'
+        const qaCause = await syncQaCauseLogo(qaCauseId, file, preferredMethod)
+        const metadata = isRecord(cause.metadata) ? cause.metadata : {}
+        const fileUrl = buildQaCauseLogoUrl(qaCause) || resolveImageUrl(qaCause.imageUrl) || cause.logo_url || null
 
-      const { error: updateError } = await (supabase.from('causes') as any)
-        .update({
-          logo_url: fileUrl,
-          metadata: {
-            ...metadata,
-            qaAccountId: qaCause.id,
-            qaCauseId: qaCause.id,
-            qaImportedAt: new Date().toISOString(),
-            qaApi: buildQaAccountMetadata(qaCause),
-          },
+        const { error: updateError } = await (supabase.from('causes') as any)
+          .update({
+            logo_url: fileUrl,
+            metadata: {
+              ...metadata,
+              qaAccountId: qaCause.id,
+              qaCauseId: qaCause.id,
+              qaImportedAt: new Date().toISOString(),
+              qaApi: buildQaAccountMetadata(qaCause),
+            },
+          })
+          .eq('id', params.id)
+
+        if (updateError) {
+          console.error('[cause-media] QA logo sync update error', updateError)
+          return NextResponse.json({ error: `Cause update failed: ${updateError.message}` }, { status: 500 })
+        }
+
+        return NextResponse.json({
+          success: true,
+          mediaType,
+          fileUrl,
+          regenerated: false,
+          needsRegeneration: true,
+          syncedToQa: true,
+          qaCauseId,
+          qaImageUrl: qaCause.imageUrl || null,
         })
-        .eq('id', params.id)
-
-      if (updateError) {
-        console.error('[cause-media] QA logo sync update error', updateError)
-        return NextResponse.json({ error: `Cause update failed: ${updateError.message}` }, { status: 500 })
+      } catch (qaError) {
+        // QA token unavailable or upload failed — store in Supabase Storage instead
+        console.warn('[cause-media] QA logo sync failed, falling back to storage upload', {
+          qaCauseId,
+          error: qaError instanceof Error ? qaError.message : String(qaError),
+        })
       }
-
-      return NextResponse.json({
-        success: true,
-        mediaType,
-        fileUrl,
-        regenerated: false,
-        needsRegeneration: true,
-        syncedToQa: true,
-        qaCauseId,
-        qaImageUrl: qaCause.imageUrl || null,
-      })
     }
 
     const ext = file.name.split('.').pop() || 'png'

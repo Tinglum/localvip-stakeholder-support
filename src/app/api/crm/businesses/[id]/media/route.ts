@@ -61,39 +61,50 @@ export async function POST(
 
     const qaBusinessId = getQaAccountIdFromLocal(business)
     if (mediaType === 'logo' && qaBusinessId !== null) {
-      const preferredMethod = business.logo_url ? 'PUT' : 'POST'
-      const qaBusiness = await syncQaBusinessLogo(qaBusinessId, file, preferredMethod)
-      const metadata = isRecord(business.metadata) ? business.metadata : {}
-      const fileUrl = buildQaBusinessLogoUrl(qaBusiness) || resolveImageUrl(qaBusiness.imageUrl) || business.logo_url || null
+      // Try to push the logo to QA first so both systems stay in sync.
+      // If the QA token is unavailable or the upload fails for any reason,
+      // fall through to the Supabase Storage path below.
+      try {
+        const preferredMethod = business.logo_url ? 'PUT' : 'POST'
+        const qaBusiness = await syncQaBusinessLogo(qaBusinessId, file, preferredMethod)
+        const metadata = isRecord(business.metadata) ? business.metadata : {}
+        const fileUrl = buildQaBusinessLogoUrl(qaBusiness) || resolveImageUrl(qaBusiness.imageUrl) || business.logo_url || null
 
-      const { error: updateError } = await (supabase.from('businesses') as any)
-        .update({
-          logo_url: fileUrl,
-          metadata: {
-            ...metadata,
-            qaAccountId: qaBusiness.id,
-            qaBusinessId: qaBusiness.id,
-            qaImportedAt: new Date().toISOString(),
-            qaApi: buildQaAccountMetadata(qaBusiness),
-          },
+        const { error: updateError } = await (supabase.from('businesses') as any)
+          .update({
+            logo_url: fileUrl,
+            metadata: {
+              ...metadata,
+              qaAccountId: qaBusiness.id,
+              qaBusinessId: qaBusiness.id,
+              qaImportedAt: new Date().toISOString(),
+              qaApi: buildQaAccountMetadata(qaBusiness),
+            },
+          })
+          .eq('id', businessId)
+
+        if (updateError) {
+          console.error('[business-media] QA logo sync update error', updateError)
+          return NextResponse.json({ error: `Business update failed: ${updateError.message}` }, { status: 500 })
+        }
+
+        return NextResponse.json({
+          success: true,
+          mediaType,
+          fileUrl,
+          regenerated: false,
+          needsRegeneration: true,
+          syncedToQa: true,
+          qaBusinessId,
+          qaImageUrl: qaBusiness.imageUrl || null,
         })
-        .eq('id', businessId)
-
-      if (updateError) {
-        console.error('[business-media] QA logo sync update error', updateError)
-        return NextResponse.json({ error: `Business update failed: ${updateError.message}` }, { status: 500 })
+      } catch (qaError) {
+        // QA token unavailable or upload failed — store in Supabase Storage instead
+        console.warn('[business-media] QA logo sync failed, falling back to storage upload', {
+          qaBusinessId,
+          error: qaError instanceof Error ? qaError.message : String(qaError),
+        })
       }
-
-      return NextResponse.json({
-        success: true,
-        mediaType,
-        fileUrl,
-        regenerated: false,
-        needsRegeneration: true,
-        syncedToQa: true,
-        qaBusinessId,
-        qaImageUrl: qaBusiness.imageUrl || null,
-      })
     }
 
     const ext = file.name.split('.').pop() || 'png'
