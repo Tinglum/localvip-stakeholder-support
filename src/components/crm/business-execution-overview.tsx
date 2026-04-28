@@ -9,10 +9,12 @@ import {
   Camera,
   CheckCircle2,
   Copy,
+  Download,
   ExternalLink,
   FileText,
   History,
   Image,
+  Link2,
   Loader2,
   MessageSquare,
   QrCode,
@@ -186,6 +188,8 @@ export function BusinessExecutionOverview({
 
   const [referralCode, setReferralCode] = React.useState('')
   const [connectionCode, setConnectionCode] = React.useState('')
+  const [importPasteValue, setImportPasteValue] = React.useState('')
+  const [importError, setImportError] = React.useState<string | null>(null)
   const [engineMessage, setEngineMessage] = React.useState<string | null>(null)
   const [engineError, setEngineError] = React.useState<string | null>(null)
   const [engineBusy, setEngineBusy] = React.useState<'codes' | 'generate' | null>(null)
@@ -239,6 +243,52 @@ export function BusinessExecutionOverview({
     if (!connectionCode.trim()) return ''
     return buildStakeholderJoinUrl('business', connectionCode)
   }, [codes?.join_url, connectionCode])
+
+  /** Parse a QA referral link and save codes in one click.
+   *  Accepts any of these formats:
+   *    https://localvip.com/?ref=B242431&f5bzaapPF2b
+   *    https://1up7r.test-app.link/f5bzaapPF2b
+   *    B242431                               (just the referral code)
+   */
+  async function handleImportFromLink() {
+    setImportError(null)
+    const raw = importPasteValue.trim()
+    if (!raw) { setImportError('Paste a referral link or code first.'); return }
+
+    let parsedRef: string | null = null
+    let parsedConn: string | null = null
+    let parsedJoin: string | null = null
+
+    try {
+      const url = new URL(raw)
+      // https://localvip.com/?ref=B242431&f5bzaapPF2b
+      const ref = url.searchParams.get('ref')
+      if (ref) {
+        parsedRef = ref.toLowerCase()
+        // The connection code is the remaining query param key (no value)
+        const keys = Array.from(url.searchParams.keys()).filter(k => k !== 'ref')
+        parsedConn = keys[0]?.toLowerCase() || parsedRef
+        parsedJoin = raw
+      } else {
+        // https://1up7r.test-app.link/f5bzaapPF2b — connection code is last path segment
+        const seg = url.pathname.split('/').filter(Boolean).pop() || ''
+        parsedConn = seg.toLowerCase() || null
+        parsedRef = parsedConn
+      }
+    } catch {
+      // Plain code like "B242431"
+      parsedRef = raw.toLowerCase().replace(/[^a-z0-9]/g, '')
+      parsedConn = parsedRef
+    }
+
+    if (!parsedRef || !parsedConn) { setImportError('Could not extract codes from that input.'); return }
+
+    setReferralCode(parsedRef)
+    setConnectionCode(parsedConn)
+    if (parsedJoin) setImportPasteValue('')
+    // Auto-save immediately
+    await handleSaveCodes(parsedRef, parsedConn)
+  }
 
   async function refetchExecution(options?: { includeBusiness?: boolean }) {
     refetchWorkspace?.()
@@ -358,15 +408,15 @@ export function BusinessExecutionOverview({
     options.setProgress(options.successMessage)
   }
 
-  async function handleSaveCodes() {
+  async function handleSaveCodes(overrideRef?: string, overrideConn?: string) {
     setEngineBusy('codes')
     setEngineMessage(null)
     setEngineError(null)
     try {
       await callMaterialsAction({
         action: 'save_codes',
-        referralCode,
-        connectionCode,
+        referralCode: overrideRef ?? referralCode,
+        connectionCode: overrideConn ?? connectionCode,
       })
       await refetchExecution()
       setEngineMessage('Codes saved.')
@@ -774,6 +824,59 @@ export function BusinessExecutionOverview({
                   <CardTitle>Codes and material engine</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* ── Import overlay: shown when no codes are saved yet ── */}
+                  {!codes?.referral_code && !codes?.connection_code && (
+                    <div className="relative">
+                      {/* Blurred preview of the fields behind */}
+                      <div className="select-none rounded-xl blur-sm pointer-events-none" aria-hidden>
+                        <div className="grid gap-4 md:grid-cols-2 mb-4">
+                          <div>
+                            <label className="mb-1.5 block text-sm font-medium text-surface-700">Referral code</label>
+                            <Input placeholder="main-street-bakery" readOnly />
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-sm font-medium text-surface-700">Connection code</label>
+                            <Input placeholder="main-street-bakery" readOnly />
+                          </div>
+                        </div>
+                        <div className="mb-4">
+                          <label className="mb-1.5 block text-sm font-medium text-surface-700">Join URL</label>
+                          <Input placeholder="https://localvip.com/join/..." readOnly />
+                        </div>
+                      </div>
+                      {/* Overlay panel */}
+                      <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-surface-0/80 backdrop-blur-sm">
+                        <div className="w-full max-w-md rounded-2xl border border-surface-200 bg-white p-6 shadow-lg">
+                          <div className="mb-3 flex items-center gap-2 text-surface-800">
+                            <Link2 className="h-5 w-5 text-brand-500 shrink-0" />
+                            <p className="font-semibold">Import QA referral codes</p>
+                          </div>
+                          <p className="mb-4 text-sm text-surface-500">
+                            Paste the business&apos;s referral link from QA — codes are extracted automatically.
+                          </p>
+                          <div className="flex gap-2">
+                            <Input
+                              value={importPasteValue}
+                              onChange={(e) => { setImportPasteValue(e.target.value); setImportError(null) }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') void handleImportFromLink() }}
+                              placeholder="https://localvip.com/?ref=B242431&f5bzaapPF2b"
+                              className="flex-1"
+                            />
+                            <Button onClick={() => void handleImportFromLink()} disabled={engineBusy === 'codes'}>
+                              {engineBusy === 'codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                              Import
+                            </Button>
+                          </div>
+                          {importError && (
+                            <p className="mt-2 text-xs text-danger-600">{importError}</p>
+                          )}
+                          <p className="mt-3 text-xs text-surface-400">
+                            Find it in QA admin → open the business → copy the referral link. Or paste just the referral code (e.g. <span className="font-mono">B242431</span>).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-surface-700">Referral code</label>

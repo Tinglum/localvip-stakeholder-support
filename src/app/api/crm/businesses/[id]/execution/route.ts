@@ -16,6 +16,8 @@ import {
 } from '@/lib/server/material-engine'
 import { computeBusinessExecutionSteps, computeBusinessStageFromSteps } from '@/lib/business-execution'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
+import { getQaAccountIdFromLocal } from '@/lib/server/qa-dashboard-shared'
 import type { Business, OnboardingFlow, OnboardingStep, Profile, QrCode, Stakeholder, StakeholderCode } from '@/lib/types/database'
 
 export const runtime = 'nodejs'
@@ -85,6 +87,65 @@ async function getExecutionContext(businessId: string) {
       ensureBusinessOnboardingFlow(supabase, business, localProfileId),
       ensureBusinessStakeholderSetup(supabase, business, localProfileId),
     ])
+
+    // Auto-seed stakeholder_codes from the business owner's profile if not yet set.
+    // The owner's codes are stored in profiles.referral_code and
+    // profiles.metadata.qa_shared_url when they log in via QA.
+    // ownerEmail comes from the QA business record stored in business.metadata.qaApi.ownerEmail
+    // or falls back to business.email.
+    const meta = (business.metadata || {}) as Record<string, unknown>
+    const qaApi = (meta.qaApi || {}) as Record<string, unknown>
+    const ownerEmail: string | null =
+      (typeof qaApi.owner_email === 'string' ? qaApi.owner_email : null) ||
+      business.email ||
+      null
+
+    if (ownerEmail && stakeholder) {
+      // Check if codes already exist
+      const { data: existingCodes } = await (supabase as any)
+        .from('stakeholder_codes')
+        .select('id, referral_code, connection_code, join_url')
+        .eq('stakeholder_id', stakeholder.id)
+        .maybeSingle()
+
+      const hasAnyCodes = existingCodes?.referral_code || existingCodes?.connection_code
+      if (!hasAnyCodes) {
+        // Look up the business owner's local profile for their QA codes
+        const { data: ownerProfile } = await (supabase as any)
+          .from('profiles')
+          .select('referral_code, metadata')
+          .ilike('email', ownerEmail)
+          .maybeSingle()
+
+        if (ownerProfile) {
+          const ownerMeta = (ownerProfile.metadata || {}) as Record<string, unknown>
+          const refCode = sanitizeStakeholderCodeValue(ownerProfile.referral_code as string | null)
+          const sharedUrl = typeof ownerMeta.qa_shared_url === 'string' ? ownerMeta.qa_shared_url : null
+          const connCode = sanitizeStakeholderCodeValue(sharedUrl?.split('/').pop() || '') || refCode
+          const joinUrl = sanitizeStakeholderUrl(typeof ownerMeta.qa_referral_link === 'string' ? ownerMeta.qa_referral_link : null)
+
+          if (refCode || connCode) {
+            if (existingCodes) {
+              const patch: Record<string, string | null> = {}
+              if (!existingCodes.referral_code && refCode) patch.referral_code = refCode
+              if (!existingCodes.connection_code && connCode) patch.connection_code = connCode
+              if (!existingCodes.join_url && joinUrl) patch.join_url = joinUrl
+              if (Object.keys(patch).length > 0) {
+                await (supabase as any).from('stakeholder_codes').update(patch).eq('id', existingCodes.id)
+              }
+            } else {
+              await (supabase as any).from('stakeholder_codes').insert({
+                stakeholder_id: stakeholder.id,
+                referral_code: refCode || null,
+                connection_code: connCode || null,
+                join_url: joinUrl || null,
+              })
+            }
+            console.log('[business-execution] Seeded codes from owner profile for', ownerEmail)
+          }
+        }
+      }
+    }
 
     return { supabase, profile, business, flow, stakeholder, localProfileId }
   } catch (setupError) {
