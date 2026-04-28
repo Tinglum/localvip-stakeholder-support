@@ -347,10 +347,84 @@ async function syncQaReferralToProfile(
       profile = await linkQaBusinessToProfile(service, profile, referralCode)
     }
 
+    // Seed the business stakeholder's codes from QA so material generation
+    // works even when an admin opens the CRM page (codes come from DB, not
+    // from the owner's live QA session).
+    if (profile.role === 'business' && profile.business_id) {
+      // Extract connection code from sharedURL (e.g. "https://…/f5bzaapPF2b" → "f5bzaapPF2b")
+      const connectionCode = sanitizeStakeholderCodeValue(sharedUrl?.split('/').pop() || '') || referralCode
+      await seedBusinessStakeholderCodes(service, profile.business_id, referralCode, connectionCode, referralLink)
+    }
+
     return profile
   } catch {
     // non-fatal — profile will still work, codes just won't be pre-filled
     return profile
+  }
+}
+
+/**
+ * Seed a business stakeholder's stakeholder_codes row with QA referral data.
+ * Only fills in null fields — never overwrites values already in the DB.
+ * This makes the codes available in the CRM and material engine even when
+ * the business owner is not actively logged in.
+ */
+async function seedBusinessStakeholderCodes(
+  service: ServiceClient,
+  businessId: string,
+  referralCode: string | null | undefined,
+  connectionCode: string | null | undefined,
+  referralLink: string | null | undefined,
+): Promise<void> {
+  try {
+    const refCode = sanitizeStakeholderCodeValue(referralCode) || null
+    const connCode = sanitizeStakeholderCodeValue(connectionCode) || null
+    const joinUrl = sanitizeStakeholderUrl(referralLink) || null
+
+    if (!refCode && !connCode && !joinUrl) return
+
+    // Find the primary stakeholder for this business
+    const { data: stakeholder } = await (service as any)
+      .from('stakeholders')
+      .select('id')
+      .eq('business_id', businessId)
+      .maybeSingle()
+
+    const stakeholderId: string | null = (stakeholder as { id: string } | null)?.id || null
+    if (!stakeholderId) return
+
+    // Check existing codes row
+    const { data: existing } = await (service as any)
+      .from('stakeholder_codes')
+      .select('id, referral_code, connection_code, join_url')
+      .eq('stakeholder_id', stakeholderId)
+      .maybeSingle()
+
+    const existingRow = existing as { id: string; referral_code: string | null; connection_code: string | null; join_url: string | null } | null
+
+    if (existingRow) {
+      // Only patch fields that are still null
+      const patch: Record<string, string | null> = {}
+      if (!existingRow.referral_code && refCode) patch.referral_code = refCode
+      if (!existingRow.connection_code && connCode) patch.connection_code = connCode
+      if (!existingRow.join_url && joinUrl) patch.join_url = joinUrl
+      if (Object.keys(patch).length > 0) {
+        await (service as any)
+          .from('stakeholder_codes')
+          .update(patch)
+          .eq('id', existingRow.id)
+        console.log('[auth-session] Seeded stakeholder_codes for business', businessId, patch)
+      }
+    } else {
+      // Insert new row
+      await (service as any)
+        .from('stakeholder_codes')
+        .insert({ stakeholder_id: stakeholderId, referral_code: refCode, connection_code: connCode, join_url: joinUrl })
+      console.log('[auth-session] Created stakeholder_codes for business', businessId)
+    }
+  } catch (err) {
+    // Non-fatal
+    console.warn('[auth-session] Failed to seed stakeholder_codes', err)
   }
 }
 
