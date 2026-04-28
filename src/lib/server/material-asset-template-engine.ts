@@ -129,6 +129,11 @@ function materialMatchesStakeholderType(material: Material, stakeholderType: Sta
   if (!config.enabled || !config.isActive) return false
   if (!materialSupportsAutomationTemplate(material)) return false
 
+  // No explicit stakeholder types configured → treat as global (applies to all types).
+  // This means any library template with is_template=true and QR zones is used for
+  // every stakeholder type unless narrowed down by target_roles or automation_template config.
+  if (config.stakeholderTypes.length === 0) return true
+
   return config.stakeholderTypes.includes(stakeholderType)
     || (stakeholderType === 'school' && config.stakeholderTypes.includes('community'))
     || (stakeholderType === 'cause' && config.stakeholderTypes.includes('community'))
