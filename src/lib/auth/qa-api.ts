@@ -129,6 +129,12 @@ export interface QaUserProfile {
   lastName: string
   accountType: string
   role: string
+  address1?: string | null
+  address2?: string | null
+  city?: string | null
+  state?: string | null
+  country?: string | null
+  zipCode?: string | null
   referralCode: string | null
   sharedURL: string | null
   referralLink: string | null

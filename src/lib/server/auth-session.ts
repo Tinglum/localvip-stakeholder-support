@@ -9,7 +9,7 @@ import {
 import { fetchQaUserProfile } from '@/lib/auth/qa-api'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
-import type { Profile } from '@/lib/types/database'
+import type { Business, Profile } from '@/lib/types/database'
 
 export type AuthSource = 'qa' | 'supabase'
 
@@ -23,6 +23,140 @@ export interface ResolvedAuthSession {
 }
 
 type ServiceClient = ReturnType<typeof createServiceClient>
+
+function normalizeEmail(value: string | null | undefined) {
+  return value?.trim().toLowerCase() || null
+}
+
+function readQaBusinessIdCandidates(claims?: QaAuthClaims) {
+  const candidates = new Set<string>()
+  const raw = claims?.raw || {}
+
+  const add = (value: unknown) => {
+    if (typeof value !== 'string' && typeof value !== 'number') return
+    const normalized = String(value).trim()
+    if (/^\d+$/.test(normalized)) {
+      candidates.add(normalized)
+    }
+  }
+
+  add(raw.accountId)
+  add(raw.accountID)
+  add(raw.account_id)
+  add(raw.businessId)
+  add(raw.businessID)
+  add(raw.business_id)
+  add(raw.qaBusinessId)
+  add(raw.qa_business_id)
+
+  return Array.from(candidates)
+}
+
+function pickMatchedBusiness(
+  businesses: Business[],
+  profile: Profile,
+  qaBusinessIdCandidates: string[],
+) {
+  if (!businesses.length) return null
+
+  if (profile.business_id) {
+    const existingLink = businesses.find((business) => business.id === profile.business_id)
+    if (existingLink) return existingLink
+  }
+
+  const ownedByProfile = businesses.find((business) => business.owner_user_id === profile.id)
+  if (ownedByProfile) return ownedByProfile
+
+  if (qaBusinessIdCandidates.length > 0) {
+    const qaIdMatch = businesses.filter((business) => business.external_id && qaBusinessIdCandidates.includes(business.external_id))
+    if (qaIdMatch.length === 1) return qaIdMatch[0]
+  }
+
+  const importedQaBusinesses = businesses.filter((business) => business.source === 'qa_server' || !!business.external_id)
+  if (importedQaBusinesses.length === 1) return importedQaBusinesses[0]
+
+  return businesses.length === 1 ? businesses[0] : null
+}
+
+async function findLocalBusinessForProfile(
+  service: ServiceClient,
+  profile: Profile,
+  qaClaims?: QaAuthClaims,
+): Promise<Business | null> {
+  const email = normalizeEmail(profile.email)
+  if (!email) return null
+
+  const qaBusinessIdCandidates = readQaBusinessIdCandidates(qaClaims)
+
+  if (qaBusinessIdCandidates.length > 0) {
+    const { data } = await service
+      .from('businesses')
+      .select('*')
+      .in('external_id', qaBusinessIdCandidates)
+
+    const directMatches = ((data || []) as Business[]).filter((business) => {
+      const businessEmail = normalizeEmail(business.email)
+      return !businessEmail || businessEmail === email
+    })
+
+    const matchedFromQaId = pickMatchedBusiness(directMatches, profile, qaBusinessIdCandidates)
+    if (matchedFromQaId) return matchedFromQaId
+  }
+
+  const { data } = await service
+    .from('businesses')
+    .select('*')
+    .ilike('email', email)
+    .limit(10)
+
+  return pickMatchedBusiness((data || []) as Business[], profile, qaBusinessIdCandidates)
+}
+
+async function linkBusinessUserToLocalBusiness(
+  service: ServiceClient,
+  profile: Profile,
+  qaClaims?: QaAuthClaims,
+): Promise<Profile> {
+  if (profile.role !== 'business') return profile
+
+  const business = await findLocalBusinessForProfile(service, profile, qaClaims)
+  if (!business) return profile
+
+  const nextBusinessId = business.id
+  const needsProfileLink = profile.business_id !== nextBusinessId
+  const canClaimBusinessOwner = !business.owner_user_id || business.owner_user_id === profile.id
+  const needsBusinessOwnerLink = canClaimBusinessOwner && business.owner_user_id !== profile.id
+
+  if (!needsProfileLink && !needsBusinessOwnerLink) {
+    return profile
+  }
+
+  let nextProfile = profile
+
+  if (needsProfileLink) {
+    const { data } = await (service.from('profiles') as any)
+      .update({ business_id: nextBusinessId })
+      .eq('id', profile.id)
+      .select()
+      .single()
+
+    nextProfile = (data as Profile | null) || { ...profile, business_id: nextBusinessId }
+  }
+
+  if (needsBusinessOwnerLink) {
+    await (service.from('businesses') as any)
+      .update({ owner_user_id: profile.id })
+      .eq('id', nextBusinessId)
+  } else if (business.owner_user_id && business.owner_user_id !== profile.id) {
+    console.warn('[auth-session] Matched business already has a different owner_user_id', {
+      profileId: profile.id,
+      businessId: nextBusinessId,
+      ownerUserId: business.owner_user_id,
+    })
+  }
+
+  return needsProfileLink ? nextProfile : { ...profile, business_id: nextBusinessId }
+}
 
 async function loadProfileByEmail(
   supabase: ServiceClient,
@@ -160,6 +294,7 @@ async function provisionQaProfileRow(
 /**
  * When the user has a live QA token, fetch their referral data and store it
  * in the profile row so it's available even after the QA token expires.
+ * Also auto-links a business-role user to their local business record.
  */
 async function syncQaReferralToProfile(
   service: ServiceClient,
@@ -187,27 +322,102 @@ async function syncQaReferralToProfile(
       currentSharedUrl === sharedUrl &&
       currentReferralLink === referralLink
 
-    if (metadataAlreadySet) return profile
+    if (!metadataAlreadySet) {
+      const patch = {
+        referral_code: referralCode,
+        metadata: {
+          ...profileMetadata,
+          qa_shared_url: sharedUrl,
+          qa_referral_link: referralLink,
+          qa_referral_synced_at: new Date().toISOString(),
+        },
+      }
 
-    const patch = {
-      referral_code: referralCode,
-      metadata: {
-        ...profileMetadata,
-        qa_shared_url: sharedUrl,
-        qa_referral_link: referralLink,
-        qa_referral_synced_at: new Date().toISOString(),
-      },
+      const { data } = await (service.from('profiles') as any)
+        .update(patch)
+        .eq('id', profileId)
+        .select()
+        .single()
+
+      profile = (data as Profile | null) || { ...profile, ...patch }
     }
 
-    const { data } = await (service.from('profiles') as any)
-      .update(patch)
-      .eq('id', profileId)
+    // Auto-link business users to their local business record via referral code.
+    if (profile.role === 'business' && !profile.business_id) {
+      profile = await linkQaBusinessToProfile(service, profile, referralCode)
+    }
+
+    return profile
+  } catch {
+    // non-fatal — profile will still work, codes just won't be pre-filled
+    return profile
+  }
+}
+
+/**
+ * For a QA business-role user whose profile has no business_id yet, find the
+ * matching local business (by referral code → stakeholder_codes, then by email
+ * as fallback) and write the bidirectional link:
+ *   profile.business_id   → business.id
+ *   business.owner_user_id → profile.id
+ */
+async function linkQaBusinessToProfile(
+  service: ServiceClient,
+  profile: Profile,
+  referralCode: string | null | undefined,
+): Promise<Profile> {
+  try {
+    let businessId: string | null = null
+
+    // 1. Match via referral code → stakeholder_codes → stakeholders.business_id
+    const code = sanitizeStakeholderCodeValue(referralCode)
+    if (code) {
+      const { data: codeRow } = await (service as any)
+        .from('stakeholder_codes')
+        .select('stakeholder_id')
+        .ilike('referral_code', code)
+        .maybeSingle()
+
+      const stakeholderIdFromCode = (codeRow as { stakeholder_id: string } | null)?.stakeholder_id || null
+      if (stakeholderIdFromCode) {
+        const { data: stakeholder } = await (service as any)
+          .from('stakeholders')
+          .select('business_id')
+          .eq('id', stakeholderIdFromCode)
+          .maybeSingle()
+        businessId = (stakeholder as { business_id: string | null } | null)?.business_id || null
+      }
+    }
+
+    // 2. Fall back to email match on businesses table
+    if (!businessId && profile.email) {
+      const { data: biz } = await service
+        .from('businesses')
+        .select('id')
+        .ilike('email', profile.email)
+        .maybeSingle()
+      businessId = (biz as { id: string } | null)?.id || null
+    }
+
+    if (!businessId) return profile
+
+    // Write profile.business_id
+    const { data: updatedProfile } = await (service.from('profiles') as any)
+      .update({ business_id: businessId })
+      .eq('id', profile.id)
       .select()
       .single()
 
-    return (data as Profile | null) || { ...profile, ...patch }
-  } catch {
-    // non-fatal — profile will still work, codes just won't be pre-filled
+    // Write business.owner_user_id (only if not already claimed by someone else)
+    await (service.from('businesses') as any)
+      .update({ owner_user_id: profile.id })
+      .eq('id', businessId)
+      .is('owner_user_id', null)
+
+    console.log('[auth-session] Auto-linked business user', profile.email, '→ business', businessId)
+    return (updatedProfile as Profile | null) || { ...profile, business_id: businessId }
+  } catch (err) {
+    console.warn('[auth-session] Failed to auto-link business user to business', err)
     return profile
   }
 }
@@ -294,6 +504,8 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
         profile = await syncQaReferralToProfile(service, user.id, profile)
       }
 
+      profile = await linkBusinessUserToLocalBusiness(service, profile, qaSession?.claims)
+
       return {
         profile,
         userId: user.id,
@@ -349,6 +561,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     // Sync referral codes into the profile row while the QA token is still live
     if (profileIsReal && profile) {
       profile = await syncQaReferralToProfile(service, profile.id, profile)
+      profile = await linkBusinessUserToLocalBusiness(service, profile, qaSession.claims)
     }
 
     return {
