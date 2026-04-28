@@ -6,9 +6,14 @@ export async function POST(request: NextRequest) {
   const session = getQaSessionFromCookieStore(request.cookies)
   const publicOrigin = getRequestPublicOrigin(request)
 
+  // Use ?signout=1 on the /login URL so the middleware knows to skip the
+  // "already authenticated → redirect to /dashboard" guard on this request.
+  const loginUrl = new URL('/login', publicOrigin)
+  loginUrl.searchParams.set('signout', '1')
+
   const redirectTo = session
     ? getQaLogoutUrl(publicOrigin, session.idToken)
-    : new URL('/login', publicOrigin).toString()
+    : loginUrl.toString()
 
   const response = NextResponse.json({ ok: true, redirectTo })
 
@@ -38,7 +43,9 @@ export async function POST(request: NextRequest) {
           },
         },
       )
-      await supabase.auth.signOut()
+      // scope: 'global' invalidates the refresh token on Supabase's servers so
+      // the middleware can't re-establish the session via a stale refresh token.
+      await supabase.auth.signOut({ scope: 'global' })
     } catch {
       // Non-fatal — QA cookies are already cleared above
     }

@@ -159,12 +159,9 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
       // Ignore — server already cleared the authoritative session cookies.
     }
 
-    if (redirectTo) {
-      window.location.assign(redirectTo)
-      return
-    }
-    router.push('/login')
-    router.refresh()
+    // Always do a full-page navigation so the browser sends fresh cookies on
+    // the next request and the middleware sees the cleared session state.
+    window.location.assign(redirectTo ?? '/login?signout=1')
   }
 
   // Keyboard shortcut: Cmd/Ctrl+K to focus search
