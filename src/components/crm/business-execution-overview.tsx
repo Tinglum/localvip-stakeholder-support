@@ -849,10 +849,16 @@ export function BusinessExecutionOverview({
                         <div className="w-full max-w-md rounded-2xl border border-surface-200 bg-white p-6 shadow-lg">
                           <div className="mb-3 flex items-center gap-2 text-surface-800">
                             <Link2 className="h-5 w-5 text-brand-500 shrink-0" />
-                            <p className="font-semibold">Import QA referral codes</p>
+                            <p className="font-semibold">Referral codes needed</p>
                           </div>
+                          <p className="mb-1 text-sm text-surface-700">
+                            This business doesn&apos;t have referral codes set up yet.
+                          </p>
                           <p className="mb-4 text-sm text-surface-500">
-                            Paste the business&apos;s referral link from QA — codes are extracted automatically.
+                            <span className="font-medium text-surface-600">If the owner has completed onboarding</span> in the QA portal, their codes will appear here automatically next time this page loads.
+                          </p>
+                          <p className="mb-3 text-sm text-surface-500">
+                            <span className="font-medium text-surface-600">To set up now</span>, paste the business&apos;s referral link from QA — codes are extracted automatically and material generation starts immediately.
                           </p>
                           <div className="flex gap-2">
                             <Input
@@ -871,7 +877,7 @@ export function BusinessExecutionOverview({
                             <p className="mt-2 text-xs text-danger-600">{importError}</p>
                           )}
                           <p className="mt-3 text-xs text-surface-400">
-                            Find it in QA admin → open the business → copy the referral link. Or paste just the referral code (e.g. <span className="font-mono">B242431</span>).
+                            Find the referral link in QA admin → open the business → copy the referral link. Or paste just the code (e.g. <span className="font-mono">B242431</span>).
                           </p>
                         </div>
                       </div>
