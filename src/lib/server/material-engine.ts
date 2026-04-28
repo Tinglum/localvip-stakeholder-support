@@ -423,7 +423,7 @@ export async function listAutoGenerationTemplatesForStakeholder(
     cityId: stakeholder.city_id,
     campaignId: business?.campaign_id || cause?.campaign_id || null,
     businessCategory: business?.category || null,
-    includeAssetTemplates: !options?.fastMode,
+    includeAssetTemplates: true,
   })
 }
 
@@ -460,7 +460,9 @@ export async function generateMaterialsForStakeholder(
       cityId: stakeholder.city_id,
       campaignId: context.business?.campaign_id || context.cause?.campaign_id || null,
       businessCategory: context.business?.category || null,
-      includeAssetTemplates: !options?.fastMode,
+      // Always include asset templates — they are PDF/image files from the
+      // material library and should be rendered regardless of fastMode.
+      includeAssetTemplates: true,
     }),
   ])
 
@@ -481,7 +483,10 @@ export async function generateMaterialsForStakeholder(
 
   for (const template of templates) {
     try {
-      const generated = fastMode
+      // material_asset templates are library PDFs/images — always use the real
+      // renderer so the actual file (with QR embedded) is produced.
+      // Other templates use the fast SVG fallback in fastMode.
+      const generated = (fastMode && template.template_type !== 'material_asset')
         ? await generateEmergencyFallbackMaterial(
             supabase,
             context,
