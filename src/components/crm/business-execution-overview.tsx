@@ -2,6 +2,8 @@
 
 import * as React from 'react'
 import Link from 'next/link'
+import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
 import {
   AlertTriangle,
   Archive,
@@ -353,59 +355,74 @@ export function BusinessExecutionOverview({
     return body.templates as GenerationTemplateSummary[]
   }
 
-  async function runMaterialGenerationBatch(
-    templates: GenerationTemplateSummary[],
-    options: {
-      progressPrefix: string
-      setProgress: (message: string | null) => void
-      setError: (message: string | null) => void
-      emptyMessage: string
-      successMessage: string
-      refreshBusiness?: boolean
-    },
+  // ── Real-time: refresh generated materials list as each file lands in the DB ──
+  React.useEffect(() => {
+    if (!stakeholder?.id) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`exec-gen-${stakeholder.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'generated_materials',
+        filter: `stakeholder_id=eq.${stakeholder.id}`,
+      }, () => {
+        refetchGenerated({ silent: true })
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stakeholder?.id])
+
+  /**
+   * Fire all materials generation as a single background request.
+   * Returns quickly after the request is dispatched — the server processes
+   * templates one-by-one and saves each to generated_materials immediately,
+   * which triggers the real-time subscription above.
+   * keepalive: true keeps the request alive even if the user navigates away.
+   */
+  async function fireGenerationBackground(
+    setStatus: (msg: string | null) => void,
+    setError: (msg: string | null) => void,
   ) {
-    if (templates.length === 0) {
-      options.setProgress(options.emptyMessage)
-      options.setError(null)
+    if (!writeBusinessId) {
+      setError('Business is not linked to a local dashboard record yet.')
       return
     }
 
-    const failures: Array<{ template: GenerationTemplateSummary; message: string }> = []
-
-    for (const [index, template] of templates.entries()) {
-      options.setProgress(`${options.progressPrefix} (${index + 1}/${templates.length}): ${template.name}`)
-      try {
-        await callMaterialsAction({
-          action: 'generate_template',
-          templateId: template.id,
-        })
-      } catch (error) {
-        failures.push({
-          template,
-          message: error instanceof Error ? error.message : 'Generation failed.',
-        })
+    let count: number | null = null
+    try {
+      const templates = await listGenerationTemplates()
+      count = templates.length
+      if (count === 0) {
+        setStatus('No active auto-generation templates were found.')
+        return
       }
+    } catch {
+      // Proceed — server will look up templates itself
     }
 
-    await refetchExecution({ includeBusiness: options.refreshBusiness })
+    const label = count !== null ? `${count} file${count !== 1 ? 's' : ''}` : 'files'
+    setStatus(`Generating ${label} in the background…`)
 
-    if (failures.length === templates.length) {
-      options.setProgress(null)
-      options.setError(failures[0]?.message || 'Materials could not be generated.')
-      return
-    }
-
-    if (failures.length > 0) {
-      options.setProgress(
-        `${options.successMessage} ${templates.length - failures.length}/${templates.length} finished. `
-        + `Some templates still need attention: ${failures.map((failure) => failure.template.name).join(', ')}.`
-      )
-      options.setError(failures[0]?.message || null)
-      return
-    }
-
-    options.setError(null)
-    options.setProgress(options.successMessage)
+    // Fire and forget — keepalive keeps it alive through navigation
+    fetch(`/api/crm/businesses/${writeBusinessId}/materials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'generate_materials' }),
+      keepalive: true,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body.error || 'Generation failed.')
+        setStatus(null)
+      } else {
+        setStatus(`${label} generated.`)
+      }
+      refetchGenerated({ silent: true })
+    }).catch(() => {
+      // User navigated away — Topbar real-time subscription handles notifications
+    })
   }
 
   async function handleSaveCodes(overrideRef?: string, overrideConn?: string) {
@@ -419,15 +436,8 @@ export function BusinessExecutionOverview({
         connectionCode: overrideConn ?? connectionCode,
       })
       await refetchExecution()
-      setEngineMessage('Codes saved.')
-      const templates = await listGenerationTemplates()
-      await runMaterialGenerationBatch(templates, {
-        progressPrefix: 'Generating materials',
-        setProgress: setEngineMessage,
-        setError: setEngineError,
-        emptyMessage: 'Codes saved. No active auto-generation templates were found.',
-        successMessage: 'Codes saved and materials generated.',
-      })
+      setEngineMessage('Codes saved. Starting generation…')
+      await fireGenerationBackground(setEngineMessage, setEngineError)
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
     } finally {
@@ -439,20 +449,8 @@ export function BusinessExecutionOverview({
     setEngineBusy('generate')
     setEngineMessage(null)
     setEngineError(null)
-    try {
-      const templates = await listGenerationTemplates()
-      await runMaterialGenerationBatch(templates, {
-        progressPrefix: 'Generating materials',
-        setProgress: setEngineMessage,
-        setError: setEngineError,
-        emptyMessage: 'No active auto-generation templates were found.',
-        successMessage: 'Materials generated.',
-      })
-    } catch (error) {
-      setEngineError(error instanceof Error ? error.message : 'Materials could not be generated.')
-    } finally {
-      setEngineBusy(null)
-    }
+    await fireGenerationBackground(setEngineMessage, setEngineError)
+    setEngineBusy(null)
   }
 
   async function handleCompleteStep(stepId: string) {
