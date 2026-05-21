@@ -138,9 +138,10 @@ export default function BusinessDetailPage() {
   const allStakeholders = localState?.stakeholders || []
   const allGeneratedMaterials = localState?.generatedMaterials || []
   const assignments = localState?.assignments || []
-  const { data: outreach, loading: outreachLoading } = useOutreach({ entity_id: localEntityId })
-  const { data: tasks, loading: tasksLoading } = useTasks({ entity_id: localEntityId })
-  const { data: notes, loading: notesLoading } = useNotes({ entity_id: localEntityId })
+  const fallbackEntityHooksEnabled = !localState && !localStateLoading
+  const { data: outreach, loading: outreachLoading } = useOutreach({ entity_id: localEntityId }, { enabled: fallbackEntityHooksEnabled })
+  const { data: tasks, loading: tasksLoading } = useTasks({ entity_id: localEntityId }, { enabled: fallbackEntityHooksEnabled })
+  const { data: notes, loading: notesLoading } = useNotes({ entity_id: localEntityId }, { enabled: fallbackEntityHooksEnabled })
 
   // ── Mutation hooks ──
   const { update: updateBusiness, loading: updateLoading } = useBusinessUpdate()
@@ -241,8 +242,8 @@ export default function BusinessDetailPage() {
     if (!biz || !localBusinessId || readOnly) return
     await updateBusiness(localBusinessId, { stage: newStage })
     setStageDropdownOpen(false)
-    window.location.reload()
-  }, [biz, localBusinessId, readOnly, updateBusiness])
+    refetchBusinessDetail()
+  }, [biz, localBusinessId, readOnly, refetchBusinessDetail, updateBusiness])
 
   React.useEffect(() => {
     setPendingCauseId(biz?.linked_cause_id || '__none')
@@ -265,17 +266,25 @@ export default function BusinessDetailPage() {
   const handleNotDuplicate = async () => {
     if (!biz || !localBusinessId || readOnly) return
     setReviewDupLoading(true)
-    await updateBusiness(localBusinessId, { duplicate_of: null })
-    setReviewDupOpen(false)
-    window.location.reload()
+    try {
+      await updateBusiness(localBusinessId, { duplicate_of: null })
+      setReviewDupOpen(false)
+      refetchBusinessDetail()
+    } finally {
+      setReviewDupLoading(false)
+    }
   }
 
   const handleArchiveAsDuplicate = async () => {
     if (!biz || !localBusinessId || readOnly) return
     setReviewDupLoading(true)
-    await updateBusiness(localBusinessId, { status: 'archived' })
-    setReviewDupOpen(false)
-    window.location.reload()
+    try {
+      await updateBusiness(localBusinessId, { status: 'archived' })
+      setReviewDupOpen(false)
+      refetchBusinessDetail()
+    } finally {
+      setReviewDupLoading(false)
+    }
   }
 
   const handleCauseLinkSave = React.useCallback(async () => {
@@ -284,8 +293,8 @@ export default function BusinessDetailPage() {
       linked_cause_id: pendingCauseId === '__none' ? null : pendingCauseId,
     })
     setLinkCauseOpen(false)
-    window.location.reload()
-  }, [biz, localBusinessId, pendingCauseId, readOnly, updateBusiness])
+    refetchBusinessDetail()
+  }, [biz, localBusinessId, pendingCauseId, readOnly, refetchBusinessDetail, updateBusiness])
 
   const handleCampaignLinkSave = React.useCallback(async () => {
     if (!biz || !localBusinessId || readOnly) return
@@ -293,8 +302,8 @@ export default function BusinessDetailPage() {
       campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId,
     })
     setLinkCampaignOpen(false)
-    window.location.reload()
-  }, [biz, localBusinessId, pendingCampaignId, readOnly, updateBusiness])
+    refetchBusinessDetail()
+  }, [biz, localBusinessId, pendingCampaignId, readOnly, refetchBusinessDetail, updateBusiness])
 
   // ── Loading state ──
   if (bizLoading) {

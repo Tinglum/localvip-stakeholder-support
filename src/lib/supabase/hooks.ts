@@ -18,6 +18,10 @@ interface UseQueryResult<T> {
   refetch: (options?: { silent?: boolean }) => void
 }
 
+interface UseQueryOptions {
+  enabled?: boolean
+}
+
 function useSupabaseQuery<T>(
   table: string,
   options?: {
@@ -25,17 +29,19 @@ function useSupabaseQuery<T>(
     orderAsc?: boolean
     limit?: number
     filters?: Record<string, string | number | boolean | null>
+    enabled?: boolean
   }
 ): UseQueryResult<T> {
   const supabase = React.useMemo(() => createClient(), [])
   const [data, setData] = React.useState<T[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const [loading, setLoading] = React.useState(options?.enabled ?? true)
   const [error, setError] = React.useState<string | null>(null)
   const [refetchKey, setRefetchKey] = React.useState(0)
   const silentRefetchRef = React.useRef(false)
   const orderBy = options?.orderBy
   const orderAsc = options?.orderAsc ?? false
   const limit = options?.limit
+  const enabled = options?.enabled ?? true
   const filtersKey = JSON.stringify(options?.filters || {})
   const filterEntries = React.useMemo(
     () => Object.entries(
@@ -45,6 +51,12 @@ function useSupabaseQuery<T>(
   )
 
   React.useEffect(() => {
+    if (!enabled) {
+      setLoading(false)
+      setError(null)
+      return
+    }
+
     async function fetch() {
       if (!silentRefetchRef.current) {
         setLoading(true)
@@ -80,7 +92,7 @@ function useSupabaseQuery<T>(
     }
 
     fetch()
-  }, [supabase, table, orderBy, orderAsc, limit, filterEntries, refetchKey])
+  }, [supabase, table, orderBy, orderAsc, limit, filterEntries, refetchKey, enabled])
 
   const refetch = React.useCallback((options?: { silent?: boolean }) => {
     silentRefetchRef.current = !!options?.silent
@@ -166,34 +178,34 @@ function useSupabaseDelete(table: string) {
 
 // ─── Typed hooks ────────────────────────────────────────────
 
-export function useBusinesses(filters?: Record<string, string>) {
-  return useSupabaseQuery<Business>('businesses', { filters })
+export function useBusinesses(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Business>('businesses', { filters, enabled: options?.enabled })
 }
 export function useBusinessInsert() { return useSupabaseInsert<Business>('businesses') }
 export function useBusinessUpdate() { return useSupabaseUpdate<Business>('businesses') }
 
-export function useCauses(filters?: Record<string, string>) {
-  return useSupabaseQuery<Cause>('causes', { filters })
+export function useCauses(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Cause>('causes', { filters, enabled: options?.enabled })
 }
 export function useCauseInsert() { return useSupabaseInsert<Cause>('causes') }
 
-export function useContacts(filters?: Record<string, string>) {
-  return useSupabaseQuery<Contact>('contacts', { filters })
+export function useContacts(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Contact>('contacts', { filters, enabled: options?.enabled })
 }
 export function useContactInsert() { return useSupabaseInsert<Contact>('contacts') }
 export function useContactUpdate() { return useSupabaseUpdate<Contact>('contacts') }
 export function useContactDelete() { return useSupabaseDelete('contacts') }
 
-export function useStakeholderAssignments(filters?: Record<string, string>) {
-  return useSupabaseQuery<StakeholderAssignment>('stakeholder_assignments', { filters })
+export function useStakeholderAssignments(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<StakeholderAssignment>('stakeholder_assignments', { filters, enabled: options?.enabled })
 }
-export function useStakeholders(filters?: Record<string, string>) {
-  return useSupabaseQuery<Stakeholder>('stakeholders', { filters, orderBy: 'updated_at' })
+export function useStakeholders(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Stakeholder>('stakeholders', { filters, orderBy: 'updated_at', enabled: options?.enabled })
 }
 export function useStakeholderInsert() { return useSupabaseInsert<Stakeholder>('stakeholders') }
 export function useStakeholderUpdate() { return useSupabaseUpdate<Stakeholder>('stakeholders') }
-export function useStakeholderCodes(filters?: Record<string, string>) {
-  return useSupabaseQuery<StakeholderCode>('stakeholder_codes', { filters, orderBy: 'updated_at' })
+export function useStakeholderCodes(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<StakeholderCode>('stakeholder_codes', { filters, orderBy: 'updated_at', enabled: options?.enabled })
 }
 export function useStakeholderCodeInsert() { return useSupabaseInsert<StakeholderCode>('stakeholder_codes') }
 export function useStakeholderCodeUpdate() { return useSupabaseUpdate<StakeholderCode>('stakeholder_codes') }
@@ -202,13 +214,13 @@ export function useMaterialTemplates(filters?: Record<string, string>) {
 }
 export function useMaterialTemplateInsert() { return useSupabaseInsert<MaterialTemplate>('material_templates') }
 export function useMaterialTemplateUpdate() { return useSupabaseUpdate<MaterialTemplate>('material_templates') }
-export function useGeneratedMaterials(filters?: Record<string, string>) {
-  return useSupabaseQuery<GeneratedMaterial>('generated_materials', { filters, orderBy: 'updated_at' })
+export function useGeneratedMaterials(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<GeneratedMaterial>('generated_materials', { filters, orderBy: 'updated_at', enabled: options?.enabled })
 }
 export function useGeneratedMaterialInsert() { return useSupabaseInsert<GeneratedMaterial>('generated_materials') }
 export function useGeneratedMaterialUpdate() { return useSupabaseUpdate<GeneratedMaterial>('generated_materials') }
-export function useAdminTasks(filters?: Record<string, string>) {
-  return useSupabaseQuery<AdminTask>('admin_tasks', { filters, orderBy: 'updated_at' })
+export function useAdminTasks(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<AdminTask>('admin_tasks', { filters, orderBy: 'updated_at', enabled: options?.enabled })
 }
 export function useAdminTaskInsert() { return useSupabaseInsert<AdminTask>('admin_tasks') }
 export function useAdminTaskUpdate() { return useSupabaseUpdate<AdminTask>('admin_tasks') }
@@ -222,8 +234,8 @@ export function useCityAccessRequests(filters?: Record<string, string>) {
 export function useCityAccessRequestInsert() { return useSupabaseInsert<CityAccessRequest>('city_access_requests') }
 export function useCityAccessRequestUpdate() { return useSupabaseUpdate<CityAccessRequest>('city_access_requests') }
 
-export function useCities() {
-  return useSupabaseQuery<City>('cities', { orderBy: 'name', orderAsc: true })
+export function useCities(options?: UseQueryOptions) {
+  return useSupabaseQuery<City>('cities', { orderBy: 'name', orderAsc: true, enabled: options?.enabled })
 }
 export function useCityInsert() { return useSupabaseInsert<City>('cities') }
 
@@ -231,24 +243,24 @@ export function useOrganizations(filters?: Record<string, string>) {
   return useSupabaseQuery<Organization>('organizations', { filters, orderBy: 'name', orderAsc: true })
 }
 
-export function useCampaigns(filters?: Record<string, string>) {
-  return useSupabaseQuery<Campaign>('campaigns', { filters })
+export function useCampaigns(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Campaign>('campaigns', { filters, enabled: options?.enabled })
 }
 export function useCampaignInsert() { return useSupabaseInsert<Campaign>('campaigns') }
-export function useOffers(filters?: Record<string, string>) {
-  return useSupabaseQuery<Offer>('offers', { filters })
+export function useOffers(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Offer>('offers', { filters, enabled: options?.enabled })
 }
 export function useOfferInsert() { return useSupabaseInsert<Offer>('offers') }
 export function useOfferUpdate() { return useSupabaseUpdate<Offer>('offers') }
 
-export function useTasks(filters?: Record<string, string>) {
-  return useSupabaseQuery<Task>('tasks', { filters })
+export function useTasks(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Task>('tasks', { filters, enabled: options?.enabled })
 }
 export function useTaskInsert() { return useSupabaseInsert<Task>('tasks') }
 export function useTaskUpdate() { return useSupabaseUpdate<Task>('tasks') }
 
-export function useOutreach(filters?: Record<string, string>) {
-  return useSupabaseQuery<OutreachActivity>('outreach_activities', { filters })
+export function useOutreach(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<OutreachActivity>('outreach_activities', { filters, enabled: options?.enabled })
 }
 export function useOutreachInsert() { return useSupabaseInsert<OutreachActivity>('outreach_activities') }
 
@@ -258,13 +270,13 @@ export function useOutreachScripts(filters?: Record<string, string>) {
 export function useOutreachScriptInsert() { return useSupabaseInsert<OutreachScript>('outreach_scripts') }
 export function useOutreachScriptUpdate() { return useSupabaseUpdate<OutreachScript>('outreach_scripts') }
 
-export function useProfiles() {
-  return useSupabaseQuery<Profile>('profiles', { orderBy: 'full_name', orderAsc: true })
+export function useProfiles(options?: UseQueryOptions) {
+  return useSupabaseQuery<Profile>('profiles', { orderBy: 'full_name', orderAsc: true, enabled: options?.enabled })
 }
 export function useProfileUpdate() { return useSupabaseUpdate<Profile>('profiles') }
 
-export function useQrCodes(filters?: Record<string, string>) {
-  return useSupabaseQuery<QrCode>('qr_codes', { filters })
+export function useQrCodes(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<QrCode>('qr_codes', { filters, enabled: options?.enabled })
 }
 export function useQrCodeCollections(filters?: Record<string, string>) {
   return useSupabaseQuery<QrCodeCollection>('qr_code_collections', { filters })
@@ -274,8 +286,8 @@ export function useQrCodeCollectionUpdate() { return useSupabaseUpdate<QrCodeCol
 export function useQrCodeInsert() { return useSupabaseInsert<QrCode>('qr_codes') }
 export function useQrCodeDelete() { return useSupabaseDelete('qr_codes') }
 
-export function useMaterials(filters?: Record<string, string>) {
-  return useSupabaseQuery<Material>('materials', { filters })
+export function useMaterials(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Material>('materials', { filters, enabled: options?.enabled })
 }
 export function useMaterialInsert() { return useSupabaseInsert<Material>('materials') }
 export function useMaterialUpdate() { return useSupabaseUpdate<Material>('materials') }
@@ -301,22 +313,23 @@ export function useTemplateRuleInsert() { return useSupabaseInsert<TemplateRule>
 export function useTemplateRuleUpdate() { return useSupabaseUpdate<TemplateRule>('template_rules') }
 export function useTemplateRuleDelete() { return useSupabaseDelete('template_rules') }
 
-export function useNotes(filters?: Record<string, string>) {
-  return useSupabaseQuery<Note>('notes', { filters })
+export function useNotes(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<Note>('notes', { filters, enabled: options?.enabled })
 }
 export function useNoteInsert() { return useSupabaseInsert<Note>('notes') }
 
-export function useOnboardingFlows(filters?: Record<string, string>) {
-  return useSupabaseQuery<OnboardingFlow>('onboarding_flows', { filters })
+export function useOnboardingFlows(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useSupabaseQuery<OnboardingFlow>('onboarding_flows', { filters, enabled: options?.enabled })
 }
 export function useOnboardingFlowInsert() { return useSupabaseInsert<OnboardingFlow>('onboarding_flows') }
 export function useOnboardingFlowUpdate() { return useSupabaseUpdate<OnboardingFlow>('onboarding_flows') }
 
-export function useOnboardingSteps(filters?: Record<string, string>) {
+export function useOnboardingSteps(filters?: Record<string, string>, options?: UseQueryOptions) {
   return useSupabaseQuery<OnboardingStep>('onboarding_steps', {
     filters,
     orderBy: 'sort_order',
     orderAsc: true,
+    enabled: options?.enabled,
   })
 }
 export function useOnboardingStepInsert() { return useSupabaseInsert<OnboardingStep>('onboarding_steps') }

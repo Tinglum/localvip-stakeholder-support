@@ -12,7 +12,7 @@ import {
   parseQaCauseId,
   qaCauseRouteError,
 } from '@/lib/server/qa-dashboard-causes'
-import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
+import { buildQaAccountMetadata, getQaAccountIdFromLocal, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import type { Cause } from '@/lib/types/database'
 
 function asProfileUuid(value: string | null | undefined) {
@@ -243,6 +243,10 @@ export async function GET(
 
   let qaCauseId = parseQaCauseId(searchParams.get('qaId')) || parseQaCauseId(qaRouteId)
   let qaError: string | null = null
+
+  if (qaCauseId === null && localCause) {
+    qaCauseId = getQaAccountIdFromLocal(localCause)
+  }
 
   if (qaCauseId === null && localCause) {
     try {

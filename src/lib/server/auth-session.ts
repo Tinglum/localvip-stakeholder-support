@@ -23,6 +23,7 @@ export interface ResolvedAuthSession {
 }
 
 type ServiceClient = ReturnType<typeof createServiceClient>
+const QA_PROFILE_SYNC_TTL_MS = 15 * 60 * 1000
 
 function normalizeEmail(value: string | null | undefined) {
   return value?.trim().toLowerCase() || null
@@ -118,6 +119,7 @@ async function linkBusinessUserToLocalBusiness(
   qaClaims?: QaAuthClaims,
 ): Promise<Profile> {
   if (profile.role !== 'business') return profile
+  if (profile.business_id) return profile
 
   const business = await findLocalBusinessForProfile(service, profile, qaClaims)
   if (!business) return profile
@@ -302,11 +304,21 @@ async function syncQaReferralToProfile(
   profile: Profile,
 ): Promise<Profile> {
   try {
-    const qaProfile = await fetchQaUserProfile()
-
     const profileMetadata = ((profile.metadata as Record<string, unknown> | null) || {})
     const currentSharedUrl = typeof profileMetadata.qa_shared_url === 'string' ? profileMetadata.qa_shared_url : null
     const currentReferralLink = typeof profileMetadata.qa_referral_link === 'string' ? profileMetadata.qa_referral_link : null
+    const currentReferralCode = sanitizeStakeholderCodeValue(profile.referral_code)
+    const syncedAtRaw = typeof profileMetadata.qa_referral_synced_at === 'string' ? profileMetadata.qa_referral_synced_at : null
+    const syncedAtMs = syncedAtRaw ? Date.parse(syncedAtRaw) : Number.NaN
+    const syncedRecently = Number.isFinite(syncedAtMs) && (Date.now() - syncedAtMs) < QA_PROFILE_SYNC_TTL_MS
+    if (syncedRecently) {
+      if (profile.role === 'business' && !profile.business_id && currentReferralCode) {
+        profile = await linkQaBusinessToProfile(service, profile, currentReferralCode)
+      }
+      return profile
+    }
+
+    const qaProfile = await fetchQaUserProfile()
 
     const nextReferralCode = sanitizeStakeholderCodeValue(qaProfile?.referralCode)
     const nextSharedUrl = sanitizeStakeholderUrl(qaProfile?.sharedURL)
@@ -316,31 +328,23 @@ async function syncQaReferralToProfile(
     const sharedUrl = nextSharedUrl ?? sanitizeStakeholderUrl(currentSharedUrl)
     const referralLink = nextReferralLink ?? sanitizeStakeholderUrl(currentReferralLink)
 
-    // Only update if the profile doesn't already have it (avoid unnecessary writes)
-    const metadataAlreadySet =
-      profile.referral_code === referralCode &&
-      currentSharedUrl === sharedUrl &&
-      currentReferralLink === referralLink
-
-    if (!metadataAlreadySet) {
-      const patch = {
-        referral_code: referralCode,
-        metadata: {
-          ...profileMetadata,
-          qa_shared_url: sharedUrl,
-          qa_referral_link: referralLink,
-          qa_referral_synced_at: new Date().toISOString(),
-        },
-      }
-
-      const { data } = await (service.from('profiles') as any)
-        .update(patch)
-        .eq('id', profileId)
-        .select()
-        .single()
-
-      profile = (data as Profile | null) || { ...profile, ...patch }
+    const patch = {
+      referral_code: referralCode,
+      metadata: {
+        ...profileMetadata,
+        qa_shared_url: sharedUrl,
+        qa_referral_link: referralLink,
+        qa_referral_synced_at: new Date().toISOString(),
+      },
     }
+
+    const { data } = await (service.from('profiles') as any)
+      .update(patch)
+      .eq('id', profileId)
+      .select()
+      .single()
+
+    profile = (data as Profile | null) || { ...profile, ...patch }
 
     // Auto-link business users to their local business record via referral code.
     if (profile.role === 'business' && !profile.business_id) {

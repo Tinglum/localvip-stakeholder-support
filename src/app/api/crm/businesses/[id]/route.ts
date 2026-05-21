@@ -12,7 +12,7 @@ import {
   parseQaBusinessId,
   qaBusinessRouteError,
 } from '@/lib/server/qa-dashboard-businesses'
-import { buildQaAccountMetadata, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
+import { buildQaAccountMetadata, getQaAccountIdFromLocal, joinAddress, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import type { Business } from '@/lib/types/database'
 
 function asProfileUuid(value: string | null | undefined) {
@@ -242,6 +242,10 @@ export async function GET(
 
   let qaBusinessId = parseQaBusinessId(searchParams.get('qaId')) || parseQaBusinessId(qaRouteId)
   let qaError: string | null = null
+
+  if (qaBusinessId === null && localBusiness) {
+    qaBusinessId = getQaAccountIdFromLocal(localBusiness)
+  }
 
   if (qaBusinessId === null && localBusiness) {
     try {

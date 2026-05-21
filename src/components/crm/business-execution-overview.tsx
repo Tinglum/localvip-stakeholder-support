@@ -127,32 +127,33 @@ export function BusinessExecutionOverview({
 }: BusinessExecutionOverviewProps) {
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
-  const { data: hookProfiles } = useProfiles()
-  const { data: hookStakeholders, refetch: refetchStakeholders } = useStakeholders({ business_id: biz.id })
+  const localStateEnabled = !localState
+  const { data: hookProfiles } = useProfiles({ enabled: localStateEnabled })
+  const { data: hookStakeholders, refetch: refetchStakeholders } = useStakeholders({ business_id: biz.id }, { enabled: localStateEnabled })
   const stakeholders = localState?.stakeholders ?? hookStakeholders
   const stakeholder = stakeholders[0] || null
-  const { data: hookStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
+  const { data: hookStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || EMPTY_UUID }, { enabled: localStateEnabled })
   const stakeholderCodes = localState?.stakeholderCodes ?? hookStakeholderCodes
   const codes = React.useMemo(() => {
     const first = stakeholderCodes[0]
     return first ? sanitizeStakeholderCodeFields(first) : null
   }, [stakeholderCodes])
-  const { data: hookGeneratedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
+  const { data: hookGeneratedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholder?.id || EMPTY_UUID }, { enabled: localStateEnabled })
   const generatedMaterials = localState?.generatedMaterials ?? hookGeneratedMaterials
-  const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || EMPTY_UUID })
+  const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || EMPTY_UUID }, { enabled: localStateEnabled })
   const adminTasks = localState?.adminTasks ?? hookAdminTasks
-  const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: biz.id })
+  const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: biz.id }, { enabled: localStateEnabled })
   const flows = localState?.flows ?? hookFlows
   const flow = flows[0] || null
-  const { data: hookSteps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || EMPTY_UUID })
+  const { data: hookSteps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || EMPTY_UUID }, { enabled: localStateEnabled })
   const steps = localState?.steps ?? hookSteps
-  const { data: hookOffers, refetch: refetchOffers } = useOffers({ business_id: biz.id })
+  const { data: hookOffers, refetch: refetchOffers } = useOffers({ business_id: biz.id }, { enabled: localStateEnabled })
   const offers = localState?.offers ?? hookOffers
-  const { data: hookContacts, refetch: refetchContacts } = useContacts({ business_id: biz.id })
+  const { data: hookContacts, refetch: refetchContacts } = useContacts({ business_id: biz.id }, { enabled: localStateEnabled })
   const contacts = localState?.contacts ?? hookContacts
-  const { data: hookQrCodes, refetch: refetchQrCodes } = useQrCodes({ business_id: biz.id })
+  const { data: hookQrCodes, refetch: refetchQrCodes } = useQrCodes({ business_id: biz.id }, { enabled: localStateEnabled })
   const qrCodes = localState?.qrCodes ?? hookQrCodes
-  const { data: hookOutreach, refetch: refetchOutreach } = useOutreach({ entity_type: 'business', entity_id: biz.id })
+  const { data: hookOutreach, refetch: refetchOutreach } = useOutreach({ entity_type: 'business', entity_id: biz.id }, { enabled: localStateEnabled })
   const outreach = localState?.outreach ?? hookOutreach
   const { insert: insertOutreach, loading: savingOutreach } = useOutreachInsert()
   const { insert: insertOffer } = useOfferInsert()
@@ -208,7 +209,8 @@ export function BusinessExecutionOverview({
   const [outreachOutcome, setOutreachOutcome] = React.useState('')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'outreach' | 'branding'>('materials')
   const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision' | null>(null)
-  const { data: allCities } = useCities()
+  const { data: hookCities } = useCities({ enabled: localStateEnabled })
+  const allCities = localState?.cities ?? hookCities
   const [showArchive, setShowArchive] = React.useState(false)
   const [regenBusy, setRegenBusy] = React.useState(false)
   const [regenMessage, setRegenMessage] = React.useState<string | null>(null)
@@ -551,14 +553,7 @@ export function BusinessExecutionOverview({
     setRegenBusy(true)
     setRegenMessage(null)
     try {
-      const templates = await listGenerationTemplates()
-      await runMaterialGenerationBatch(templates, {
-        progressPrefix: 'Refreshing materials',
-        setProgress: setRegenMessage,
-        setError: setEngineError,
-        emptyMessage: 'No active auto-generation templates were found.',
-        successMessage: 'All materials regenerated.',
-      })
+      await fireGenerationBackground(setRegenMessage, setEngineError)
     } catch (error) {
       setRegenMessage(error instanceof Error ? error.message : 'Regeneration failed.')
     } finally {
@@ -606,14 +601,7 @@ export function BusinessExecutionOverview({
       setUploadMessage(`${label} uploaded.`)
 
       if (body.needsRegeneration && codes?.connection_code) {
-        const templates = await listGenerationTemplates()
-        await runMaterialGenerationBatch(templates, {
-          progressPrefix: `${label} uploaded. Refreshing materials`,
-          setProgress: setUploadMessage,
-          setError: setUploadError,
-          emptyMessage: `${label} uploaded. No active auto-generation templates were found.`,
-          successMessage: `${label} uploaded and materials refreshed.`,
-        })
+        await fireGenerationBackground(setUploadMessage, setUploadError)
       }
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'Upload failed.')
