@@ -69,12 +69,5 @@ export async function updateSession(request: NextRequest) {
   // just signed out. Both paths land here:
   //   • Direct Supabase logout → /login?signout=1
   //   • QA logout → QA server → /login (no signout param, but session already gone)
-  const isSigningOut = request.nextUrl.searchParams.get('signout') === '1'
-  if ((hasQaAuth || supabaseUser) && isLoginRoute && !isSigningOut) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
-
   return response
 }
