@@ -29,11 +29,6 @@ export function QaLoginPage({
       window.location.assign(target)
       return
     }
-
-    if (error) return
-    const target = `/api/auth/qa/start?returnTo=${encodeURIComponent(returnTo)}`
-    setRedirecting(true)
-    window.location.assign(target)
   }, [code, error, isOidcCallback, returnTo, state])
 
   return (

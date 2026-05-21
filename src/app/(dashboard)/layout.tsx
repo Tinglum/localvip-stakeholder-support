@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
 import { AuthProvider } from '@/lib/auth/context'
 import { ImpersonationProvider } from '@/lib/impersonation-context'
@@ -9,7 +8,6 @@ import { normalizeBusinessProfile } from '@/lib/business-portal'
 import type { Profile } from '@/lib/types/database'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
   const [profile, setProfile] = React.useState<Profile | null>(null)
   const [localProfileId, setLocalProfileId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -18,19 +16,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     let cancelled = false
 
     async function loadProfile() {
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), 8000)
       const response = await fetch('/api/auth/session', {
         credentials: 'include',
         cache: 'no-store',
+        signal: controller.signal,
       }).catch(() => null)
+      window.clearTimeout(timeout)
 
       if (!response || !response.ok) {
-        router.push('/login')
+        window.location.assign('/login')
         return
       }
 
       const session = await response.json().catch(() => null)
       if (!session?.authenticated || !session?.profile) {
-        router.push('/login')
+        window.location.assign('/login')
         return
       }
 
@@ -46,7 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => {
       cancelled = true
     }
-  }, [router])
+  }, [])
 
   if (loading || !profile) {
     return (
