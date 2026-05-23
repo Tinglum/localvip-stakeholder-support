@@ -80,7 +80,7 @@ export function getRequestPublicOrigin(source: PublicOriginSource) {
 export const QA_AUTH_CONFIG = {
   baseUrl: trimTrailingSlash(trimToNull(process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL) || 'https://qa.localvip.com'),
   clientId: trimToNull(process.env.QA_AUTH_CLIENT_ID) || 'lvip_dashboard',
-  scopes: trimToNull(process.env.QA_AUTH_SCOPES) || 'openid profile email name LVIPDashboardApiV1 roles offline_access',
+  scopes: trimToNull(process.env.QA_AUTH_SCOPES) || 'openid profile email name LVIPDashboardApiV1 Ten10ApiMobileV1 roles offline_access',
   redirectUri: trimToNull(process.env.QA_AUTH_REDIRECT_URI),
   postLogoutRedirectUri: trimToNull(process.env.QA_AUTH_POST_LOGOUT_REDIRECT_URI),
 }

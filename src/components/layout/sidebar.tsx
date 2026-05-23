@@ -8,7 +8,7 @@ import {
   MapPin, Send, CheckSquare, QrCode, Plus, FolderOpen, BarChart3,
   FileText, Library, FileDown, Megaphone, Rocket, UserPlus,
   TrendingUp, Settings, Shield, ScrollText, ChevronDown,
-  PanelLeftClose, PanelLeft, Briefcase,
+  PanelLeftClose, PanelLeft, Briefcase, Wallet, CreditCard,
   FolderKanban, ListChecks, LayoutTemplate,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -20,7 +20,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Building2, Store, Heart, Users, UserCheck,
   MapPin, Send, CheckSquare, QrCode, Plus, FolderOpen, BarChart3,
   FileText, Library, FileDown, Megaphone, Rocket, UserPlus,
-  TrendingUp, Settings, Shield, ScrollText, Briefcase,
+  TrendingUp, Settings, Shield, ScrollText, Briefcase, Wallet, CreditCard,
   FolderKanban, ListChecks, LayoutTemplate,
 }
 
