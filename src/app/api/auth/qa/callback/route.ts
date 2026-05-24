@@ -6,6 +6,7 @@ import {
   getRequestPublicOrigin,
   getQaRedirectUri,
   QA_COOKIE_NAMES,
+  readSignedQaOauthState,
   sanitizeReturnTo,
   setQaSessionCookies,
 } from '@/lib/auth/qa-auth'
@@ -19,9 +20,13 @@ export async function GET(request: NextRequest) {
   const errorDescription = request.nextUrl.searchParams.get('error_description')
 
   const storedState = request.cookies.get(QA_COOKIE_NAMES.state)?.value || null
-  const verifier = request.cookies.get(QA_COOKIE_NAMES.verifier)?.value || null
-  const returnTo = sanitizeReturnTo(request.cookies.get(QA_COOKIE_NAMES.returnTo)?.value || '/dashboard')
+  const storedVerifier = request.cookies.get(QA_COOKIE_NAMES.verifier)?.value || null
+  const storedReturnTo = request.cookies.get(QA_COOKIE_NAMES.returnTo)?.value || null
+  const signedState = await readSignedQaOauthState(state)
+  const verifier = storedVerifier || signedState?.verifier || null
+  const returnTo = sanitizeReturnTo(storedReturnTo || signedState?.returnTo || '/dashboard')
   const publicOrigin = getRequestPublicOrigin(request)
+  const stateIsValid = !!state && (!!signedState || (!!storedState && state === storedState))
 
   // Diagnostic: list every cookie we can see so we know if the browser dropped them
   const cookieNames = request.cookies.getAll().map((c) => c.name)
@@ -29,8 +34,10 @@ export async function GET(request: NextRequest) {
     hasCode: !!code,
     hasState: !!state,
     hasStoredState: !!storedState,
+    hasSignedState: !!signedState,
     hasVerifier: !!verifier,
     stateMatches: !!(state && storedState && state === storedState),
+    stateIsValid,
     error,
     errorDescription,
     origin: request.nextUrl.origin,
@@ -49,13 +56,18 @@ export async function GET(request: NextRequest) {
     return failure
   }
 
-  if (!code || !state || !storedState || state !== storedState || !verifier) {
+  if (!code || !state || !stateIsValid || !verifier) {
     const missing: string[] = []
     if (!code) missing.push('code')
     if (!state) missing.push('state')
-    if (!storedState) missing.push('stored_state_cookie')
-    if (state && storedState && state !== storedState) missing.push('state_mismatch')
-    if (!verifier) missing.push('pkce_verifier_cookie')
+    if (!stateIsValid) {
+      if (!storedState && !signedState) {
+        missing.push('stored_state_cookie_or_signed_state')
+      } else {
+        missing.push('state_mismatch')
+      }
+    }
+    if (!verifier) missing.push('pkce_verifier_cookie_or_signed_state')
     const diagnostic = `QA login handshake failed. Missing: ${missing.join(', ')}. Seen cookies: ${cookieNames.join(', ') || 'none'}`
     const failure = NextResponse.redirect(
       new URL(`/login?error=${encodeURIComponent(diagnostic)}`, publicOrigin),

@@ -6,7 +6,7 @@ import { hasDemoSession } from '@/lib/auth/demo-auth'
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const searchParams = request.nextUrl.searchParams
-  const hasOauthResponse = searchParams.has('code') || searchParams.has('error')
+  const hasOauthResponse = searchParams.has('code') || (searchParams.has('error') && searchParams.has('state'))
   const isQaCallbackRoute = pathname.startsWith('/api/auth/qa/callback')
 
   if (hasOauthResponse && !isQaCallbackRoute) {

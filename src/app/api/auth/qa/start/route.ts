@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  createOauthState,
+  createSignedQaOauthState,
   createPkcePair,
   getQaAuthorizationUrl,
   getRequestPublicOrigin,
@@ -28,8 +28,11 @@ export async function GET(request: NextRequest) {
 
   const oauthOrigin = configuredAppUrl || publicOrigin
 
-  const state = createOauthState()
   const pkce = createPkcePair()
+  const state = await createSignedQaOauthState({
+    verifier: pkce.verifier,
+    returnTo,
+  })
   const authorization = await getQaAuthorizationUrl(oauthOrigin, {
     returnTo,
     state,

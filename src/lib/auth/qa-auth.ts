@@ -35,6 +35,13 @@ export interface QaSession {
   claims: QaAuthClaims
 }
 
+interface QaOauthStatePayload {
+  nonce: string
+  verifier: string
+  returnTo: string
+  createdAt: number
+}
+
 function trimToNull(value: string | undefined | null) {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -107,10 +114,45 @@ function bytesToBase64Url(bytes: Uint8Array) {
     .replace(/=+$/g, '')
 }
 
+function base64UrlToBytes(value: string) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  const binary = atob(padded)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+function base64UrlToString(value: string) {
+  return new TextDecoder().decode(base64UrlToBytes(value))
+}
+
 function randomBase64Url(byteLength: number) {
   const bytes = new Uint8Array(byteLength)
   crypto.getRandomValues(bytes)
   return bytesToBase64Url(bytes)
+}
+
+function getQaStateSecret() {
+  return process.env.QA_AUTH_STATE_SECRET
+    || process.env.SUPABASE_SERVICE_ROLE_KEY
+    || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    || `${QA_AUTH_CONFIG.clientId}:${QA_AUTH_CONFIG.baseUrl}`
+}
+
+async function signQaStatePayload(payloadBase64Url: string) {
+  const secret = new TextEncoder().encode(getQaStateSecret())
+  const key = await crypto.subtle.importKey(
+    'raw',
+    secret,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadBase64Url))
+  return bytesToBase64Url(new Uint8Array(signature))
 }
 
 /**
@@ -283,6 +325,48 @@ export function createPkcePair() {
 
 export function createOauthState() {
   return randomBase64Url(32)
+}
+
+export async function createSignedQaOauthState(options: {
+  verifier: string
+  returnTo?: string
+}) {
+  const payload: QaOauthStatePayload = {
+    nonce: createOauthState(),
+    verifier: options.verifier,
+    returnTo: sanitizeReturnTo(options.returnTo),
+    createdAt: Math.floor(Date.now() / 1000),
+  }
+  const payloadBase64Url = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)))
+  const signature = await signQaStatePayload(payloadBase64Url)
+  return `${payloadBase64Url}.${signature}`
+}
+
+export async function readSignedQaOauthState(value: string | null | undefined): Promise<QaOauthStatePayload | null> {
+  if (!value) return null
+
+  const [payloadBase64Url, signature] = value.split('.')
+  if (!payloadBase64Url || !signature) return null
+
+  const expectedSignature = await signQaStatePayload(payloadBase64Url)
+  if (signature !== expectedSignature) return null
+
+  try {
+    const payload = JSON.parse(base64UrlToString(payloadBase64Url)) as Partial<QaOauthStatePayload>
+    if (typeof payload.verifier !== 'string' || !payload.verifier.trim()) return null
+    if (typeof payload.returnTo !== 'string') return null
+    if (typeof payload.createdAt !== 'number' || !Number.isFinite(payload.createdAt)) return null
+    if ((Math.floor(Date.now() / 1000) - payload.createdAt) > (60 * 30)) return null
+
+    return {
+      nonce: typeof payload.nonce === 'string' ? payload.nonce : '',
+      verifier: payload.verifier,
+      returnTo: sanitizeReturnTo(payload.returnTo),
+      createdAt: payload.createdAt,
+    }
+  } catch {
+    return null
+  }
 }
 
 export function getQaRedirectUri(origin?: string) {
