@@ -89,36 +89,44 @@ export async function GET(request: NextRequest) {
       redirectUri,
     })
 
-    let session = await tryExchange(verifier, hintedRedirectUri).catch(async (tokenError) => {
-      const isInvalidGrant = tokenError instanceof Error && /invalid_grant/i.test(tokenError.message)
-      const canRetryWithSignedVerifier = isInvalidGrant &&
-        !!storedVerifier &&
-        !!signedState?.verifier &&
-        storedVerifier !== signedState.verifier
+    const verifierCandidates = [
+      verifier,
+      signedState?.verifier,
+      storedVerifier,
+    ].filter((value, index, list): value is string => !!value && list.indexOf(value) === index)
 
-      if (canRetryWithSignedVerifier) {
-        return tryExchange(signedState.verifier, hintedRedirectUri)
-      }
+    const redirectCandidates = [
+      callbackRedirectUri,
+      hintedRedirectUri,
+    ].filter((value, index, list) => list.indexOf(value) === index)
 
-      if (isInvalidGrant && hintedRedirectUri !== callbackRedirectUri) {
-        return tryExchange(verifier, callbackRedirectUri).catch(async (callbackError) => {
-          const canRetryCallbackWithSignedVerifier =
-            callbackError instanceof Error &&
-            /invalid_grant/i.test(callbackError.message) &&
-            !!storedVerifier &&
-            !!signedState?.verifier &&
-            storedVerifier !== signedState.verifier
+    let session = null
+    let lastExchangeError: unknown = null
 
-          if (canRetryCallbackWithSignedVerifier) {
-            return tryExchange(signedState.verifier, callbackRedirectUri)
+    for (const redirectUri of redirectCandidates) {
+      for (const candidateVerifier of verifierCandidates) {
+        try {
+          session = await tryExchange(candidateVerifier, redirectUri)
+          break
+        } catch (tokenError) {
+          lastExchangeError = tokenError
+          const isInvalidGrant = tokenError instanceof Error && /invalid_grant/i.test(tokenError.message)
+          if (!isInvalidGrant) {
+            throw tokenError
           }
-
-          throw callbackError
-        })
+        }
       }
 
-      throw tokenError
-    })
+      if (session) {
+        break
+      }
+    }
+
+    if (!session) {
+      throw lastExchangeError instanceof Error
+        ? lastExchangeError
+        : new Error('QA login failed.')
+    }
 
     setQaSessionCookies(cleanResponse, session)
     cleanResponse.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })
