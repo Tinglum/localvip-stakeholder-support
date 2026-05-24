@@ -4,6 +4,17 @@ import { hasQaSession } from '@/lib/auth/qa-auth'
 import { hasDemoSession } from '@/lib/auth/demo-auth'
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+  const searchParams = request.nextUrl.searchParams
+  const hasOauthResponse = searchParams.has('code') || searchParams.has('error')
+  const isQaCallbackRoute = pathname.startsWith('/api/auth/qa/callback')
+
+  if (hasOauthResponse && !isQaCallbackRoute) {
+    const callbackUrl = request.nextUrl.clone()
+    callbackUrl.pathname = '/api/auth/qa/callback'
+    return NextResponse.redirect(callbackUrl)
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   })
@@ -47,7 +58,6 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  const pathname = request.nextUrl.pathname
   const isLoginRoute = pathname.startsWith('/login')
   const isAuthRoute = isLoginRoute ||
     pathname.startsWith('/signup') ||
