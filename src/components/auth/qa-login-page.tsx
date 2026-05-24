@@ -9,14 +9,19 @@ export function QaLoginPage({
   error,
   code,
   state,
+  manual,
+  signout,
 }: {
   returnTo: string
   error?: string
   code?: string
   state?: string
+  manual?: boolean
+  signout?: boolean
 }) {
   const [redirecting, setRedirecting] = React.useState(false)
   const isOidcCallback = !!code && !!state
+  const shouldAutoRedirect = !manual && !signout && !error && !isOidcCallback
 
   React.useEffect(() => {
     if (isOidcCallback) {
@@ -29,7 +34,16 @@ export function QaLoginPage({
       window.location.assign(target)
       return
     }
-  }, [code, error, isOidcCallback, returnTo, state])
+
+    if (shouldAutoRedirect) {
+      const timer = window.setTimeout(() => {
+        setRedirecting(true)
+        window.location.assign(`/api/auth/qa/start?returnTo=${encodeURIComponent(returnTo)}`)
+      }, 150)
+
+      return () => window.clearTimeout(timer)
+    }
+  }, [code, isOidcCallback, returnTo, shouldAutoRedirect, state])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-50 px-6">
@@ -42,6 +56,16 @@ export function QaLoginPage({
         {isOidcCallback && !error && (
           <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
             Completing QA login and exchanging your authorization code...
+          </div>
+        )}
+        {shouldAutoRedirect && !redirecting && (
+          <div className="mt-4 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
+            Redirecting you to the QA sign-in page...
+          </div>
+        )}
+        {signout && !error && (
+          <div className="mt-4 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700">
+            You have been signed out. Start QA login again when you are ready.
           </div>
         )}
         {error && (
