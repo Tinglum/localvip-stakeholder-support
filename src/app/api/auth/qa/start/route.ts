@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
       cookieSecure: secure,
       nodeEnv: process.env.NODE_ENV,
       clientId: process.env.QA_AUTH_CLIENT_ID || 'lvip_dashboard (default)',
+      hasClientSecret: !!process.env.QA_AUTH_CLIENT_SECRET,
       qaBaseUrl: process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com (default)',
     })
   }

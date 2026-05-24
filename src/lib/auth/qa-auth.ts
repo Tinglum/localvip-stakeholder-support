@@ -87,6 +87,7 @@ export function getRequestPublicOrigin(source: PublicOriginSource) {
 export const QA_AUTH_CONFIG = {
   baseUrl: trimTrailingSlash(trimToNull(process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL) || 'https://qa.localvip.com'),
   clientId: trimToNull(process.env.QA_AUTH_CLIENT_ID) || 'lvip_dashboard',
+  clientSecret: trimToNull(process.env.QA_AUTH_CLIENT_SECRET),
   scopes: trimToNull(process.env.QA_AUTH_SCOPES) || 'openid profile email name LVIPDashboardApiV1 roles offline_access',
   redirectUri: trimToNull(process.env.QA_AUTH_REDIRECT_URI),
   postLogoutRedirectUri: trimToNull(process.env.QA_AUTH_POST_LOGOUT_REDIRECT_URI),
@@ -444,12 +445,18 @@ export async function exchangeCodeForSession(options: {
     redirect_uri: options.redirectUri,
     code_verifier: options.verifier,
   })
+  const headers: Record<string, string> = {
+    'content-type': 'application/x-www-form-urlencoded',
+  }
+
+  if (QA_AUTH_CONFIG.clientSecret) {
+    const credentials = btoa(`${QA_AUTH_CONFIG.clientId}:${QA_AUTH_CONFIG.clientSecret}`)
+    headers.authorization = `Basic ${credentials}`
+  }
 
   const response = await fetch(tokenUrl.toString(), {
     method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-    },
+    headers,
     body: body.toString(),
     cache: 'no-store',
   })

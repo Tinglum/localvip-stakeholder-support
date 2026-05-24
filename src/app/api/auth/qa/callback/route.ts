@@ -89,44 +89,19 @@ export async function GET(request: NextRequest) {
       redirectUri,
     })
 
-    const verifierCandidates = [
-      verifier,
-      signedState?.verifier,
-      storedVerifier,
-    ].filter((value, index, list): value is string => !!value && list.indexOf(value) === index)
+    const chosenRedirectUri = oauthRedirectPath !== '/api/auth/qa/callback'
+      ? hintedRedirectUri
+      : callbackRedirectUri
+    const chosenVerifier = signedState?.verifier || storedVerifier || verifier
 
-    const redirectCandidates = [
-      callbackRedirectUri,
-      hintedRedirectUri,
-    ].filter((value, index, list) => list.indexOf(value) === index)
+    console.log('[qa-callback] exchanging code', {
+      chosenRedirectUri,
+      redirectSelection: oauthRedirectPath !== '/api/auth/qa/callback' ? 'oauth_redirect_path' : 'callback',
+      usingSignedVerifier: chosenVerifier === signedState?.verifier,
+      usingStoredVerifier: chosenVerifier === storedVerifier,
+    })
 
-    let session = null
-    let lastExchangeError: unknown = null
-
-    for (const redirectUri of redirectCandidates) {
-      for (const candidateVerifier of verifierCandidates) {
-        try {
-          session = await tryExchange(candidateVerifier, redirectUri)
-          break
-        } catch (tokenError) {
-          lastExchangeError = tokenError
-          const isInvalidGrant = tokenError instanceof Error && /invalid_grant/i.test(tokenError.message)
-          if (!isInvalidGrant) {
-            throw tokenError
-          }
-        }
-      }
-
-      if (session) {
-        break
-      }
-    }
-
-    if (!session) {
-      throw lastExchangeError instanceof Error
-        ? lastExchangeError
-        : new Error('QA login failed.')
-    }
+    const session = await tryExchange(chosenVerifier, chosenRedirectUri)
 
     setQaSessionCookies(cleanResponse, session)
     cleanResponse.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })
