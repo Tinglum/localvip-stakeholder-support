@@ -50,13 +50,14 @@ export function QaLoginPage({
           </div>
         )}
         <div className="mt-6 flex flex-wrap gap-3">
-          <Button asChild>
-            <a href={`/api/auth/qa/start?returnTo=${encodeURIComponent(returnTo)}`}>
+          <form action="/api/auth/qa/start" method="get">
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <Button type="submit">
               {redirecting
                 ? (isOidcCallback ? 'Completing QA login...' : 'Redirecting to QA login...')
                 : 'Continue to QA login'}
-            </a>
-          </Button>
+            </Button>
+          </form>
           <Button variant="outline" asChild>
             <Link href="/demo">Use demo login instead</Link>
           </Button>

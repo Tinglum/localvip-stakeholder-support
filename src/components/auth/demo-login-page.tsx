@@ -1,11 +1,9 @@
 'use client'
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BRANDS } from '@/lib/constants'
-import { createClient } from '@/lib/supabase/client'
 
 const DEMO_ACCOUNTS = [
   { email: 'kenneth@localvip.com', name: 'Kenneth', role: 'Super Admin' },
@@ -20,52 +18,59 @@ const DEMO_ACCOUNTS = [
 ]
 
 export function DemoLoginPage() {
-  const router = useRouter()
-  const supabase = createClient()
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
+
+  const loginWithDemoSession = React.useCallback(async (payload: { email: string; password?: string }) => {
+    const response = await fetch('/api/auth/demo-login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...payload,
+        returnTo: '/dashboard',
+      }),
+    }).catch(() => null)
+
+    if (!response) {
+      throw new Error('Demo login is unavailable right now. Please try again.')
+    }
+
+    const result = await response.json().catch(() => null)
+    if (!response.ok || !result?.ok) {
+      throw new Error(typeof result?.error === 'string' ? result.error : 'Demo login failed.')
+    }
+
+    window.location.assign(typeof result.redirectTo === 'string' ? result.redirectTo : '/dashboard')
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (authError) {
-      setError(authError.message)
+    try {
+      await loginWithDemoSession({ email, password })
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : 'Demo login failed.')
       setLoading(false)
-      return
     }
-
-    router.push('/dashboard')
-    router.refresh()
   }
 
   const loginAsDemo = async (demoEmail: string) => {
     setLoading(true)
     setError('')
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email: demoEmail,
-      password: 'demo1234',
-    })
-
-    if (authError) {
-      setError(authError.message === 'Invalid login credentials'
-        ? 'Demo accounts not seeded yet. Run: npm run db:seed'
-        : authError.message)
+    try {
+      await loginWithDemoSession({ email: demoEmail })
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : 'Demo login failed.')
       setLoading(false)
-      return
     }
-
-    router.push('/dashboard')
-    router.refresh()
   }
 
   return (

@@ -6,6 +6,7 @@ import {
   type QaAuthClaims,
   type QaSession,
 } from '@/lib/auth/qa-auth'
+import { getDemoProfileByEmail, getDemoSessionEmailFromCookieStore } from '@/lib/auth/demo-auth'
 import { fetchQaUserProfile } from '@/lib/auth/qa-api'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
@@ -512,12 +513,45 @@ async function linkQaBusinessToProfile(
 export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | null> {
   const cookieStore = cookies()
   const service = createServiceClient()
+  const demoSessionEmail = getDemoSessionEmailFromCookieStore(cookieStore)
+
+  if (demoSessionEmail) {
+    let profile = getDemoProfileByEmail(demoSessionEmail)
+    let localProfileId: string | null = null
+
+    try {
+      const storedProfile = await loadProfileByEmail(service, demoSessionEmail)
+      if (storedProfile) {
+        profile = storedProfile
+        localProfileId = asUuid(storedProfile.id)
+      }
+    } catch {
+      // Fall back to the baked-in demo profile below.
+    }
+
+    if (profile) {
+      if (!localProfileId) {
+        try {
+          profile = await linkBusinessUserToLocalBusiness(service, profile)
+        } catch {
+          // Keep the baked-in demo profile if the DB lookup fails.
+        }
+      }
+
+      return {
+        profile,
+        userId: profile.id,
+        localProfileId,
+        source: 'supabase',
+      }
+    }
+  }
 
   // 1. Try Supabase session FIRST — fastest path (just getUser + profile lookup).
   //    QA users with a bridged session will hit this path and skip the slow QA provisioning.
   if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     const supabase = createServerSupabaseClient()
-    const { data } = await supabase.auth.getUser()
+    const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
     const user = data.user
     if (user) {
       const qaSession = getQaSessionFromCookieStore(cookieStore)

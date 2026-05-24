@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { clearQaSessionCookies, getQaLogoutUrl, getQaSessionFromCookieStore, getRequestPublicOrigin } from '@/lib/auth/qa-auth'
+import { clearDemoSessionCookie } from '@/lib/auth/demo-auth'
 
 export async function POST(request: NextRequest) {
   const session = getQaSessionFromCookieStore(request.cookies)
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
 
   // Clear QA session cookies
   clearQaSessionCookies(response)
+  clearDemoSessionCookie(response)
 
   // Sign out of Supabase server-side so that server-set session cookies are
   // definitively cleared. The client-side supabase.auth.signOut() call in the

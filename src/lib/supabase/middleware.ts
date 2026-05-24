@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { hasQaSession } from '@/lib/auth/qa-auth'
+import { hasDemoSession } from '@/lib/auth/demo-auth'
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
@@ -8,9 +9,10 @@ export async function updateSession(request: NextRequest) {
   })
 
   const hasQaAuth = hasQaSession(request)
+  const hasDemoAuth = hasDemoSession(request)
   let supabaseUser = null
 
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (!hasDemoAuth && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -37,8 +39,12 @@ export async function updateSession(request: NextRequest) {
       }
     )
 
-    const { data } = await supabase.auth.getUser()
-    supabaseUser = data.user
+    try {
+      const { data } = await supabase.auth.getUser()
+      supabaseUser = data.user
+    } catch {
+      supabaseUser = null
+    }
   }
 
   const pathname = request.nextUrl.pathname
@@ -54,11 +60,12 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/api/join/') ||
     pathname.startsWith('/support/') ||
     pathname.startsWith('/api/support/') ||
+    pathname.startsWith('/api/auth/demo-login') ||
     pathname.startsWith('/api/auth/qa/') ||
     pathname.startsWith('/api/auth/session') ||
     pathname.startsWith('/api/auth/logout')
 
-  if (!hasQaAuth && !supabaseUser && !isAuthRoute && !isPublicRoute) {
+  if (!hasQaAuth && !hasDemoAuth && !supabaseUser && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('returnTo', `${request.nextUrl.pathname}${request.nextUrl.search}`)
