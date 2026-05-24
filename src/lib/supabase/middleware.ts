@@ -12,6 +12,7 @@ export async function updateSession(request: NextRequest) {
   if (hasOauthResponse && !isQaCallbackRoute) {
     const callbackUrl = request.nextUrl.clone()
     callbackUrl.pathname = '/api/auth/qa/callback'
+    callbackUrl.searchParams.set('oauth_redirect_path', pathname)
     return NextResponse.redirect(callbackUrl)
   }
 

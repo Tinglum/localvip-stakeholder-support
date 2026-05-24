@@ -28,6 +28,7 @@ export function QaLoginPage({
       const params = new URLSearchParams({
         code,
         state,
+        oauth_redirect_path: '/login',
       })
       const target = `/api/auth/qa/callback?${params.toString()}`
       setRedirecting(true)

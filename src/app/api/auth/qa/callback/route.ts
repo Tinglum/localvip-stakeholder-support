@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get('state')
   const error = request.nextUrl.searchParams.get('error')
   const errorDescription = request.nextUrl.searchParams.get('error_description')
+  const oauthRedirectPath = sanitizeReturnTo(request.nextUrl.searchParams.get('oauth_redirect_path') || '/api/auth/qa/callback')
 
   const storedState = request.cookies.get(QA_COOKIE_NAMES.state)?.value || null
   const storedVerifier = request.cookies.get(QA_COOKIE_NAMES.verifier)?.value || null
@@ -27,6 +28,8 @@ export async function GET(request: NextRequest) {
   const returnTo = sanitizeReturnTo(signedState?.returnTo || storedReturnTo || '/dashboard')
   const publicOrigin = getRequestPublicOrigin(request)
   const stateIsValid = !!state && (!!signedState || (!!storedState && state === storedState))
+  const callbackRedirectUri = getQaRedirectUri(publicOrigin)
+  const hintedRedirectUri = new URL(oauthRedirectPath, publicOrigin).toString()
 
   // Diagnostic: list every cookie we can see so we know if the browser dropped them
   const cookieNames = request.cookies.getAll().map((c) => c.name)
@@ -42,6 +45,9 @@ export async function GET(request: NextRequest) {
     errorDescription,
     origin: request.nextUrl.origin,
     publicOrigin,
+    oauthRedirectPath,
+    hintedRedirectUri,
+    callbackRedirectUri,
     cookieNames,
   })
 
@@ -77,27 +83,41 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let session = await exchangeCodeForSession({
+    const tryExchange = (candidateVerifier: string, redirectUri: string) => exchangeCodeForSession({
       code,
-      verifier,
-      redirectUri: getQaRedirectUri(publicOrigin),
-    }).catch(async (tokenError) => {
-      const canRetryWithSignedVerifier =
-        tokenError instanceof Error &&
-        /invalid_grant/i.test(tokenError.message) &&
+      verifier: candidateVerifier,
+      redirectUri,
+    })
+
+    let session = await tryExchange(verifier, hintedRedirectUri).catch(async (tokenError) => {
+      const isInvalidGrant = tokenError instanceof Error && /invalid_grant/i.test(tokenError.message)
+      const canRetryWithSignedVerifier = isInvalidGrant &&
         !!storedVerifier &&
         !!signedState?.verifier &&
         storedVerifier !== signedState.verifier
 
-      if (!canRetryWithSignedVerifier) {
-        throw tokenError
+      if (canRetryWithSignedVerifier) {
+        return tryExchange(signedState.verifier, hintedRedirectUri)
       }
 
-      return exchangeCodeForSession({
-        code,
-        verifier: signedState.verifier,
-        redirectUri: getQaRedirectUri(publicOrigin),
-      })
+      if (isInvalidGrant && hintedRedirectUri !== callbackRedirectUri) {
+        return tryExchange(verifier, callbackRedirectUri).catch(async (callbackError) => {
+          const canRetryCallbackWithSignedVerifier =
+            callbackError instanceof Error &&
+            /invalid_grant/i.test(callbackError.message) &&
+            !!storedVerifier &&
+            !!signedState?.verifier &&
+            storedVerifier !== signedState.verifier
+
+          if (canRetryCallbackWithSignedVerifier) {
+            return tryExchange(signedState.verifier, callbackRedirectUri)
+          }
+
+          throw callbackError
+        })
+      }
+
+      throw tokenError
     })
 
     setQaSessionCookies(cleanResponse, session)
