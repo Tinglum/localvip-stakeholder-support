@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
   const storedVerifier = request.cookies.get(QA_COOKIE_NAMES.verifier)?.value || null
   const storedReturnTo = request.cookies.get(QA_COOKIE_NAMES.returnTo)?.value || null
   const signedState = await readSignedQaOauthState(state)
-  const verifier = storedVerifier || signedState?.verifier || null
-  const returnTo = sanitizeReturnTo(storedReturnTo || signedState?.returnTo || '/dashboard')
+  const verifier = signedState?.verifier || storedVerifier || null
+  const returnTo = sanitizeReturnTo(signedState?.returnTo || storedReturnTo || '/dashboard')
   const publicOrigin = getRequestPublicOrigin(request)
   const stateIsValid = !!state && (!!signedState || (!!storedState && state === storedState))
 
@@ -77,10 +77,27 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const session = await exchangeCodeForSession({
+    let session = await exchangeCodeForSession({
       code,
       verifier,
       redirectUri: getQaRedirectUri(publicOrigin),
+    }).catch(async (tokenError) => {
+      const canRetryWithSignedVerifier =
+        tokenError instanceof Error &&
+        /invalid_grant/i.test(tokenError.message) &&
+        !!storedVerifier &&
+        !!signedState?.verifier &&
+        storedVerifier !== signedState.verifier
+
+      if (!canRetryWithSignedVerifier) {
+        throw tokenError
+      }
+
+      return exchangeCodeForSession({
+        code,
+        verifier: signedState.verifier,
+        redirectUri: getQaRedirectUri(publicOrigin),
+      })
     })
 
     setQaSessionCookies(cleanResponse, session)
