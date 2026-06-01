@@ -18,6 +18,7 @@
  *   - alex@partner.com (Business Onboarding Partner)
  *   - maya@localvip.com (College Intern)
  *   - owner@mainstreetbakery.com (Business Owner — Lisa Chen)
+ *   - taylor@localvip.com (VIP Client Demo)
  *   - jordan@influencer.com (Influencer)
  *   - volunteer@example.com (Volunteer)
  */
@@ -207,6 +208,7 @@ async function seed() {
     { email: 'alex@partner.com', name: 'Alex Rivera', role: 'launch_partner', brand: 'localvip', referral_code: 'alex-biz' },
     { email: 'maya@localvip.com', name: 'Maya Patel', role: 'field', role_subtype: 'intern', brand: 'localvip', referral_code: 'maya-clt' },
     { email: 'owner@mainstreetbakery.com', name: 'Lisa Chen', role: 'business', brand: 'localvip', referral_code: 'lisa-biz' },
+    { email: 'taylor@localvip.com', name: 'Taylor Morgan', role: 'influencer', brand: 'localvip', referral_code: 'taylor-vip' },
     { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'influencer', brand: 'localvip', referral_code: 'jordan-inf' },
     { email: 'volunteer@example.com', name: 'Casey Adams', role: 'field', role_subtype: 'volunteer', brand: 'localvip', referral_code: 'casey-vol' },
   ]

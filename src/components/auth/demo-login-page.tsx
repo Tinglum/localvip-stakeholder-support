@@ -13,6 +13,7 @@ const DEMO_ACCOUNTS = [
   { email: 'alex@partner.com', name: 'Alex Rivera', role: 'Onboarding Partner' },
   { email: 'maya@localvip.com', name: 'Maya Patel', role: 'College Intern' },
   { email: 'jordan@influencer.com', name: 'Jordan Taylor', role: 'Influencer' },
+  { email: 'taylor@localvip.com', name: 'Taylor Morgan', role: 'VIP Client' },
   { email: 'volunteer@example.com', name: 'Casey Adams', role: 'Volunteer' },
   { email: 'owner@mainstreetbakery.com', name: 'Lisa Chen', role: 'Business Owner' },
 ]
