@@ -126,12 +126,12 @@ export async function GET(request: NextRequest) {
         const stripeIncomplete = qaProfile.isStripeOnboardingComplete === false
         console.log('[qa-callback] profile check', { accountType: qaProfile.accountType, role: qaProfile.role, isStripeOnboardingComplete: qaProfile.isStripeOnboardingComplete })
         if (isBusinessAccount && stripeIncomplete) {
-          const stripeOnboardingRedirect = NextResponse.redirect('https://qa.localvip.com/')
+          const stripeOnboardingRedirect = NextResponse.redirect(`${QA_AUTH_CONFIG.baseUrl}/`)
           // Copy all cookies set on cleanResponse so the session is preserved
           cleanResponse.cookies.getAll().forEach((cookie) => {
             stripeOnboardingRedirect.cookies.set(cookie)
           })
-          console.log('[qa-callback] Stripe onboarding incomplete — redirecting to qa.localvip.com')
+          console.log(`[qa-callback] Stripe onboarding incomplete — redirecting to ${QA_AUTH_CONFIG.baseUrl}`)
           return stripeOnboardingRedirect
         }
       }

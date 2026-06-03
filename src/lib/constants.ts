@@ -222,6 +222,7 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 40 },
       { label: 'Causes', href: '/crm/causes', icon: 'Heart', minLevel: 40 },
+      { label: 'Consumers', href: '/crm/consumers', icon: 'UserPlus', minLevel: 40 },
       { label: 'Contacts', href: '/crm/contacts', icon: 'Users', minLevel: 40 },
       { label: 'Stakeholders', href: '/crm/stakeholders', icon: 'UserCheck', minLevel: 40 },
       { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 40 },

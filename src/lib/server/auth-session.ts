@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { createServerSupabaseClient, createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import {
   buildFallbackQaProfile,
   getQaSessionFromCookieStore,
@@ -21,10 +21,102 @@ export interface ResolvedAuthSession {
   source: AuthSource
   qaClaims?: QaAuthClaims
   qaSession?: QaSession
+  /** Set when a sysadmin is using View-As mode. The profile above already
+   * reflects the target user; this carries the original admin so we can
+   * unwind on logout. */
+  viewingAs?: {
+    targetUserId: number
+    targetEmail: string
+    targetRole: string
+    adminId: string
+    adminEmail: string | null
+  }
+}
+
+interface ViewAsCookiePayload {
+  userId: number
+  email: string
+  name: string
+  role: string
+  accountType?: string | number
+  consumerType?: string
+  since: string
+}
+
+function getViewAsPayload(cookieStore: ReturnType<typeof cookies>): ViewAsCookiePayload | null {
+  const raw = cookieStore.get('lvip_view_as')?.value
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as ViewAsCookiePayload
+  } catch {
+    return null
+  }
+}
+
+/**
+ * If the sysadmin has set the View-As cookie, mutate the resolved session so
+ * the rest of the app sees the target user's profile/role. The original admin
+ * is preserved on `session.viewingAs` for audit + the banner's return path.
+ */
+function applyViewAsOverride(
+  session: ResolvedAuthSession,
+  payload: ViewAsCookiePayload,
+): ResolvedAuthSession {
+  const original = session.profile
+  // Only an admin/sysadmin is allowed to view-as.
+  if (original.role !== 'admin' && original.role !== 'super_admin' && original.role !== 'internal_admin') {
+    return session
+  }
+
+  const targetProfile: Profile = {
+    ...original,
+    id: original.id,                     // keep admin's UUID so writes still attribute correctly
+    email: payload.email,
+    full_name: payload.name,
+    role: payload.role as Profile['role'],
+    metadata: {
+      ...(original.metadata as object || {}),
+      view_as_target_user_id: payload.userId,
+      view_as_target_email: payload.email,
+      view_as_account_type: payload.accountType ?? null,
+      view_as_consumer_type: payload.consumerType ?? null,
+    },
+  }
+
+  return {
+    ...session,
+    profile: targetProfile,
+    viewingAs: {
+      targetUserId: payload.userId,
+      targetEmail: payload.email,
+      targetRole: payload.role,
+      adminId: original.id,
+      adminEmail: original.email,
+    },
+  }
 }
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 const QA_PROFILE_SYNC_TTL_MS = 15 * 60 * 1000
+const AUTH_IO_TIMEOUT_MS = process.env.NODE_ENV === 'development' ? 1200 : 5000
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs = AUTH_IO_TIMEOUT_MS, label = 'auth operation'): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
 
 function normalizeEmail(value: string | null | undefined) {
   return value?.trim().toLowerCase() || null
@@ -319,7 +411,7 @@ async function syncQaReferralToProfile(
       return profile
     }
 
-    const qaProfile = await fetchQaUserProfile()
+    const qaProfile = await withTimeout(fetchQaUserProfile(), AUTH_IO_TIMEOUT_MS, 'QA profile sync')
 
     const nextReferralCode = sanitizeStakeholderCodeValue(qaProfile?.referralCode)
     const nextSharedUrl = sanitizeStakeholderUrl(qaProfile?.sharedURL)
@@ -503,7 +595,7 @@ async function linkQaBusinessToProfile(
 
 /**
  * Resolve the currently authenticated user from either a QA OAuth session or
- * a Supabase session. Returns null if neither is present.
+ * a demo session. Returns null if neither is present.
  *
  * For QA users without a local profile, we first attempt to **provision** a
  * real auth.users + profiles row so that FK-constrained writes work. If that
@@ -512,15 +604,25 @@ async function linkQaBusinessToProfile(
  */
 export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | null> {
   const cookieStore = cookies()
-  const service = createServiceClient()
   const demoSessionEmail = getDemoSessionEmailFromCookieStore(cookieStore)
+  const qaSession = getQaSessionFromCookieStore(cookieStore)
+
+  if (!demoSessionEmail && !qaSession) {
+    return null
+  }
+
+  const service = createServiceClient()
 
   if (demoSessionEmail) {
     let profile = getDemoProfileByEmail(demoSessionEmail)
     let localProfileId: string | null = null
 
     try {
-      const storedProfile = await loadProfileByEmail(service, demoSessionEmail)
+      const storedProfile = await withTimeout(
+        loadProfileByEmail(service, demoSessionEmail),
+        AUTH_IO_TIMEOUT_MS,
+        'demo profile lookup',
+      )
       if (storedProfile) {
         profile = storedProfile
         localProfileId = asUuid(storedProfile.id)
@@ -538,100 +640,18 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
         }
       }
 
-      return {
+      const baseSession: ResolvedAuthSession = {
         profile,
         userId: profile.id,
         localProfileId,
         source: 'supabase',
       }
-    }
-  }
-
-  // 1. Try Supabase session FIRST — fastest path (just getUser + profile lookup).
-  //    QA users with a bridged session will hit this path and skip the slow QA provisioning.
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    const supabase = createServerSupabaseClient()
-    const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
-    const user = data.user
-    if (user) {
-      const qaSession = getQaSessionFromCookieStore(cookieStore)
-
-      // Guard: if the QA token is for a DIFFERENT email than the Supabase session,
-      // the Supabase session is stale (e.g. operator logged into QA as a business user
-      // but the bridge didn't fully overwrite the old session). Fall through to the
-      // QA-only path which will provision the correct identity.
-      if (
-        qaSession?.claims.email &&
-        user.email &&
-        qaSession.claims.email.toLowerCase() !== user.email.toLowerCase()
-      ) {
-        console.log(
-          '[auth-session] QA session email differs from Supabase user email — using QA path',
-          { qaEmail: qaSession.claims.email, supabaseEmail: user.email },
-        )
-        // fall through to path 2 below
-      } else {
-
-      let profile = (await loadProfileById(service, user.id)) || ({
-        id: user.id,
-        email: user.email || '',
-        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-        avatar_url: null,
-        role: (user.user_metadata?.role as Profile['role']) || 'field',
-        role_subtype: (user.user_metadata?.role_subtype as Profile['role_subtype']) || null,
-        brand_context: 'localvip',
-        organization_id: null,
-        city_id: null,
-        business_id: user.user_metadata?.business_id || null,
-        phone: null,
-        referral_code: null,
-        status: 'active',
-        metadata: { auth_source: 'supabase_fallback' },
-        created_at: user.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as Profile)
-
-      // While the QA token is still live, QA is the source of truth for role.
-      // Always apply the QA-derived role to the in-memory profile, and persist
-      // it to the DB if it differs (best-effort, non-fatal).
-      if (qaSession) {
-        const expectedFromQa = buildFallbackQaProfile(qaSession.claims)
-        const storedRole = profile.role
-        // Apply QA role immediately so the returned profile is always correct,
-        // regardless of what's stored in the DB row.
-        profile = { ...profile, role: expectedFromQa.role, role_subtype: expectedFromQa.role_subtype ?? null }
-        // Persist to DB if the stored role was wrong, so future non-QA sessions
-        // also get the right role.
-        if (storedRole !== expectedFromQa.role) {
-          try {
-            await (service.from('profiles') as any)
-              .update({ role: expectedFromQa.role, role_subtype: expectedFromQa.role_subtype ?? null })
-              .eq('id', user.id)
-            console.log('[auth-session] Synced role (path-1) for', user.email, storedRole, '→', expectedFromQa.role)
-          } catch {
-            // Non-fatal.
-          }
-        }
-
-        profile = await syncQaReferralToProfile(service, user.id, profile)
-      }
-
-      profile = await linkBusinessUserToLocalBusiness(service, profile, qaSession?.claims)
-
-      return {
-        profile,
-        userId: user.id,
-        localProfileId: asUuid(user.id),
-        source: qaSession ? 'qa' : 'supabase',
-        qaClaims: qaSession?.claims,
-        qaSession: qaSession || undefined,
-      }
-      } // end else (emails match)
+      const viewAs = getViewAsPayload(cookieStore)
+      return viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession
     }
   }
 
   // 2. No Supabase session — try QA session (slower: email lookup + provisioning)
-  const qaSession = getQaSessionFromCookieStore(cookieStore)
   if (qaSession) {
     const email = qaSession.claims.email?.toLowerCase() || null
     let profile: Profile | null = null
@@ -639,7 +659,11 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
 
     // a. Try to find an existing profile by email
     if (email) {
-      profile = await loadProfileByEmail(service, email)
+      profile = await withTimeout(
+        loadProfileByEmail(service, email),
+        AUTH_IO_TIMEOUT_MS,
+        'profile lookup by email',
+      ).catch(() => null)
       if (profile) profileIsReal = true
     }
 
@@ -676,7 +700,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       profile = await linkBusinessUserToLocalBusiness(service, profile, qaSession.claims)
     }
 
-    return {
+    const baseSession: ResolvedAuthSession = {
       profile,
       userId: profile.id,
       localProfileId: profileIsReal ? asUuid(profile.id) : null,
@@ -684,6 +708,8 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       qaClaims: qaSession.claims,
       qaSession,
     }
+    const viewAs = getViewAsPayload(cookieStore)
+    return viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession
   }
 
   return null
@@ -755,3 +781,5 @@ export class UnauthorizedError extends Error {
     this.name = 'UnauthorizedError'
   }
 }
+
+

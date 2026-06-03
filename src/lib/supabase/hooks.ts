@@ -1,7 +1,17 @@
 'use client'
 
+/**
+ * QA-BACKED HOOKS (was: Supabase hooks)
+ *
+ * Drop-in replacement for the original Supabase hooks. Same signatures,
+ * same return shapes, but all data flows through `/api/qa/dashboard/{table}`
+ * which proxies to the .NET QA backend on https://localhost:5001.
+ *
+ * Pages don't need to change their imports — they keep calling things like
+ * `useContacts()` and get backend data.
+ */
+
 import * as React from 'react'
-import { createClient } from './client'
 import type {
   Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material, Organization,
   StakeholderAssignment, OnboardingFlow, OnboardingStep, OutreachScript, MaterialAssignment, QrCodeCollection,
@@ -22,7 +32,38 @@ interface UseQueryOptions {
   enabled?: boolean
 }
 
-function useSupabaseQuery<T>(
+const QA_QUERY_TIMEOUT_MS = 15000
+
+function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = QA_QUERY_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      })
+      .catch((error) => {
+        window.clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
+
+function buildQueryString(filters?: Record<string, string | number | boolean | null>) {
+  if (!filters) return ''
+  const params = new URLSearchParams()
+  for (const [k, v] of Object.entries(filters)) {
+    if (v === null || v === undefined || v === '') continue
+    params.append(k, String(v))
+  }
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
+
+function useQaQuery<T>(
   table: string,
   options?: {
     orderBy?: string
@@ -30,25 +71,16 @@ function useSupabaseQuery<T>(
     limit?: number
     filters?: Record<string, string | number | boolean | null>
     enabled?: boolean
-  }
+  },
 ): UseQueryResult<T> {
-  const supabase = React.useMemo(() => createClient(), [])
   const [data, setData] = React.useState<T[]>([])
   const [loading, setLoading] = React.useState(options?.enabled ?? true)
   const [error, setError] = React.useState<string | null>(null)
   const [refetchKey, setRefetchKey] = React.useState(0)
   const silentRefetchRef = React.useRef(false)
-  const orderBy = options?.orderBy
-  const orderAsc = options?.orderAsc ?? false
-  const limit = options?.limit
+
   const enabled = options?.enabled ?? true
   const filtersKey = JSON.stringify(options?.filters || {})
-  const filterEntries = React.useMemo(
-    () => Object.entries(
-      JSON.parse(filtersKey) as Record<string, string | number | boolean | null>
-    ).filter(([, value]) => value !== null && value !== undefined && value !== ''),
-    [filtersKey]
-  )
 
   React.useEffect(() => {
     if (!enabled) {
@@ -57,55 +89,79 @@ function useSupabaseQuery<T>(
       return
     }
 
-    async function fetch() {
-      if (!silentRefetchRef.current) {
-        setLoading(true)
-      }
+    let cancelled = false
+
+    async function run() {
+      if (!silentRefetchRef.current) setLoading(true)
       setError(null)
 
-      let query = supabase.from(table).select('*')
+      try {
+        const filters = JSON.parse(filtersKey) as Record<string, string | number | boolean | null>
+        const qs = buildQueryString(filters)
+        const res = await withTimeout(
+          fetch(`/api/qa/dashboard/${table}${qs}`, { cache: 'no-store' }),
+          `${table} query`,
+        )
 
-      for (const [key, value] of filterEntries) {
-        query = query.eq(key, value as string | number | boolean)
-      }
+        if (!res.ok) {
+          const text = await res.text().catch(() => '')
+          throw new Error(text || `${table} request failed with ${res.status}`)
+        }
 
-      if (orderBy) {
-        query = query.order(orderBy, { ascending: orderAsc })
-      } else {
-        query = query.order('created_at', { ascending: false })
-      }
+        const json = await res.json().catch(() => [])
+        const rows = Array.isArray(json) ? json : []
 
-      if (limit) {
-        query = query.limit(limit)
-      }
+        if (cancelled) return
 
-      const { data: rows, error: err } = await query
+        // Client-side sort if orderBy provided
+        let sorted = rows as T[]
+        if (options?.orderBy) {
+          const orderBy = options.orderBy
+          const orderAsc = options.orderAsc ?? false
+          sorted = [...sorted].sort((a, b) => {
+            const av = (a as Record<string, unknown>)[orderBy]
+            const bv = (b as Record<string, unknown>)[orderBy]
+            if (av === bv) return 0
+            if (av == null) return orderAsc ? -1 : 1
+            if (bv == null) return orderAsc ? 1 : -1
+            if (av < bv) return orderAsc ? -1 : 1
+            return orderAsc ? 1 : -1
+          })
+        }
 
-      if (err) {
-        setError(err.message)
+        // Client-side limit
+        if (options?.limit && sorted.length > options.limit) {
+          sorted = sorted.slice(0, options.limit)
+        }
+
+        setData(sorted)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : `Failed to load ${table}.`)
         setData([])
-      } else {
-        setData((rows || []) as T[])
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+          silentRefetchRef.current = false
+        }
       }
-      setLoading(false)
-      silentRefetchRef.current = false
     }
 
-    fetch()
-  }, [supabase, table, orderBy, orderAsc, limit, filterEntries, refetchKey, enabled])
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [table, filtersKey, options?.orderBy, options?.orderAsc, options?.limit, enabled, refetchKey])
 
-  const refetch = React.useCallback((options?: { silent?: boolean }) => {
-    silentRefetchRef.current = !!options?.silent
-    setRefetchKey(k => k + 1)
+  const refetch = React.useCallback((opts?: { silent?: boolean }) => {
+    silentRefetchRef.current = !!opts?.silent
+    setRefetchKey((k) => k + 1)
   }, [])
 
   return { data, loading, error, refetch }
 }
 
-// ─── Insert hook ────────────────────────────────────────────
-
-function useSupabaseInsert<T>(table: string) {
-  const supabase = React.useMemo(() => createClient(), [])
+function useQaInsert<T>(table: string) {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -113,252 +169,383 @@ function useSupabaseInsert<T>(table: string) {
     setLoading(true)
     setError(null)
 
-    const { data, error: err } = await supabase
-      .from(table)
-      .insert(record as any)
-      .select()
-      .single()
+    try {
+      const res = await withTimeout(
+        fetch(`/api/qa/dashboard/${table}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(record),
+        }),
+        `${table} create`,
+      )
 
-    setLoading(false)
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        let msg = `${table} create failed with ${res.status}`
+        try {
+          const parsed = JSON.parse(text)
+          msg = parsed?.error || msg
+        } catch {
+          if (text) msg = text
+        }
+        setError(msg)
+        return null
+      }
 
-    if (err) {
-      setError(err.message)
+      return (await res.json()) as T
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to create ${table}.`)
       return null
+    } finally {
+      setLoading(false)
     }
-
-    return data as T
-  }, [supabase, table])
+  }, [table])
 
   return { insert, loading, error }
 }
 
-// ─── Update hook ────────────────────────────────────────────
-
-function useSupabaseUpdate<T>(table: string) {
-  const supabase = React.useMemo(() => createClient(), [])
+function useQaUpdate<T>(table: string) {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
-  const update = React.useCallback(async (id: string, changes: Partial<T>): Promise<T | null> => {
+  const update = React.useCallback(async (id: string | number, changes: Partial<T>): Promise<T | null> => {
     setLoading(true)
     setError(null)
 
-    const { data, error: err } = await (supabase
-      .from(table) as any)
-      .update(changes)
-      .eq('id', id)
-      .select()
-      .single()
+    try {
+      const res = await withTimeout(
+        fetch(`/api/qa/dashboard/${table}/${id}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(changes),
+        }),
+        `${table} update`,
+      )
 
-    setLoading(false)
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        setError(text || `${table} update failed with ${res.status}`)
+        return null
+      }
 
-    if (err) {
-      setError(err.message)
+      return (await res.json()) as T
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to update ${table}.`)
       return null
+    } finally {
+      setLoading(false)
     }
-
-    return data as T
-  }, [supabase, table])
+  }, [table])
 
   return { update, loading, error }
 }
 
-// ─── Delete hook ────────────────────────────────────────────
-
-function useSupabaseDelete(table: string) {
-  const supabase = React.useMemo(() => createClient(), [])
-
-  const remove = React.useCallback(async (id: string): Promise<boolean> => {
-    const { error } = await supabase.from(table).delete().eq('id', id)
-    return !error
-  }, [supabase, table])
+function useQaDelete(table: string) {
+  const remove = React.useCallback(async (id: string | number): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/qa/dashboard/${table}/${id}`, { method: 'DELETE' })
+      return res.ok
+    } catch {
+      return false
+    }
+  }, [table])
 
   return { remove }
 }
 
-// ─── Typed hooks ────────────────────────────────────────────
+// ─── Typed hooks (drop-in replacements for the original Supabase hooks) ────
 
 export function useBusinesses(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Business>('businesses', { filters, enabled: options?.enabled })
+  // businesses live in /api/qa/businesses (existing route) — not /api/qa/dashboard/businesses
+  const [data, setData] = React.useState<Business[]>([])
+  const [loading, setLoading] = React.useState(options?.enabled ?? true)
+  const [error, setError] = React.useState<string | null>(null)
+  const [refetchKey, setRefetchKey] = React.useState(0)
+  const enabled = options?.enabled ?? true
+  const filtersKey = JSON.stringify(filters || {})
+
+  React.useEffect(() => {
+    if (!enabled) { setLoading(false); return }
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/qa/businesses', { cache: 'no-store' })
+        if (!res.ok) throw new Error('Failed to load businesses.')
+        const json = await res.json()
+        const arr = Array.isArray(json) ? json : []
+        // QA list shape → Supabase Business shape (best effort)
+        const mapped: Business[] = arr.map((b: Record<string, unknown>) => ({
+          id: String(b.id),
+          name: String(b.name || ''),
+          email: (b.ownerEmail as string) || null,
+          phone: (b.ownerPhone as string) || null,
+          website: null,
+          category: null,
+          address: (b.fullAddress as string) || (b.address1 as string) || null,
+          city: (b.city as string) || null,
+          state: (b.state as string) || null,
+          country: (b.country as string) || null,
+          zip: (b.zipCode as string) || null,
+          owner_id: null,
+          owner_user_id: null,
+          city_id: null,
+          brand: 'localvip',
+          stage: 'lead',
+          status: b.active ? 'active' : 'inactive',
+          metadata: { qaId: b.id, headline: b.headline },
+          created_at: (b.createdDate as string) || new Date().toISOString(),
+          updated_at: (b.updatedDate as string) || new Date().toISOString(),
+        } as unknown as Business))
+        if (!cancelled) setData(mapped)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [filtersKey, enabled, refetchKey])
+
+  const refetch = React.useCallback(() => setRefetchKey((k) => k + 1), [])
+  return { data, loading, error, refetch }
 }
-export function useBusinessInsert() { return useSupabaseInsert<Business>('businesses') }
-export function useBusinessUpdate() { return useSupabaseUpdate<Business>('businesses') }
+export function useBusinessInsert() { return useQaInsert<Business>('businesses') }
+export function useBusinessUpdate() { return useQaUpdate<Business>('businesses') }
 
 export function useCauses(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Cause>('causes', { filters, enabled: options?.enabled })
+  const [data, setData] = React.useState<Cause[]>([])
+  const [loading, setLoading] = React.useState(options?.enabled ?? true)
+  const [error, setError] = React.useState<string | null>(null)
+  const [refetchKey, setRefetchKey] = React.useState(0)
+  const enabled = options?.enabled ?? true
+  const filtersKey = JSON.stringify(filters || {})
+
+  React.useEffect(() => {
+    if (!enabled) { setLoading(false); return }
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/qa/nonprofits', { cache: 'no-store' })
+        if (!res.ok) throw new Error('Failed to load causes.')
+        const json = await res.json()
+        const arr = Array.isArray(json) ? json : []
+        const mapped: Cause[] = arr.map((c: Record<string, unknown>) => ({
+          id: String(c.id),
+          name: String(c.name || ''),
+          email: (c.ownerEmail as string) || null,
+          phone: (c.ownerPhone as string) || null,
+          city: (c.city as string) || null,
+          state: (c.state as string) || null,
+          country: (c.country as string) || null,
+          type: 'nonprofit',
+          owner_id: null,
+          owner_user_id: null,
+          city_id: null,
+          brand: 'localvip',
+          stage: 'lead',
+          status: c.active ? 'active' : 'inactive',
+          metadata: { qaId: c.id, headline: c.headline },
+          created_at: (c.createdDate as string) || new Date().toISOString(),
+          updated_at: (c.updatedDate as string) || new Date().toISOString(),
+        } as unknown as Cause))
+        if (!cancelled) setData(mapped)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [filtersKey, enabled, refetchKey])
+
+  const refetch = React.useCallback(() => setRefetchKey((k) => k + 1), [])
+  return { data, loading, error, refetch }
 }
-export function useCauseInsert() { return useSupabaseInsert<Cause>('causes') }
+export function useCauseInsert() { return useQaInsert<Cause>('causes') }
+export function useCauseUpdate() { return useQaUpdate<Cause>('causes') }
 
 export function useContacts(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Contact>('contacts', { filters, enabled: options?.enabled })
+  return useQaQuery<Contact>('contacts', { filters, enabled: options?.enabled })
 }
-export function useContactInsert() { return useSupabaseInsert<Contact>('contacts') }
-export function useContactUpdate() { return useSupabaseUpdate<Contact>('contacts') }
-export function useContactDelete() { return useSupabaseDelete('contacts') }
+export function useContactInsert() { return useQaInsert<Contact>('contacts') }
+export function useContactUpdate() { return useQaUpdate<Contact>('contacts') }
+export function useContactDelete() { return useQaDelete('contacts') }
 
-export function useStakeholderAssignments(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<StakeholderAssignment>('stakeholder_assignments', { filters, enabled: options?.enabled })
+export function useStakeholderAssignments(_filters?: Record<string, string>, _options?: UseQueryOptions) {
+  return useQaQuery<StakeholderAssignment>('stakeholder_assignments')
 }
 export function useStakeholders(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Stakeholder>('stakeholders', { filters, orderBy: 'updated_at', enabled: options?.enabled })
+  return useQaQuery<Stakeholder>('stakeholders', { filters, orderBy: 'updated_at', enabled: options?.enabled })
 }
-export function useStakeholderInsert() { return useSupabaseInsert<Stakeholder>('stakeholders') }
-export function useStakeholderUpdate() { return useSupabaseUpdate<Stakeholder>('stakeholders') }
+export function useStakeholderInsert() { return useQaInsert<Stakeholder>('stakeholders') }
+export function useStakeholderUpdate() { return useQaUpdate<Stakeholder>('stakeholders') }
 export function useStakeholderCodes(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<StakeholderCode>('stakeholder_codes', { filters, orderBy: 'updated_at', enabled: options?.enabled })
+  return useQaQuery<StakeholderCode>('stakeholder_codes', { filters, orderBy: 'updated_at', enabled: options?.enabled })
 }
-export function useStakeholderCodeInsert() { return useSupabaseInsert<StakeholderCode>('stakeholder_codes') }
-export function useStakeholderCodeUpdate() { return useSupabaseUpdate<StakeholderCode>('stakeholder_codes') }
+export function useStakeholderCodeInsert() { return useQaInsert<StakeholderCode>('stakeholder_codes') }
+export function useStakeholderCodeUpdate() { return useQaUpdate<StakeholderCode>('stakeholder_codes') }
+
 export function useMaterialTemplates(filters?: Record<string, string>) {
-  return useSupabaseQuery<MaterialTemplate>('material_templates', { filters, orderBy: 'updated_at' })
+  return useQaQuery<MaterialTemplate>('material_templates', { filters, orderBy: 'updated_at' })
 }
-export function useMaterialTemplateInsert() { return useSupabaseInsert<MaterialTemplate>('material_templates') }
-export function useMaterialTemplateUpdate() { return useSupabaseUpdate<MaterialTemplate>('material_templates') }
+export function useMaterialTemplateInsert() { return useQaInsert<MaterialTemplate>('material_templates') }
+export function useMaterialTemplateUpdate() { return useQaUpdate<MaterialTemplate>('material_templates') }
+
 export function useGeneratedMaterials(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<GeneratedMaterial>('generated_materials', { filters, orderBy: 'updated_at', enabled: options?.enabled })
+  return useQaQuery<GeneratedMaterial>('generated_materials', { filters, orderBy: 'updated_at', enabled: options?.enabled })
 }
-export function useGeneratedMaterialInsert() { return useSupabaseInsert<GeneratedMaterial>('generated_materials') }
-export function useGeneratedMaterialUpdate() { return useSupabaseUpdate<GeneratedMaterial>('generated_materials') }
-export function useAdminTasks(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<AdminTask>('admin_tasks', { filters, orderBy: 'updated_at', enabled: options?.enabled })
+export function useGeneratedMaterialInsert() { return useQaInsert<GeneratedMaterial>('generated_materials') }
+export function useGeneratedMaterialUpdate() { return useQaUpdate<GeneratedMaterial>('generated_materials') }
+
+export function useAdminTasks(_filters?: Record<string, string>, _options?: UseQueryOptions) {
+  return useQaQuery<AdminTask>('admin_tasks')
 }
-export function useAdminTaskInsert() { return useSupabaseInsert<AdminTask>('admin_tasks') }
-export function useAdminTaskUpdate() { return useSupabaseUpdate<AdminTask>('admin_tasks') }
-export function useBusinessReferrals(filters?: Record<string, string>) {
-  return useSupabaseQuery<BusinessReferral>('business_referrals', { filters })
+export function useAdminTaskInsert() { return useQaInsert<AdminTask>('admin_tasks') }
+export function useAdminTaskUpdate() { return useQaUpdate<AdminTask>('admin_tasks') }
+
+export function useBusinessReferrals(_filters?: Record<string, string>) {
+  return useQaQuery<BusinessReferral>('business_referrals')
 }
-export function useBusinessReferralInsert() { return useSupabaseInsert<BusinessReferral>('business_referrals') }
-export function useCityAccessRequests(filters?: Record<string, string>) {
-  return useSupabaseQuery<CityAccessRequest>('city_access_requests', { filters })
+export function useBusinessReferralInsert() { return useQaInsert<BusinessReferral>('business_referrals') }
+
+export function useCityAccessRequests(_filters?: Record<string, string>) {
+  return useQaQuery<CityAccessRequest>('city_access_requests')
 }
-export function useCityAccessRequestInsert() { return useSupabaseInsert<CityAccessRequest>('city_access_requests') }
-export function useCityAccessRequestUpdate() { return useSupabaseUpdate<CityAccessRequest>('city_access_requests') }
+export function useCityAccessRequestInsert() { return useQaInsert<CityAccessRequest>('city_access_requests') }
+export function useCityAccessRequestUpdate() { return useQaUpdate<CityAccessRequest>('city_access_requests') }
 
 export function useCities(options?: UseQueryOptions) {
-  return useSupabaseQuery<City>('cities', { orderBy: 'name', orderAsc: true, enabled: options?.enabled })
+  return useQaQuery<City>('cities', { orderBy: 'name', orderAsc: true, enabled: options?.enabled })
 }
-export function useCityInsert() { return useSupabaseInsert<City>('cities') }
+export function useCityInsert() { return useQaInsert<City>('cities') }
 
-export function useOrganizations(filters?: Record<string, string>) {
-  return useSupabaseQuery<Organization>('organizations', { filters, orderBy: 'name', orderAsc: true })
+export function useOrganizations(_filters?: Record<string, string>) {
+  return useQaQuery<Organization>('organizations')
 }
 
 export function useCampaigns(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Campaign>('campaigns', { filters, enabled: options?.enabled })
+  return useQaQuery<Campaign>('campaigns', { filters, enabled: options?.enabled })
 }
-export function useCampaignInsert() { return useSupabaseInsert<Campaign>('campaigns') }
+export function useCampaignInsert() { return useQaInsert<Campaign>('campaigns') }
+
 export function useOffers(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Offer>('offers', { filters, enabled: options?.enabled })
+  return useQaQuery<Offer>('offers', { filters, enabled: options?.enabled })
 }
-export function useOfferInsert() { return useSupabaseInsert<Offer>('offers') }
-export function useOfferUpdate() { return useSupabaseUpdate<Offer>('offers') }
+export function useOfferInsert() { return useQaInsert<Offer>('offers') }
+export function useOfferUpdate() { return useQaUpdate<Offer>('offers') }
 
 export function useTasks(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Task>('tasks', { filters, enabled: options?.enabled })
+  return useQaQuery<Task>('tasks', { filters, enabled: options?.enabled })
 }
-export function useTaskInsert() { return useSupabaseInsert<Task>('tasks') }
-export function useTaskUpdate() { return useSupabaseUpdate<Task>('tasks') }
+export function useTaskInsert() { return useQaInsert<Task>('tasks') }
+export function useTaskUpdate() { return useQaUpdate<Task>('tasks') }
 
 export function useOutreach(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<OutreachActivity>('outreach_activities', { filters, enabled: options?.enabled })
+  return useQaQuery<OutreachActivity>('outreach_activities', { filters, enabled: options?.enabled })
 }
-export function useOutreachInsert() { return useSupabaseInsert<OutreachActivity>('outreach_activities') }
+export function useOutreachInsert() { return useQaInsert<OutreachActivity>('outreach_activities') }
 
-export function useOutreachScripts(filters?: Record<string, string>) {
-  return useSupabaseQuery<OutreachScript>('outreach_scripts', { filters })
+export function useOutreachScripts(_filters?: Record<string, string>) {
+  return useQaQuery<OutreachScript>('outreach_scripts')
 }
-export function useOutreachScriptInsert() { return useSupabaseInsert<OutreachScript>('outreach_scripts') }
-export function useOutreachScriptUpdate() { return useSupabaseUpdate<OutreachScript>('outreach_scripts') }
+export function useOutreachScriptInsert() { return useQaInsert<OutreachScript>('outreach_scripts') }
+export function useOutreachScriptUpdate() { return useQaUpdate<OutreachScript>('outreach_scripts') }
 
 export function useProfiles(options?: UseQueryOptions) {
-  return useSupabaseQuery<Profile>('profiles', { orderBy: 'full_name', orderAsc: true, enabled: options?.enabled })
+  return useQaQuery<Profile>('profiles', { orderBy: 'full_name', orderAsc: true, enabled: options?.enabled })
 }
-export function useProfileUpdate() { return useSupabaseUpdate<Profile>('profiles') }
+export function useProfileUpdate() { return useQaUpdate<Profile>('profiles') }
 
 export function useQrCodes(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<QrCode>('qr_codes', { filters, enabled: options?.enabled })
+  return useQaQuery<QrCode>('qr_codes', { filters, enabled: options?.enabled })
 }
-export function useQrCodeCollections(filters?: Record<string, string>) {
-  return useSupabaseQuery<QrCodeCollection>('qr_code_collections', { filters })
+export function useQrCodeCollections(_filters?: Record<string, string>) {
+  return useQaQuery<QrCodeCollection>('qr_code_collections')
 }
-export function useQrCodeCollectionInsert() { return useSupabaseInsert<QrCodeCollection>('qr_code_collections') }
-export function useQrCodeCollectionUpdate() { return useSupabaseUpdate<QrCodeCollection>('qr_code_collections') }
-export function useQrCodeInsert() { return useSupabaseInsert<QrCode>('qr_codes') }
-export function useQrCodeDelete() { return useSupabaseDelete('qr_codes') }
+export function useQrCodeCollectionInsert() { return useQaInsert<QrCodeCollection>('qr_code_collections') }
+export function useQrCodeCollectionUpdate() { return useQaUpdate<QrCodeCollection>('qr_code_collections') }
+export function useQrCodeInsert() { return useQaInsert<QrCode>('qr_codes') }
+export function useQrCodeDelete() { return useQaDelete('qr_codes') }
 
-export function useMaterials(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Material>('materials', { filters, enabled: options?.enabled })
+export function useMaterials(_filters?: Record<string, string>, _options?: UseQueryOptions) {
+  return useQaQuery<Material>('materials')
 }
-export function useMaterialInsert() { return useSupabaseInsert<Material>('materials') }
-export function useMaterialUpdate() { return useSupabaseUpdate<Material>('materials') }
-export function useMaterialAssignments(filters?: Record<string, string>) {
-  return useSupabaseQuery<MaterialAssignment>('material_assignments', { filters })
+export function useMaterialInsert() { return useQaInsert<Material>('materials') }
+export function useMaterialUpdate() { return useQaUpdate<Material>('materials') }
+export function useMaterialAssignments(_filters?: Record<string, string>) {
+  return useQaQuery<MaterialAssignment>('material_assignments')
 }
 
-export function useCauseUpdate() { return useSupabaseUpdate<Cause>('causes') }
-export function useStakeholderAssignmentInsert() { return useSupabaseInsert<StakeholderAssignment>('stakeholder_assignments') }
-export function useStakeholderAssignmentUpdate() { return useSupabaseUpdate<StakeholderAssignment>('stakeholder_assignments') }
-export function useStakeholderAssignmentDelete() { return useSupabaseDelete('stakeholder_assignments') }
-export function useAuditLogInsert() { return useSupabaseInsert<AuditLog>('audit_logs') }
+export function useStakeholderAssignmentInsert() { return useQaInsert<StakeholderAssignment>('stakeholder_assignments') }
+export function useStakeholderAssignmentUpdate() { return useQaUpdate<StakeholderAssignment>('stakeholder_assignments') }
+export function useStakeholderAssignmentDelete() { return useQaDelete('stakeholder_assignments') }
+export function useAuditLogInsert() { return useQaInsert<AuditLog>('audit_logs') }
 
 export function useNotifications(filters?: Record<string, string>) {
-  return useSupabaseQuery<Notification>('notifications', { filters })
+  return useQaQuery<Notification>('notifications', { filters })
 }
-export function useNotificationUpdate() { return useSupabaseUpdate<Notification>('notifications') }
+export function useNotificationUpdate() { return useQaUpdate<Notification>('notifications') }
 
-export function useTemplateRules(filters?: Record<string, string>) {
-  return useSupabaseQuery<TemplateRule>('template_rules', { filters, orderBy: 'priority' })
+export function useTemplateRules(_filters?: Record<string, string>) {
+  return useQaQuery<TemplateRule>('template_rules', { orderBy: 'priority' })
 }
-export function useTemplateRuleInsert() { return useSupabaseInsert<TemplateRule>('template_rules') }
-export function useTemplateRuleUpdate() { return useSupabaseUpdate<TemplateRule>('template_rules') }
-export function useTemplateRuleDelete() { return useSupabaseDelete('template_rules') }
+export function useTemplateRuleInsert() { return useQaInsert<TemplateRule>('template_rules') }
+export function useTemplateRuleUpdate() { return useQaUpdate<TemplateRule>('template_rules') }
+export function useTemplateRuleDelete() { return useQaDelete('template_rules') }
 
 export function useNotes(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<Note>('notes', { filters, enabled: options?.enabled })
+  return useQaQuery<Note>('notes', { filters, enabled: options?.enabled })
 }
-export function useNoteInsert() { return useSupabaseInsert<Note>('notes') }
+export function useNoteInsert() { return useQaInsert<Note>('notes') }
 
 export function useOnboardingFlows(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<OnboardingFlow>('onboarding_flows', { filters, enabled: options?.enabled })
+  return useQaQuery<OnboardingFlow>('onboarding_flows', { filters, enabled: options?.enabled })
 }
-export function useOnboardingFlowInsert() { return useSupabaseInsert<OnboardingFlow>('onboarding_flows') }
-export function useOnboardingFlowUpdate() { return useSupabaseUpdate<OnboardingFlow>('onboarding_flows') }
+export function useOnboardingFlowInsert() { return useQaInsert<OnboardingFlow>('onboarding_flows') }
+export function useOnboardingFlowUpdate() { return useQaUpdate<OnboardingFlow>('onboarding_flows') }
 
 export function useOnboardingSteps(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useSupabaseQuery<OnboardingStep>('onboarding_steps', {
-    filters,
-    orderBy: 'sort_order',
-    orderAsc: true,
-    enabled: options?.enabled,
-  })
+  return useQaQuery<OnboardingStep>('onboarding_steps', { filters, orderBy: 'sort_order', orderAsc: true, enabled: options?.enabled })
 }
-export function useOnboardingStepInsert() { return useSupabaseInsert<OnboardingStep>('onboarding_steps') }
-export function useOnboardingStepUpdate() { return useSupabaseUpdate<OnboardingStep>('onboarding_steps') }
+export function useOnboardingStepInsert() { return useQaInsert<OnboardingStep>('onboarding_steps') }
+export function useOnboardingStepUpdate() { return useQaUpdate<OnboardingStep>('onboarding_steps') }
 
 // ─── Count hooks ────────────────────────────────────────────
 
+const COUNT_ROUTE_OVERRIDES: Record<string, string> = {
+  businesses: '/api/qa/businesses',
+  causes: '/api/qa/nonprofits',
+}
+
 export function useCount(table: string, filters?: Record<string, string | number | boolean | null>) {
-  const supabase = React.useMemo(() => createClient(), [])
   const [count, setCount] = React.useState(0)
   const filtersKey = JSON.stringify(filters || {})
-  const filterEntries = React.useMemo(
-    () => Object.entries(
-      JSON.parse(filtersKey) as Record<string, string | number | boolean | null>
-    ).filter(([, value]) => value !== null && value !== undefined && value !== ''),
-    [filtersKey]
-  )
 
   React.useEffect(() => {
-    async function fetch() {
-      let query = supabase.from(table).select('*', { count: 'exact', head: true })
-      for (const [key, value] of filterEntries) {
-        query = query.eq(key, value as string | number | boolean)
+    let cancelled = false
+    async function run() {
+      try {
+        const filters = JSON.parse(filtersKey) as Record<string, string | number | boolean | null>
+        const qs = buildQueryString(filters)
+        const baseUrl = COUNT_ROUTE_OVERRIDES[table] || `/api/qa/dashboard/${table}`
+        const res = await fetch(baseUrl + qs, { cache: 'no-store' })
+        if (!res.ok) return
+        const json = await res.json()
+        const arr = Array.isArray(json) ? json : Array.isArray(json?.items) ? json.items : []
+        if (!cancelled) setCount(arr.length)
+      } catch {
+        if (!cancelled) setCount(0)
       }
-      const { count: c } = await query
-      setCount(c || 0)
     }
-    fetch()
-  }, [supabase, table, filterEntries])
+    run()
+    return () => { cancelled = true }
+  }, [table, filtersKey])
 
   return count
 }
@@ -366,21 +553,28 @@ export function useCount(table: string, filters?: Record<string, string | number
 // ─── Single record hook ─────────────────────────────────────
 
 export function useRecord<T>(table: string, id: string | null) {
-  const supabase = React.useMemo(() => createClient(), [])
   const [data, setData] = React.useState<T | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
     if (!id) { setLoading(false); return }
-
-    async function fetch() {
+    let cancelled = false
+    async function run() {
       setLoading(true)
-      const { data: record } = await supabase.from(table).select('*').eq('id', id!).single()
-      setData(record as T | null)
-      setLoading(false)
+      try {
+        const res = await fetch(`/api/qa/dashboard/${table}/${id}`, { cache: 'no-store' })
+        if (!res.ok) { if (!cancelled) setData(null); return }
+        const json = await res.json()
+        if (!cancelled) setData(json as T)
+      } catch {
+        if (!cancelled) setData(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-    fetch()
-  }, [supabase, table, id])
+    run()
+    return () => { cancelled = true }
+  }, [table, id])
 
   return { data, loading }
 }

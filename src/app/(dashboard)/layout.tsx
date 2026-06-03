@@ -4,6 +4,7 @@ import * as React from 'react'
 import { AppShell } from '@/components/layout/app-shell'
 import { AuthProvider } from '@/lib/auth/context'
 import { ImpersonationProvider } from '@/lib/impersonation-context'
+import { ViewAsBanner } from '@/components/layout/view-as-banner'
 import { normalizeBusinessProfile } from '@/lib/business-portal'
 import type { Profile } from '@/lib/types/database'
 
@@ -75,6 +76,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <ImpersonationProvider>
       <AuthProvider profile={profile} localProfileId={localProfileId}>
         <AppShell profile={profile}>
+          <ViewAsBanner />
           {children}
         </AppShell>
       </AuthProvider>

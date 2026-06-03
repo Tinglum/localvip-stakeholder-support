@@ -66,8 +66,28 @@ export default function StakeholdersPage() {
   const [inviteOpen, setInviteOpen] = React.useState(false)
 
   // Client-side filtering since useProfiles doesn't accept filters for role/brand
+  // STAKEHOLDER DEFINITION:
+  //   A user who actively drives LocalVIP — business/cause owners, field reps,
+  //   admins, AND consumers whose ConsumerType is anything except "Normal"
+  //   (Influencer, Volunteer, Intern, LaunchTeamPartner). Plain consumers belong
+  //   in /crm/consumers, not here.
   const filtered = React.useMemo(() => {
-    let result = profiles
+    let result = profiles.filter((p) => {
+      const meta = (p as { metadata?: Record<string, unknown> }).metadata || {}
+      const qaAccountType = (meta as { qa_account_type?: unknown }).qa_account_type
+      const consumerType = (p as { consumer_type?: string }).consumer_type
+        ?? (meta as { consumer_type?: string }).consumer_type
+        ?? (p as { ConsumerType?: string }).ConsumerType
+
+      // If this is a Consumer account, only include them if ConsumerType !== Normal
+      const isConsumerByRole = p.role === 'community'
+      const isConsumerByAccountType = qaAccountType === 4 || qaAccountType === 'Consumer'
+      if (isConsumerByRole || isConsumerByAccountType) {
+        if (!consumerType || consumerType === 'Normal' || consumerType === '0') return false
+      }
+      return true
+    })
+
     if (filters.role) result = result.filter((p) => p.role === filters.role)
     if (filters.brand) result = result.filter((p) => p.brand_context === filters.brand)
     return result

@@ -97,6 +97,48 @@ export default function BusinessesPage() {
   const [insertError, setInsertError] = React.useState<string | null>(null)
   const [dupWarning, setDupWarning] = React.useState<string | null>(null)
 
+  // ── Primary contact search (existing user or contact) ─────────────
+  const [contactQuery, setContactQuery] = React.useState('')
+  const [contactResults, setContactResults] = React.useState<Array<{
+    id: number
+    firstName: string | null
+    lastName: string | null
+    email: string | null
+    phoneNumber: string | null
+    referralCode?: string | null
+  }>>([])
+  const [pickedContact, setPickedContact] = React.useState<{
+    id: number
+    name: string
+    email: string | null
+    referralCode?: string | null
+  } | null>(null)
+
+  React.useEffect(() => {
+    if (!addOpen || pickedContact || contactQuery.trim().length < 2) {
+      setContactResults([])
+      return
+    }
+    const handle = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/qa/users/search?q=${encodeURIComponent(contactQuery)}`)
+        if (res.ok) {
+          const data = await res.json()
+          setContactResults(Array.isArray(data) ? data : [])
+        }
+      } catch {
+        setContactResults([])
+      }
+    }, 300)
+    return () => window.clearTimeout(handle)
+  }, [contactQuery, addOpen, pickedContact])
+
+  // When a contact is picked, prefill owner email/phone + referral code
+  React.useEffect(() => {
+    if (!pickedContact) return
+    if (pickedContact.email && !formEmail) setFormEmail(pickedContact.email)
+  }, [pickedContact, formEmail])
+
   const { data: businessResponse, loading, error, refetch } = useCrmBusinesses()
   const { data: cities } = useCities()
   const businesses = React.useMemo(() => businessResponse?.items || [], [businessResponse])
@@ -381,6 +423,72 @@ export default function BusinessesPage() {
                 </p>
               )}
             </div>
+
+            {/* Primary contact search — link the business to an existing user/contact */}
+            <div className="rounded-md border border-blue-200 bg-blue-50/40 p-3">
+              <div className="mb-2 text-sm font-medium text-blue-900">Primary contact (optional)</div>
+              {pickedContact ? (
+                <div className="flex items-center justify-between rounded-md border border-blue-300 bg-white p-2">
+                  <div>
+                    <div className="text-sm font-medium text-surface-900">{pickedContact.name}</div>
+                    <div className="text-xs text-surface-600">
+                      {pickedContact.email}
+                      {pickedContact.referralCode && (
+                        <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 font-mono text-[10px] text-blue-900">
+                          referral: {pickedContact.referralCode}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setPickedContact(null); setContactQuery('') }}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    placeholder="Search by name, email, or phone…"
+                    value={contactQuery}
+                    onChange={(e) => setContactQuery(e.target.value)}
+                  />
+                  {contactResults.length > 0 && (
+                    <div className="mt-2 max-h-44 overflow-y-auto rounded-md border border-blue-200 bg-white">
+                      {contactResults.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setPickedContact({
+                            id: u.id,
+                            name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email || '—',
+                            email: u.email,
+                            referralCode: u.referralCode,
+                          })}
+                          className="flex w-full items-center justify-between gap-2 border-b border-blue-100 p-2 text-left text-sm hover:bg-blue-50 last:border-b-0"
+                        >
+                          <div>
+                            <div className="font-medium text-surface-900">{u.firstName} {u.lastName}</div>
+                            <div className="text-xs text-surface-600">
+                              {u.email}{u.phoneNumber ? ` • ${u.phoneNumber}` : ''}
+                              {u.referralCode && <span className="ml-2 font-mono text-blue-700">{u.referralCode}</span>}
+                            </div>
+                          </div>
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-900">Pick</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-blue-800">
+                    Linking an existing user pulls their referral code straight from the backend.
+                  </p>
+                </>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">City</label>

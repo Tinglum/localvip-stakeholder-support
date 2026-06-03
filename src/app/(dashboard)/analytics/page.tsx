@@ -15,8 +15,7 @@ import { StatCard } from '@/components/ui/stat-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/auth/context'
-import { createClient } from '@/lib/supabase/client'
-import { useCount, useCities, useProfiles } from '@/lib/supabase/hooks'
+import { useCount, useCities, useProfiles, useBusinesses } from '@/lib/supabase/hooks'
 import type { Business, City, Profile } from '@/lib/types/database'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 
@@ -61,7 +60,6 @@ function downloadCSV(filename: string, headers: string[], rows: (string | number
 export default function AnalyticsPage() {
   const { isAdmin } = useAuth()
   const [period, setPeriod] = React.useState('30d')
-  const supabase = React.useMemo(() => createClient(), [])
 
   // Real counts
   const businessCount = useCount('businesses')
@@ -70,9 +68,16 @@ export default function AnalyticsPage() {
   const qrCount = useCount('qr_codes')
   const outreachCount = useCount('outreach_activities')
 
-  // Businesses (full list for grouping)
-  const [businesses, setBusinesses] = React.useState<Business[]>([])
-  const [loading, setLoading] = React.useState(true)
+  // Businesses (full list for grouping) — now via QA backend
+  const { data: allBusinesses, loading } = useBusinesses()
+  const businesses = React.useMemo(() => {
+    const since = periodToDate(period)
+    if (!since) return allBusinesses
+    return allBusinesses.filter((b) => {
+      const created = (b as { created_at?: string }).created_at
+      return created && created >= since
+    })
+  }, [allBusinesses, period])
 
   // Cities lookup
   const { data: cities } = useCities()
@@ -84,20 +89,6 @@ export default function AnalyticsPage() {
 
   // Profiles lookup
   const { data: profiles } = useProfiles()
-
-  // Fetch businesses with optional period filter
-  React.useEffect(() => {
-    async function load() {
-      setLoading(true)
-      let query = supabase.from('businesses').select('*')
-      const since = periodToDate(period)
-      if (since) query = query.gte('created_at', since)
-      const { data } = await query
-      setBusinesses((data || []) as Business[])
-      setLoading(false)
-    }
-    load()
-  }, [supabase, period])
 
   // ─── Derived data ──────────────────────────────────────────
 

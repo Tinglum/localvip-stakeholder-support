@@ -40,7 +40,7 @@ import {
 import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
-import { useMaterials } from '@/lib/supabase/hooks'
+import { useMaterials, useMaterialTemplates, useGeneratedMaterials } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
 import type { Material, MaterialLibraryFolder, StakeholderType } from '@/lib/types/database'
 
@@ -724,7 +724,64 @@ function UploadMaterialDialog({
 
 export default function MaterialsLibraryPage() {
   const { profile, isAdmin, localProfileId } = useAuth()
-  const { data: materials, loading, error, refetch } = useMaterials()
+  // Pull from the two QA-backed sources and merge them into the Material shape
+  // this page expects. Templates are marked `is_template=true`, generated files
+  // come from GeneratedMaterials and are marked `is_template=false`.
+  const { data: legacy, loading: legacyLoading, error: legacyError, refetch: refetchLegacy } = useMaterials()
+  const { data: templates, loading: tplLoading, error: tplError, refetch: refetchTpl } = useMaterialTemplates()
+  const { data: generated, loading: genLoading, error: genError, refetch: refetchGen } = useGeneratedMaterials()
+  const loading = legacyLoading || tplLoading || genLoading
+  const error = legacyError || tplError || genError
+  const refetch = React.useCallback(() => { refetchLegacy(); refetchTpl(); refetchGen() }, [refetchLegacy, refetchTpl, refetchGen])
+
+  const materials = React.useMemo(() => {
+    // Adapt template rows → Material shape used by this page.
+    const fromTemplates = (templates || []).map((t) => {
+      const tt = t as unknown as Record<string, unknown>
+      return {
+        id: 'tpl-' + tt.id,
+        title: (tt.name as string) || 'Untitled template',
+        description: null,
+        type: (tt.template_type as string) || 'other',
+        brand: (tt.brand as string) || 'localvip',
+        use_case: (tt.library_folder as string) || 'general',
+        is_template: true,
+        file_url: (tt.source_path as string) || null,
+        thumbnail_url: null,
+        target_roles: [],
+        target_subtypes: [],
+        target_stages: [],
+        tags: [],
+        metadata: tt,
+        created_at: (tt.created_at as string) || new Date().toISOString(),
+        updated_at: (tt.updated_at as string) || new Date().toISOString(),
+      } as unknown as typeof legacy[number]
+    })
+
+    const fromGenerated = (generated || []).map((g) => {
+      const gg = g as unknown as Record<string, unknown>
+      return {
+        id: 'gen-' + gg.id,
+        title: (gg.generated_file_name as string) || (gg.template_name as string) || 'Generated file',
+        description: 'For stakeholder #' + gg.stakeholder_id,
+        type: 'other',
+        brand: 'localvip',
+        use_case: (gg.library_folder as string) || 'general',
+        is_template: false,
+        file_url: (gg.generated_file_url as string) || null,
+        thumbnail_url: null,
+        target_roles: [],
+        target_subtypes: [],
+        target_stages: [],
+        tags: Array.isArray(gg.tags) ? gg.tags : [],
+        metadata: gg,
+        created_at: (gg.created_at as string) || (gg.generated_at as string) || new Date().toISOString(),
+        updated_at: (gg.updated_at as string) || new Date().toISOString(),
+      } as unknown as typeof legacy[number]
+    })
+
+    return [...legacy, ...fromTemplates, ...fromGenerated]
+  }, [legacy, templates, generated])
   const [search, setSearch] = React.useState('')
   const [typeFilter, setTypeFilter] = React.useState('')
   const [brandFilter, setBrandFilter] = React.useState('')

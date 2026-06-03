@@ -109,6 +109,17 @@ function TeamDashboardPage() {
   const causeCount = useCount('causes')
   const stakeholderCount = useCount('profiles')
   const qrCodeCount = useCount('qr_codes')
+  // Customers/Consumers count — pulled from QA via dedicated route since
+  // /api/qa/consumers returns a flat array
+  const [consumerCount, setConsumerCount] = React.useState(0)
+  React.useEffect(() => {
+    let cancelled = false
+    fetch('/api/qa/consumers')
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setConsumerCount(Array.isArray(j) ? j.length : 0) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   const { data: outreachData, loading: outreachLoading } = useOutreach()
   const recentOutreach = outreachData.slice(0, 5)
@@ -295,9 +306,10 @@ function TeamDashboardPage() {
         suggestions={suggestedItems}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Total Businesses" value={businessCount} icon={<Store className="h-5 w-5" />} />
         <StatCard label="Total Causes" value={causeCount} icon={<Heart className="h-5 w-5" />} />
+        <StatCard label="Customers" value={consumerCount} icon={<Users className="h-5 w-5" />} />
         <StatCard label="Stakeholders" value={stakeholderCount} icon={<Users className="h-5 w-5" />} />
         <StatCard label="QR Codes" value={qrCodeCount} icon={<QrCode className="h-5 w-5" />} />
       </div>

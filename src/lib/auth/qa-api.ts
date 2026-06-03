@@ -164,8 +164,47 @@ export interface QaUserForgotPasswordInput {
   email: string
 }
 
-export type QaConsumerListItem = Record<string, unknown>
-export type QaConsumerDetail = Record<string, unknown>
+export interface QaConsumerType {
+  id: number
+  name: string
+}
+
+export interface QaConsumerListItem {
+  id: number
+  firstName: string
+  lastName: string
+  email: string
+  phoneNumber: string | null
+  city: string | null
+  state: string | null
+  country: string | null
+  createdDate: string
+  isEnabled: boolean
+  consumerType: string
+  consumerTypeId: number
+}
+
+export interface QaConsumerDetail {
+  id: number
+  firstName: string
+  middleName: string | null
+  lastName: string
+  email: string
+  phoneNumber: string | null
+  address1: string | null
+  address2: string | null
+  city: string | null
+  state: string | null
+  zipCode: string | null
+  country: string | null
+  referralCode: string | null
+  sharedURL: string | null
+  createdDate: string
+  isEnabled: boolean
+  consumerType: string
+  consumerTypeId: number
+  hasStripeOnboarding: boolean
+}
 
 export async function getQaUserProfile(): Promise<QaUserProfile> {
   const res = await fetchQaApi('/api/dashboard/v1/User/profile')
@@ -236,4 +275,24 @@ export async function fetchQaConsumerList() {
 export async function fetchQaConsumerDetail(id: number) {
   const res = await fetchQaApi(`/api/dashboard/v1/Consumer/${id}`)
   return parseQaJsonResponse<QaConsumerDetail>(res, 'The QA consumer detail request failed.')
+}
+
+export async function fetchQaConsumerTypes() {
+  const res = await fetchQaApi('/api/dashboard/v1/Consumer/types')
+  return parseQaJsonResponse<QaConsumerType[]>(res, 'The QA consumer types request failed.')
+}
+
+export async function updateQaConsumerType(id: number, consumerTypeId: number) {
+  const res = await fetchQaApi(`/api/dashboard/v1/Consumer/${id}/consumer-type`, {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ consumerTypeId }),
+  })
+
+  return parseQaJsonResponse<{ id: number; consumerType: string; consumerTypeId: number }>(
+    res,
+    'The QA consumer type update failed.',
+  )
 }
