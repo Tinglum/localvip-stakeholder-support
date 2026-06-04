@@ -31,15 +31,24 @@ const COOKIE_MAX_AGE = 60 * 60 * 4 // 4 hours
  * Backend enum values (from Data/Enums.cs AccountType):
  *   0 = SysAdmin, 1 = Stripe, 2 = Business, 3 = NonProfit, 4 = Consumer, 5 = Field
  */
-function mapAccountTypeToRole(accountType: unknown): UserRole {
+function mapAccountTypeToRole(accountType: unknown, consumerType?: string | null): UserRole {
   const at = typeof accountType === 'number'
     ? accountType
     : typeof accountType === 'string' && /^\d+$/.test(accountType)
       ? Number(accountType)
       : null
 
+  const normalizedConsumerType = typeof consumerType === 'string' ? consumerType.trim().toLowerCase() : null
+
+  if (at === 4) {
+    if (normalizedConsumerType === 'intern') return 'intern'
+    if (normalizedConsumerType === 'volunteer') return 'volunteer'
+    if (normalizedConsumerType === 'influencer') return 'influencer'
+    if (normalizedConsumerType === 'launchteampartner') return 'launch_partner'
+  }
+
   switch (at) {
-    case 0: return 'admin'
+    case 0: return 'super_admin'
     case 2: return 'business'
     case 3: return 'cause_leader'
     case 4: return 'community'
@@ -98,7 +107,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Target user not found.' }, { status: 404 })
     }
 
-    const role = mapAccountTypeToRole(user.accountType)
+    const role = mapAccountTypeToRole(user.accountType, user.consumerType)
     const payload = {
       userId: user.id,
       email: user.email,

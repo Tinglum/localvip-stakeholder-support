@@ -222,6 +222,7 @@ export async function GET(
 ) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
+  const canReadQa = !!context.session.qaSession
   const localProfileId = asProfileUuid(context.profile.id)
   let createdLocalCause = false
   const qaInitialCodes: { referral_code: string; connection_code: string; join_url: string } | undefined = undefined
@@ -248,7 +249,7 @@ export async function GET(
     qaCauseId = getQaAccountIdFromLocal(localCause)
   }
 
-  if (qaCauseId === null && localCause) {
+  if (canReadQa && qaCauseId === null && localCause) {
     try {
       const qaCauses = await fetchQaCauseList()
       qaCauseId = findQaCauseForLocal(localCause, qaCauses)?.id || null
@@ -258,7 +259,7 @@ export async function GET(
   }
 
   let qaCause = null
-  if (qaCauseId !== null) {
+  if (canReadQa && qaCauseId !== null) {
     if (!localCause) {
       localCause = await findLocalCauseByQaId(context.supabase as any, qaCauseId)
     }
@@ -270,7 +271,7 @@ export async function GET(
     }
   }
 
-  if (!localCause && qaCause) {
+  if (canReadQa && !localCause && qaCause) {
     try {
       localCause = await ensureLinkedCause(context.supabase as any, localProfileId, qaCause, qaInitialCodes)
       createdLocalCause = !!localCause
@@ -287,7 +288,7 @@ export async function GET(
     }
   }
 
-  if (localCause && qaCause) {
+  if (canReadQa && localCause && qaCause) {
     try {
       const { data: syncedCause } = await (context.supabase.from('causes') as any)
         .update(buildCauseQaSyncPatch(localCause, qaCause))

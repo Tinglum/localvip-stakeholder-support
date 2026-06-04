@@ -43,6 +43,7 @@ import { StatCard } from '@/components/ui/stat-card'
 import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { BusinessDashboardPage } from '@/components/business/business-dashboard-page'
 import { CommunityDashboardPage } from '@/components/community/community-dashboard-page'
+import { ConsumerDashboardPage } from '@/components/consumer/consumer-dashboard-page'
 import { FieldOutreachDashboardPage } from '@/components/field/field-outreach-dashboard-page'
 import { InfluencerDashboardPage } from '@/components/influencer/influencer-dashboard-page'
 import { LaunchPartnerDashboardPage } from '@/components/partner/launch-partner-dashboard-page'
@@ -73,6 +74,10 @@ export default function DashboardPage() {
 
   if (access.shell === 'business') {
     return <BusinessDashboardPage />
+  }
+
+  if (access.shell === 'consumer') {
+    return <ConsumerDashboardPage />
   }
 
   if (access.shell === 'field') {

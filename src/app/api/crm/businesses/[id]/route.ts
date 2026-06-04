@@ -221,6 +221,7 @@ export async function GET(
 ) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
+  const canReadQa = !!context.session.qaSession
   const localProfileId = asProfileUuid(context.profile.id)
   let createdLocalBusiness = false
   const qaInitialCodes: { referral_code: string; connection_code: string; join_url: string } | undefined = undefined
@@ -247,7 +248,7 @@ export async function GET(
     qaBusinessId = getQaAccountIdFromLocal(localBusiness)
   }
 
-  if (qaBusinessId === null && localBusiness) {
+  if (canReadQa && qaBusinessId === null && localBusiness) {
     try {
       const qaBusinesses = await fetchQaBusinessList()
       qaBusinessId = findQaBusinessForLocal(localBusiness, qaBusinesses)?.id || null
@@ -257,7 +258,7 @@ export async function GET(
   }
 
   let qaBusiness = null
-  if (qaBusinessId !== null) {
+  if (canReadQa && qaBusinessId !== null) {
     if (!localBusiness) {
       localBusiness = await findLocalBusinessByQaId(context.supabase as any, qaBusinessId)
     }
@@ -269,7 +270,7 @@ export async function GET(
     }
   }
 
-  if (!localBusiness && qaBusiness) {
+  if (canReadQa && !localBusiness && qaBusiness) {
     try {
       localBusiness = await ensureLinkedBusiness(context.supabase as any, localProfileId, qaBusiness, qaInitialCodes)
       createdLocalBusiness = !!localBusiness
@@ -286,7 +287,7 @@ export async function GET(
     }
   }
 
-  if (localBusiness && qaBusiness) {
+  if (canReadQa && localBusiness && qaBusiness) {
     try {
       const { data: syncedBusiness } = await (context.supabase.from('businesses') as any)
         .update(buildBusinessQaSyncPatch(localBusiness, qaBusiness))

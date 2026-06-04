@@ -210,6 +210,21 @@ function readRoles(payload: Record<string, unknown>) {
   return []
 }
 
+function normalizeQaSignal(value: unknown) {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toLowerCase()
+  return normalized || null
+}
+
+function matchesSysadminSignal(signal: string) {
+  return signal.includes('sysadmin')
+    || signal.includes('superadmin')
+    || signal.includes('sys_admin')
+    || signal.includes('systemadmin')
+    || (signal.includes('system') && signal.includes('admin'))
+    || (signal.includes('sys') && signal.includes('admin'))
+}
+
 function normalizeQaClaims(accessToken: string, idToken?: string | null): QaAuthClaims {
   const idPayload = idToken ? parseJwtPayload(idToken) : {}
   const accessPayload = parseJwtPayload(accessToken)
@@ -254,7 +269,7 @@ function mapQaRole(claims: QaAuthClaims): { role: UserRole; roleSubtype?: UserRo
   const normalizedRoles = claims.roles.map((role) => role.toLowerCase())
 
   // Super-admin check first (most specific)
-  if (normalizedRoles.some((role) => role.includes('super') && role.includes('admin'))) {
+  if (normalizedRoles.some(matchesSysadminSignal) || normalizedRoles.some((role) => role.includes('super') && role.includes('admin'))) {
     return { role: 'admin', roleSubtype: 'super' }
   }
 
@@ -268,7 +283,7 @@ function mapQaRole(claims: QaAuthClaims): { role: UserRole; roleSubtype?: UserRo
     return { role: 'community', roleSubtype: 'school' }
   }
 
-  if (normalizedRoles.some((role) => role.includes('cause') || (role.includes('community') && !role.includes('admin')))) {
+  if (normalizedRoles.some((role) => role.includes('cause') || (role.includes('community') && !role.includes('admin') && !role.includes('consumer')))) {
     return { role: 'community', roleSubtype: 'cause' }
   }
 
@@ -303,13 +318,37 @@ function mapQaRole(claims: QaAuthClaims): { role: UserRole; roleSubtype?: UserRo
   // volunteer in the dashboard. Customers can be promoted to a stakeholder
   // type (Intern/Volunteer/Influencer/LaunchTeamPartner) by an admin via the
   // /crm/consumers/[id] page or the User type selector.
-  if (normalizedRoles.some((role) => role.includes('consumer') || role.includes('customer'))) {
+  if (normalizedRoles.some((role) => role.includes('consumer') || role.includes('customer') || role.includes('client'))) {
     return { role: 'community', roleSubtype: null }
   }
 
   // Last resort: assume an unknown role is a regular customer rather than
   // a volunteer. Better to under-claim than to mis-label.
   return { role: 'community', roleSubtype: null }
+}
+
+export function mapQaRoleFromSignals(options: {
+  claims?: QaAuthClaims | null
+  accountType?: string | null
+  profileRole?: string | null
+}): { role: UserRole; roleSubtype?: UserRoleSubtype } {
+  const roles = [
+    normalizeQaSignal(options.accountType),
+    normalizeQaSignal(options.profileRole),
+    ...(options.claims?.roles || []).map((role) => role.toLowerCase()),
+  ].filter((value): value is string => !!value)
+
+  return mapQaRole({
+    sub: options.claims?.sub || '',
+    email: options.claims?.email || null,
+    name: options.claims?.name || null,
+    given_name: options.claims?.given_name || null,
+    family_name: options.claims?.family_name || null,
+    preferred_username: options.claims?.preferred_username || null,
+    roles,
+    exp: options.claims?.exp || null,
+    raw: options.claims?.raw || {},
+  })
 }
 
 export function buildFallbackQaProfile(claims: QaAuthClaims): Profile {

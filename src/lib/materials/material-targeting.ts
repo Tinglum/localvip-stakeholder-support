@@ -111,10 +111,11 @@ export function getMaterialVisibilitySubtypeLabels(material: Material) {
 export function materialMatchesTargeting(material: Material, profile: Profile) {
   const access = getStakeholderAccess(profile)
   const targetRoles = (material.target_roles || []).map(normalizeMaterialRole)
+  const shellRole = access.shell === 'consumer' ? 'community' : access.shell
 
   if (targetRoles.length === 0) return false
 
-  const roleMatches = targetRoles.includes(access.shell) || targetRoles.includes(normalizeMaterialRole(profile.role))
+  const roleMatches = targetRoles.includes(shellRole) || targetRoles.includes(normalizeMaterialRole(profile.role))
   if (!roleMatches) return false
 
   const targetSubtypes = (material.target_subtypes || []).filter(Boolean)

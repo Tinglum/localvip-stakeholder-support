@@ -173,6 +173,8 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
     const q = query.trim().toLowerCase()
     if (isAdminProfile(profile)) {
       router.push(`/crm/businesses?q=${encodeURIComponent(q)}`)
+    } else if (access.shell === 'consumer') {
+      router.push('/dashboard')
     } else if (access.shell === 'community') {
       router.push(`/community/supporters`)
     } else {

@@ -18,15 +18,18 @@ function asProfileUuid(value: string | null | undefined) {
 export async function GET() {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
+  const canReadQa = !!context.session.qaSession
 
   const [{ data: localBusinessesData }, qaResult] = await Promise.all([
     context.supabase
       .from('businesses')
       .select('*')
       .order('updated_at', { ascending: false }),
-    fetchQaBusinessList()
-      .then(data => ({ data, error: null as string | null }))
-      .catch(error => ({ data: [] as Awaited<ReturnType<typeof fetchQaBusinessList>>, error: qaBusinessRouteError(error) })),
+    canReadQa
+      ? fetchQaBusinessList()
+          .then(data => ({ data, error: null as string | null }))
+          .catch(error => ({ data: [] as Awaited<ReturnType<typeof fetchQaBusinessList>>, error: qaBusinessRouteError(error) }))
+      : Promise.resolve({ data: [] as Awaited<ReturnType<typeof fetchQaBusinessList>>, error: null as string | null }),
   ])
 
   const localBusinesses = (localBusinessesData || []) as Business[]

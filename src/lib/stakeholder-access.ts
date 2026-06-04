@@ -5,6 +5,7 @@ import type { Profile, UserRole, UserRoleSubtype } from '@/lib/types/database'
 export type StakeholderShell =
   | 'admin'
   | 'business'
+  | 'consumer'
   | 'field'
   | 'launch_partner'
   | 'community'
@@ -42,6 +43,7 @@ export const STAKEHOLDER_SUBTYPE_OPTIONS: Record<
     { value: 'internal', label: 'Internal' },
   ],
   business: [],
+  consumer: [],
   field: [
     { value: 'intern', label: 'Intern' },
     { value: 'volunteer', label: 'Volunteer' },
@@ -63,6 +65,10 @@ const BUSINESS_NAV_ITEMS: NavItem[] = [
   { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', minLevel: 0 },
   { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
   { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', minLevel: 0 },
+]
+
+const CONSUMER_NAV_ITEMS: NavItem[] = [
+  { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
 ]
 
 const SHARED_OPERATOR_CRM_ITEMS: NavItem = {
@@ -211,7 +217,52 @@ export function normalizeSubtypeForRole(role: UserRole, subtype: UserRoleSubtype
   return null
 }
 
+function readMetadataValue(profile: Profile, key: string) {
+  const metadata = (profile.metadata as Record<string, unknown> | null) || {}
+  return metadata[key]
+}
+
+function normalizeQaAudienceValue(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toLowerCase()
+  return normalized || null
+}
+
+function readQaRoleSignals(profile: Profile) {
+  const metadata = (profile.metadata as Record<string, unknown> | null) || {}
+  const qaRoles = Array.isArray(metadata.qa_roles) ? metadata.qa_roles : []
+  const qaClaims = (metadata.qa_claims && typeof metadata.qa_claims === 'object') ? metadata.qa_claims as Record<string, unknown> : {}
+  const claimRoles = Array.isArray(qaClaims.roles) ? qaClaims.roles : []
+  return [
+    normalizeQaAudienceValue(metadata.qa_profile_role),
+    normalizeQaAudienceValue(qaClaims.role),
+    ...qaRoles.map((value) => normalizeQaAudienceValue(value)).filter((value): value is string => !!value),
+    ...claimRoles.map((value) => normalizeQaAudienceValue(value)).filter((value): value is string => !!value),
+  ].filter((value): value is string => !!value)
+}
+
+function isConsumerProfile(profile: Profile) {
+  if (profile.role !== 'community' || deriveSubtype(profile) !== null) return false
+
+  const consumerType = normalizeQaAudienceValue(readMetadataValue(profile, 'view_as_consumer_type') ?? readMetadataValue(profile, 'consumer_type'))
+  if (consumerType && consumerType !== 'normal' && consumerType !== '0') {
+    return false
+  }
+
+  const accountType = normalizeQaAudienceValue(readMetadataValue(profile, 'view_as_account_type') ?? readMetadataValue(profile, 'qa_account_type'))
+  if (accountType === '4' || accountType === 'consumer') {
+    return true
+  }
+
+  return readQaRoleSignals(profile).some((signal) => signal.includes('consumer') || signal.includes('customer') || signal.includes('client'))
+}
+
 export function getStakeholderShell(profile: Profile): StakeholderShell {
+  if (isConsumerProfile(profile)) {
+    return 'consumer'
+  }
+
   switch (profile.role) {
     case 'admin':
     case 'super_admin':
@@ -244,6 +295,10 @@ function getRoleLabel(shell: StakeholderShell, subtype: UserRoleSubtype) {
     return subtype === 'super' ? 'Super Admin' : subtype === 'internal' ? 'Internal Admin' : 'Admin'
   }
 
+  if (shell === 'consumer') {
+    return 'Client'
+  }
+
   if (shell === 'community') {
     return subtype === 'school' ? 'School' : subtype === 'cause' ? 'Cause' : 'Community'
   }
@@ -262,6 +317,10 @@ export function getPersistedRoleForShell(shell: StakeholderShell, subtype: UserR
     return subtype === 'super' ? 'super_admin' : subtype === 'internal' ? 'internal_admin' : 'admin'
   }
 
+  if (shell === 'consumer') {
+    return 'community'
+  }
+
   if (shell === 'community') {
     return subtype === 'school' ? 'school_leader' : subtype === 'cause' ? 'cause_leader' : 'community'
   }
@@ -278,6 +337,8 @@ function getSearchPlaceholder(shell: StakeholderShell) {
   switch (shell) {
     case 'business':
       return 'Search my business portal...'
+    case 'consumer':
+      return 'Search my wallet, transactions, or network...'
     case 'field':
       return 'Search my businesses, scripts, or tasks...'
     case 'launch_partner':
@@ -295,6 +356,8 @@ function getNavItems(shell: StakeholderShell) {
   switch (shell) {
     case 'business':
       return BUSINESS_NAV_ITEMS
+    case 'consumer':
+      return CONSUMER_NAV_ITEMS
     case 'field':
       return FIELD_NAV_ITEMS
     case 'launch_partner':
@@ -308,63 +371,9 @@ function getNavItems(shell: StakeholderShell) {
   }
 }
 
-/** Routes that only exist in the Supabase demo pipeline. For QA-sourced
- * sessions we hide these so admins don't bump into dead links. */
-const SUPABASE_ONLY_PREFIXES = new Set([
-  '/community/supporters',
-  '/community/share',
-  '/community/activity',
-  '/community/tasks',
-  '/community/materials',
-  '/community/qr',
-  '/community/businesses',
-  '/workspace/businesses',
-  '/workspace/community',
-  '/partner/city',
-  '/partner/businesses',
-  '/partner/community',
-  '/partner/requests',
-  '/portal/clients',
-  '/portal/grow',
-  '/portal/templates',
-  '/portal/activity',
-  '/portal/setup',
-])
-
-function isSupabaseOnlyHref(href: string | undefined): boolean {
-  if (!href) return false
-  return [...SUPABASE_ONLY_PREFIXES].some((p) => href === p || href.startsWith(p + '/'))
-}
-
-function filterNavForQa(items: NavItem[]): NavItem[] {
-  const out: NavItem[] = []
-  for (const item of items) {
-    if (isSupabaseOnlyHref(item.href)) continue
-    const filtered: NavItem = { ...item }
-    if (Array.isArray(item.children)) {
-      filtered.children = item.children.filter((c) => !isSupabaseOnlyHref(c.href))
-      // If the parent only had Supabase-only children, drop it entirely
-      if (filtered.children.length === 0 && (item.href === '/crm' || item.href === '/community' || item.href === '/portal')) {
-        continue
-      }
-    }
-    out.push(filtered)
-  }
-  return out
-}
-
-function isQaProfile(profile: Profile): boolean {
-  const meta = (profile.metadata as Record<string, unknown> | null) || {}
-  return meta.auth_source === 'qa_oauth' || meta.qa_provisioned === true
-}
-
 export function getStakeholderAccess(profile: Profile): StakeholderAccess {
   const shell = getStakeholderShell(profile)
   const subtype = deriveSubtype(profile)
-  let navItems = getNavItems(shell)
-  if (isQaProfile(profile)) {
-    navItems = filterNavForQa(navItems)
-  }
 
   return {
     shell,
@@ -372,7 +381,7 @@ export function getStakeholderAccess(profile: Profile): StakeholderAccess {
     label: getRoleLabel(shell, subtype),
     themeRole: getPersistedRoleForShell(shell, subtype),
     searchPlaceholder: getSearchPlaceholder(shell),
-    navItems,
+    navItems: getNavItems(shell),
     fallbackPath: '/dashboard',
   }
 }
@@ -402,6 +411,10 @@ export function canAccessPath(profile: Profile, pathname: string) {
       '/portal/activity',
       '/materials/mine',
     ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+  }
+
+  if (shell === 'consumer') {
+    return pathname === '/dashboard' || pathname.startsWith('/dashboard/')
   }
 
   if (shell === 'field') {

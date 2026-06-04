@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import {
   buildFallbackQaProfile,
   getQaSessionFromCookieStore,
+  mapQaRoleFromSignals,
   type QaAuthClaims,
   type QaSession,
 } from '@/lib/auth/qa-auth'
@@ -128,6 +129,11 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = AUTH_IO_TIMEOUT_MS, lab
 
 function normalizeEmail(value: string | null | undefined) {
   return value?.trim().toLowerCase() || null
+}
+
+function readMetadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 function readQaBusinessIdCandidates(claims?: QaAuthClaims) {
@@ -404,16 +410,37 @@ async function syncQaReferralToProfile(
   service: ServiceClient,
   profileId: string,
   profile: Profile,
+  qaClaims?: QaAuthClaims,
 ): Promise<Profile> {
   try {
     const profileMetadata = ((profile.metadata as Record<string, unknown> | null) || {})
-    const currentSharedUrl = typeof profileMetadata.qa_shared_url === 'string' ? profileMetadata.qa_shared_url : null
-    const currentReferralLink = typeof profileMetadata.qa_referral_link === 'string' ? profileMetadata.qa_referral_link : null
+    const currentSharedUrl = readMetadataString(profileMetadata, 'qa_shared_url')
+    const currentReferralLink = readMetadataString(profileMetadata, 'qa_referral_link')
+    const currentQaAccountType = readMetadataString(profileMetadata, 'qa_account_type')
+    const currentQaProfileRole = readMetadataString(profileMetadata, 'qa_profile_role')
     const currentReferralCode = sanitizeStakeholderCodeValue(profile.referral_code)
-    const syncedAtRaw = typeof profileMetadata.qa_referral_synced_at === 'string' ? profileMetadata.qa_referral_synced_at : null
+    const syncedAtRaw = readMetadataString(profileMetadata, 'qa_referral_synced_at')
     const syncedAtMs = syncedAtRaw ? Date.parse(syncedAtRaw) : Number.NaN
-    const syncedRecently = Number.isFinite(syncedAtMs) && (Date.now() - syncedAtMs) < QA_PROFILE_SYNC_TTL_MS
+    const hasQaRoleContext = !!(currentQaAccountType || currentQaProfileRole)
+    const syncedRecently = Number.isFinite(syncedAtMs) && (Date.now() - syncedAtMs) < QA_PROFILE_SYNC_TTL_MS && hasQaRoleContext
     if (syncedRecently) {
+      const cachedQaRole = mapQaRoleFromSignals({
+        claims: qaClaims,
+        accountType: currentQaAccountType,
+        profileRole: currentQaProfileRole,
+      })
+      if (profile.role !== cachedQaRole.role || (profile.role_subtype ?? null) !== (cachedQaRole.roleSubtype ?? null)) {
+        const rolePatch = {
+          role: cachedQaRole.role,
+          role_subtype: cachedQaRole.roleSubtype ?? null,
+        }
+        const { data: updatedProfile } = await (service.from('profiles') as any)
+          .update(rolePatch)
+          .eq('id', profileId)
+          .select()
+          .single()
+        profile = (updatedProfile as Profile | null) || { ...profile, ...rolePatch }
+      }
       if (profile.role === 'business' && !profile.business_id && currentReferralCode) {
         profile = await linkQaBusinessToProfile(service, profile, currentReferralCode)
       }
@@ -425,6 +452,13 @@ async function syncQaReferralToProfile(
     const nextReferralCode = sanitizeStakeholderCodeValue(qaProfile?.referralCode)
     const nextSharedUrl = sanitizeStakeholderUrl(qaProfile?.sharedURL)
     const nextReferralLink = sanitizeStakeholderUrl(qaProfile?.referralLink)
+    const nextQaAccountType = qaProfile?.accountType || currentQaAccountType
+    const nextQaProfileRole = qaProfile?.role || currentQaProfileRole
+    const nextRoleMapping = mapQaRoleFromSignals({
+      claims: qaClaims,
+      accountType: nextQaAccountType,
+      profileRole: nextQaProfileRole,
+    })
 
     const referralCode = nextReferralCode ?? sanitizeStakeholderCodeValue(profile.referral_code)
     const sharedUrl = nextSharedUrl ?? sanitizeStakeholderUrl(currentSharedUrl)
@@ -432,10 +466,14 @@ async function syncQaReferralToProfile(
 
     const patch = {
       referral_code: referralCode,
+      role: nextRoleMapping.role,
+      role_subtype: nextRoleMapping.roleSubtype ?? null,
       metadata: {
         ...profileMetadata,
         qa_shared_url: sharedUrl,
         qa_referral_link: referralLink,
+        qa_account_type: nextQaAccountType,
+        qa_profile_role: nextQaProfileRole,
         qa_referral_synced_at: new Date().toISOString(),
       },
     }
@@ -705,7 +743,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
 
     // Sync referral codes into the profile row while the QA token is still live
     if (profileIsReal && profile) {
-      profile = await syncQaReferralToProfile(service, profile.id, profile)
+      profile = await syncQaReferralToProfile(service, profile.id, profile, qaSession.claims)
       profile = await linkBusinessUserToLocalBusiness(service, profile, qaSession.claims)
     }
 
@@ -717,6 +755,9 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       metadata: {
         ...((profile.metadata as Record<string, unknown> | null) || {}),
         auth_source: 'qa_oauth',
+        qa_roles: qaSession.claims.roles,
+        qa_claims: qaSession.claims.raw,
+        qa_subject: qaSession.claims.sub || null,
       },
     }
 
@@ -802,4 +843,3 @@ export class UnauthorizedError extends Error {
     this.name = 'UnauthorizedError'
   }
 }
-

@@ -18,15 +18,18 @@ function asProfileUuid(value: string | null | undefined) {
 export async function GET() {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
+  const canReadQa = !!context.session.qaSession
 
   const [{ data: localCausesData }, qaResult] = await Promise.all([
     context.supabase
       .from('causes')
       .select('*')
       .order('updated_at', { ascending: false }),
-    fetchQaCauseList()
-      .then(data => ({ data, error: null as string | null }))
-      .catch(error => ({ data: [] as Awaited<ReturnType<typeof fetchQaCauseList>>, error: qaCauseRouteError(error) })),
+    canReadQa
+      ? fetchQaCauseList()
+          .then(data => ({ data, error: null as string | null }))
+          .catch(error => ({ data: [] as Awaited<ReturnType<typeof fetchQaCauseList>>, error: qaCauseRouteError(error) }))
+      : Promise.resolve({ data: [] as Awaited<ReturnType<typeof fetchQaCauseList>>, error: null as string | null }),
   ])
 
   const localCauses = (localCausesData || []) as Cause[]
