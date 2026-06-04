@@ -7,8 +7,9 @@ export async function updateSession(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const hasOauthResponse = searchParams.has('code') || (searchParams.has('error') && searchParams.has('state'))
   const isQaCallbackRoute = pathname.startsWith('/api/auth/qa/callback')
+  const isBrowserOidcRoute = pathname === '/' || pathname.startsWith('/login')
 
-  if (hasOauthResponse && !isQaCallbackRoute) {
+  if (hasOauthResponse && !isQaCallbackRoute && !isBrowserOidcRoute) {
     const callbackUrl = request.nextUrl.clone()
     callbackUrl.pathname = '/api/auth/qa/callback'
     callbackUrl.searchParams.set('oauth_redirect_path', pathname)

@@ -229,6 +229,27 @@ function normalizeQaClaims(accessToken: string, idToken?: string | null): QaAuth
   }
 }
 
+export function buildQaSessionFromTokens(tokens: {
+  accessToken: string
+  idToken?: string | null
+  refreshToken?: string | null
+  expiresIn?: number | null
+  expiresAt?: number | null
+}) {
+  const now = Math.floor(Date.now() / 1000)
+  const expiresAt = typeof tokens.expiresAt === 'number' && Number.isFinite(tokens.expiresAt)
+    ? tokens.expiresAt
+    : now + Math.max(tokens.expiresIn || 3600, 300)
+
+  return {
+    accessToken: tokens.accessToken,
+    idToken: tokens.idToken ?? null,
+    refreshToken: tokens.refreshToken ?? null,
+    expiresAt,
+    claims: normalizeQaClaims(tokens.accessToken, tokens.idToken ?? null),
+  } satisfies QaSession
+}
+
 function mapQaRole(claims: QaAuthClaims): { role: UserRole; roleSubtype?: UserRoleSubtype } {
   const normalizedRoles = claims.roles.map((role) => role.toLowerCase())
 

@@ -19,5 +19,15 @@ export default function Home({
   const code = Array.isArray(codeRaw) ? codeRaw[0] : codeRaw
   const state = Array.isArray(stateRaw) ? stateRaw[0] : stateRaw
 
-  return <QaLoginPage returnTo={returnTo} error={error} code={code} state={state} />
+  return (
+    <QaLoginPage
+      returnTo={returnTo}
+      error={error}
+      code={code}
+      state={state}
+      qaBaseUrl={process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com'}
+      clientId={process.env.QA_AUTH_CLIENT_ID || 'lvip_dashboard'}
+      scopes={process.env.QA_AUTH_SCOPES || 'openid profile email name LVIPDashboardApiV1 roles offline_access'}
+    />
+  )
 }
