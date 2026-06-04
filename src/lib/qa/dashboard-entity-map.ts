@@ -24,6 +24,10 @@ export type QaEntityKey =
   | 'audit_logs'
   | 'notifications'
   | 'profiles'
+  | 'qr_code_collections'
+  | 'outreach_scripts'
+  | 'material_assignments'
+  | 'materials'
 
 export interface QaEntityConfig {
   /** Backend endpoint path under /api/dashboard/v1 */
@@ -57,6 +61,10 @@ export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
   audit_logs: { endpoint: '/api/dashboard/v1/AuditLog', listWrapperKey: 'items' },
   notifications: { endpoint: '/api/dashboard/v1/Notification' },
   profiles: { endpoint: '/api/dashboard/v1/User/list', listWrapperKey: 'items' },
+  qr_code_collections: { endpoint: '/api/dashboard/v1/QrCodeCollection', listWrapperKey: 'items' },
+  outreach_scripts: { endpoint: '/api/dashboard/v1/OutreachScript', listWrapperKey: 'items' },
+  material_assignments: { endpoint: '/api/dashboard/v1/MaterialAssignment', listWrapperKey: 'items' },
+  materials: { endpoint: '/api/dashboard/v1/Material', listWrapperKey: 'items' },
 }
 
 /**
@@ -69,10 +77,6 @@ export const EMPTY_FALLBACK_TABLES = new Set([
   'admin_tasks',
   'business_referrals',
   'city_access_requests',
-  'outreach_scripts',
-  'qr_code_collections',
-  'materials',
-  'material_assignments',
   'template_rules',
 ])
 
@@ -154,6 +158,13 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     entity_id: 'entityId',
     entity_type: 'entityType',
     campaign_id: 'campaignId',
+    // Frontend outreach dialog uses these — map to backend Outreach DTO
+    channel: 'type',
+    subject: 'subject',
+    message: 'body',
+    body: 'body',
+    next_step: 'nextStep',
+    next_step_date: 'nextStepDate',
   },
   campaigns: {
     owner_id: 'ownerUserId',
@@ -216,6 +227,33 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     library_folder: 'libraryFolder',
     is_active: 'isActive',
     created_by: 'createdByUserId',
+  },
+  cities: {
+    state_code: 'state',
+    country_code: 'country',
+    created_by: 'createdByUserId',
+  },
+  qr_code_collections: {
+    created_by: 'createdByUserId',
+  },
+  outreach_scripts: {
+    script_type: 'scriptType',
+    audience_tags: 'audienceTags',
+    is_active: 'isActive',
+    created_by: 'createdByUserId',
+  },
+  material_assignments: {
+    material_id: 'materialId',
+    entity_id: 'entityId',
+    entity_type: 'entityType',
+    assigned_by: 'assignedByUserId',
+  },
+  materials: {
+    created_by: 'createdByUserId',
+    file_url: 'fileUrl',
+    thumbnail_url: 'thumbnailUrl',
+    business_id: 'businessAccountId',
+    cause_id: 'causeAccountId',
   },
 }
 
@@ -300,6 +338,7 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
   material_templates: (row) => {
     row.stakeholder_types = csvToArray(row.stakeholder_types)
     row.audience_tags = csvToArray(row.audience_tags)
+    row.tiers = csvToArray(row.tiers)
     if (row.qr_position_json && typeof row.qr_position_json === 'string') {
       try {
         row.qr_position = JSON.parse(row.qr_position_json as string)
@@ -337,6 +376,19 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     if (row.created_at && typeof row.created_at === 'string') {
       // already correct
     }
+  },
+  onboarding_steps: (row) => {
+    // Backend uses StepOrder/Status; frontend expects sort_order/is_completed.
+    if (row.step_order != null && row.sort_order == null) row.sort_order = row.step_order
+    const status = typeof row.status === 'string' ? row.status.toLowerCase() : ''
+    row.is_completed = status === 'completed' || status === 'done'
+    if (row.completed_by_user_id != null && row.completed_by == null) {
+      row.completed_by = row.completed_by_user_id
+    }
+  },
+  onboarding_flows: (row) => {
+    // Frontend expects { stage, completed_at }; backend has status + completedAt.
+    if (typeof row.status === 'string' && !row.stage) row.stage = row.status
   },
 }
 

@@ -14,7 +14,6 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
 import { useQrCodes, useQrCodeDelete } from '@/lib/supabase/hooks'
-import { createClient } from '@/lib/supabase/client'
 import { BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { generateQRDataURL } from '@/lib/qr/generate'
@@ -28,7 +27,6 @@ interface StakeholderCodeEntry {
 
 export default function MyQrCodesPage() {
   const { profile } = useAuth()
-  const supabase = React.useMemo(() => createClient(), [])
   const { data: qrCodes, loading, error, refetch } = useQrCodes({ created_by: profile.id })
   const { remove } = useQrCodeDelete()
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
@@ -36,18 +34,29 @@ export default function MyQrCodesPage() {
   const [deleting, setDeleting] = React.useState<string | null>(null)
   const [stakeholderCodes, setStakeholderCodes] = React.useState<Map<string, StakeholderCodeEntry>>(new Map())
 
-  // Load stakeholder codes for the listed QR codes
+  // Enrich each QR with its stakeholder's codes via the QA backend.
   React.useEffect(() => {
-    const ids = qrCodes.map(q => q.stakeholder_id).filter(Boolean) as string[]
-    if (ids.length === 0) return
-    void (supabase as any)
-      .from('stakeholder_codes')
-      .select('stakeholder_id, referral_code, connection_code, join_url')
-      .in('stakeholder_id', ids)
-      .then(({ data }: { data: StakeholderCodeEntry[] | null }) => {
-        setStakeholderCodes(new Map((data || []).map(c => [c.stakeholder_id, c])))
-      })
-  }, [supabase, qrCodes])
+    const ids = Array.from(new Set(qrCodes.map(q => q.stakeholder_id).filter(Boolean))) as string[]
+    if (ids.length === 0) { setStakeholderCodes(new Map()); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/qa/dashboard/stakeholder_codes', { cache: 'no-store' })
+        if (!res.ok) return
+        const raw = await res.json()
+        const rows: StakeholderCodeEntry[] = (Array.isArray(raw) ? raw : raw?.items ?? [])
+          .map((r: Record<string, unknown>) => ({
+            stakeholder_id: String(r.stakeholder_id ?? ''),
+            referral_code: (r.referral_code as string) ?? null,
+            connection_code: (r.connection_code as string) ?? null,
+            join_url: (r.join_url as string) ?? null,
+          }))
+          .filter((r: StakeholderCodeEntry) => ids.includes(r.stakeholder_id))
+        if (!cancelled) setStakeholderCodes(new Map(rows.map(c => [c.stakeholder_id, c])))
+      } catch { /* silent — codes are nice-to-have */ }
+    })()
+    return () => { cancelled = true }
+  }, [qrCodes])
 
   // Generate preview images when qrCodes change
   React.useEffect(() => {

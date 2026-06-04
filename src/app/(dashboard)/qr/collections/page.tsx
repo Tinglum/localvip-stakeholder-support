@@ -18,55 +18,75 @@ import {
 import { BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
-import { createClient } from '@/lib/supabase/client'
 import type { QrCodeCollection } from '@/lib/types/database'
 
 function useQrCollections() {
-  const supabase = React.useMemo(() => createClient(), [])
   const [data, setData] = React.useState<QrCodeCollection[]>([])
   const [loading, setLoading] = React.useState(true)
   const [refetchKey, setRefetchKey] = React.useState(0)
 
   React.useEffect(() => {
-    async function fetch() {
+    let cancelled = false
+    async function load() {
       setLoading(true)
-      const { data: rows } = await supabase.from('qr_code_collections').select('*').order('created_at', { ascending: false })
-      setData((rows || []) as QrCodeCollection[])
-      setLoading(false)
+      try {
+        const res = await fetch('/api/qa/dashboard/qr_code_collections', { cache: 'no-store' })
+        const raw = await res.json()
+        const rows: QrCodeCollection[] = Array.isArray(raw) ? raw : raw?.items ?? []
+        if (!cancelled) setData(rows)
+      } catch {
+        if (!cancelled) setData([])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-    fetch()
-  }, [supabase, refetchKey])
+    load()
+    return () => { cancelled = true }
+  }, [refetchKey])
 
   return { data, loading, refetch: () => setRefetchKey(k => k + 1) }
 }
 
 export default function QrCollectionsPage() {
   const { profile } = useAuth()
-  const supabase = React.useMemo(() => createClient(), [])
   const { data: collections, loading, refetch } = useQrCollections()
   const [addOpen, setAddOpen] = React.useState(false)
   const [name, setName] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [brand, setBrand] = React.useState<string>('localvip')
   const [saving, setSaving] = React.useState(false)
+  const [createError, setCreateError] = React.useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
     setSaving(true)
-    await (supabase.from('qr_code_collections') as any).insert({
-      name: name.trim(),
-      description: description.trim() || null,
-      brand,
-      created_by: profile.id,
-      status: 'active',
-    })
-    setSaving(false)
-    setAddOpen(false)
-    setName('')
-    setDescription('')
-    setBrand('localvip')
-    refetch()
+    setCreateError(null)
+    try {
+      const res = await fetch('/api/qa/dashboard/qr_code_collections', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || null,
+          brand,
+          created_by: profile.id,
+          status: 'active',
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setCreateError((body as { error?: string }).error || 'Could not create collection. Backend support pending.')
+        return
+      }
+      setAddOpen(false)
+      setName('')
+      setDescription('')
+      setBrand('localvip')
+      refetch()
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -143,6 +163,11 @@ export default function QrCollectionsPage() {
                 </SelectContent>
               </Select>
             </div>
+            {createError && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {createError}
+              </p>
+            )}
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={saving || !name.trim()}>

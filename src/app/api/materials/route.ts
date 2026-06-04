@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Material } from '@/lib/types/database'
 
@@ -15,6 +16,20 @@ export async function GET() {
 
   if (!['admin', 'field', 'launch_partner'].includes(shell)) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
+  }
+
+  if (session.source === 'qa') {
+    try {
+      const res = await fetchQaApi('/api/dashboard/v1/Material')
+      const json = await parseQaResponse<unknown>(res, 'Failed to load materials.')
+      const items = Array.isArray(json) ? json
+        : (json && typeof json === 'object' && Array.isArray((json as Record<string, unknown>).items))
+          ? (json as Record<string, unknown>).items as unknown[]
+          : []
+      return NextResponse.json(items as Material[])
+    } catch {
+      return NextResponse.json([] as Material[])
+    }
   }
 
   const supabase = createServiceClient()
@@ -54,6 +69,23 @@ export async function POST(request: NextRequest) {
 
   if (!body.title || !body.type || !body.brand) {
     return NextResponse.json({ error: 'Title, type, and brand are required.' }, { status: 400 })
+  }
+
+  if (session.source === 'qa') {
+    try {
+      const res = await fetchQaApi('/api/dashboard/v1/Material', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...body, createdByUserId: session.userId }),
+      })
+      const json = await parseQaResponse<unknown>(res, 'Failed to create material.')
+      return NextResponse.json(json as Material)
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Failed to create material.' },
+        { status: 500 },
+      )
+    }
   }
 
   const supabase = createServiceClient()

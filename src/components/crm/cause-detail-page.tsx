@@ -2025,19 +2025,9 @@ function QaCauseReadonlyView({
         </div>
       )}
 
-      <div className="flex items-start gap-3 rounded-lg border border-info-200 bg-info-50 px-4 py-3 text-sm text-info-800">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-info-600" />
-        <div>
-          <p className="font-medium">QA record loaded in read-only mode</p>
-          <p className="mt-1 text-xs text-info-700">
-            This {entityLabel.toLowerCase()} exists in QA, but it does not have a linked local dashboard record yet. CRM-only tabs like tasks, notes, materials, and codes stay disabled until it is imported or linked locally.
-          </p>
-        </div>
-      </div>
-
       <PageHeader
         title={cause.name}
-        description={`${entityLabel} account from QA • dashboard workflow stays read-only until linked locally.`}
+        description={`${entityLabel} account from QA`}
         breadcrumb={[
           { label: 'CRM', href: '/crm/causes' },
           { label: 'Causes', href: '/crm/causes' },

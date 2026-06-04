@@ -319,6 +319,21 @@ function UploadMaterialDialog({
   }, [filePreviewUrl])
 
   async function uploadFile(fileToUpload: File, folder: string): Promise<string | null> {
+    // 1) Try QA backend upload first
+    try {
+      const fd = new FormData()
+      fd.append('file', fileToUpload)
+      const res = await fetch(`/api/qa/material-asset/upload?folder=${encodeURIComponent(folder)}`, {
+        method: 'POST',
+        body: fd,
+      })
+      if (res.ok) {
+        const json = await res.json().catch(() => null)
+        if (json?.fileUrl) return json.fileUrl as string
+      }
+    } catch { /* fall through */ }
+
+    // 2) Fall back to Supabase Storage (demo mode)
     try {
       const supabase = createClient()
       const filePath = `${folder}/${storageOwnerKey}/${Date.now()}-${fileToUpload.name}`

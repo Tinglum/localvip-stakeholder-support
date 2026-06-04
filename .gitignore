@@ -39,3 +39,8 @@ supabase/.temp
 
 # local nested repo copies / scratch folders
 LocalVIP010626-main/
+
+# Local-only artifacts (do not commit)
+tmp-*.log
+tmp-*.txt
+.claude/

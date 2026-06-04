@@ -99,6 +99,19 @@ interface DeviceRow {
   createdDate: string | null
 }
 
+interface ConsumerType {
+  id: number
+  name: string
+}
+
+const CONSUMER_TYPE_HINTS: Record<string, string> = {
+  Normal: 'Regular customer — no special privileges',
+  Intern: 'Stakeholder — temporary internship role',
+  Volunteer: 'Stakeholder — community volunteer',
+  LaunchTeamPartner: 'Stakeholder — city launch team partner',
+  Influencer: 'Stakeholder — social media influencer',
+}
+
 function formatTypeName(name: string) {
   return name === 'LaunchTeamPartner' ? 'Launch Team Partner' : name
 }
@@ -123,6 +136,9 @@ export default function ConsumerDetailPage() {
   const consumerId = params.id as string
 
   const [summary, setSummary] = React.useState<ConsumerSummary | null>(null)
+  const [consumerTypes, setConsumerTypes] = React.useState<ConsumerType[]>([])
+  const [typeSaving, setTypeSaving] = React.useState(false)
+  const [typeSavedMsg, setTypeSavedMsg] = React.useState<string | null>(null)
   const [wallet, setWallet] = React.useState<WalletDetail | null>(null)
   const [transactions, setTransactions] = React.useState<TransactionRow[]>([])
   const [cashback, setCashback] = React.useState<CashbackSummary | null>(null)
@@ -170,6 +186,12 @@ export default function ConsumerDetailPage() {
         if (friendsRes.ok) setFriends(await friendsRes.json())
         if (causesRes.ok) setCauses(await causesRes.json())
         if (devicesRes.ok) setDevices(await devicesRes.json())
+
+        // Load the consumer-type enum for the admin selector
+        try {
+          const typesRes = await fetch('/api/qa/consumers/types')
+          if (typesRes.ok) setConsumerTypes(await typesRes.json())
+        } catch {}
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load')
       } finally {
@@ -255,6 +277,75 @@ export default function ConsumerDetailPage() {
           <Button size="sm">Edit profile</Button>
         </div>
       </div>
+
+      {/* Admin tag & access panel */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Admin: tag & access</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <div className="mb-1 text-xs font-medium uppercase tracking-wider text-surface-500">
+              Consumer type
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {consumerTypes.map((t) => {
+                const isCurrent = t.name === c.consumerType
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={typeSaving || isCurrent}
+                    onClick={async () => {
+                      setTypeSaving(true)
+                      setTypeSavedMsg(null)
+                      try {
+                        const res = await fetch(`/api/qa/consumers/${c.id}/consumer-type`, {
+                          method: 'PATCH',
+                          headers: { 'content-type': 'application/json' },
+                          body: JSON.stringify({ consumerTypeId: t.id }),
+                        })
+                        if (res.ok) {
+                          setTypeSavedMsg(`Updated to ${formatTypeName(t.name)}`)
+                          // Refetch summary so the badge updates
+                          const s = await fetch(`/api/qa/consumers/${c.id}/summary`)
+                          if (s.ok) setSummary(await s.json())
+                        } else {
+                          setTypeSavedMsg('Update failed — try again.')
+                        }
+                      } catch {
+                        setTypeSavedMsg('Update failed — try again.')
+                      } finally {
+                        setTypeSaving(false)
+                      }
+                    }}
+                    className={
+                      'rounded-full border px-3 py-1.5 text-xs font-medium transition ' +
+                      (isCurrent
+                        ? 'border-blue-500 bg-blue-50 text-blue-900 cursor-default'
+                        : 'border-surface-300 bg-surface-0 text-surface-700 hover:border-blue-400 hover:bg-blue-50 disabled:opacity-50')
+                    }
+                  >
+                    {formatTypeName(t.name)}
+                    {isCurrent && <span className="ml-1.5 text-blue-600">✓</span>}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-2 text-xs text-surface-500">
+              {CONSUMER_TYPE_HINTS[c.consumerType] || 'Regular customer'}
+            </p>
+            {typeSavedMsg && (
+              <p className="mt-2 text-xs text-emerald-700">{typeSavedMsg}</p>
+            )}
+          </div>
+          <div className="border-t border-surface-200 pt-3 text-xs text-surface-600">
+            <strong className="font-semibold text-surface-800">Normal</strong> means a regular customer.
+            The other types promote the user to a stakeholder role that drives LocalVIP growth.
+            Higher-level roles (admin / business / cause) are set on the user record at <code>/admin/users</code>.
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Top metric tiles */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { generateMaterialsForStakeholder } from '@/lib/server/material-engine'
 import type { Stakeholder } from '@/lib/types/database'
 
@@ -18,6 +19,23 @@ export async function POST(request: NextRequest) {
 
   if (!stakeholderId || !templateId) {
     return NextResponse.json({ error: 'stakeholderId and templateId are required.' }, { status: 400 })
+  }
+
+  if (session.source === 'qa') {
+    try {
+      const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ stakeholderId, templateId }),
+      })
+      const result = await parseQaResponse<unknown>(res, 'Could not generate material.')
+      return NextResponse.json({ success: true, result })
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Could not generate material.' },
+        { status: 400 },
+      )
+    }
   }
 
   // Verify the user owns this stakeholder

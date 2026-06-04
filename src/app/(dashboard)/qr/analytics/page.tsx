@@ -32,7 +32,7 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { BRANDS } from '@/lib/constants'
 import { useQrCodes } from '@/lib/supabase/hooks'
-import { createClient } from '@/lib/supabase/client'
+import { useBusinesses, useCauses } from '@/lib/supabase/hooks'
 import { formatDateTime } from '@/lib/utils'
 import type { QrCodeEvent } from '@/lib/types/database'
 
@@ -103,37 +103,64 @@ interface AnalyticsData {
 }
 
 function useAnalyticsData(days: number): AnalyticsData {
-  const supabase = React.useMemo(() => createClient(), [])
+  const { data: businesses } = useBusinesses()
+  const { data: causes } = useCauses()
   const [events, setEvents] = React.useState<QrCodeEvent[]>([])
-  const [businessNames, setBusinessNames] = React.useState<Map<string, string>>(new Map())
-  const [causeNames, setCauseNames] = React.useState<Map<string, string>>(new Map())
   const [loading, setLoading] = React.useState(true)
 
+  // Build name lookups from the QA-backed business + cause lists
+  const businessNames = React.useMemo(
+    () => new Map(businesses.map((b) => [String(b.id), b.name])),
+    [businesses],
+  )
+  const causeNames = React.useMemo(
+    () => new Map(causes.map((c) => [String(c.id), c.name])),
+    [causes],
+  )
+
+  // Pull events from the backend QrCode analytics endpoint — one shot per QR,
+  // merged. The QA backend doesn't expose a "all events" route, so we fan out.
+  // Falls back to an empty array if no QRs exist or the route errors.
   React.useEffect(() => {
+    let cancelled = false
     setLoading(true)
-    const since = new Date()
-    since.setDate(since.getDate() - days)
+    const since = Date.now() - days * 24 * 60 * 60 * 1000
 
-    async function load() {
-      const [eventsRes, bizRes, causeRes] = await Promise.all([
-        (supabase as any)
-          .from('qr_code_events')
-          .select('*')
-          .gte('scanned_at', since.toISOString())
-          .order('scanned_at', { ascending: false })
-          .limit(10000),
-        (supabase as any).from('businesses').select('id, name').eq('status', 'active'),
-        (supabase as any).from('causes').select('id, name'),
-      ])
+    void (async () => {
+      try {
+        const listRes = await fetch('/api/qa/dashboard/qr_codes', { cache: 'no-store' })
+        if (!listRes.ok) { if (!cancelled) { setEvents([]); setLoading(false) } return }
+        const raw = await listRes.json()
+        const qrs: Array<{ id: number | string }> = Array.isArray(raw) ? raw : raw?.items ?? []
+        if (qrs.length === 0) { if (!cancelled) { setEvents([]); setLoading(false) } return }
 
-      setEvents((eventsRes.data || []) as QrCodeEvent[])
-      setBusinessNames(new Map((bizRes.data || []).map((b: { id: string; name: string }) => [b.id, b.name])))
-      setCauseNames(new Map((causeRes.data || []).map((c: { id: string; name: string }) => [c.id, c.name])))
-      setLoading(false)
-    }
-
-    void load()
-  }, [supabase, days])
+        const perQr = await Promise.all(
+          qrs.slice(0, 200).map(async (qr) => {
+            try {
+              const r = await fetch(`/api/qa/dashboard/qr_codes/${qr.id}`, { cache: 'no-store' })
+              if (!r.ok) return [] as QrCodeEvent[]
+              const detail = await r.json()
+              const list: unknown[] = Array.isArray(detail?.events) ? detail.events : []
+              return list.map((e: unknown) => e as QrCodeEvent)
+            } catch { return [] as QrCodeEvent[] }
+          }),
+        )
+        const flat = perQr
+          .flat()
+          .filter((e) => {
+            const t = e?.scanned_at ? Date.parse(String(e.scanned_at)) : NaN
+            return Number.isFinite(t) && t >= since
+          })
+          .sort((a, b) => Date.parse(b.scanned_at) - Date.parse(a.scanned_at))
+        if (!cancelled) setEvents(flat as QrCodeEvent[])
+      } catch {
+        if (!cancelled) setEvents([])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [days])
 
   return { events, businessNames, causeNames, loading }
 }
@@ -214,24 +241,34 @@ export default function QrAnalyticsPage() {
   const [expandedQr, setExpandedQr] = React.useState<string | null>(null)
   const [showAllEvents, setShowAllEvents] = React.useState(false)
 
-  const supabase = React.useMemo(() => createClient(), [])
   const { data: allQrCodes, loading: qrLoading } = useQrCodes()
   const { events, businessNames, causeNames, loading: dataLoading } = useAnalyticsData(timeRange)
   const loading = qrLoading || dataLoading
 
-  // Load stakeholder codes keyed by stakeholder_id
+  // Load stakeholder codes keyed by stakeholder_id (via the QA backend)
   const [stakeholderCodes, setStakeholderCodes] = React.useState<Map<string, StakeholderCodeEntry>>(new Map())
   React.useEffect(() => {
-    const ids = allQrCodes.map(q => q.stakeholder_id).filter(Boolean) as string[]
-    if (ids.length === 0) return
-    void (supabase as any)
-      .from('stakeholder_codes')
-      .select('stakeholder_id, referral_code, connection_code, join_url')
-      .in('stakeholder_id', ids)
-      .then(({ data }: { data: (StakeholderCodeEntry & { stakeholder_id: string })[] | null }) => {
-        setStakeholderCodes(new Map((data || []).map(c => [c.stakeholder_id, c])))
-      })
-  }, [supabase, allQrCodes])
+    const ids = new Set(allQrCodes.map(q => q.stakeholder_id).filter(Boolean) as string[])
+    if (ids.size === 0) { setStakeholderCodes(new Map()); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/qa/dashboard/stakeholder_codes', { cache: 'no-store' })
+        if (!res.ok) return
+        const raw = await res.json()
+        const rows: Array<StakeholderCodeEntry & { stakeholder_id: string }> = (Array.isArray(raw) ? raw : raw?.items ?? [])
+          .map((r: Record<string, unknown>) => ({
+            stakeholder_id: String(r.stakeholder_id ?? ''),
+            referral_code: (r.referral_code as string) ?? null,
+            connection_code: (r.connection_code as string) ?? null,
+            join_url: (r.join_url as string) ?? null,
+          }))
+          .filter((r: { stakeholder_id: string }) => ids.has(r.stakeholder_id))
+        if (!cancelled) setStakeholderCodes(new Map(rows.map(c => [c.stakeholder_id, c])))
+      } catch { /* silent */ }
+    })()
+    return () => { cancelled = true }
+  }, [allQrCodes])
 
   // Apply entity filter to QR codes
   const qrCodes = React.useMemo(() => {

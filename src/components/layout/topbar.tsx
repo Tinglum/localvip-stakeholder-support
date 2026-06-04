@@ -9,8 +9,9 @@ import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { BRANDS } from '@/lib/constants'
 import { getStakeholderAccess, isAdminProfile } from '@/lib/stakeholder-access'
-import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types/database'
+import { ViewAsPicker } from '@/components/layout/view-as-picker'
+import { TopbarSearch } from '@/components/layout/topbar-search'
 
 // ── Route → human label mapping ──
 const ROUTE_LABELS: Record<string, string> = {
@@ -91,7 +92,6 @@ interface TopbarProps {
 export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const supabase = React.useMemo(() => createClient(), [])
   const access = getStakeholderAccess(profile)
   const searchPlaceholder = access.searchPlaceholder
   const [searchValue, setSearchValue] = React.useState('')
@@ -151,14 +151,6 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
       // Non-fatal — server logout failed; still clear local session below.
     }
 
-    // Belt-and-suspenders: also clear local Supabase state in case the
-    // browser client has anything the server route didn't reach.
-    try {
-      await supabase.auth.signOut()
-    } catch {
-      // Ignore — server already cleared the authoritative session cookies.
-    }
-
     // Always do a full-page navigation so the browser sends fresh cookies on
     // the next request and the middleware sees the cleared session state.
     window.location.assign(redirectTo ?? '/login?signout=1')
@@ -176,23 +168,18 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' && searchValue.trim()) {
-      const query = searchValue.trim().toLowerCase()
-      if (isAdminProfile(profile)) {
-        router.push(`/crm/businesses?q=${encodeURIComponent(query)}`)
-      } else if (access.shell === 'community') {
-        router.push(`/community/supporters`)
-      } else {
-        router.push(`/crm/businesses?q=${encodeURIComponent(query)}`)
-      }
-      setSearchValue('')
-      searchRef.current?.blur()
+  function handleSearchSubmit(query: string) {
+    if (!query.trim()) return
+    const q = query.trim().toLowerCase()
+    if (isAdminProfile(profile)) {
+      router.push(`/crm/businesses?q=${encodeURIComponent(q)}`)
+    } else if (access.shell === 'community') {
+      router.push(`/community/supporters`)
+    } else {
+      router.push(`/crm/businesses?q=${encodeURIComponent(q)}`)
     }
-    if (e.key === 'Escape') {
-      setSearchValue('')
-      searchRef.current?.blur()
-    }
+    setSearchValue('')
+    searchRef.current?.blur()
   }
 
   return (
@@ -223,22 +210,14 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
 
       <div className="flex-1" />
 
-      {/* Search */}
-      <div className="relative max-w-xs hidden sm:block">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-        <input
-          ref={searchRef}
-          type="text"
-          value={searchValue}
-          onChange={(e) => setSearchValue(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
-          placeholder={searchPlaceholder}
-          className="h-8 w-full rounded-lg bg-surface-100 pl-9 pr-14 text-sm text-surface-700 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-        />
-        <kbd className="absolute right-2 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center rounded bg-surface-200 px-1.5 py-0.5 text-[10px] font-medium text-surface-400">
-          {typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent) ? '⌘' : 'Ctrl+'}K
-        </kbd>
-      </div>
+      {/* Search with inline results combobox */}
+      <TopbarSearch
+        ref={searchRef}
+        value={searchValue}
+        onChange={setSearchValue}
+        placeholder={searchPlaceholder}
+        onSubmit={handleSearchSubmit}
+      />
 
       {/* Brand switcher (admins only) */}
       {isAdminProfile(profile) && (
@@ -252,6 +231,10 @@ export function Topbar({ profile, sidebarCollapsed }: TopbarProps) {
           </span>
         </div>
       )}
+
+      {/* View-As picker (admins only) — sits in the admin cluster next to the
+          brand switcher so the "tools that change the active context" stay together. */}
+      {isAdminProfile(profile) && <ViewAsPicker />}
 
       {/* Notifications */}
       <DropdownMenu.Root>

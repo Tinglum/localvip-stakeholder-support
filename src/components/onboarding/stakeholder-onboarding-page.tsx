@@ -46,7 +46,85 @@ import {
   getMaterialAutomationTemplateConfig,
   materialSupportsAutomationTemplate,
 } from '@/lib/materials/automation-template'
-import { createClient } from '@/lib/supabase/client'
+// Supabase replaced by QA-backed helpers — see qaTableInsert/qaTableUpdate
+// near the top of this module.
+
+/**
+ * Drop-in helper that mimics `supabase.from(table).insert(...).select().single()`
+ * but routes through the QA dashboard proxy. Returns `{ data, error }` with the
+ * same shape the rest of this file expects, so the existing call sites don't
+ * need to change beyond the function name.
+ */
+async function qaTableInsert<T = Record<string, unknown>>(
+  table: string,
+  payload: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  try {
+    const res = await fetch(`/api/qa/dashboard/${table}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      return { data: null, error: { message: (body as { error?: string }).error || `HTTP ${res.status}` } }
+    }
+    return { data: (await res.json()) as T, error: null }
+  } catch (e) {
+    return { data: null, error: { message: e instanceof Error ? e.message : 'Network error' } }
+  }
+}
+
+async function qaTableInsertMany<T = Record<string, unknown>>(
+  table: string,
+  rows: Record<string, unknown>[],
+): Promise<{ data: T[] | null; error: { message: string } | null }> {
+  // The QA dashboard route accepts one row at a time. Fan-out + collect.
+  const results: T[] = []
+  for (const row of rows) {
+    const { data, error } = await qaTableInsert<T>(table, row)
+    if (error) return { data: null, error }
+    if (data) results.push(data)
+  }
+  return { data: results, error: null }
+}
+
+async function qaTableUpdate<T = Record<string, unknown>>(
+  table: string,
+  id: string | number,
+  patch: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  try {
+    const res = await fetch(`/api/qa/dashboard/${table}/${id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      return { data: null, error: { message: (body as { error?: string }).error || `HTTP ${res.status}` } }
+    }
+    return { data: (await res.json()) as T, error: null }
+  } catch (e) {
+    return { data: null, error: { message: e instanceof Error ? e.message : 'Network error' } }
+  }
+}
+
+async function qaTableLookupBy<T = Record<string, unknown>>(
+  table: string,
+  matcher: (row: Record<string, unknown>) => boolean,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  try {
+    const res = await fetch(`/api/qa/dashboard/${table}`, { cache: 'no-store' })
+    if (!res.ok) return { data: null, error: { message: `HTTP ${res.status}` } }
+    const raw = await res.json()
+    const rows: Record<string, unknown>[] = Array.isArray(raw) ? raw : raw?.items ?? []
+    const found = rows.find(matcher)
+    return { data: (found as T | undefined) ?? null, error: null }
+  } catch (e) {
+    return { data: null, error: { message: e instanceof Error ? e.message : 'Network error' } }
+  }
+}
 import {
   useAdminTasks,
   useCampaigns,
@@ -216,7 +294,6 @@ function resolveStakeholder(flow: OnboardingFlow, role: SupportedRole, stakehold
 
 export function StakeholderOnboardingPage() {
   const { profile } = useAuth()
-  const supabase = React.useMemo(() => createClient(), [])
   const { data: flowsData, loading: flowsLoading, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'stakeholder' })
   const { data: stepsData, loading: stepsLoading, refetch: refetchSteps } = useOnboardingSteps()
   const { data: stakeholders, loading: stakeholdersLoading, refetch: refetchStakeholders } = useStakeholders()
@@ -351,36 +428,33 @@ export function StakeholderOnboardingPage() {
     const stakeholder = stakeholderPayload.stakeholder as Stakeholder
     const definitions = stepDefinitions(form.role)
     const now = new Date().toISOString()
-    const flowResult = await (supabase.from('onboarding_flows') as any)
-      .insert({
-        name: form.name.trim(),
-        entity_type: 'stakeholder',
-        entity_id: stakeholder.id,
-        brand: form.brand,
-        stage: 'lead',
-        owner_id: profile.id,
+    const flowResult = await qaTableInsert<OnboardingFlow>('onboarding_flows', {
+      name: form.name.trim(),
+      entity_type: 'stakeholder',
+      entity_id: stakeholder.id,
+      brand: form.brand,
+      stage: 'lead',
+      owner_id: profile.id,
+      campaign_id: null,
+      started_at: now,
+      metadata: {
+        target_role: form.role,
+        stakeholder_id: stakeholder.id,
+        contact_name: form.name.trim(),
+        contact_email: form.email.trim() || null,
+        contact_phone: form.phone.trim() || null,
+        city_id: form.cityId || null,
+        contact_notes: form.notes.trim() || null,
+        contact_status: 'lead',
+        invite_email: form.email.trim() || null,
+        invited_profile_id: null,
+        agreement_shared: false,
+        agreement_confirmed: false,
+        agreement_notes: null,
         campaign_id: null,
-        started_at: now,
-        metadata: {
-          target_role: form.role,
-          stakeholder_id: stakeholder.id,
-          contact_name: form.name.trim(),
-          contact_email: form.email.trim() || null,
-          contact_phone: form.phone.trim() || null,
-          city_id: form.cityId || null,
-          contact_notes: form.notes.trim() || null,
-          contact_status: 'lead',
-          invite_email: form.email.trim() || null,
-          invited_profile_id: null,
-          agreement_shared: false,
-          agreement_confirmed: false,
-          agreement_notes: null,
-          campaign_id: null,
-          campaign_notes: null,
-        },
-      })
-      .select()
-      .single()
+        campaign_notes: null,
+      },
+    })
 
     const createdFlow = (flowResult.data || null) as OnboardingFlow | null
     if (!createdFlow) {
@@ -389,7 +463,7 @@ export function StakeholderOnboardingPage() {
       return
     }
 
-    await (supabase.from('onboarding_steps') as any).insert(
+    await qaTableInsertMany('onboarding_steps',
       definitions.map((definition, index) => ({
         flow_id: createdFlow.id,
         title: definition.title,
@@ -453,7 +527,6 @@ export function StakeholderOnboardingPage() {
               materials={materials}
               materialMap={materialMap}
               templates={templates}
-              supabase={supabase}
               refetchAll={refetchAll}
             />
           ))}
@@ -533,7 +606,6 @@ function FlowWorkspaceCard({
   materials,
   materialMap,
   templates,
-  supabase,
   refetchAll,
 }: {
   flow: FlowRecord
@@ -543,7 +615,6 @@ function FlowWorkspaceCard({
   materials: Material[]
   materialMap: Map<string, Material>
   templates: MaterialTemplate[]
-  supabase: ReturnType<typeof createClient>
   refetchAll: () => void
 }) {
   const metadata = React.useMemo(() => ((flow.metadata as Record<string, unknown> | null) || {}), [flow.metadata])
@@ -665,28 +736,24 @@ function FlowWorkspaceCard({
       return step
     })
 
-    const flowUpdate = await (supabase.from('onboarding_flows') as any)
-      .update({
-        metadata: mergeMetadata(flow.metadata as Record<string, unknown> | null, options.metadataPatch || {}),
-        stage: computeStage(updatedSteps),
-        completed_at: computeStage(updatedSteps) === 'live' ? new Date().toISOString() : null,
-        ...options.flowPatch,
-      })
-      .eq('id', flow.id)
+    const flowUpdate = await qaTableUpdate('onboarding_flows', flow.id, {
+      metadata: mergeMetadata(flow.metadata as Record<string, unknown> | null, options.metadataPatch || {}),
+      stage: computeStage(updatedSteps),
+      completed_at: computeStage(updatedSteps) === 'live' ? new Date().toISOString() : null,
+      ...options.flowPatch,
+    })
 
     if (flowUpdate.error) throw new Error(flowUpdate.error.message)
 
     if (options.stepKey) {
       const step = stepsByKey.get(options.stepKey)
       if (step) {
-        const stepUpdate = await (supabase.from('onboarding_steps') as any)
-          .update({
-            is_completed: options.markComplete ?? step.is_completed,
-            completed_by: options.markComplete ? adminProfile?.id || null : step.completed_by,
-            completed_at: options.markComplete ? new Date().toISOString() : step.completed_at,
-            metadata: mergeMetadata(step.metadata as Record<string, unknown> | null, options.stepMetadataPatch || {}),
-          })
-          .eq('id', step.id)
+        const stepUpdate = await qaTableUpdate('onboarding_steps', step.id, {
+          is_completed: options.markComplete ?? step.is_completed,
+          completed_by: options.markComplete ? adminProfile?.id || null : step.completed_by,
+          completed_at: options.markComplete ? new Date().toISOString() : step.completed_at,
+          metadata: mergeMetadata(step.metadata as Record<string, unknown> | null, options.stepMetadataPatch || {}),
+        })
 
         if (stepUpdate.error) throw new Error(stepUpdate.error.message)
       }
@@ -731,18 +798,16 @@ function FlowWorkspaceCard({
     setError(null)
     try {
       const stakeholder = await ensureStakeholder()
-      const stakeholderUpdate = await (supabase.from('stakeholders') as any)
-        .update({
-          name: contactName.trim(),
-          city_id: contactCityId || null,
-          metadata: mergeMetadata(stakeholder.metadata as Record<string, unknown> | null, {
-            onboarding_contact_email: contactEmail.trim() || null,
-            onboarding_contact_phone: contactPhone.trim() || null,
-            onboarding_contact_notes: contactNotes.trim() || null,
-            onboarding_contact_status: contactStatus,
-          }),
-        })
-        .eq('id', stakeholder.id)
+      const stakeholderUpdate = await qaTableUpdate('stakeholders', stakeholder.id, {
+        name: contactName.trim(),
+        city_id: contactCityId || null,
+        metadata: mergeMetadata(stakeholder.metadata as Record<string, unknown> | null, {
+          onboarding_contact_email: contactEmail.trim() || null,
+          onboarding_contact_phone: contactPhone.trim() || null,
+          onboarding_contact_notes: contactNotes.trim() || null,
+          onboarding_contact_status: contactStatus,
+        }),
+      })
       if (stakeholderUpdate.error) throw new Error(stakeholderUpdate.error.message)
 
       await persistStep({
@@ -822,12 +887,12 @@ function FlowWorkspaceCard({
     setError(null)
     try {
       const stakeholder = await ensureStakeholder()
-      const existingProfile = await (supabase.from('profiles') as any)
-        .select('*')
-        .ilike('email', normalizedEmail)
-        .maybeSingle()
+      const existingProfile = await qaTableLookupBy<Profile>('profiles', (row) => {
+        const email = (row.email as string | undefined)?.toLowerCase()
+        return !!email && email === normalizedEmail
+      })
 
-      let linkedProfile = (existingProfile.data || null) as Profile | null
+      let linkedProfile = existingProfile.data
       if (!linkedProfile) {
         const invite = inviteShape(flow.targetRole)
         const inviteResponse = await fetch('/api/admin/invite', {
@@ -845,35 +910,31 @@ function FlowWorkspaceCard({
         const invitePayload = await inviteResponse.json().catch(() => ({ error: 'Could not send invite.' }))
         if (!inviteResponse.ok) throw new Error(invitePayload.error || 'Could not send invite.')
 
-        const reloaded = await (supabase.from('profiles') as any)
-          .select('*')
-          .ilike('email', normalizedEmail)
-          .maybeSingle()
-        linkedProfile = (reloaded.data || null) as Profile | null
+        const reloaded = await qaTableLookupBy<Profile>('profiles', (row) => {
+          const email = (row.email as string | undefined)?.toLowerCase()
+          return !!email && email === normalizedEmail
+        })
+        linkedProfile = reloaded.data
       }
 
       if (!linkedProfile) throw new Error('The invite was sent, but the linked profile could not be loaded yet.')
 
-      await (supabase.from('profiles') as any)
-        .update({
-          full_name: contactName.trim() || flow.name,
-          city_id: contactCityId || null,
-          phone: contactPhone.trim() || null,
-          brand_context: flow.brand,
-          metadata: mergeMetadata(linkedProfile.metadata as Record<string, unknown> | null, {
-            onboarding_flow_id: flow.id,
-            stakeholder_id: stakeholder.id,
-          }),
-        })
-        .eq('id', linkedProfile.id)
+      await qaTableUpdate('profiles', linkedProfile.id, {
+        full_name: contactName.trim() || flow.name,
+        city_id: contactCityId || null,
+        phone: contactPhone.trim() || null,
+        brand_context: flow.brand,
+        metadata: mergeMetadata(linkedProfile.metadata as Record<string, unknown> | null, {
+          onboarding_flow_id: flow.id,
+          stakeholder_id: stakeholder.id,
+        }),
+      })
 
-      const stakeholderUpdate = await (supabase.from('stakeholders') as any)
-        .update({
-          profile_id: linkedProfile.id,
-          owner_user_id: linkedProfile.id,
-          city_id: contactCityId || stakeholder.city_id || null,
-        })
-        .eq('id', stakeholder.id)
+      const stakeholderUpdate = await qaTableUpdate('stakeholders', stakeholder.id, {
+        profile_id: linkedProfile.id,
+        owner_user_id: linkedProfile.id,
+        city_id: contactCityId || stakeholder.city_id || null,
+      })
       if (stakeholderUpdate.error) throw new Error(stakeholderUpdate.error.message)
 
       await persistStep({
@@ -964,27 +1025,25 @@ function FlowWorkspaceCard({
       let campaignId = selectedCampaignId || null
 
       if (!campaignId) {
-        const campaignResult = await (supabase.from('campaigns') as any)
-          .insert({
-            name: newCampaignName.trim(),
-            description: campaignNotes.trim() || null,
-            brand: flow.brand,
-            city_id: contactCityId || flow.city?.id || stakeholder.city_id || null,
-            start_date: new Date().toISOString().slice(0, 10),
-            end_date: null,
-            status: 'active',
-            owner_id: flow.linkedProfile?.id || adminProfile?.id || null,
-            metadata: {
-              created_via: 'stakeholder_onboarding',
-              onboarding_flow_id: flow.id,
-              stakeholder_id: stakeholder.id,
-            },
-          })
-          .select()
-          .single()
+        const campaignResult = await qaTableInsert<Campaign>('campaigns', {
+          name: newCampaignName.trim(),
+          description: campaignNotes.trim() || null,
+          brand: flow.brand,
+          city_id: contactCityId || flow.city?.id || stakeholder.city_id || null,
+          start_date: new Date().toISOString().slice(0, 10),
+          end_date: null,
+          status: 'active',
+          owner_id: flow.linkedProfile?.id || adminProfile?.id || null,
+          metadata: {
+            created_via: 'stakeholder_onboarding',
+            onboarding_flow_id: flow.id,
+            stakeholder_id: stakeholder.id,
+          },
+        })
 
         if (campaignResult.error) throw new Error(campaignResult.error.message)
-        campaignId = (campaignResult.data as Campaign).id
+        if (!campaignResult.data) throw new Error('Could not create campaign.')
+        campaignId = campaignResult.data.id
       }
 
       await persistStep({

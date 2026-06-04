@@ -161,17 +161,33 @@ function UploadMaterialDialog({
       setUploading(true)
 
       try {
-        const supabase = createClient()
-        const filePath = `materials/${storageOwnerKey}/${Date.now()}-${selectedFile.name}`
-        const { error: storageError } = await supabase.storage
-          .from('materials')
-          .upload(filePath, selectedFile, { upsert: true })
+        // 1) Try QA backend upload
+        let qaFileUrl: string | null = null
+        try {
+          const fd = new FormData()
+          fd.append('file', selectedFile)
+          const res = await fetch(`/api/qa/material-asset/upload?folder=my-materials`, { method: 'POST', body: fd })
+          if (res.ok) {
+            const json = await res.json().catch(() => null)
+            if (json?.fileUrl) qaFileUrl = json.fileUrl as string
+          }
+        } catch { /* fall through */ }
 
-        if (storageError) {
-          fileUrl = await fileToDataUrl(selectedFile)
+        if (qaFileUrl) {
+          fileUrl = qaFileUrl
         } else {
-          const { data: urlData } = supabase.storage.from('materials').getPublicUrl(filePath)
-          fileUrl = urlData.publicUrl
+          // 2) Demo path — Supabase storage with data-URL fallback
+          const supabase = createClient()
+          const filePath = `materials/${storageOwnerKey}/${Date.now()}-${selectedFile.name}`
+          const { error: storageError } = await supabase.storage
+            .from('materials')
+            .upload(filePath, selectedFile, { upsert: true })
+          if (storageError) {
+            fileUrl = await fileToDataUrl(selectedFile)
+          } else {
+            const { data: urlData } = supabase.storage.from('materials').getPublicUrl(filePath)
+            fileUrl = urlData.publicUrl
+          }
         }
 
         fileName = selectedFile.name

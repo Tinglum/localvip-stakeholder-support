@@ -147,14 +147,23 @@ export function buildCrmCauseDetail(
   const cause = mergeCauseRecord(localCause, qaCause)
   if (!cause) return null
 
+  // All CRM features (stakeholders, codes, tasks, notes, materials, onboarding)
+  // now live on the QA backend. As long as we have a QA cause id, the dashboard
+  // can write to those tables — there is no longer a separate "local" record
+  // that needs importing. Treat the QA id as the canonical id when no Supabase
+  // row exists.
+  const qaCauseId = qaCause?.id || getQaAccountIdFromLocal(localCause!) || null
+  const effectiveLocalId = localCause?.id || (qaCauseId !== null ? String(qaCauseId) : null)
+  const readOnly = !localCause && !qaCauseId
+
   return {
     cause,
-    localCauseId: localCause?.id || null,
-    qaCauseId: qaCause?.id || getQaAccountIdFromLocal(localCause!) || null,
+    localCauseId: effectiveLocalId,
+    qaCauseId,
     origin: resolveOrigin(localCause, qaCause),
     qaCause,
     qaError,
-    readOnly: !localCause,
+    readOnly,
   }
 }
 

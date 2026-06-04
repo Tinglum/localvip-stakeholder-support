@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { generateMaterialsForStakeholder } from '@/lib/server/material-engine'
 import type { GeneratedMaterial, Stakeholder } from '@/lib/types/database'
 
@@ -18,6 +19,22 @@ export async function POST(request: NextRequest) {
 
   if (!generatedMaterialId) {
     return NextResponse.json({ error: 'generatedMaterialId is required.' }, { status: 400 })
+  }
+
+  if (session.source === 'qa') {
+    try {
+      const res = await fetchQaApi(
+        `/api/dashboard/v1/GeneratedMaterial/${encodeURIComponent(generatedMaterialId)}/regenerate`,
+        { method: 'POST' },
+      )
+      const result = await parseQaResponse<unknown>(res, 'Could not update material.')
+      return NextResponse.json({ success: true, result })
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Could not update material.' },
+        { status: 400 },
+      )
+    }
   }
 
   // Fetch the generated material

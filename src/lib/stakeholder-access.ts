@@ -308,9 +308,63 @@ function getNavItems(shell: StakeholderShell) {
   }
 }
 
+/** Routes that only exist in the Supabase demo pipeline. For QA-sourced
+ * sessions we hide these so admins don't bump into dead links. */
+const SUPABASE_ONLY_PREFIXES = new Set([
+  '/community/supporters',
+  '/community/share',
+  '/community/activity',
+  '/community/tasks',
+  '/community/materials',
+  '/community/qr',
+  '/community/businesses',
+  '/workspace/businesses',
+  '/workspace/community',
+  '/partner/city',
+  '/partner/businesses',
+  '/partner/community',
+  '/partner/requests',
+  '/portal/clients',
+  '/portal/grow',
+  '/portal/templates',
+  '/portal/activity',
+  '/portal/setup',
+])
+
+function isSupabaseOnlyHref(href: string | undefined): boolean {
+  if (!href) return false
+  return [...SUPABASE_ONLY_PREFIXES].some((p) => href === p || href.startsWith(p + '/'))
+}
+
+function filterNavForQa(items: NavItem[]): NavItem[] {
+  const out: NavItem[] = []
+  for (const item of items) {
+    if (isSupabaseOnlyHref(item.href)) continue
+    const filtered: NavItem = { ...item }
+    if (Array.isArray(item.children)) {
+      filtered.children = item.children.filter((c) => !isSupabaseOnlyHref(c.href))
+      // If the parent only had Supabase-only children, drop it entirely
+      if (filtered.children.length === 0 && (item.href === '/crm' || item.href === '/community' || item.href === '/portal')) {
+        continue
+      }
+    }
+    out.push(filtered)
+  }
+  return out
+}
+
+function isQaProfile(profile: Profile): boolean {
+  const meta = (profile.metadata as Record<string, unknown> | null) || {}
+  return meta.auth_source === 'qa_oauth' || meta.qa_provisioned === true
+}
+
 export function getStakeholderAccess(profile: Profile): StakeholderAccess {
   const shell = getStakeholderShell(profile)
   const subtype = deriveSubtype(profile)
+  let navItems = getNavItems(shell)
+  if (isQaProfile(profile)) {
+    navItems = filterNavForQa(navItems)
+  }
 
   return {
     shell,
@@ -318,7 +372,7 @@ export function getStakeholderAccess(profile: Profile): StakeholderAccess {
     label: getRoleLabel(shell, subtype),
     themeRole: getPersistedRoleForShell(shell, subtype),
     searchPlaceholder: getSearchPlaceholder(shell),
-    navItems: getNavItems(shell),
+    navItems,
     fallbackPath: '/dashboard',
   }
 }

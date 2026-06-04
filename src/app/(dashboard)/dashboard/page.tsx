@@ -124,6 +124,22 @@ function TeamDashboardPage() {
   const { data: outreachData, loading: outreachLoading } = useOutreach()
   const recentOutreach = outreachData.slice(0, 5)
 
+  // Merged recent activity (tasks + notes + outreach + audit) from the QA
+  // backend. Falls back silently to empty if the endpoint is unavailable.
+  const [recentActivity, setRecentActivity] = React.useState<
+    Array<{ kind: string; id: number | string; title: string; when: string; status?: string }>
+  >([])
+  React.useEffect(() => {
+    let cancelled = false
+    fetch('/api/qa/activity?limit=10', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancelled && Array.isArray(j?.items)) setRecentActivity(j.items)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
   const { data: businessData, loading: businessLoading } = useBusinesses()
   const { data: causeData } = useCauses()
   const { data: adminTasks } = useAdminTasks()
@@ -372,11 +388,11 @@ function TeamDashboardPage() {
                   >
                     <div>
                       <p className="text-sm text-surface-700 transition-colors group-hover:text-brand-700">
-                        {item.type.replace('_', ' ').replace(/^\w/, (value) => value.toUpperCase())}
+                        {((item.type || 'activity') as string).replace('_', ' ').replace(/^\w/, (value) => value.toUpperCase())}
                         {item.subject ? `: ${item.subject}` : ''}
                       </p>
                       <p className="text-xs text-surface-400">
-                        {item.entity_type} / {formatDate(item.created_at)}
+                        {item.entity_type || '—'} / {formatDate(item.created_at)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -401,6 +417,29 @@ function TeamDashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {recentActivity.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Activity (all sources)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {recentActivity.slice(0, 8).map((item) => (
+                  <li key={`${item.kind}-${item.id}`} className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-surface-50">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-surface-700">{item.title}</p>
+                      <p className="text-xs text-surface-400">{formatDate(item.when)}</p>
+                    </div>
+                    <Badge variant={item.kind === 'audit' ? 'default' : item.kind === 'outreach' ? 'info' : item.kind === 'task' ? 'warning' : 'success'}>
+                      {item.kind}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

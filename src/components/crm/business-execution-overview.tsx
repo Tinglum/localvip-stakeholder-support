@@ -3,7 +3,8 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { createClient } from '@/lib/supabase/client'
+// Real-time refresh is implemented as polling against the QA backend below;
+// no Supabase Realtime client is needed.
 import {
   AlertTriangle,
   Archive,
@@ -357,22 +358,15 @@ export function BusinessExecutionOverview({
     return body.templates as GenerationTemplateSummary[]
   }
 
-  // ── Real-time: refresh generated materials list as each file lands in the DB ──
+  // ── Auto-refresh generated materials list (polls every 5s) ──
+  // Was a Supabase Realtime subscription; replaced with a lightweight poll
+  // against the QA backend so generation progress still shows up live.
   React.useEffect(() => {
     if (!stakeholder?.id) return
-    const supabase = createClient()
-    const channel = supabase
-      .channel(`exec-gen-${stakeholder.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'generated_materials',
-        filter: `stakeholder_id=eq.${stakeholder.id}`,
-      }, () => {
-        refetchGenerated({ silent: true })
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    const interval = window.setInterval(() => {
+      refetchGenerated({ silent: true })
+    }, 5000)
+    return () => window.clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stakeholder?.id])
 

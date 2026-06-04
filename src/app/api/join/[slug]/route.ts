@@ -79,6 +79,38 @@ export async function POST(
     return NextResponse.json({ error: firstIssue?.message || 'Your details could not be submitted.' }, { status: 400 })
   }
 
+  // 1) Try the QA backend public lookup first (works for QA-stakeholder slugs).
+  try {
+    const { fetchQaApi, parseQaResponse } = await import('@/lib/auth/qa-api')
+    const resolveRes = await fetchQaApi(`/api/dashboard/v1/PublicJoin/resolve/${encodeURIComponent(params.slug)}`)
+    if (resolveRes.ok) {
+      const json = await parseQaResponse<{ kind?: string; entity?: { id: number | string; name: string } }>(resolveRes, '')
+      if (json?.kind === 'business' && json.entity) {
+        const captureRes = await fetchQaApi(`/api/dashboard/v1/PublicJoin/capture/${encodeURIComponent(params.slug)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            firstName: parsed.data.firstName,
+            phone: parsed.data.phone || null,
+            email: parsed.data.email || null,
+            supportsLocalCauses: parsed.data.supportsLocalCauses,
+            wantsBusinessOffers: parsed.data.wantsBusinessOffers,
+          }),
+        })
+        if (captureRes.ok) {
+          return NextResponse.json({
+            success: true,
+            businessName: json.entity.name,
+            offerTitle: null,
+            offerDescription: null,
+            offerValue: null,
+            claimedAt: new Date().toISOString(),
+          })
+        }
+      }
+    }
+  } catch { /* fall through to Supabase demo path */ }
+
   const supabase = createServiceClient()
   const business = await resolveBusinessByJoinIdentifier(supabase, params.slug)
 

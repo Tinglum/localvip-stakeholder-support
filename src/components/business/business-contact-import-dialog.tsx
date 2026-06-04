@@ -14,7 +14,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { createClient } from '@/lib/supabase/client'
+// Bulk contact imports now POST to the QA backend via /api/qa/dashboard/contacts
+// (the hooks layer adds shape mapping). No Supabase client needed.
 import {
   buildContactImportPreview,
   autoMapContactColumns,
@@ -49,7 +50,7 @@ export function BusinessContactImportDialog({
   profileId,
   onImported,
 }: BusinessContactImportDialogProps) {
-  const supabase = React.useMemo(() => createClient(), [])
+  // (Supabase client removed — bulk import POSTs through the QA proxy.)
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
   const [rawInput, setRawInput] = React.useState('')
   const [sourceLabel, setSourceLabel] = React.useState<string | null>(null)
@@ -179,32 +180,31 @@ export function BusinessContactImportDialog({
     let failureCount = 0
 
     for (const row of readyRows) {
-      const { error } = await (supabase.from('contacts') as any)
-        .insert({
-          first_name: row.firstName,
-          last_name: row.lastName || '',
-          phone: row.phone || null,
-          email: row.email || null,
-          business_id: businessId,
-          owner_id: profileId,
-          created_by_user_id: profileId,
-          source: 'Bulk import',
-          tag: row.tag || null,
-          list_status: 'added',
-          invited_at: null,
-          joined_at: null,
-          status: 'active',
-          metadata: {
+      try {
+        const res = await fetch('/api/qa/dashboard/contacts', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            first_name: row.firstName,
+            last_name: row.lastName || '',
+            phone: row.phone || null,
+            email: row.email || null,
+            business_id: businessId,
+            owner_id: profileId,
+            source: 'Bulk import',
             tag: row.tag || null,
-            imported_via: sourceLabel || 'sheet_import',
-            import_row_number: row.rowNumber,
-          },
+            status: 'active',
+            metadata: {
+              tag: row.tag || null,
+              imported_via: sourceLabel || 'sheet_import',
+              import_row_number: row.rowNumber,
+            },
+          }),
         })
-
-      if (error) {
+        if (res.ok) successCount += 1
+        else failureCount += 1
+      } catch {
         failureCount += 1
-      } else {
-        successCount += 1
       }
     }
 

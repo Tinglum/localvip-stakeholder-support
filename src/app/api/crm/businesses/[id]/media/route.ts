@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { buildQaAccountMetadata, buildQaBusinessLogoUrl, getQaAccountIdFromLocal, isRecord, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import { syncQaBusinessLogo } from '@/lib/server/qa-dashboard-businesses'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
@@ -23,6 +24,38 @@ export async function POST(
     const shell = getStakeholderShell(profile)
     if (!['admin', 'field', 'launch_partner'].includes(shell)) {
       return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
+    }
+
+    // QA path: params.id is the numeric QA business id. Use the QA upload-logo endpoint.
+    if (session.source === 'qa' && /^\d+$/.test(params.id)) {
+      const formData = await request.formData()
+      const file = formData.get('file') as File | null
+      const mediaType = formData.get('mediaType') as string | null
+      if (!file || !mediaType || !['logo', 'cover_photo'].includes(mediaType)) {
+        return NextResponse.json({ error: 'File and mediaType required.' }, { status: 400 })
+      }
+      try {
+        const endpoint = mediaType === 'logo' ? 'upload-logo' : 'upload-cover-photo'
+        const fd = new FormData()
+        fd.append(mediaType === 'logo' ? 'logoImage' : 'file', file)
+        const res = await fetchQaApi(`/api/dashboard/v1/Business/${encodeURIComponent(params.id)}/${endpoint}`, {
+          method: 'POST',
+          body: fd,
+        })
+        const json = await parseQaResponse<unknown>(res, `Failed to upload ${mediaType}.`)
+        const row = (json && typeof json === 'object' ? json : {}) as Record<string, unknown>
+        const fileUrl = (row.imageUrl as string | undefined)
+          || (row.logoUrl as string | undefined)
+          || (row.coverPhotoUrl as string | undefined)
+          || (row.CoverPhotoUrl as string | undefined)
+          || null
+        return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true })
+      } catch (err) {
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : 'QA upload failed.' },
+          { status: 500 },
+        )
+      }
     }
 
     const businessId = asUuid(params.id)

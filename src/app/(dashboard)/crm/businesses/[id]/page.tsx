@@ -396,18 +396,6 @@ export default function BusinessDetailPage() {
         </div>
       )}
 
-      {readOnly && (
-        <div className="flex items-start gap-3 rounded-lg border border-info-200 bg-info-50 px-4 py-3 text-sm text-info-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-info-600" />
-          <div>
-            <p className="font-medium">QA record loaded in read-only mode</p>
-            <p className="mt-1 text-xs text-info-700">
-              This business exists in QA, but it does not have a linked local dashboard record yet. Tasks, notes, and launch actions stay disabled until we import or link it.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Duplicate Warning Banner */}
       {biz.duplicate_of && (
         <div className="flex items-center gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
@@ -1022,8 +1010,87 @@ function QaBusinessSnapshot({ qaBusiness }: { qaBusiness: QaBusinessDetail }) {
             </div>
           ))}
         </div>
+        <BusinessExtrasEditor businessId={qaBusiness.id} />
       </CardContent>
     </Card>
+  )
+}
+
+function BusinessExtrasEditor({ businessId }: { businessId: number | string }) {
+  // Hours + socials editor — JSON textareas wired to /Business/{id}/setup PUT.
+  // Stopgap UI until a richer per-day-of-week editor lands.
+  const [hours, setHours] = React.useState('')
+  const [socials, setSocials] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+  const [msg, setMsg] = React.useState<string | null>(null)
+  const [err, setErr] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    fetch(`/api/qa/businesses/${businessId}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (!j) return
+        if (typeof j.businessHours === 'string') setHours(j.businessHours)
+        if (typeof j.socialLinks === 'string') setSocials(j.socialLinks)
+      })
+      .catch(() => {})
+  }, [businessId])
+
+  async function save() {
+    setSaving(true); setMsg(null); setErr(null)
+    try {
+      const res = await fetch(`/api/qa/businesses/${businessId}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ businessHours: hours || null, socialLinks: socials || null }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error || `HTTP ${res.status}`)
+      }
+      setMsg('Saved.')
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-sky-200 bg-white/80 px-4 py-3 space-y-3">
+      <p className="text-xs uppercase tracking-[0.16em] text-sky-700">Hours & Social Links (JSON)</p>
+      <div>
+        <label className="mb-1 block text-xs text-sky-700">Business hours JSON</label>
+        <textarea
+          value={hours}
+          onChange={(e) => setHours(e.target.value)}
+          rows={4}
+          placeholder='{"mon":"9am–5pm","tue":"9am–5pm",...}'
+          className="w-full rounded-md border border-sky-200 bg-white px-3 py-2 font-mono text-xs text-sky-950 focus:outline-none focus:ring-2 focus:ring-sky-400"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs text-sky-700">Social links JSON</label>
+        <textarea
+          value={socials}
+          onChange={(e) => setSocials(e.target.value)}
+          rows={4}
+          placeholder='{"facebook":"https://...","instagram":"https://..."}'
+          className="w-full rounded-md border border-sky-200 bg-white px-3 py-2 font-mono text-xs text-sky-950 focus:outline-none focus:ring-2 focus:ring-sky-400"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {msg && <span className="text-xs text-success-600">{msg}</span>}
+        {err && <span className="text-xs text-danger-600">{err}</span>}
+      </div>
+    </div>
   )
 }
 

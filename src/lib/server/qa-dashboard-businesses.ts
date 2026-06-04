@@ -155,14 +155,22 @@ export function buildCrmBusinessDetail(
   const business = mergeBusinessRecord(localBusiness, qaBusiness)
   if (!business) return null
 
+  // All CRM features now live on the QA backend (DashboardStakeholders,
+  // StakeholderCodes, Tasks, Notes, Materials, Onboarding). A separate local
+  // Supabase row is no longer required to enable writes — the QA business id
+  // is the canonical key.
+  const qaBusinessId = qaBusiness?.id || getQaAccountIdFromLocal(localBusiness!) || null
+  const effectiveLocalId = localBusiness?.id || (qaBusinessId !== null ? String(qaBusinessId) : null)
+  const readOnly = !localBusiness && !qaBusinessId
+
   return {
     business,
-    localBusinessId: localBusiness?.id || null,
-    qaBusinessId: qaBusiness?.id || getQaAccountIdFromLocal(localBusiness!) || null,
+    localBusinessId: effectiveLocalId,
+    qaBusinessId,
     origin: resolveOrigin(localBusiness, qaBusiness),
     qaBusiness,
     qaError,
-    readOnly: !localBusiness,
+    readOnly,
   }
 }
 

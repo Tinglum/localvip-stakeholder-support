@@ -276,7 +276,19 @@ function mapQaRole(claims: QaAuthClaims): { role: UserRole; roleSubtype?: UserRo
     return { role: 'influencer', roleSubtype: null }
   }
 
-  return { role: 'field', roleSubtype: 'volunteer' }
+  // Consumer role = end-user customer. Mapped to 'community' (no subtype) —
+  // they're not stakeholders, they're the people LocalVIP serves. Used to
+  // default to 'volunteer' which incorrectly labeled every consumer as a
+  // volunteer in the dashboard. Customers can be promoted to a stakeholder
+  // type (Intern/Volunteer/Influencer/LaunchTeamPartner) by an admin via the
+  // /crm/consumers/[id] page or the User type selector.
+  if (normalizedRoles.some((role) => role.includes('consumer') || role.includes('customer'))) {
+    return { role: 'community', roleSubtype: null }
+  }
+
+  // Last resort: assume an unknown role is a regular customer rather than
+  // a volunteer. Better to under-claim than to mis-label.
+  return { role: 'community', roleSubtype: null }
 }
 
 export function buildFallbackQaProfile(claims: QaAuthClaims): Profile {

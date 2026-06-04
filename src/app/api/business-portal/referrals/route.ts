@@ -48,6 +48,29 @@ async function getAuthorizedContext(request: NextRequest): Promise<AuthorizedCon
     return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
   }
 
+  // QA path — fetch candidates from the backend recommendation engine
+  if (session.source === 'qa') {
+    const { fetchQaApi, parseQaResponse } = await import('@/lib/auth/qa-api')
+    const sourceBusinessId = request.method === 'GET'
+      ? request.nextUrl.searchParams.get('businessId')
+      : (await request.clone().json().catch(() => null) as { sourceBusinessId?: string } | null)?.sourceBusinessId || null
+    if (!sourceBusinessId) {
+      return { error: NextResponse.json({ error: 'businessId is required.' }, { status: 400 }) }
+    }
+    try {
+      const res = await fetchQaApi(`/api/dashboard/v1/BusinessReferral/candidates?sourceBusinessId=${encodeURIComponent(sourceBusinessId)}`)
+      const json = await parseQaResponse<unknown>(res, 'Failed to load candidates.')
+      return { error: NextResponse.json(json) }
+    } catch (err) {
+      return {
+        error: NextResponse.json(
+          { error: err instanceof Error ? err.message : 'Could not load referrals.' },
+          { status: 500 },
+        ),
+      }
+    }
+  }
+
   const { profile } = session
   const supabase = createServiceClient()
 

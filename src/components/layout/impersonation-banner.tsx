@@ -3,7 +3,6 @@
 import * as React from 'react'
 import { ArrowLeft, Eye, X } from 'lucide-react'
 import { useImpersonation } from '@/lib/impersonation-context'
-import { createClient } from '@/lib/supabase/client'
 
 export function ImpersonationBanner() {
   const { active, adminName, stakeholderName, stakeholderType, returnUrl, endImpersonation } = useImpersonation()
@@ -12,8 +11,10 @@ export function ImpersonationBanner() {
 
   async function handleReturnToAdmin() {
     endImpersonation()
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    // Also clear the QA "View As" cookie in case both systems were active.
+    try { await fetch('/api/admin/view-as', { method: 'DELETE' }) } catch {}
+    // Then drop the auth session via the canonical logout route.
+    try { await fetch('/api/auth/logout', { method: 'POST' }) } catch {}
     window.location.href = returnUrl || '/login'
   }
 

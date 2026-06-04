@@ -700,6 +700,17 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       profile = await linkBusinessUserToLocalBusiness(service, profile, qaSession.claims)
     }
 
+    // Stamp auth_source into the profile metadata that's read by the sidebar
+    // gate (isQaProfile). This guarantees every QA-sourced session is gated
+    // correctly even if the DB row's metadata column doesn't have the flag.
+    profile = {
+      ...profile,
+      metadata: {
+        ...((profile.metadata as Record<string, unknown> | null) || {}),
+        auth_source: 'qa_oauth',
+      },
+    }
+
     const baseSession: ResolvedAuthSession = {
       profile,
       userId: profile.id,

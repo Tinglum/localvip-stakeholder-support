@@ -40,6 +40,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Cannot impersonate yourself.' }, { status: 400 })
   }
 
+  // QA sessions don't use magic-link impersonation — they use the View-As
+  // cookie pattern (POST /api/admin/view-as { userId }). Tell the caller.
+  if (session.source === 'qa') {
+    return NextResponse.json(
+      {
+        error: 'For QA users use the View-As picker in the topbar (POST /api/admin/view-as).',
+        useViewAs: true,
+      },
+      { status: 400 },
+    )
+  }
+
   const { data: targetProfile } = await supabase
     .from('profiles')
     .select('id,email,full_name')

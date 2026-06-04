@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { asUuid } from '@/lib/uuid'
 import {
   ensureCauseOnboardingFlow,
@@ -132,14 +133,117 @@ function extractRouteError(error: unknown): string {
   return 'The cause action could not be completed.'
 }
 
+async function handleQaCauseAction(
+  causeId: string,
+  action: z.infer<typeof actionSchema>,
+): Promise<NextResponse> {
+  let stakeholderId: string | null = null
+  try {
+    const res = await fetchQaApi(`/api/dashboard/v1/Stakeholder?causeAccountId=${encodeURIComponent(causeId)}`)
+    const json = await parseQaResponse<unknown>(res, 'Failed to load stakeholder.')
+    const items = Array.isArray(json) ? json
+      : (json && typeof json === 'object' && Array.isArray((json as Record<string, unknown>).items))
+        ? (json as Record<string, unknown>).items as unknown[]
+        : []
+    const first = items[0] as { id?: string | number } | undefined
+    if (first?.id != null) stakeholderId = String(first.id)
+  } catch { /* fall through */ }
+
+  try {
+    if (action.action === 'save_codes') {
+      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this cause yet.' }, { status: 404 })
+      const res = await fetchQaApi('/api/dashboard/v1/StakeholderCode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ stakeholderId, referralCode: action.referralCode, connectionCode: action.connectionCode }),
+      })
+      const result = await parseQaResponse<unknown>(res, 'Failed to save codes.')
+      return NextResponse.json({ success: true, result })
+    }
+    if (action.action === 'list_generation_templates') {
+      const res = await fetchQaApi('/api/dashboard/v1/MaterialTemplate')
+      const json = await parseQaResponse<unknown>(res, 'Failed to list templates.')
+      const items = Array.isArray(json) ? json
+        : (json && typeof json === 'object' && Array.isArray((json as Record<string, unknown>).items))
+          ? (json as Record<string, unknown>).items as unknown[]
+          : []
+      const templates = items.map((t) => {
+        const r = t as Record<string, unknown>
+        return {
+          id: String(r.id),
+          name: String(r.name || ''),
+          templateType: r.templateType ?? r.template_type ?? null,
+          outputFormat: r.outputFormat ?? r.output_format ?? null,
+          libraryFolder: r.libraryFolder ?? r.library_folder ?? null,
+        }
+      })
+      return NextResponse.json({ success: true, templates })
+    }
+    if (action.action === 'generate_template' || action.action === 'generate_materials') {
+      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this cause yet.' }, { status: 404 })
+      const payload: Record<string, unknown> = { stakeholderId }
+      if (action.action === 'generate_template') payload.templateId = action.templateId
+      const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      const result = await parseQaResponse<unknown>(res, 'Failed to generate material.')
+      return NextResponse.json({ success: true, result })
+    }
+    if (action.action === 'regenerate_all') {
+      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this cause yet.' }, { status: 404 })
+      const listRes = await fetchQaApi(`/api/dashboard/v1/GeneratedMaterial?stakeholderId=${encodeURIComponent(stakeholderId)}`)
+      const listJson = await parseQaResponse<unknown>(listRes, 'Failed to list materials.')
+      const list = Array.isArray(listJson) ? listJson
+        : (listJson && typeof listJson === 'object' && Array.isArray((listJson as Record<string, unknown>).items))
+          ? (listJson as Record<string, unknown>).items as unknown[]
+          : []
+      const ids = list.map((m) => String((m as Record<string, unknown>).id))
+      const results = await Promise.allSettled(ids.map((id) =>
+        fetchQaApi(`/api/dashboard/v1/GeneratedMaterial/${encodeURIComponent(id)}/regenerate`, { method: 'POST' }),
+      ))
+      const success = results.filter((r) => r.status === 'fulfilled').length
+      return NextResponse.json({ success: true, result: { regenerated: success, total: ids.length } })
+    }
+    if (action.action === 'restore_version') {
+      const versionsRes = await fetchQaApi(`/api/dashboard/v1/GeneratedMaterial/${encodeURIComponent(action.generatedMaterialId)}/versions`)
+      const versionsJson = await parseQaResponse<unknown>(versionsRes, 'Failed to list versions.')
+      const versions = Array.isArray(versionsJson) ? versionsJson
+        : (versionsJson && typeof versionsJson === 'object' && Array.isArray((versionsJson as Record<string, unknown>).items))
+          ? (versionsJson as Record<string, unknown>).items as Array<{ id: number | string }>
+          : []
+      const latest = versions[0]
+      if (!latest) return NextResponse.json({ error: 'No earlier version to restore.' }, { status: 404 })
+      const res = await fetchQaApi(
+        `/api/dashboard/v1/GeneratedMaterial/${encodeURIComponent(action.generatedMaterialId)}/restore?versionId=${encodeURIComponent(String(latest.id))}`,
+        { method: 'POST' },
+      )
+      const result = await parseQaResponse<unknown>(res, 'Failed to restore.')
+      return NextResponse.json({ success: true, result })
+    }
+    if (action.action === 'upload_media') {
+      const field = action.mediaType === 'logo' ? 'logoUrl' : 'coverPhotoUrl'
+      const res = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${encodeURIComponent(causeId)}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [field]: action.fileUrl }),
+      })
+      await parseQaResponse<unknown>(res, 'Failed to update cause media.').catch(() => null)
+      return NextResponse.json({ success: true, mediaType: action.mediaType, fileUrl: action.fileUrl })
+    }
+    if (action.action === 'complete_step') {
+      const res = await fetchQaApi(`/api/dashboard/v1/Onboarding/steps/${encodeURIComponent(action.stepId)}/complete`, { method: 'PATCH' })
+      await parseQaResponse<unknown>(res, 'Failed to complete step.')
+      return NextResponse.json({ success: true, stepId: action.stepId, completedAt: new Date().toISOString() })
+    }
+    return NextResponse.json({ error: 'Unsupported action.' }, { status: 400 })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'QA action failed.' }, { status: 500 })
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } },
 ) {
   try {
-    const context = await getExecutionContext(params.id)
-    if ('error' in context) return context.error
-
     let body: unknown
     try {
       body = await request.json()
@@ -151,6 +255,14 @@ export async function POST(
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid action.' }, { status: 400 })
     }
+
+    const probeSession = await getAuthenticatedSession()
+    if (probeSession?.source === 'qa') {
+      return handleQaCauseAction(params.id, parsed.data)
+    }
+
+    const context = await getExecutionContext(params.id)
+    if ('error' in context) return context.error
 
     if (parsed.data.action === 'save_codes') {
       const result = await upsertStakeholderCodes(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { getStakeholderShell, normalizeSubtypeForRole } from '@/lib/stakeholder-access'
 import type { UserRole } from '@/lib/types/database'
 
@@ -42,6 +43,33 @@ export async function POST(request: NextRequest) {
 
   const roleSubtype = normalizeSubtypeForRole(parsed.data.role as UserRole, parsed.data.roleSubtype || null)
   const redirectTo = new URL('/login', request.nextUrl.origin).toString()
+
+  // QA path: delegate to backend invite endpoint.
+  if (session.source === 'qa') {
+    try {
+      const res = await fetchQaApi(`/api/dashboard/v1/User/invite`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: parsed.data.email,
+          fullName: parsed.data.fullName,
+          role: parsed.data.role,
+          roleSubtype: roleSubtype || null,
+          brand: parsed.data.brand,
+          notes: parsed.data.notes || null,
+          invitedByUserId: actingProfile.id,
+        }),
+      })
+      await parseQaResponse<unknown>(res, 'Failed to send invite.')
+      return NextResponse.json({ success: true, invitedEmail: parsed.data.email })
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Failed to send invite.' },
+        { status: 500 },
+      )
+    }
+  }
+
 
   const { data: invitedUser, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
     parsed.data.email,

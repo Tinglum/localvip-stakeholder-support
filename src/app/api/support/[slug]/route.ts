@@ -70,6 +70,30 @@ export async function POST(
     return NextResponse.json({ error: firstIssue?.message || 'Your details could not be submitted.' }, { status: 400 })
   }
 
+  // 1) Try the QA backend public lookup first.
+  try {
+    const { fetchQaApi, parseQaResponse } = await import('@/lib/auth/qa-api')
+    const resolveRes = await fetchQaApi(`/api/dashboard/v1/PublicJoin/resolve/${encodeURIComponent(params.slug)}`)
+    if (resolveRes.ok) {
+      const json = await parseQaResponse<{ kind?: string; entity?: { id: number | string; name: string } }>(resolveRes, '')
+      if (json?.kind === 'cause' && json.entity) {
+        const captureRes = await fetchQaApi(`/api/dashboard/v1/PublicJoin/capture/${encodeURIComponent(params.slug)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            firstName: parsed.data.firstName,
+            phone: parsed.data.phone || null,
+            email: parsed.data.email || null,
+            wantsUpdates: parsed.data.wantsUpdates,
+          }),
+        })
+        if (captureRes.ok) {
+          return NextResponse.json({ success: true, causeName: json.entity.name, claimedAt: new Date().toISOString() })
+        }
+      }
+    }
+  } catch { /* fall through */ }
+
   const supabase = createServiceClient()
   const cause = await resolveCommunityBySupportIdentifier(supabase, params.slug)
 

@@ -309,7 +309,7 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
     return () => { cancelled = true }
   }, [filtersKey, enabled, refetchKey])
 
-  const refetch = React.useCallback(() => setRefetchKey((k) => k + 1), [])
+  const refetch = React.useCallback((_opts?: { silent?: boolean }) => setRefetchKey((k) => k + 1), [])
   return { data, loading, error, refetch }
 }
 export function useBusinessInsert() { return useQaInsert<Business>('businesses') }
@@ -364,7 +364,7 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
     return () => { cancelled = true }
   }, [filtersKey, enabled, refetchKey])
 
-  const refetch = React.useCallback(() => setRefetchKey((k) => k + 1), [])
+  const refetch = React.useCallback((_opts?: { silent?: boolean }) => setRefetchKey((k) => k + 1), [])
   return { data, loading, error, refetch }
 }
 export function useCauseInsert() { return useQaInsert<Cause>('causes') }
