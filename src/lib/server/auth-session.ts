@@ -100,6 +100,14 @@ type ServiceClient = ReturnType<typeof createServiceClient>
 const QA_PROFILE_SYNC_TTL_MS = 15 * 60 * 1000
 const AUTH_IO_TIMEOUT_MS = process.env.NODE_ENV === 'development' ? 1200 : 5000
 
+function hasSupabaseAuthAdmin(service: ServiceClient) {
+  const admin = (service as any)?.auth?.admin
+  return !!admin
+    && typeof admin.createUser === 'function'
+    && typeof admin.listUsers === 'function'
+    && typeof admin.generateLink === 'function'
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs = AUTH_IO_TIMEOUT_MS, label = 'auth operation'): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -294,6 +302,7 @@ async function provisionQaProfileRow(
 ): Promise<Profile | null> {
   const email = claims.email?.toLowerCase()
   if (!email) return null
+  if (!hasSupabaseAuthAdmin(service)) return null
 
   // Build the desired profile shape from QA claims (reuse fallback builder for role mapping)
   const fallback = buildFallbackQaProfile(claims)
@@ -752,6 +761,7 @@ export async function prepareSupabaseSessionForQaUser(
   const service = createServiceClient()
   const email = claims.email?.toLowerCase()
   if (!email) return null
+  if (!hasSupabaseAuthAdmin(service)) return null
 
   try {
     // 1. Ensure profile row exists first
@@ -792,5 +802,4 @@ export class UnauthorizedError extends Error {
     this.name = 'UnauthorizedError'
   }
 }
-
 
