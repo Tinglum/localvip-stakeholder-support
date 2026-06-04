@@ -28,8 +28,7 @@ export async function GET(request: NextRequest) {
   const returnTo = sanitizeReturnTo(signedState?.returnTo || storedReturnTo || '/dashboard')
   const publicOrigin = getRequestPublicOrigin(request)
   const stateIsValid = !!state && (!!signedState || (!!storedState && state === storedState))
-  const callbackRedirectUri = getQaRedirectUri(publicOrigin)
-  const hintedRedirectUri = new URL(oauthRedirectPath, publicOrigin).toString()
+  const authorizationRedirectUri = getQaRedirectUri(publicOrigin)
 
   // Diagnostic: list every cookie we can see so we know if the browser dropped them
   const cookieNames = request.cookies.getAll().map((c) => c.name)
@@ -46,8 +45,7 @@ export async function GET(request: NextRequest) {
     origin: request.nextUrl.origin,
     publicOrigin,
     oauthRedirectPath,
-    hintedRedirectUri,
-    callbackRedirectUri,
+    authorizationRedirectUri,
     cookieNames,
   })
 
@@ -89,19 +87,18 @@ export async function GET(request: NextRequest) {
       redirectUri,
     })
 
-    const chosenRedirectUri = oauthRedirectPath !== '/api/auth/qa/callback'
-      ? hintedRedirectUri
-      : callbackRedirectUri
     const chosenVerifier = signedState?.verifier || storedVerifier || verifier
 
     console.log('[qa-callback] exchanging code', {
-      chosenRedirectUri,
-      redirectSelection: oauthRedirectPath !== '/api/auth/qa/callback' ? 'oauth_redirect_path' : 'callback',
+      chosenRedirectUri: authorizationRedirectUri,
       usingSignedVerifier: chosenVerifier === signedState?.verifier,
       usingStoredVerifier: chosenVerifier === storedVerifier,
     })
 
-    const session = await tryExchange(chosenVerifier, chosenRedirectUri)
+    // The token request must use the same redirect_uri that was sent to QA
+    // on /connect/authorize. QA registers lvip_dashboard against the app URL
+    // itself, while middleware reroutes the browser response into this route.
+    const session = await tryExchange(chosenVerifier, authorizationRedirectUri)
 
     setQaSessionCookies(cleanResponse, session)
     cleanResponse.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })

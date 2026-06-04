@@ -478,7 +478,7 @@ export default function ContactsPage() {
                 Link to organization <span className="text-red-600">*</span>
               </div>
               <p className="mb-3 text-xs text-amber-800">
-                Contacts represent the humans behind a business or cause. Pick one — free-standing contacts aren't allowed.
+                Contacts represent the humans behind a business or cause. Pick one - free-standing contacts are not allowed.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>

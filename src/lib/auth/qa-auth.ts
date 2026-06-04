@@ -390,7 +390,10 @@ export function getQaRedirectUri(origin?: string) {
     throw new Error('No dashboard origin is available for QA redirect URI generation.')
   }
 
-  return `${appOrigin}/api/auth/qa/callback`
+  // The QA OIDC client is registered against the app URL itself, not a
+  // server-only callback path. Middleware reroutes the eventual code/state
+  // response into /api/auth/qa/callback for token exchange.
+  return `${appOrigin}/`
 }
 
 export function getQaPostLogoutRedirectUri(origin?: string) {

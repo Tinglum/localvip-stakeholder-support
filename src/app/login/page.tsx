@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { QaLoginPage } from '@/components/auth/qa-login-page'
 
 export default function LoginPage({
@@ -24,6 +25,19 @@ export default function LoginPage({
   const signoutValue = Array.isArray(signoutRaw) ? signoutRaw[0] : signoutRaw
   const manual = manualValue === '1' || manualValue === 'true'
   const signout = signoutValue === '1' || signoutValue === 'true'
+
+  if (code && state && !error) {
+    const params = new URLSearchParams({
+      code,
+      state,
+      oauth_redirect_path: '/login',
+    })
+    redirect(`/api/auth/qa/callback?${params.toString()}`)
+  }
+
+  if (!manual && !signout && !error && !code && !state) {
+    redirect(`/api/auth/qa/start?returnTo=${encodeURIComponent(returnTo)}`)
+  }
 
   return <QaLoginPage returnTo={returnTo} error={error} code={code} state={state} manual={manual} signout={signout} />
 }
