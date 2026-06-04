@@ -1,39 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
-import { createBusinessLifecycle } from '@/lib/server/stakeholder-lifecycle'
 import {
   buildCrmBusinessList,
   fetchQaBusinessList,
   qaBusinessRouteError,
 } from '@/lib/server/qa-dashboard-businesses'
-import type { Brand, Business, OnboardingStage } from '@/lib/types/database'
-
-function asProfileUuid(value: string | null | undefined) {
-  if (!value) return null
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-    ? value
-    : null
-}
+import type { Brand, OnboardingStage } from '@/lib/types/database'
 
 export async function GET() {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
-  const canReadQa = !!context.session.qaSession
+  if (!context.session.qaSession) {
+    return NextResponse.json({ error: 'A QA session is required.' }, { status: 401 })
+  }
 
-  const [{ data: localBusinessesData }, qaResult] = await Promise.all([
-    context.supabase
-      .from('businesses')
-      .select('*')
-      .order('updated_at', { ascending: false }),
-    canReadQa
-      ? fetchQaBusinessList()
-          .then(data => ({ data, error: null as string | null }))
-          .catch(error => ({ data: [] as Awaited<ReturnType<typeof fetchQaBusinessList>>, error: qaBusinessRouteError(error) }))
-      : Promise.resolve({ data: [] as Awaited<ReturnType<typeof fetchQaBusinessList>>, error: null as string | null }),
-  ])
+  const qaResult = await fetchQaBusinessList()
+    .then(data => ({ data, error: null as string | null }))
+    .catch(error => ({ data: [] as Awaited<ReturnType<typeof fetchQaBusinessList>>, error: qaBusinessRouteError(error) }))
 
-  const localBusinesses = (localBusinessesData || []) as Business[]
-  const items = buildCrmBusinessList(localBusinesses, qaResult.data)
+  const items = buildCrmBusinessList([], qaResult.data)
 
   return NextResponse.json({
     items,
@@ -44,7 +29,6 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
-  const localProfileId = asProfileUuid(context.profile.id)
 
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {
@@ -56,11 +40,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Business name is required.' }, { status: 400 })
   }
 
-  try {
-    const business = await createBusinessLifecycle(context.supabase, {
-      actorId: localProfileId,
-      shell: context.shell as 'admin' | 'field' | 'launch_partner',
-      business: {
+  return NextResponse.json(
+    {
+      error: 'Business creation is not available until the QA API exposes a create business endpoint. Local-only business creation has been disabled.',
+      requested: {
         name,
         email: asOptionalString(body.email),
         phone: asOptionalString(body.phone),
@@ -70,23 +53,10 @@ export async function POST(request: NextRequest) {
         city_id: asOptionalString(body.city_id),
         brand: isBrand(body.brand) ? body.brand : 'localvip',
         stage: isOnboardingStage(body.stage) ? body.stage : 'lead',
-        owner_id: localProfileId,
-        owner_user_id: null,
-        status: 'active',
-        metadata: {
-          created_from: 'crm_business_create',
-          created_by_shell: context.shell,
-          created_by: context.profile.id,
-        },
       },
-    })
-
-    return NextResponse.json(business)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Business could not be created.'
-    const status = /active owner/i.test(message) ? 409 : 400
-    return NextResponse.json({ error: message }, { status })
-  }
+    },
+    { status: 501 },
+  )
 }
 
 function asOptionalString(value: unknown) {
