@@ -7,7 +7,7 @@ export async function GET() {
   if (session) {
     return NextResponse.json({
       authenticated: true,
-      source: session.source === 'supabase' ? 'demo' : session.source,
+      source: session.source,
       profile: session.profile,
       claims: session.qaClaims || null,
       expiresAt: session.qaSession?.expiresAt || null,

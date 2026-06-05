@@ -138,8 +138,6 @@ function randomBase64Url(byteLength: number) {
 
 function getQaStateSecret() {
   return process.env.QA_AUTH_STATE_SECRET
-    || process.env.SUPABASE_SERVICE_ROLE_KEY
-    || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     || `${QA_AUTH_CONFIG.clientId}:${QA_AUTH_CONFIG.baseUrl}`
 }
 
