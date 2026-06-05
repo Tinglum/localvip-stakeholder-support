@@ -322,7 +322,14 @@ export function SystemDiagnosticsTab({ active }: { active: boolean }) {
                             {check.endpoint}
                           </p>
                         )}
-                        {check.detail && <p>{check.detail}</p>}
+                        {check.detail && (
+                          <div className="rounded-xl border border-surface-200 bg-surface-0/80 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-surface-500">
+                              Returned Detail
+                            </p>
+                            <p className="mt-1 whitespace-pre-wrap text-xs text-surface-700">{check.detail}</p>
+                          </div>
+                        )}
                       </div>
                     )}
 

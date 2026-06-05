@@ -30,6 +30,24 @@ interface ProbeResult<T = unknown> {
   endpoint: string
 }
 
+function formatProbeFailureDetail(probe: ProbeResult<unknown>, options?: { prefix?: string }) {
+  const parts: string[] = []
+
+  if (probe.status > 0) {
+    parts.push(`HTTP ${probe.status}`)
+  }
+
+  if (probe.error) {
+    parts.push(`${options?.prefix || 'Returned error'}: ${probe.error}`)
+  }
+
+  return parts.join('\n')
+}
+
+function formatUpstreamWarningDetail(message: string, label = 'Upstream QA response') {
+  return `${label}: ${message}`
+}
+
 function getCollectionSize(payload: unknown): number {
   if (Array.isArray(payload)) return payload.length
   if (!payload || typeof payload !== 'object') return 0
@@ -210,6 +228,7 @@ export async function GET(request: NextRequest) {
       message: authSessionProbe.ok
         ? `Signed in as ${authSessionProbe.payload?.profile?.email || 'unknown user'}.`
         : authSessionProbe.error || 'The session endpoint failed.',
+      detail: authSessionProbe.ok ? undefined : formatProbeFailureDetail(authSessionProbe),
       metrics: authSessionProbe.ok ? [
         { label: 'Source', value: authSessionProbe.payload?.source || 'unknown' },
         { label: 'Role', value: authSessionProbe.payload?.profile?.role || session.profile.role },
@@ -229,6 +248,9 @@ export async function GET(request: NextRequest) {
       message: qaProfileProbe.ok && qaProfileProbe.payload?.ok
         ? 'QA profile lookup succeeded.'
         : qaProfileProbe.error || qaProfileProbe.payload?.error || 'QA profile probe failed.',
+      detail: qaProfileProbe.ok && qaProfileProbe.payload?.ok
+        ? undefined
+        : formatProbeFailureDetail(qaProfileProbe),
       metrics: qaProfileProbe.ok ? [
         { label: 'Shell', value: qaProfileProbe.payload?.shell || shell },
         { label: 'QA email', value: qaProfileProbe.payload?.qaSession?.email || session.profile.email },
@@ -254,6 +276,11 @@ export async function GET(request: NextRequest) {
         : crmBusinessesProbe.payload?.qaError
           ? `Businesses loaded with QA warning: ${crmBusinessesProbe.payload.qaError}`
           : 'CRM businesses list loaded successfully.',
+      detail: !crmBusinessesProbe.ok
+        ? formatProbeFailureDetail(crmBusinessesProbe)
+        : crmBusinessesProbe.payload?.qaError
+          ? formatUpstreamWarningDetail(crmBusinessesProbe.payload.qaError)
+          : undefined,
       metrics: crmBusinessesProbe.ok ? [
         { label: 'Rows', value: Array.isArray(crmBusinessesProbe.payload?.items) ? crmBusinessesProbe.payload.items.length : 0 },
       ] : undefined,
@@ -277,6 +304,11 @@ export async function GET(request: NextRequest) {
         : crmCausesProbe.payload?.qaError
           ? `Causes loaded with QA warning: ${crmCausesProbe.payload.qaError}`
           : 'CRM causes list loaded successfully.',
+      detail: !crmCausesProbe.ok
+        ? formatProbeFailureDetail(crmCausesProbe)
+        : crmCausesProbe.payload?.qaError
+          ? formatUpstreamWarningDetail(crmCausesProbe.payload.qaError)
+          : undefined,
       metrics: crmCausesProbe.ok ? [
         { label: 'Rows', value: Array.isArray(crmCausesProbe.payload?.items) ? crmCausesProbe.payload.items.length : 0 },
       ] : undefined,
@@ -293,6 +325,9 @@ export async function GET(request: NextRequest) {
         status: 'warning',
         latencyMs: 0,
         message: 'No business rows exist yet, so detail-route cooperation could not be sampled.',
+        detail: crmBusinessesProbe.payload?.qaError
+          ? formatUpstreamWarningDetail(crmBusinessesProbe.payload.qaError, 'Sampling blocked by QA business response')
+          : undefined,
       }),
     )
   } else {
@@ -316,6 +351,7 @@ export async function GET(request: NextRequest) {
         message: detailProbe.ok && detailProbe.payload?.business
           ? `Loaded sample business detail for ${detailProbe.payload.business.name || 'sample record'}.`
           : detailProbe.error || 'Sample business detail route failed.',
+        detail: detailProbe.ok && detailProbe.payload?.business ? undefined : formatProbeFailureDetail(detailProbe),
         metrics: detailProbe.ok ? [
           { label: 'Origin', value: detailProbe.payload?.origin || 'unknown' },
           { label: 'QA id', value: detailProbe.payload?.qaBusinessId ?? 'none' },
@@ -341,6 +377,7 @@ export async function GET(request: NextRequest) {
           message: localStateProbe.ok
             ? 'Local workspace state for a sample business loaded successfully.'
             : localStateProbe.error || 'The sample business local-state route failed.',
+          detail: localStateProbe.ok ? undefined : formatProbeFailureDetail(localStateProbe),
           metrics: localStateProbe.ok ? [
             { label: 'Stakeholders', value: Array.isArray(localStateProbe.payload?.stakeholders) ? localStateProbe.payload.stakeholders.length : 0 },
             { label: 'Tasks', value: Array.isArray(localStateProbe.payload?.tasks) ? localStateProbe.payload.tasks.length : 0 },
@@ -359,6 +396,7 @@ export async function GET(request: NextRequest) {
           message: detailProbe.ok && detailProbe.payload?.qaBusinessId
             ? 'Sample business is QA-only, so the page will rely on QA fallback workspace data instead of local-state.'
             : 'A sample workspace route could not be evaluated.',
+          detail: !detailProbe.ok ? formatProbeFailureDetail(detailProbe) : undefined,
         }),
       )
     }
@@ -375,6 +413,7 @@ export async function GET(request: NextRequest) {
       message: qaBusinessesProbe.ok
         ? 'QA business list is reachable.'
         : qaBusinessesProbe.error || 'The QA business list failed.',
+      detail: qaBusinessesProbe.ok ? undefined : formatProbeFailureDetail(qaBusinessesProbe),
       metrics: qaBusinessesProbe.ok ? [
         { label: 'Rows', value: getCollectionSize(qaBusinessesProbe.payload) },
       ] : undefined,
@@ -392,6 +431,7 @@ export async function GET(request: NextRequest) {
       message: materialsProbe.ok
         ? 'Materials endpoint responded successfully.'
         : materialsProbe.error || 'The materials endpoint failed.',
+      detail: materialsProbe.ok ? undefined : formatProbeFailureDetail(materialsProbe),
       metrics: materialsProbe.ok ? [
         { label: 'Rows', value: getCollectionSize(materialsProbe.payload) },
       ] : undefined,
@@ -409,6 +449,7 @@ export async function GET(request: NextRequest) {
       message: notificationsProbe.ok
         ? 'Notifications endpoint responded successfully.'
         : notificationsProbe.error || 'The notifications endpoint failed.',
+      detail: notificationsProbe.ok ? undefined : formatProbeFailureDetail(notificationsProbe),
       metrics: notificationsProbe.ok ? [
         { label: 'Rows', value: getCollectionSize(notificationsProbe.payload) },
       ] : undefined,
@@ -432,6 +473,11 @@ export async function GET(request: NextRequest) {
         : searchProbe.payload?.error
           ? `Search returned an application warning: ${searchProbe.payload.error}`
           : 'QA search endpoint responded successfully.',
+      detail: !searchProbe.ok
+        ? formatProbeFailureDetail(searchProbe)
+        : searchProbe.payload?.error
+          ? formatUpstreamWarningDetail(searchProbe.payload.error)
+          : undefined,
       metrics: searchProbe.ok ? [
         { label: 'Results', value: getCollectionSize(searchProbe.payload) },
       ] : undefined,
@@ -449,6 +495,7 @@ export async function GET(request: NextRequest) {
       message: qrBridgeProbe.ok
         ? 'QR code bridge query succeeded.'
         : qrBridgeProbe.error || 'The QR code bridge failed.',
+      detail: qrBridgeProbe.ok ? undefined : formatProbeFailureDetail(qrBridgeProbe),
       metrics: qrBridgeProbe.ok ? [
         { label: 'Rows', value: getCollectionSize(qrBridgeProbe.payload) },
       ] : undefined,
@@ -466,6 +513,7 @@ export async function GET(request: NextRequest) {
       message: outreachBridgeProbe.ok
         ? 'Outreach activity bridge query succeeded.'
         : outreachBridgeProbe.error || 'The outreach bridge failed.',
+      detail: outreachBridgeProbe.ok ? undefined : formatProbeFailureDetail(outreachBridgeProbe),
       metrics: outreachBridgeProbe.ok ? [
         { label: 'Rows', value: getCollectionSize(outreachBridgeProbe.payload) },
       ] : undefined,
