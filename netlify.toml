@@ -4,6 +4,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  NEXT_PUBLIC_QA_AUTH_BASE_URL = "https://qa.localvip.com"
 
 # Include native binary modules in serverless functions
 [functions]

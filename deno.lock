@@ -11,6 +11,7 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
+        "npm:@napi-rs/canvas@~0.1.97",
         "npm:@netlify/plugin-nextjs@^5.15.9",
         "npm:@radix-ui/react-avatar@^1.1.0",
         "npm:@radix-ui/react-checkbox@^1.1.0",
@@ -35,11 +36,16 @@
         "npm:class-variance-authority@0.7",
         "npm:clsx@^2.1.0",
         "npm:date-fns@^3.6.0",
+        "npm:dotenv@^17.3.1",
         "npm:eslint-config-next@^14.2.0",
         "npm:eslint@^8.57.0",
+        "npm:exceljs@^4.4.0",
         "npm:lucide-react@0.400",
         "npm:next@^14.2.0",
+        "npm:pdf-lib@^1.17.1",
+        "npm:pdfjs-dist@^5.5.207",
         "npm:postcss@^8.4.0",
+        "npm:qr-code-styling@^1.9.2",
         "npm:qrcode@^1.5.4",
         "npm:react-dom@^18.3.0",
         "npm:react@^18.3.0",
@@ -50,6 +56,7 @@
         "npm:tailwindcss@^3.4.0",
         "npm:tsx@^4.16.0",
         "npm:typescript@^5.5.0",
+        "npm:xlsx@~0.18.5",
         "npm:zod@^3.23.0"
       ]
     }
