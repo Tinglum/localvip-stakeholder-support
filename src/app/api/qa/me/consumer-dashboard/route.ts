@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { QaConsumerListItem } from '@/lib/auth/qa-api'
-import { fetchQaApi, parseQaJsonResponse } from '@/lib/auth/qa-api'
+import { fetchQaApi, getQaUserProfile, parseQaJsonResponse } from '@/lib/auth/qa-api'
 import { getAuthenticatedSession, type ResolvedAuthSession } from '@/lib/server/auth-session'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { qaRouteErrorResponse } from '@/lib/server/qa-route'
@@ -126,6 +126,55 @@ function buildSummaryFallback(
   }
 }
 
+async function buildProfileOnlyFallback(session: ResolvedAuthSession) {
+  const qaProfile = await getQaUserProfile().catch(() => null)
+  const profile = session.profile
+  const email = qaProfile?.email || profile.email || session.qaClaims?.email || ''
+  const firstName = qaProfile?.firstName || profile.full_name?.split(' ')[0] || ''
+  const lastName = qaProfile?.lastName || profile.full_name?.split(' ').slice(1).join(' ') || ''
+  const createdDate = profile.created_at || new Date(0).toISOString()
+  const referralCode = qaProfile?.referralCode || profile.referral_code || null
+  const sharedURL = qaProfile?.sharedURL || null
+  const accountType = qaProfile?.accountType || null
+  const consumerType = typeof (profile.metadata as Record<string, unknown> | null)?.view_as_consumer_type === 'string'
+    ? String((profile.metadata as Record<string, unknown>).view_as_consumer_type)
+    : 'Normal'
+
+  return {
+    consumerId: null,
+    summary: {
+      consumer: {
+        id: 0,
+        firstName,
+        lastName,
+        email,
+        phoneNumber: qaProfile?.phoneNumber || null,
+        city: qaProfile?.city || null,
+        state: qaProfile?.state || null,
+        country: qaProfile?.country || null,
+        referralCode,
+        sharedURL,
+        createdDate,
+        isEnabled: true,
+        consumerType,
+      },
+      wallet: { availableAmount: 0, currentAmount: 0, walletStatus: accountType ? `QA ${accountType}` : 'Connecting' },
+      stripeOnboarded: !!qaProfile?.isStripeOnboardingComplete,
+      lifetimeCashback: 0,
+      lifetimeBonusCash: 0,
+      counts: { transactions: 0, friends: 0, causes: 0, devices: 0 },
+    },
+    wallet: null,
+    transactions: [],
+    cashback: null,
+    bonusCash: null,
+    friends: [],
+    causes: [],
+    devices: [],
+    unresolvedConsumer: true,
+  }
+}
+
 export async function GET() {
   try {
     const session = await getAuthenticatedSession()
@@ -144,12 +193,14 @@ export async function GET() {
 
     const consumerId = await resolveCurrentConsumerId(session)
     if (!consumerId) {
-      return NextResponse.json({ error: 'We could not match this QA account to a consumer record yet.' }, { status: 404 })
+      const fallback = await buildProfileOnlyFallback(session)
+      return NextResponse.json(fallback)
     }
 
     const consumerDetail = await fetchConsumerDetailOptional(consumerId)
     if (!consumerDetail) {
-      return NextResponse.json({ error: 'We could not load this consumer record from QA yet.' }, { status: 404 })
+      const fallback = await buildProfileOnlyFallback(session)
+      return NextResponse.json({ ...fallback, consumerId, unresolvedConsumer: true })
     }
 
     const [wallet, transactions, cashback, bonusCash, friends, causes, devices] = await Promise.all([
