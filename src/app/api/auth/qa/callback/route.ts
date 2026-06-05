@@ -1,24 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import {
   clearQaSessionCookies,
   exchangeCodeForSession,
-  getRequestPublicOrigin,
   getQaRedirectUri,
+  getRequestPublicOrigin,
   QA_COOKIE_NAMES,
   readSignedQaOauthState,
   sanitizeReturnTo,
   setQaSessionCookies,
+  QA_AUTH_CONFIG,
 } from '@/lib/auth/qa-auth'
-import { prepareSupabaseSessionForQaUser } from '@/lib/server/auth-session'
-import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
   const state = request.nextUrl.searchParams.get('state')
   const error = request.nextUrl.searchParams.get('error')
   const errorDescription = request.nextUrl.searchParams.get('error_description')
-  const oauthRedirectPath = sanitizeReturnTo(request.nextUrl.searchParams.get('oauth_redirect_path') || '/api/auth/qa/callback')
+  const oauthRedirectPath = sanitizeReturnTo(
+    request.nextUrl.searchParams.get('oauth_redirect_path') || '/api/auth/qa/callback',
+  )
 
   const storedState = request.cookies.get(QA_COOKIE_NAMES.state)?.value || null
   const storedVerifier = request.cookies.get(QA_COOKIE_NAMES.verifier)?.value || null
@@ -30,8 +30,7 @@ export async function GET(request: NextRequest) {
   const stateIsValid = !!state && (!!signedState || (!!storedState && state === storedState))
   const authorizationRedirectUri = getQaRedirectUri(publicOrigin)
 
-  // Diagnostic: list every cookie we can see so we know if the browser dropped them
-  const cookieNames = request.cookies.getAll().map((c) => c.name)
+  const cookieNames = request.cookies.getAll().map((cookie) => cookie.name)
   console.log('[qa-callback]', {
     hasCode: !!code,
     hasState: !!state,
@@ -72,6 +71,7 @@ export async function GET(request: NextRequest) {
       }
     }
     if (!verifier) missing.push('pkce_verifier_cookie_or_signed_state')
+
     const diagnostic = `QA login handshake failed. Missing: ${missing.join(', ')}. Seen cookies: ${cookieNames.join(', ') || 'none'}`
     const failure = NextResponse.redirect(
       new URL(`/login?error=${encodeURIComponent(diagnostic)}`, publicOrigin),
@@ -81,12 +81,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const tryExchange = (candidateVerifier: string, redirectUri: string) => exchangeCodeForSession({
-      code,
-      verifier: candidateVerifier,
-      redirectUri,
-    })
-
     const chosenVerifier = signedState?.verifier || storedVerifier || verifier
 
     console.log('[qa-callback] exchanging code', {
@@ -95,19 +89,17 @@ export async function GET(request: NextRequest) {
       usingStoredVerifier: chosenVerifier === storedVerifier,
     })
 
-    // The token request must use the same redirect_uri that was sent to QA
-    // on /connect/authorize. QA registers lvip_dashboard against the app URL
-    // itself, while middleware reroutes the browser response into this route.
-    const session = await tryExchange(chosenVerifier, authorizationRedirectUri)
+    const session = await exchangeCodeForSession({
+      code,
+      verifier: chosenVerifier,
+      redirectUri: authorizationRedirectUri,
+    })
 
     setQaSessionCookies(cleanResponse, session)
     cleanResponse.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })
     cleanResponse.cookies.set(QA_COOKIE_NAMES.verifier, '', { path: '/', maxAge: 0 })
     cleanResponse.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })
 
-    // Check if Stripe onboarding is complete for Business accounts only.
-    // Admin/System Admin users are never blocked by this check.
-    // If incomplete, send them to qa.localvip.com which auto-opens the Stripe form.
     try {
       const profileRes = await fetch(`${QA_AUTH_CONFIG.baseUrl}/api/dashboard/v1/User/profile`, {
         headers: { authorization: `Bearer ${session.accessToken}` },
@@ -121,59 +113,22 @@ export async function GET(request: NextRequest) {
         }
         const isBusinessAccount = qaProfile.accountType === 'Business'
         const stripeIncomplete = qaProfile.isStripeOnboardingComplete === false
-        console.log('[qa-callback] profile check', { accountType: qaProfile.accountType, role: qaProfile.role, isStripeOnboardingComplete: qaProfile.isStripeOnboardingComplete })
+        console.log('[qa-callback] profile check', {
+          accountType: qaProfile.accountType,
+          role: qaProfile.role,
+          isStripeOnboardingComplete: qaProfile.isStripeOnboardingComplete,
+        })
         if (isBusinessAccount && stripeIncomplete) {
           const stripeOnboardingRedirect = NextResponse.redirect(`${QA_AUTH_CONFIG.baseUrl}/`)
-          // Copy all cookies set on cleanResponse so the session is preserved
           cleanResponse.cookies.getAll().forEach((cookie) => {
             stripeOnboardingRedirect.cookies.set(cookie)
           })
-          console.log(`[qa-callback] Stripe onboarding incomplete — redirecting to ${QA_AUTH_CONFIG.baseUrl}`)
+          console.log(`[qa-callback] Stripe onboarding incomplete - redirecting to ${QA_AUTH_CONFIG.baseUrl}`)
           return stripeOnboardingRedirect
         }
       }
     } catch (stripeCheckError) {
-      // Non-fatal — proceed with normal login flow
       console.warn('[qa-callback] Stripe onboarding check failed (non-fatal)', stripeCheckError)
-    }
-
-    // Bridge QA user into a real Supabase session so client-side RLS works.
-    // 1. Service client generates a magic link and extracts the raw OTP token
-    // 2. SSR client (anon key) verifies with email+token — writes proper session cookies
-    try {
-      const prepared = await prepareSupabaseSessionForQaUser(session.claims)
-      if (prepared) {
-        const ssrClient = createServerClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          {
-            cookies: {
-              get(name: string) {
-                return request.cookies.get(name)?.value
-              },
-              set(name: string, value: string, options: CookieOptions) {
-                cleanResponse.cookies.set({ name, value, ...options })
-              },
-              remove(name: string, options: CookieOptions) {
-                cleanResponse.cookies.set({ name, value: '', ...options })
-              },
-            },
-          },
-        )
-        const { data: otpData, error: otpError } = await ssrClient.auth.verifyOtp({
-          type: 'email',
-          email: prepared.email,
-          token: prepared.otp,
-        })
-        if (otpError || !otpData?.session) {
-          console.warn('[qa-callback] Supabase OTP verify failed', otpError?.message, 'email:', prepared.email)
-        } else {
-          console.log('[qa-callback] Supabase session bridged for', prepared.email, otpData.session.user?.id)
-        }
-      }
-    } catch (bridgeError) {
-      // Non-fatal — QA session still works, just client-side RLS won't pass
-      console.warn('[qa-callback] Supabase session bridge failed (non-fatal)', bridgeError)
     }
 
     return cleanResponse
