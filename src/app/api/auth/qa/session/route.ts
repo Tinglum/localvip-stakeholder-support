@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
       refreshToken?: string | null
       expiresIn?: number | null
       expiresAt?: number | null
+      scope?: string | null
       returnTo?: string | null
     } | null
 
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
       refreshToken: body.refreshToken ?? null,
       expiresIn: typeof body.expiresIn === 'number' ? body.expiresIn : null,
       expiresAt: typeof body.expiresAt === 'number' ? body.expiresAt : null,
+      grantedScopes: body.scope ?? null,
     })
 
     const response = NextResponse.json({

@@ -124,6 +124,7 @@ export function QaLoginPage({
             id_token?: string
             refresh_token?: string
             expires_in?: number
+            scope?: string
             error?: string
             error_description?: string
           } | null
@@ -142,6 +143,7 @@ export function QaLoginPage({
               idToken: tokenJson.id_token || null,
               refreshToken: tokenJson.refresh_token || null,
               expiresIn: tokenJson.expires_in || null,
+              scope: tokenJson.scope || scopes,
               returnTo: storedReturnTo,
             }),
           })

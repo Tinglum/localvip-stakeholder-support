@@ -23,6 +23,7 @@ export interface QaAuthClaims {
   family_name: string | null
   preferred_username: string | null
   roles: string[]
+  scopes: string[]
   exp: number | null
   raw: Record<string, unknown>
 }
@@ -33,6 +34,7 @@ export interface QaSession {
   refreshToken: string | null
   expiresAt: number
   claims: QaAuthClaims
+  grantedScopes: string[]
 }
 
 interface QaOauthStatePayload {
@@ -50,6 +52,85 @@ function trimToNull(value: string | undefined | null) {
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '')
+}
+
+const QA_REQUIRED_SCOPES = [
+  'openid',
+  'profile',
+  'email',
+  'LVIPDashboardApiV1',
+  'Ten10ApiMobileV1',
+  'roles',
+] as const
+
+const QA_PREFERRED_SCOPES = [
+  'name',
+  'offline_access',
+] as const
+
+const QA_SCOPE_DEFAULT_ORDER = [
+  'openid',
+  'profile',
+  'email',
+  'name',
+  'LVIPDashboardApiV1',
+  'Ten10ApiMobileV1',
+  'roles',
+  'offline_access',
+] as const
+
+function readScopeTokens(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => readScopeTokens(entry))
+  }
+
+  if (typeof value !== 'string') return []
+
+  return value
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function mergeScopeLists(...scopeLists: unknown[]) {
+  const result: string[] = []
+  const seen = new Set<string>()
+
+  for (const list of scopeLists) {
+    for (const scope of readScopeTokens(list)) {
+      const normalized = scope.toLowerCase()
+      if (seen.has(normalized)) continue
+      seen.add(normalized)
+      result.push(scope)
+    }
+  }
+
+  return result
+}
+
+export function getRequiredQaScopes() {
+  return [...QA_REQUIRED_SCOPES]
+}
+
+export function getPreferredQaScopes() {
+  return [...QA_PREFERRED_SCOPES]
+}
+
+export function getQaRequestedScopes(configuredScopes?: string | null) {
+  return mergeScopeLists(QA_SCOPE_DEFAULT_ORDER, configuredScopes)
+}
+
+export function getQaRequestedScopeString(configuredScopes?: string | null) {
+  return getQaRequestedScopes(configuredScopes).join(' ')
+}
+
+export function getMissingRequiredQaScopes(scopes: string[]) {
+  const available = new Set(scopes.map((scope) => scope.toLowerCase()))
+  return QA_REQUIRED_SCOPES.filter((scope) => !available.has(scope.toLowerCase()))
+}
+
+export function hasRequiredQaScopes(scopes: string[]) {
+  return getMissingRequiredQaScopes(scopes).length === 0
 }
 
 function getConfiguredAppOrigin(fallbackOrigin?: string) {
@@ -88,7 +169,7 @@ export const QA_AUTH_CONFIG = {
   baseUrl: trimTrailingSlash(trimToNull(process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL) || 'https://qa.localvip.com'),
   clientId: trimToNull(process.env.QA_AUTH_CLIENT_ID) || 'lvip_dashboard',
   clientSecret: trimToNull(process.env.QA_AUTH_CLIENT_SECRET),
-  scopes: trimToNull(process.env.QA_AUTH_SCOPES) || 'openid profile email name LVIPDashboardApiV1 roles offline_access',
+  scopes: getQaRequestedScopeString(trimToNull(process.env.QA_AUTH_SCOPES)),
   redirectUri: trimToNull(process.env.QA_AUTH_REDIRECT_URI),
   postLogoutRedirectUri: trimToNull(process.env.QA_AUTH_POST_LOGOUT_REDIRECT_URI),
 }
@@ -101,6 +182,7 @@ export const QA_COOKIE_NAMES = {
   idToken: 'lvip_qa_id_token',
   refreshToken: 'lvip_qa_refresh_token',
   expiresAt: 'lvip_qa_expires_at',
+  scopes: 'lvip_qa_scopes',
 } as const
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -208,6 +290,15 @@ function readRoles(payload: Record<string, unknown>) {
   return []
 }
 
+function readScopes(payload: Record<string, unknown>) {
+  return mergeScopeLists(
+    payload.scope,
+    payload.scp,
+    payload.scopes,
+    payload['http://schemas.microsoft.com/identity/claims/scope'],
+  )
+}
+
 function normalizeQaSignal(value: unknown) {
   if (typeof value !== 'string') return null
   const normalized = value.trim().toLowerCase()
@@ -237,6 +328,7 @@ function normalizeQaClaims(accessToken: string, idToken?: string | null): QaAuth
     family_name: readStringClaim(merged, 'family_name'),
     preferred_username: readStringClaim(merged, 'preferred_username', 'preferred_username'),
     roles: readRoles(merged),
+    scopes: readScopes(merged),
     exp,
     raw: merged,
   }
@@ -248,18 +340,22 @@ export function buildQaSessionFromTokens(tokens: {
   refreshToken?: string | null
   expiresIn?: number | null
   expiresAt?: number | null
+  grantedScopes?: string | string[] | null
 }) {
   const now = Math.floor(Date.now() / 1000)
   const expiresAt = typeof tokens.expiresAt === 'number' && Number.isFinite(tokens.expiresAt)
     ? tokens.expiresAt
     : now + Math.max(tokens.expiresIn || 3600, 300)
+  const claims = normalizeQaClaims(tokens.accessToken, tokens.idToken ?? null)
+  const grantedScopes = mergeScopeLists(tokens.grantedScopes, claims.scopes, QA_AUTH_CONFIG.scopes)
 
   return {
     accessToken: tokens.accessToken,
     idToken: tokens.idToken ?? null,
     refreshToken: tokens.refreshToken ?? null,
     expiresAt,
-    claims: normalizeQaClaims(tokens.accessToken, tokens.idToken ?? null),
+    claims,
+    grantedScopes,
   } satisfies QaSession
 }
 
@@ -344,6 +440,7 @@ export function mapQaRoleFromSignals(options: {
     family_name: options.claims?.family_name || null,
     preferred_username: options.claims?.preferred_username || null,
     roles,
+    scopes: [],
     exp: options.claims?.exp || null,
     raw: options.claims?.raw || {},
   })
@@ -542,16 +639,14 @@ export async function exchangeCodeForSession(options: {
   const expiresIn = typeof json.expires_in === 'number'
     ? json.expires_in
     : Number.parseInt(String(json.expires_in || '3600'), 10)
-  const expiresAt = Math.floor(Date.now() / 1000) + Math.max(expiresIn || 3600, 300)
-  const claims = normalizeQaClaims(String(json.access_token), typeof json.id_token === 'string' ? json.id_token : null)
 
-  return {
+  return buildQaSessionFromTokens({
     accessToken: String(json.access_token),
     idToken: typeof json.id_token === 'string' ? json.id_token : null,
     refreshToken: typeof json.refresh_token === 'string' ? json.refresh_token : null,
-    expiresAt,
-    claims,
-  }
+    expiresIn,
+    grantedScopes: typeof json.scope === 'string' ? json.scope : QA_AUTH_CONFIG.scopes,
+  })
 }
 
 export function setQaSessionCookies(response: NextResponse, session: QaSession) {
@@ -581,6 +676,13 @@ export function setQaSessionCookies(response: NextResponse, session: QaSession) 
 
   if (session.refreshToken) {
     response.cookies.set(QA_COOKIE_NAMES.refreshToken, session.refreshToken, {
+      ...cookieOptions,
+      maxAge: 60 * 60 * 24 * 30,
+    })
+  }
+
+  if (session.grantedScopes.length > 0) {
+    response.cookies.set(QA_COOKIE_NAMES.scopes, session.grantedScopes.join(' '), {
       ...cookieOptions,
       maxAge: 60 * 60 * 24 * 30,
     })
@@ -618,13 +720,21 @@ export function getQaSessionFromCookieStore(cookieStore: CookieSource): QaSessio
 
   const idToken = readCookieValue(cookieStore, QA_COOKIE_NAMES.idToken)
   const refreshToken = readCookieValue(cookieStore, QA_COOKIE_NAMES.refreshToken)
+  const scopeCookie = readCookieValue(cookieStore, QA_COOKIE_NAMES.scopes)
+  const claims = normalizeQaClaims(accessToken, idToken)
+  const grantedScopes = mergeScopeLists(scopeCookie, claims.scopes)
+
+  if (grantedScopes.length === 0 || !hasRequiredQaScopes(grantedScopes)) {
+    return null
+  }
 
   return {
     accessToken,
     idToken,
     refreshToken,
     expiresAt,
-    claims: normalizeQaClaims(accessToken, idToken),
+    claims,
+    grantedScopes,
   }
 }
 

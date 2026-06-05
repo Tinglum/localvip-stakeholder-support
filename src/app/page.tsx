@@ -1,4 +1,5 @@
 import { QaLoginPage } from '@/components/auth/qa-login-page'
+import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 
 export default function Home({
   searchParams,
@@ -25,9 +26,9 @@ export default function Home({
       error={error}
       code={code}
       state={state}
-      qaBaseUrl={process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com'}
-      clientId={process.env.QA_AUTH_CLIENT_ID || 'lvip_dashboard'}
-      scopes={process.env.QA_AUTH_SCOPES || 'openid profile email name LVIPDashboardApiV1 roles offline_access'}
+      qaBaseUrl={QA_AUTH_CONFIG.baseUrl}
+      clientId={QA_AUTH_CONFIG.clientId}
+      scopes={QA_AUTH_CONFIG.scopes}
     />
   )
 }
