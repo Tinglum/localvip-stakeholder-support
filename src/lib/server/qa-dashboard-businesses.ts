@@ -160,12 +160,11 @@ export function buildCrmBusinessDetail(
   // Supabase row is no longer required to enable writes — the QA business id
   // is the canonical key.
   const qaBusinessId = qaBusiness?.id || getQaAccountIdFromLocal(localBusiness!) || null
-  const effectiveLocalId = localBusiness?.id || (qaBusinessId !== null ? String(qaBusinessId) : null)
   const readOnly = !localBusiness && !qaBusinessId
 
   return {
     business,
-    localBusinessId: effectiveLocalId,
+    localBusinessId: localBusiness?.id || null,
     qaBusinessId,
     origin: resolveOrigin(localBusiness, qaBusiness),
     qaBusiness,

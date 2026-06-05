@@ -3,7 +3,8 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { buildQaAccountMetadata, buildQaBusinessLogoUrl, getQaAccountIdFromLocal, isRecord, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
-import { syncQaBusinessLogo } from '@/lib/server/qa-dashboard-businesses'
+import { fetchQaBusinessDetail, syncQaBusinessLogo } from '@/lib/server/qa-dashboard-businesses'
+import { canAccessQaBusinessRecord } from '@/lib/server/qa-business-access'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { asUuid } from '@/lib/uuid'
 import type { Business } from '@/lib/types/database'
@@ -22,7 +23,7 @@ export async function POST(
     const supabase = createServiceClient()
 
     const shell = getStakeholderShell(profile)
-    if (!['admin', 'field', 'launch_partner'].includes(shell)) {
+    if (!['admin', 'field', 'launch_partner', 'business'].includes(shell)) {
       return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
     }
 
@@ -35,6 +36,10 @@ export async function POST(
         return NextResponse.json({ error: 'File and mediaType required.' }, { status: 400 })
       }
       try {
+        const qaBusiness = await fetchQaBusinessDetail(Number(params.id))
+        if (!canAccessQaBusinessRecord(shell, profile, qaBusiness)) {
+          return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
+        }
         const endpoint = mediaType === 'logo' ? 'upload-logo' : 'upload-cover-photo'
         const fd = new FormData()
         fd.append(mediaType === 'logo' ? 'logoImage' : 'file', file)
@@ -56,6 +61,13 @@ export async function POST(
           { status: 500 },
         )
       }
+    }
+
+    if (shell === 'business') {
+      return NextResponse.json(
+        { error: 'Business branding uploads require the numeric QA business id.' },
+        { status: 400 },
+      )
     }
 
     const businessId = asUuid(params.id)

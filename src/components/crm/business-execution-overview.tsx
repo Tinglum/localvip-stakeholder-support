@@ -78,6 +78,7 @@ import type {
 interface BusinessExecutionOverviewProps {
   biz: Business
   localBusinessId: string | null
+  qaBusinessId?: number | null
   localState?: CrmBusinessLocalStateResponse | null
   city: City | null
   owner: Profile | null
@@ -114,6 +115,7 @@ function statReady(value: boolean) {
 export function BusinessExecutionOverview({
   biz,
   localBusinessId,
+  qaBusinessId = null,
   localState,
   city,
   owner,
@@ -128,9 +130,10 @@ export function BusinessExecutionOverview({
 }: BusinessExecutionOverviewProps) {
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
+  const queryBusinessId = qaBusinessId !== null ? String(qaBusinessId) : (localBusinessId || biz.id)
   const localStateEnabled = !localState
   const { data: hookProfiles } = useProfiles({ enabled: localStateEnabled })
-  const { data: hookStakeholders, refetch: refetchStakeholders } = useStakeholders({ business_id: biz.id }, { enabled: localStateEnabled })
+  const { data: hookStakeholders, refetch: refetchStakeholders } = useStakeholders({ business_id: queryBusinessId }, { enabled: localStateEnabled })
   const stakeholders = localState?.stakeholders ?? hookStakeholders
   const stakeholder = stakeholders[0] || null
   const { data: hookStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || EMPTY_UUID }, { enabled: localStateEnabled })
@@ -143,18 +146,18 @@ export function BusinessExecutionOverview({
   const generatedMaterials = localState?.generatedMaterials ?? hookGeneratedMaterials
   const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || EMPTY_UUID }, { enabled: localStateEnabled })
   const adminTasks = localState?.adminTasks ?? hookAdminTasks
-  const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: biz.id }, { enabled: localStateEnabled })
+  const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: queryBusinessId }, { enabled: localStateEnabled })
   const flows = localState?.flows ?? hookFlows
   const flow = flows[0] || null
   const { data: hookSteps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || EMPTY_UUID }, { enabled: localStateEnabled })
   const steps = localState?.steps ?? hookSteps
-  const { data: hookOffers, refetch: refetchOffers } = useOffers({ business_id: biz.id }, { enabled: localStateEnabled })
+  const { data: hookOffers, refetch: refetchOffers } = useOffers({ business_id: queryBusinessId }, { enabled: localStateEnabled })
   const offers = localState?.offers ?? hookOffers
-  const { data: hookContacts, refetch: refetchContacts } = useContacts({ business_id: biz.id }, { enabled: localStateEnabled })
+  const { data: hookContacts, refetch: refetchContacts } = useContacts({ business_id: queryBusinessId }, { enabled: localStateEnabled })
   const contacts = localState?.contacts ?? hookContacts
-  const { data: hookQrCodes, refetch: refetchQrCodes } = useQrCodes({ business_id: biz.id }, { enabled: localStateEnabled })
+  const { data: hookQrCodes, refetch: refetchQrCodes } = useQrCodes({ business_id: queryBusinessId }, { enabled: localStateEnabled })
   const qrCodes = localState?.qrCodes ?? hookQrCodes
-  const { data: hookOutreach, refetch: refetchOutreach } = useOutreach({ entity_type: 'business', entity_id: biz.id }, { enabled: localStateEnabled })
+  const { data: hookOutreach, refetch: refetchOutreach } = useOutreach({ entity_type: 'business', entity_id: queryBusinessId }, { enabled: localStateEnabled })
   const outreach = localState?.outreach ?? hookOutreach
   const { insert: insertOutreach, loading: savingOutreach } = useOutreachInsert()
   const { insert: insertOffer } = useOfferInsert()
@@ -223,7 +226,7 @@ export function BusinessExecutionOverview({
   const [brandingCoverPhotoUrl, setBrandingCoverPhotoUrl] = React.useState(workspaceBusiness.cover_photo_url || '')
   const logoInputRef = React.useRef<HTMLInputElement>(null)
   const coverInputRef = React.useRef<HTMLInputElement>(null)
-  const writeBusinessId = localBusinessId || asUuid(biz.id)
+  const writeBusinessId = localBusinessId || queryBusinessId
 
   React.useEffect(() => {
     setReferralCode(codes?.referral_code || '')
@@ -469,23 +472,8 @@ export function BusinessExecutionOverview({
     setOfferMessage(null)
     setOfferError(null)
     try {
-      const metadata = {
-        ...((biz.metadata as Record<string, unknown> | null) || {}),
-        capture_offer_title: captureHeadline,
-        capture_offer_description: captureDescription,
-        capture_offer_value: captureValue,
-        offer_title: captureHeadline,
-        offer_description: captureDescription,
-        offer_value: captureValue,
-        cashback_percent: cashbackPercent,
-        cashback_offer_title: 'Standard LocalVIP Cashback',
-        cashback_offer_description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
-      }
-
-      await updateBusiness(biz.id, { metadata, launch_phase: biz.launch_phase || 'setup' })
-
       const capturePayload: Partial<Offer> = {
-        business_id: biz.id,
+        business_id: queryBusinessId,
         offer_type: 'capture',
         status: captureHeadline.trim() ? 'active' : 'draft',
         headline: captureHeadline.trim() || 'Join our list and get access to exclusive offers',
@@ -499,7 +487,7 @@ export function BusinessExecutionOverview({
       }
 
       const cashbackPayload: Partial<Offer> = {
-        business_id: biz.id,
+        business_id: queryBusinessId,
         offer_type: 'cashback',
         status: 'active',
         headline: 'Standard LocalVIP Cashback',
@@ -530,7 +518,7 @@ export function BusinessExecutionOverview({
     if (!outreachBody.trim()) return
     await insertOutreach({
       entity_type: 'business',
-      entity_id: biz.id,
+      entity_id: queryBusinessId,
       type: 'other',
       performed_by: localProfileId || undefined,
       subject: outreachSubject || null,
@@ -1250,7 +1238,7 @@ export function BusinessExecutionOverview({
         onLogOutreach={async ({ type, subject, body, outcome, nextStep, nextStepDate }) => {
           await insertOutreach({
             entity_type: 'business',
-            entity_id: biz.id,
+            entity_id: queryBusinessId,
             type: type as OutreachActivity['type'],
             performed_by: localProfileId || undefined,
             subject: subject || null,

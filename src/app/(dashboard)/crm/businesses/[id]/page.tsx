@@ -39,9 +39,13 @@ import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
 import { useCrmBusiness, useCrmBusinessLocalState } from '@/lib/hooks/crm-businesses'
 import {
+  useGeneratedMaterials,
+  useMaterials,
   useOutreach, useOutreachInsert,
   useTasks, useTaskInsert, useTaskUpdate,
   useNotes, useNoteInsert,
+  useStakeholderCodes,
+  useStakeholders,
   useBusinessUpdate,
 } from '@/lib/supabase/hooks'
 import type { CrmBusiness, QaBusinessDetail } from '@/lib/crm-api'
@@ -127,21 +131,32 @@ export default function BusinessDetailPage() {
   const qaBusiness = businessResponse?.qaBusiness || null
   const readOnly = businessResponse?.readOnly || false
   const detailQaError = businessResponse?.qaError || null
+  const resolvedBusinessId = localBusinessId || (businessResponse?.qaBusinessId !== null && businessResponse?.qaBusinessId !== undefined
+    ? String(businessResponse.qaBusinessId)
+    : null)
+  const fallbackEntityId = resolvedBusinessId || EMPTY_UUID
   const localEntityId = localBusinessId || EMPTY_UUID
-  const { data: localState, loading: localStateLoading, error: localStateError, refetch: refetchLocalState } = useCrmBusinessLocalState(localBusinessId)
-  const profiles = localState?.profiles || []
+  const localStateBusinessId = asUuid(localBusinessId)
+  const supportsLegacyWorkflow = !!localStateBusinessId
+  const { data: localState, loading: localStateLoading, error: localStateError, refetch: refetchLocalState } = useCrmBusinessLocalState(localStateBusinessId)
+  const qaFallbackStateEnabled = !localState && !!resolvedBusinessId
+  const { data: qaStakeholders } = useStakeholders(
+    { business_id: resolvedBusinessId || '__none__' },
+    { enabled: qaFallbackStateEnabled },
+  )
+  const { data: qaMaterials } = useMaterials(undefined, { enabled: qaFallbackStateEnabled })
+  const profiles = React.useMemo(() => localState?.profiles ?? [], [localState?.profiles])
   const cities = localState?.cities || []
   const causes = localState?.causes || []
   const campaigns = localState?.campaigns || []
   const qrCodes = localState?.qrCodes || []
-  const materials = localState?.materials || []
-  const allStakeholders = localState?.stakeholders || []
-  const allGeneratedMaterials = localState?.generatedMaterials || []
-  const assignments = localState?.assignments || []
-  const fallbackEntityHooksEnabled = !localState && !localStateLoading
-  const { data: outreach, loading: outreachLoading } = useOutreach({ entity_id: localEntityId }, { enabled: fallbackEntityHooksEnabled })
-  const { data: tasks, loading: tasksLoading } = useTasks({ entity_id: localEntityId }, { enabled: fallbackEntityHooksEnabled })
-  const { data: notes, loading: notesLoading } = useNotes({ entity_id: localEntityId }, { enabled: fallbackEntityHooksEnabled })
+  const materials = localState?.materials || qaMaterials
+  const allStakeholders = localState?.stakeholders || qaStakeholders
+  const assignments = React.useMemo(() => localState?.assignments ?? [], [localState?.assignments])
+  const fallbackEntityHooksEnabled = !localState && !localStateLoading && !!resolvedBusinessId
+  const { data: outreach, loading: outreachLoading, refetch: refetchOutreachItems } = useOutreach({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
+  const { data: tasks, loading: tasksLoading, refetch: refetchTaskItems } = useTasks({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
+  const { data: notes, loading: notesLoading, refetch: refetchNoteItems } = useNotes({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
 
   // ── Mutation hooks ──
   const { update: updateBusiness, loading: updateLoading } = useBusinessUpdate()
@@ -163,11 +178,21 @@ export default function BusinessDetailPage() {
   const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
   const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
   const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
-  const businessStakeholder = allStakeholders.find(s => localBusinessId && s.business_id === localBusinessId) || null
+  const businessStakeholder = allStakeholders.find(s => resolvedBusinessId && s.business_id === resolvedBusinessId) || allStakeholders[0] || null
+  const { data: qaStakeholderCodes } = useStakeholderCodes(
+    { stakeholder_id: businessStakeholder?.id || '__none__' },
+    { enabled: qaFallbackStateEnabled && !!businessStakeholder?.id },
+  )
+  const { data: qaGeneratedMaterials } = useGeneratedMaterials(
+    { stakeholder_id: businessStakeholder?.id || '__none__' },
+    { enabled: qaFallbackStateEnabled && !!businessStakeholder?.id },
+  )
+  const allGeneratedMaterials = localState?.generatedMaterials || qaGeneratedMaterials
   const businessStakeholderCodes = React.useMemo(() => {
-    if (!businessStakeholder || !localState?.stakeholderCodes) return null
-    return (localState.stakeholderCodes as Array<{ stakeholder_id: string; referral_code: string | null; connection_code: string | null; join_url: string | null }>).find(sc => sc.stakeholder_id === businessStakeholder.id) || null
-  }, [businessStakeholder, localState?.stakeholderCodes])
+    if (!businessStakeholder) return null
+    const source = localState?.stakeholderCodes || qaStakeholderCodes
+    return (source as Array<{ stakeholder_id: string; referral_code: string | null; connection_code: string | null; join_url: string | null }>).find(sc => sc.stakeholder_id === businessStakeholder.id) || null
+  }, [businessStakeholder, localState?.stakeholderCodes, qaStakeholderCodes])
   const businessJoinUrl = React.useMemo(() => {
     if (businessStakeholderCodes?.join_url) return businessStakeholderCodes.join_url
     if (businessStakeholderCodes?.connection_code) {
@@ -227,7 +252,10 @@ export default function BusinessDetailPage() {
   const refetchBusinessDetail = React.useCallback(() => {
     refetchBusiness()
     refetchLocalState()
-  }, [refetchBusiness, refetchLocalState])
+    refetchOutreachItems()
+    refetchTaskItems()
+    refetchNoteItems()
+  }, [refetchBusiness, refetchLocalState, refetchNoteItems, refetchOutreachItems, refetchTaskItems])
 
   // ── Stage change handler ──
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
@@ -239,11 +267,11 @@ export default function BusinessDetailPage() {
   const [pendingCampaignId, setPendingCampaignId] = React.useState(biz?.campaign_id || '__none')
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
-    if (!biz || !localBusinessId || readOnly) return
-    await updateBusiness(localBusinessId, { stage: newStage })
+    if (!biz || !localStateBusinessId || readOnly) return
+    await updateBusiness(localStateBusinessId, { stage: newStage })
     setStageDropdownOpen(false)
     refetchBusinessDetail()
-  }, [biz, localBusinessId, readOnly, refetchBusinessDetail, updateBusiness])
+  }, [biz, localStateBusinessId, readOnly, refetchBusinessDetail, updateBusiness])
 
   React.useEffect(() => {
     setPendingCauseId(biz?.linked_cause_id || '__none')
@@ -264,10 +292,10 @@ export default function BusinessDetailPage() {
   }, [businessResponse?.qaBusinessId, id, localBusinessId, qaBusinessId, router])
 
   const handleNotDuplicate = async () => {
-    if (!biz || !localBusinessId || readOnly) return
+    if (!biz || !localStateBusinessId || readOnly) return
     setReviewDupLoading(true)
     try {
-      await updateBusiness(localBusinessId, { duplicate_of: null })
+      await updateBusiness(localStateBusinessId, { duplicate_of: null })
       setReviewDupOpen(false)
       refetchBusinessDetail()
     } finally {
@@ -276,10 +304,10 @@ export default function BusinessDetailPage() {
   }
 
   const handleArchiveAsDuplicate = async () => {
-    if (!biz || !localBusinessId || readOnly) return
+    if (!biz || !localStateBusinessId || readOnly) return
     setReviewDupLoading(true)
     try {
-      await updateBusiness(localBusinessId, { status: 'archived' })
+      await updateBusiness(localStateBusinessId, { status: 'archived' })
       setReviewDupOpen(false)
       refetchBusinessDetail()
     } finally {
@@ -288,22 +316,22 @@ export default function BusinessDetailPage() {
   }
 
   const handleCauseLinkSave = React.useCallback(async () => {
-    if (!biz || !localBusinessId || readOnly) return
-    await updateBusiness(localBusinessId, {
+    if (!biz || !localStateBusinessId || readOnly) return
+    await updateBusiness(localStateBusinessId, {
       linked_cause_id: pendingCauseId === '__none' ? null : pendingCauseId,
     })
     setLinkCauseOpen(false)
     refetchBusinessDetail()
-  }, [biz, localBusinessId, pendingCauseId, readOnly, refetchBusinessDetail, updateBusiness])
+  }, [biz, localStateBusinessId, pendingCauseId, readOnly, refetchBusinessDetail, updateBusiness])
 
   const handleCampaignLinkSave = React.useCallback(async () => {
-    if (!biz || !localBusinessId || readOnly) return
-    await updateBusiness(localBusinessId, {
+    if (!biz || !localStateBusinessId || readOnly) return
+    await updateBusiness(localStateBusinessId, {
       campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId,
     })
     setLinkCampaignOpen(false)
     refetchBusinessDetail()
-  }, [biz, localBusinessId, pendingCampaignId, readOnly, refetchBusinessDetail, updateBusiness])
+  }, [biz, localStateBusinessId, pendingCampaignId, readOnly, refetchBusinessDetail, updateBusiness])
 
   // ── Loading state ──
   if (bizLoading) {
@@ -348,8 +376,8 @@ export default function BusinessDetailPage() {
         { key: 'qr' as const, label: 'QR Codes' },
         { key: 'materials' as const, label: 'Materials' },
       ]
-  const qrGeneratorHref = localBusinessId
-    ? `/qr/generator?businessId=${localBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
+  const qrGeneratorHref = localStateBusinessId
+    ? `/qr/generator?businessId=${localStateBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
     : '/qr/generator'
 
   return (
@@ -421,8 +449,10 @@ export default function BusinessDetailPage() {
       <PageHeader
         title={biz.name}
         description={readOnly
-          ? 'Viewing the live QA business payload without a local dashboard link yet.'
-          : 'Owner, city, campaign, linked cause, materials, QR, tasks, and outreach all in one place.'}
+          ? 'Viewing the live QA business payload without a writable dashboard path yet.'
+          : supportsLegacyWorkflow
+            ? 'Owner, city, campaign, linked cause, materials, QR, tasks, and outreach all in one place.'
+            : 'QA-backed workspace is active. Legacy local-only workflow fields stay disabled until matching QA APIs exist.'}
         breadcrumb={[
           { label: 'CRM', href: '/crm/businesses' },
           { label: 'Businesses', href: '/crm/businesses' },
@@ -435,10 +465,16 @@ export default function BusinessDetailPage() {
               <button
                 onClick={() => setStageDropdownOpen(!stageDropdownOpen)}
                 className="flex items-center gap-1.5"
-                disabled={updateLoading || readOnly}
+                disabled={updateLoading || readOnly || !supportsLegacyWorkflow}
               >
                 <Badge variant={STAGE_VARIANT[biz.stage]} dot className="text-sm">
-                  {readOnly ? 'Read only' : updateLoading ? 'Updating...' : ONBOARDING_STAGES[biz.stage].label}
+                  {readOnly
+                    ? 'Read only'
+                    : !supportsLegacyWorkflow
+                      ? `${ONBOARDING_STAGES[biz.stage].label} (local-only)`
+                      : updateLoading
+                        ? 'Updating...'
+                        : ONBOARDING_STAGES[biz.stage].label}
                 </Badge>
                 <ChevronDown className="h-3.5 w-3.5 text-surface-400" />
               </button>
@@ -502,7 +538,7 @@ export default function BusinessDetailPage() {
           </>
         ) : (
           <p className="text-sm text-surface-500">
-            Dashboard actions will unlock after this QA record is linked to a local business.
+            Dashboard actions will unlock when this business has a writable QA or workflow backing path.
           </p>
         )}
       </div>
@@ -546,14 +582,16 @@ export default function BusinessDetailPage() {
         <Card className="transition-colors hover:border-brand-200">
           <button
             type="button"
-            onClick={() => !readOnly && setLinkCauseOpen(true)}
+            onClick={() => !readOnly && supportsLegacyWorkflow && setLinkCauseOpen(true)}
             className="block w-full text-left"
-            disabled={readOnly}
+            disabled={readOnly || !supportsLegacyWorkflow}
           >
             <CardContent className="space-y-2 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Linked Cause</p>
-                <span className="text-xs font-medium text-brand-700">{readOnly ? 'Read only' : linkedCause ? 'Change' : 'Link now'}</span>
+                <span className="text-xs font-medium text-brand-700">
+                  {readOnly ? 'Read only' : !supportsLegacyWorkflow ? 'QA API pending' : linkedCause ? 'Change' : 'Link now'}
+                </span>
               </div>
               {linkedCause ? (
                 <span className="inline-block text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
@@ -569,14 +607,16 @@ export default function BusinessDetailPage() {
         <Card className="transition-colors hover:border-brand-200">
           <button
             type="button"
-            onClick={() => !readOnly && setLinkCampaignOpen(true)}
+            onClick={() => !readOnly && supportsLegacyWorkflow && setLinkCampaignOpen(true)}
             className="block w-full text-left"
-            disabled={readOnly}
+            disabled={readOnly || !supportsLegacyWorkflow}
           >
             <CardContent className="space-y-2 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
-                <span className="text-xs font-medium text-brand-700">{readOnly ? 'Read only' : campaign ? 'Change' : 'Link now'}</span>
+                <span className="text-xs font-medium text-brand-700">
+                  {readOnly ? 'Read only' : !supportsLegacyWorkflow ? 'QA API pending' : campaign ? 'Change' : 'Link now'}
+                </span>
               </div>
               {campaign ? (
                 <span className="inline-block text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
@@ -664,6 +704,7 @@ export default function BusinessDetailPage() {
             <BusinessExecutionOverview
               biz={biz}
               localBusinessId={localBusinessId}
+              qaBusinessId={businessResponse?.qaBusinessId || qaBusinessId}
               localState={localState}
               city={city}
               owner={owner}
@@ -697,6 +738,7 @@ export default function BusinessDetailPage() {
       {activeTab === 'activity' && (
         <ActivityTab
           biz={biz}
+          entityId={fallbackEntityId}
           outreach={outreachItems}
           loading={outreachBusy}
           onInsert={insertOutreach}
@@ -710,6 +752,7 @@ export default function BusinessDetailPage() {
       {activeTab === 'tasks' && (
         <TasksTab
           biz={biz}
+          entityId={fallbackEntityId}
           tasks={taskItems}
           loading={tasksBusy}
           onInsert={insertTask}
@@ -724,6 +767,7 @@ export default function BusinessDetailPage() {
       {activeTab === 'notes' && (
         <NotesTab
           biz={biz}
+          entityId={fallbackEntityId}
           notes={noteItems}
           loading={notesBusy}
           onInsert={insertNote}
@@ -1161,6 +1205,7 @@ function OverviewTab({
     <BusinessExecutionOverview
       biz={biz}
       localBusinessId={biz.id}
+      qaBusinessId={null}
       city={city}
       owner={owner}
       linkedCause={linkedCause}
@@ -1178,6 +1223,7 @@ function OverviewTab({
 
 function ActivityTab({
   biz,
+  entityId,
   outreach,
   loading,
   onInsert,
@@ -1187,6 +1233,7 @@ function ActivityTab({
   userId,
 }: {
   biz: Business
+  entityId: string
   outreach: OutreachActivity[]
   loading: boolean
   onInsert: (record: Partial<OutreachActivity>) => Promise<OutreachActivity | null>
@@ -1208,7 +1255,7 @@ function ActivityTab({
       subject: formSubject || null,
       body: formBody,
       entity_type: 'business',
-      entity_id: biz.id,
+      entity_id: entityId,
       performed_by: userId || undefined,
       outcome: formOutcome || null,
     })
@@ -1345,6 +1392,7 @@ function ActivityTab({
 
 function TasksTab({
   biz,
+  entityId,
   tasks,
   loading,
   onInsert,
@@ -1355,6 +1403,7 @@ function TasksTab({
   userId,
 }: {
   biz: Business
+  entityId: string
   tasks: Task[]
   loading: boolean
   onInsert: (record: Partial<Task>) => Promise<Task | null>
@@ -1376,7 +1425,7 @@ function TasksTab({
       priority,
       status: 'pending',
       entity_type: 'business',
-      entity_id: biz.id,
+      entity_id: entityId,
       created_by: userId || undefined,
       assigned_to: userId || undefined,
       due_date: dueDate || null,
@@ -1506,6 +1555,7 @@ function TasksTab({
 
 function NotesTab({
   biz,
+  entityId,
   notes,
   loading,
   onInsert,
@@ -1515,6 +1565,7 @@ function NotesTab({
   userId,
 }: {
   biz: Business
+  entityId: string
   notes: Note[]
   loading: boolean
   onInsert: (record: Partial<Note>) => Promise<Note | null>
@@ -1530,7 +1581,7 @@ function NotesTab({
     await onInsert({
       content: newNote,
       entity_type: 'business',
-      entity_id: biz.id,
+      entity_id: entityId,
       created_by: userId || undefined,
       is_internal: false,
     })

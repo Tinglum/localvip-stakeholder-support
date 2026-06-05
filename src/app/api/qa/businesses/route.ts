@@ -2,14 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaBusinessList } from '@/lib/server/qa-dashboard-businesses'
 import { fetchQaApi, parseQaJsonResponse, QaApiError } from '@/lib/auth/qa-api'
 import { qaRouteErrorResponse, requireQaRouteAccess } from '@/lib/server/qa-route'
+import { filterQaBusinessesForAccess } from '@/lib/server/qa-business-access'
 
-export async function GET() {
-  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner'])
+export async function GET(request: NextRequest) {
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'business'])
   if ('error' in access) return access.error
 
   try {
-    const businesses = await fetchQaBusinessList()
-    return NextResponse.json(businesses)
+    const businesses = filterQaBusinessesForAccess(access.shell, access.session.profile, await fetchQaBusinessList())
+    const routeId = request.nextUrl.searchParams.get('id')
+    const qaId = request.nextUrl.searchParams.get('qaId')
+    const targetId = (routeId || qaId || '').trim()
+
+    if (!targetId) {
+      return NextResponse.json(businesses)
+    }
+
+    const filtered = businesses.filter((business) => String(business.id) === targetId)
+    return NextResponse.json(filtered)
   } catch (error) {
     return qaRouteErrorResponse(error, 'The QA business list could not be loaded.')
   }

@@ -255,6 +255,87 @@ function useQaDelete(table: string) {
 
 // ─── Typed hooks (drop-in replacements for the original Supabase hooks) ────
 
+function useQaArrayEndpoint<T>(
+  url: string | null,
+  options?: {
+    orderBy?: string
+    orderAsc?: boolean
+    enabled?: boolean
+  },
+): UseQueryResult<T> {
+  const [data, setData] = React.useState<T[]>([])
+  const [loading, setLoading] = React.useState(options?.enabled ?? true)
+  const [error, setError] = React.useState<string | null>(null)
+  const [refetchKey, setRefetchKey] = React.useState(0)
+  const silentRefetchRef = React.useRef(false)
+  const enabled = options?.enabled ?? true
+
+  React.useEffect(() => {
+    if (!enabled || !url) {
+      setLoading(false)
+      if (!url) setData([])
+      return
+    }
+
+    let cancelled = false
+
+    async function run() {
+      if (!silentRefetchRef.current) setLoading(true)
+      setError(null)
+
+      try {
+        const requestUrl = url
+        if (!requestUrl) return
+        const res = await withTimeout(fetch(requestUrl, { cache: 'no-store' }), `${requestUrl} query`)
+        if (!res.ok) {
+          const text = await res.text().catch(() => '')
+          throw new Error(text || `Request failed with ${res.status}`)
+        }
+
+        const json = await res.json().catch(() => null)
+        const rows = Array.isArray(json) ? json : json == null ? [] : [json]
+
+        let sorted = rows as T[]
+        if (options?.orderBy) {
+          const orderBy = options.orderBy
+          const orderAsc = options.orderAsc ?? false
+          sorted = [...sorted].sort((a, b) => {
+            const av = (a as Record<string, unknown>)[orderBy]
+            const bv = (b as Record<string, unknown>)[orderBy]
+            if (av === bv) return 0
+            if (av == null) return orderAsc ? -1 : 1
+            if (bv == null) return orderAsc ? 1 : -1
+            if (av < bv) return orderAsc ? -1 : 1
+            return orderAsc ? 1 : -1
+          })
+        }
+
+        if (!cancelled) setData(sorted)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load data.')
+          setData([])
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+          silentRefetchRef.current = false
+        }
+      }
+    }
+
+    run()
+    return () => { cancelled = true }
+  }, [url, enabled, options?.orderBy, options?.orderAsc, refetchKey])
+
+  const refetch = React.useCallback((opts?: { silent?: boolean }) => {
+    silentRefetchRef.current = !!opts?.silent
+    setRefetchKey((k) => k + 1)
+  }, [])
+
+  return { data, loading, error, refetch }
+}
+
 export function useBusinesses(filters?: Record<string, string>, options?: UseQueryOptions) {
   // businesses live in /api/qa/businesses (existing route) — not /api/qa/dashboard/businesses
   const [data, setData] = React.useState<Business[]>([])
@@ -271,7 +352,8 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch('/api/qa/businesses', { cache: 'no-store' })
+        const qs = buildQueryString(JSON.parse(filtersKey) as Record<string, string>)
+        const res = await fetch(`/api/qa/businesses${qs}`, { cache: 'no-store' })
         if (!res.ok) throw new Error('Failed to load businesses.')
         const json = await res.json()
         const arr = Array.isArray(json) ? json : []
@@ -312,8 +394,75 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
   const refetch = React.useCallback((_opts?: { silent?: boolean }) => setRefetchKey((k) => k + 1), [])
   return { data, loading, error, refetch }
 }
-export function useBusinessInsert() { return useQaInsert<Business>('businesses') }
-export function useBusinessUpdate() { return useQaUpdate<Business>('businesses') }
+export function useBusinessInsert() {
+  const [loading, setLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const insert = React.useCallback(async (record: Partial<Business>): Promise<Business | null> => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await withTimeout(
+        fetch('/api/qa/businesses', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(record),
+        }),
+        'business create',
+      )
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(text || `business create failed with ${res.status}`)
+      }
+      return (await res.json()) as Business
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create business.')
+      return null
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  return { insert, loading, error }
+}
+export function useBusinessUpdate() {
+  const [loading, setLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const update = React.useCallback(async (id: string | number, changes: Partial<Business>): Promise<Business | null> => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const res = await withTimeout(
+        fetch(`/api/qa/businesses/${id}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(changes),
+        }),
+        'business update',
+      )
+
+      if (!res.ok) {
+        const contentType = res.headers.get('content-type') || ''
+        const message = contentType.includes('application/json')
+          ? ((await res.json().catch(() => ({}))) as { error?: string }).error
+          : await res.text().catch(() => '')
+        setError(message || `business update failed with ${res.status}`)
+        return null
+      }
+
+      return (await res.json()) as Business
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update business.')
+      return null
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  return { update, loading, error }
+}
 
 export function useCauses(filters?: Record<string, string>, options?: UseQueryOptions) {
   const [data, setData] = React.useState<Cause[]>([])
@@ -386,7 +535,18 @@ export function useStakeholders(filters?: Record<string, string>, options?: UseQ
 export function useStakeholderInsert() { return useQaInsert<Stakeholder>('stakeholders') }
 export function useStakeholderUpdate() { return useQaUpdate<Stakeholder>('stakeholders') }
 export function useStakeholderCodes(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useQaQuery<StakeholderCode>('stakeholder_codes', { filters, orderBy: 'updated_at', enabled: options?.enabled })
+  const stakeholderId = filters?.stakeholder_id
+  const useDirectPath = !!stakeholderId && /^\d+$/.test(stakeholderId)
+  const direct = useQaArrayEndpoint<StakeholderCode>(
+    useDirectPath ? `/api/qa/dashboard/stakeholder_codes/${encodeURIComponent(stakeholderId)}` : null,
+    { orderBy: 'updated_at', enabled: (options?.enabled ?? true) && useDirectPath },
+  )
+  const fallback = useQaQuery<StakeholderCode>('stakeholder_codes', {
+    filters,
+    orderBy: 'updated_at',
+    enabled: (options?.enabled ?? true) && !useDirectPath,
+  })
+  return useDirectPath ? direct : fallback
 }
 export function useStakeholderCodeInsert() { return useQaInsert<StakeholderCode>('stakeholder_codes') }
 export function useStakeholderCodeUpdate() { return useQaUpdate<StakeholderCode>('stakeholder_codes') }
@@ -463,7 +623,25 @@ export function useProfiles(options?: UseQueryOptions) {
 export function useProfileUpdate() { return useQaUpdate<Profile>('profiles') }
 
 export function useQrCodes(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useQaQuery<QrCode>('qr_codes', { filters, enabled: options?.enabled })
+  const normalizedFilters = React.useMemo(() => {
+    if (!filters) return filters
+    if (filters.entity_id || filters.entity_type) return filters
+    if (filters.business_id) {
+      const { business_id, ...rest } = filters
+      return { ...rest, entity_type: 'business', entity_id: business_id }
+    }
+    if (filters.cause_id) {
+      const { cause_id, ...rest } = filters
+      return { ...rest, entity_type: 'cause', entity_id: cause_id }
+    }
+    if (filters.contact_id) {
+      const { contact_id, ...rest } = filters
+      return { ...rest, entity_type: 'contact', entity_id: contact_id }
+    }
+    return filters
+  }, [filters])
+
+  return useQaQuery<QrCode>('qr_codes', { filters: normalizedFilters, enabled: options?.enabled })
 }
 export function useQrCodeCollections(_filters?: Record<string, string>) {
   return useQaQuery<QrCodeCollection>('qr_code_collections')
@@ -511,7 +689,19 @@ export function useOnboardingFlowInsert() { return useQaInsert<OnboardingFlow>('
 export function useOnboardingFlowUpdate() { return useQaUpdate<OnboardingFlow>('onboarding_flows') }
 
 export function useOnboardingSteps(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useQaQuery<OnboardingStep>('onboarding_steps', { filters, orderBy: 'sort_order', orderAsc: true, enabled: options?.enabled })
+  const flowId = filters?.flow_id
+  const useDirectPath = !!flowId && /^\d+$/.test(flowId)
+  const direct = useQaArrayEndpoint<OnboardingStep>(
+    useDirectPath ? `/api/qa/onboarding-flows/${encodeURIComponent(flowId)}/steps` : null,
+    { orderBy: 'sort_order', orderAsc: true, enabled: (options?.enabled ?? true) && useDirectPath },
+  )
+  const fallback = useQaQuery<OnboardingStep>('onboarding_steps', {
+    filters,
+    orderBy: 'sort_order',
+    orderAsc: true,
+    enabled: (options?.enabled ?? true) && !useDirectPath,
+  })
+  return useDirectPath ? direct : fallback
 }
 export function useOnboardingStepInsert() { return useQaInsert<OnboardingStep>('onboarding_steps') }
 export function useOnboardingStepUpdate() { return useQaUpdate<OnboardingStep>('onboarding_steps') }

@@ -300,9 +300,47 @@ export function toBackendShape(
   const aliases = FIELD_ALIASES[entityKey] || {}
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(payload)) {
+    if (entityKey === 'tasks' && k === 'completed_at') continue
+
+    if (entityKey === 'offers') {
+      if (k === 'headline') {
+        out.title = v
+        continue
+      }
+      if (k === 'value_type') continue
+      if (k === 'value_label') {
+        if (payload.offer_type === 'cashback' || payload.value_type === 'cashback_percent') {
+          if (payload.cashback_percent == null) out.discountValue = v
+        } else {
+          out.discountValue = v
+        }
+        continue
+      }
+      if (k === 'cashback_percent') {
+        out.discountValue = v == null ? null : String(v)
+        continue
+      }
+      if (k === 'starts_at') {
+        out.startDate = v
+        continue
+      }
+      if (k === 'ends_at') {
+        out.endDate = v
+        continue
+      }
+    }
+
     const backendKey = aliases[k] || toCamelCase(k)
     if (ID_FIELDS_REQUIRING_LONG.has(backendKey) && !isValidLongId(v)) {
       // skip — backend would 400 on this
+      continue
+    }
+    if (backendKey === 'metadata' && v && typeof v === 'object' && !Array.isArray(v)) {
+      out[backendKey] = JSON.stringify(v)
+      continue
+    }
+    if (entityKey === 'tasks' && backendKey === 'dueDate' && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      out[backendKey] = `${v}T00:00:00.000Z`
       continue
     }
     out[backendKey] = v
@@ -328,6 +366,20 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
   },
   offers: (row) => {
     if (typeof row.brand === 'string') row.brand = row.brand.toLowerCase()
+    if (typeof row.title === 'string' && !row.headline) row.headline = row.title
+    if (typeof row.start_date === 'string' && !row.starts_at) row.starts_at = row.start_date
+    if (typeof row.end_date === 'string' && !row.ends_at) row.ends_at = row.end_date
+    if (row.discount_value != null && row.value_label == null) row.value_label = String(row.discount_value)
+    if (typeof row.offer_type === 'string' && !row.value_type) {
+      row.value_type = row.offer_type === 'cashback' ? 'cashback_percent' : 'label'
+    }
+    if (row.cashback_percent == null && row.offer_type === 'cashback' && row.discount_value != null) {
+      const parsed = Number.parseFloat(String(row.discount_value).replace(/[^\d.-]/g, ''))
+      row.cashback_percent = Number.isFinite(parsed) ? parsed : null
+    }
+    if (row.offer_type === 'cashback' && row.cashback_percent != null && !row.value_label) {
+      row.value_label = `${row.cashback_percent}% cashback`
+    }
   },
   stakeholders: (row) => {
     if (typeof row.brand === 'string') row.brand = row.brand.toLowerCase()
@@ -389,6 +441,20 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
   onboarding_flows: (row) => {
     // Frontend expects { stage, completed_at }; backend has status + completedAt.
     if (typeof row.status === 'string' && !row.stage) row.stage = row.status
+  },
+  qr_codes: (row) => {
+    if (typeof row.code === 'string' && !row.short_code) row.short_code = row.code
+    if (typeof row.target_url === 'string' && !row.destination_url) row.destination_url = row.target_url
+    if (typeof row.target_url === 'string' && !row.redirect_url) row.redirect_url = row.target_url
+    if (typeof row.name !== 'string' || !row.name) {
+      row.name = `QR ${String(row.short_code || row.id || '').trim()}`.trim() || 'QR Code'
+    }
+    if (row.scan_count == null) row.scan_count = 0
+  },
+  materials: (row) => {
+    if (typeof row.name === 'string' && !row.title) row.title = row.name
+    if (typeof row.file_type === 'string' && !row.type) row.type = row.file_type
+    if (row.status == null) row.status = 'active'
   },
 }
 
