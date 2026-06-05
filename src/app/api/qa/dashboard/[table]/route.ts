@@ -2,14 +2,30 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi, parseQaResponse, QaApiError } from '@/lib/auth/qa-api'
 import {
   EMPTY_FALLBACK_TABLES,
+  FIELD_ALIASES,
   QA_ENTITY_MAP,
   QaEntityKey,
+  toCamelCase,
   toBackendShape,
   toFrontendShape,
 } from '@/lib/qa/dashboard-entity-map'
 
 function isMappedEntity(table: string): table is QaEntityKey {
   return table in QA_ENTITY_MAP
+}
+
+function buildBackendSearch(table: QaEntityKey, request: NextRequest) {
+  const aliases = FIELD_ALIASES[table] || {}
+  const params = new URLSearchParams()
+
+  for (const [key, value] of request.nextUrl.searchParams.entries()) {
+    if (!key) continue
+    const backendKey = aliases[key] || toCamelCase(key)
+    params.append(backendKey, value)
+  }
+
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
 }
 
 /**
@@ -37,7 +53,7 @@ export async function GET(
   }
 
   const config = QA_ENTITY_MAP[table]
-  const search = new URL(request.url).search
+  const search = buildBackendSearch(table, request)
 
   try {
     const res = await fetchQaApi(config.endpoint + (search || ''))

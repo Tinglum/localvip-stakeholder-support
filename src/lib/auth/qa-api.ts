@@ -1,6 +1,13 @@
 import { cookies } from 'next/headers'
 import { getQaSessionFromCookieStore, QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 
+type CachedQaToken = {
+  accessToken: string
+  expiresAt: number
+}
+
+const qaRefreshTokenCache = new Map<string, CachedQaToken>()
+
 function buildQaApiUrl(path: string) {
   return path.startsWith('http')
     ? path
@@ -9,25 +16,102 @@ function buildQaApiUrl(path: string) {
 
 export async function getQaAccessToken() {
   const session = getQaSessionFromCookieStore(cookies())
+  const refreshToken = session?.refreshToken || null
+  const now = Math.floor(Date.now() / 1000)
+
+  if (refreshToken) {
+    const cached = qaRefreshTokenCache.get(refreshToken)
+    if (cached && cached.expiresAt > now + 30) {
+      return cached.accessToken
+    }
+  }
+
   return session?.accessToken || null
 }
 
+async function refreshQaAccessToken(refreshToken: string) {
+  const tokenUrl = buildQaApiUrl('/connect/token')
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: QA_AUTH_CONFIG.clientId,
+    refresh_token: refreshToken,
+  })
+
+  const headers: Record<string, string> = {
+    'content-type': 'application/x-www-form-urlencoded',
+  }
+
+  if (QA_AUTH_CONFIG.clientSecret) {
+    const credentials = Buffer.from(`${QA_AUTH_CONFIG.clientId}:${QA_AUTH_CONFIG.clientSecret}`).toString('base64')
+    headers.authorization = `Basic ${credentials}`
+  }
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers,
+    body: body.toString(),
+    cache: 'no-store',
+  })
+
+  const json = await response.json().catch(() => null) as {
+    access_token?: string
+    expires_in?: number | string
+    error?: string
+    error_description?: string
+  } | null
+
+  if (!response.ok || !json?.access_token) {
+    throw new Error(json?.error_description || json?.error || 'QA access-token refresh failed.')
+  }
+
+  const expiresIn = typeof json.expires_in === 'number'
+    ? json.expires_in
+    : Number.parseInt(String(json.expires_in || '3600'), 10)
+  const expiresAt = Math.floor(Date.now() / 1000) + Math.max(expiresIn || 3600, 300)
+  const next = {
+    accessToken: String(json.access_token),
+    expiresAt,
+  } satisfies CachedQaToken
+
+  qaRefreshTokenCache.set(refreshToken, next)
+  return next.accessToken
+}
+
 export async function fetchQaApi(path: string, init?: RequestInit) {
-  const accessToken = await getQaAccessToken()
+  const session = getQaSessionFromCookieStore(cookies())
+  const accessToken = session?.accessToken || null
   if (!accessToken) {
     throw new Error('No QA access token available.')
   }
 
   const url = buildQaApiUrl(path)
 
-  const headers = new Headers(init?.headers || {})
-  headers.set('authorization', `Bearer ${accessToken}`)
+  const makeHeaders = (token: string) => {
+    const headers = new Headers(init?.headers || {})
+    headers.set('authorization', `Bearer ${token}`)
+    return headers
+  }
 
-  return fetch(url, {
+  const response = await fetch(url, {
     ...init,
-    headers,
+    headers: makeHeaders(accessToken),
     cache: 'no-store',
   })
+
+  if (response.status !== 401 || !session?.refreshToken) {
+    return response
+  }
+
+  try {
+    const refreshedAccessToken = await refreshQaAccessToken(session.refreshToken)
+    return fetch(url, {
+      ...init,
+      headers: makeHeaders(refreshedAccessToken),
+      cache: 'no-store',
+    })
+  } catch {
+    return response
+  }
 }
 
 export async function fetchQaPublicApi(path: string, init?: RequestInit) {
