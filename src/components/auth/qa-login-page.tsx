@@ -143,7 +143,7 @@ export function QaLoginPage({
               idToken: tokenJson.id_token || null,
               refreshToken: tokenJson.refresh_token || null,
               expiresIn: tokenJson.expires_in || null,
-              scope: tokenJson.scope || scopes,
+              scope: tokenJson.scope || null,
               returnTo: storedReturnTo,
             }),
           })

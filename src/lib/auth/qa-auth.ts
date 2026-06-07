@@ -347,7 +347,7 @@ export function buildQaSessionFromTokens(tokens: {
     ? tokens.expiresAt
     : now + Math.max(tokens.expiresIn || 3600, 300)
   const claims = normalizeQaClaims(tokens.accessToken, tokens.idToken ?? null)
-  const grantedScopes = mergeScopeLists(tokens.grantedScopes, claims.scopes, QA_AUTH_CONFIG.scopes)
+  const grantedScopes = mergeScopeLists(tokens.grantedScopes, claims.scopes)
 
   return {
     accessToken: tokens.accessToken,
@@ -645,7 +645,7 @@ export async function exchangeCodeForSession(options: {
     idToken: typeof json.id_token === 'string' ? json.id_token : null,
     refreshToken: typeof json.refresh_token === 'string' ? json.refresh_token : null,
     expiresIn,
-    grantedScopes: typeof json.scope === 'string' ? json.scope : QA_AUTH_CONFIG.scopes,
+    grantedScopes: typeof json.scope === 'string' ? json.scope : null,
   })
 }
 
