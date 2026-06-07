@@ -1,80 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
+import type { ResolvedAuthSession } from '@/lib/server/auth-session'
 import {
   ensureBusinessJoinResource,
   updateBusinessJoinQrAppearance,
   userCanManageBusinessJoin,
 } from '@/lib/server/business-capture'
+import type { BusinessJoinQrAppearance } from '@/lib/business-join'
+import {
+  buildQaBusinessJoinResource,
+  updateQaBusinessStakeholderAppearance,
+} from '@/lib/server/qa-business-stakeholders'
+import { canAccessQaBusinessRecord } from '@/lib/server/qa-business-access'
+import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { fetchQaBusinessDetail } from '@/lib/server/qa-dashboard-businesses'
 
-interface QrAppearance {
-  foregroundColor?: string
-  backgroundColor?: string
-  frameText?: string
-  useBusinessLogo?: boolean
-  dotStyle?: string
-  cornerStyle?: string
-  gradientType?: string
-  gradientColors?: string[]
-}
-
-const DEFAULT_APPEARANCE: QrAppearance = {
-  foregroundColor: '#000000',
-  backgroundColor: '#FFFFFF',
-  frameText: 'Join now',
-  useBusinessLogo: true,
-  dotStyle: 'square',
-  cornerStyle: 'square',
-  gradientType: 'none',
-  gradientColors: [],
-}
-
-/** Build a Business Join Resource from QA stakeholder + codes. */
-async function buildQaResource(businessId: string): Promise<NextResponse | { resource: Record<string, unknown> }> {
-  // 1. Find the stakeholder linked to this QA business
-  const stakeholderRes = await fetchQaApi(`/api/dashboard/v1/Stakeholder?businessAccountId=${encodeURIComponent(businessId)}`)
-  const stakeholderJson = await parseQaResponse<unknown>(stakeholderRes, 'Failed to load stakeholder.').catch(() => null)
-  const items = Array.isArray(stakeholderJson) ? stakeholderJson
-    : (stakeholderJson && typeof stakeholderJson === 'object' && Array.isArray((stakeholderJson as Record<string, unknown>).items))
-      ? (stakeholderJson as Record<string, unknown>).items as Array<Record<string, unknown>>
-      : []
-  const stakeholder = items[0]
-  if (!stakeholder?.id) {
-    return NextResponse.json({ error: 'No stakeholder linked to this business.' }, { status: 404 })
+async function buildQaResource(session: ResolvedAuthSession, businessId: string) {
+  const business = await fetchQaBusinessDetail(Number(businessId))
+  const shell = getStakeholderShell(session.profile)
+  if (!canAccessQaBusinessRecord(shell, session.profile, business)) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
   }
 
-  // 2. Pull the stakeholder's metadata to extract qr_appearance
-  let metadata: Record<string, unknown> = {}
-  if (typeof stakeholder.metadata === 'string') {
-    try { metadata = JSON.parse(stakeholder.metadata) } catch { metadata = {} }
-  } else if (stakeholder.metadata && typeof stakeholder.metadata === 'object') {
-    metadata = stakeholder.metadata as Record<string, unknown>
-  }
-  const appearance: QrAppearance = {
-    ...DEFAULT_APPEARANCE,
-    ...((metadata.qr_appearance as QrAppearance) || {}),
-  }
-
-  // 3. Pull codes to derive joinUrl
-  const codeRes = await fetchQaApi(`/api/dashboard/v1/StakeholderCode/${encodeURIComponent(String(stakeholder.id))}`)
-  const codeJson = await parseQaResponse<unknown>(codeRes, '').catch(() => null)
-  const codes = Array.isArray(codeJson) ? codeJson
-    : (codeJson && typeof codeJson === 'object' && Array.isArray((codeJson as Record<string, unknown>).items))
-      ? (codeJson as Record<string, unknown>).items as Array<Record<string, unknown>>
-      : []
-  const codeRow = codes[0] || {}
-
-  return {
-    resource: {
-      stakeholderId: stakeholder.id,
-      joinUrl: codeRow.joinUrl || codeRow.JoinUrl || null,
-      referralCode: codeRow.referralCode || codeRow.ReferralCode || null,
-      connectionCode: codeRow.connectionCode || codeRow.ConnectionCode || null,
-      appearance,
-      offerTitle: stakeholder.name || null,
-    },
-  }
+  const resource = await buildQaBusinessJoinResource(businessId)
+  return { resource }
 }
 
 export async function GET(request: NextRequest) {
@@ -86,7 +36,7 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
   if (session.source === 'qa') {
-    const result = await buildQaResource(businessId)
+    const result = await buildQaResource(session, businessId)
     if (result instanceof NextResponse) return result
     return NextResponse.json(result.resource)
   }
@@ -111,36 +61,19 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (session.source === 'qa') {
-    // Look up stakeholder
-    const result = await buildQaResource(businessId)
+    const result = await buildQaResource(session, businessId)
     if (result instanceof NextResponse) return result
-    const current = result.resource
-    const stakeholderId = current.stakeholderId as string | number
-    const currentAppearance = current.appearance as QrAppearance
-    const nextAppearance: QrAppearance = {
-      ...currentAppearance,
-      ...(payload as QrAppearance),
-    }
-
-    // Pull stakeholder to merge metadata
-    const sRes = await fetchQaApi(`/api/dashboard/v1/Stakeholder/${encodeURIComponent(String(stakeholderId))}`)
-    const sJson = (await parseQaResponse<Record<string, unknown>>(sRes, 'Failed to load stakeholder.').catch(() => null)) || {}
-    const sMeta = (sJson as Record<string, unknown>).metadata
-    let meta: Record<string, unknown> = {}
-    if (typeof sMeta === 'string') {
-      try { meta = JSON.parse(sMeta) } catch { meta = {} }
-    } else if (sMeta && typeof sMeta === 'object') {
-      meta = sMeta as Record<string, unknown>
-    }
-    meta.qr_appearance = nextAppearance
-
-    const putRes = await fetchQaApi(`/api/dashboard/v1/Stakeholder/${encodeURIComponent(String(stakeholderId))}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ metadata: JSON.stringify(meta) }),
+    const resource = await updateQaBusinessStakeholderAppearance(businessId, {
+      foregroundColor: typeof payload.foregroundColor === 'string' ? payload.foregroundColor : undefined,
+      backgroundColor: typeof payload.backgroundColor === 'string' ? payload.backgroundColor : undefined,
+      frameText: typeof payload.frameText === 'string' ? payload.frameText : undefined,
+      useBusinessLogo: typeof payload.useBusinessLogo === 'boolean' ? payload.useBusinessLogo : undefined,
+      dotStyle: payload.dotStyle as BusinessJoinQrAppearance['dotStyle'] | undefined,
+      cornerStyle: payload.cornerStyle as BusinessJoinQrAppearance['cornerStyle'] | undefined,
+      gradientType: payload.gradientType as BusinessJoinQrAppearance['gradientType'] | undefined,
+      gradientColors: Array.isArray(payload.gradientColors) ? payload.gradientColors as [string, string] : undefined,
     })
-    await parseQaResponse<unknown>(putRes, 'Failed to update QR appearance.')
-    return NextResponse.json({ ...current, appearance: nextAppearance })
+    return NextResponse.json(resource)
   }
 
   // Demo path

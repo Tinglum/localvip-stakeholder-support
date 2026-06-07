@@ -18,7 +18,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useAuth } from '@/lib/auth/context'
-import { useMaterialTemplates, useStakeholders } from '@/lib/supabase/hooks'
+import { resolveScopedBusiness } from '@/lib/business-portal'
+import { useBusinesses, useMaterialTemplates, useStakeholders } from '@/lib/supabase/hooks'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import type { MaterialTemplate, MaterialLibraryFolder } from '@/lib/types/database'
 
@@ -49,9 +50,21 @@ function getTemplateCity(template: MaterialTemplate): string | null {
 
 export function TemplateLibraryPage() {
   const { profile } = useAuth()
+  const businessFilters = React.useMemo<Record<string, string>>(() => {
+    const filters: Record<string, string> = {}
+    if (profile.business_id) {
+      filters.id = profile.business_id
+    } else {
+      filters.owner_id = profile.id
+    }
+    return filters
+  }, [profile.business_id, profile.id])
+  const { data: businesses, loading: businessesLoading } = useBusinesses(businessFilters)
+  const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
 
   // Resolve stakeholder for the current user — match broadly like the materials page
-  const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
+  const { data: stakeholders, loading: stakeholdersLoading, refetch: refetchStakeholders } = useStakeholders()
+  const [provisioningStakeholder, setProvisioningStakeholder] = React.useState(false)
 
   const stakeholder = React.useMemo(() => {
     if (stakeholders.length === 0) return null
@@ -70,6 +83,30 @@ export function TemplateLibraryPage() {
       null
     )
   }, [stakeholders, profile])
+
+  React.useEffect(() => {
+    if (!business?.id || stakeholder || provisioningStakeholder) return
+
+    let cancelled = false
+    const currentBusinessId = business.id
+
+    async function ensureStakeholder() {
+      setProvisioningStakeholder(true)
+      try {
+        const response = await fetch(`/api/business-portal/collect?businessId=${encodeURIComponent(currentBusinessId)}`, { cache: 'no-store' })
+        if (response.ok && !cancelled) {
+          refetchStakeholders({ silent: true })
+        }
+      } finally {
+        if (!cancelled) setProvisioningStakeholder(false)
+      }
+    }
+
+    void ensureStakeholder()
+    return () => {
+      cancelled = true
+    }
+  }, [business?.id, provisioningStakeholder, refetchStakeholders, stakeholder])
 
   // Fetch all active selfserve templates
   const { data: allTemplates, loading: templatesLoading } = useMaterialTemplates({
@@ -165,7 +202,7 @@ export function TemplateLibraryPage() {
   const [generating, setGenerating] = React.useState(false)
 
   async function handleGenerate() {
-    if (!selectedTemplate || !stakeholder) return
+    if (!selectedTemplate || (!stakeholder && !business?.id)) return
 
     setGenerating(true)
     try {
@@ -173,7 +210,8 @@ export function TemplateLibraryPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          stakeholderId: stakeholder.id,
+          stakeholderId: stakeholder?.id,
+          businessId: business?.id,
           templateId: selectedTemplate.id,
         }),
       })
@@ -196,7 +234,7 @@ export function TemplateLibraryPage() {
 
   // ─── Loading / empty states ──────────────────────
 
-  const isLoading = templatesLoading || stakeholdersLoading
+  const isLoading = templatesLoading || stakeholdersLoading || businessesLoading || provisioningStakeholder
 
   if (isLoading) {
     return (
@@ -215,8 +253,10 @@ export function TemplateLibraryPage() {
         />
         <EmptyState
           icon={<LayoutTemplate className="h-10 w-10 text-surface-300" />}
-          title="No stakeholder profile found"
-          description="Your account does not have a stakeholder profile linked yet. Please contact support for assistance."
+          title={business ? 'Preparing your materials workspace' : 'No stakeholder profile found'}
+          description={business
+            ? 'We are setting up the business stakeholder records this workspace needs. Refresh in a moment if this does not clear automatically.'
+            : 'Your account does not have a stakeholder profile linked yet.'}
         />
       </div>
     )

@@ -138,8 +138,9 @@ export default function BusinessDetailPage() {
   const localEntityId = localBusinessId || EMPTY_UUID
   const localStateBusinessId = asUuid(localBusinessId)
   const supportsLegacyWorkflow = !!localStateBusinessId
+  const preferQaWorkspace = businessResponse?.qaBusinessId !== null && businessResponse?.qaBusinessId !== undefined
   const { data: localState, loading: localStateLoading, error: localStateError, refetch: refetchLocalState } = useCrmBusinessLocalState(localStateBusinessId)
-  const qaFallbackStateEnabled = !localState && !!resolvedBusinessId
+  const qaFallbackStateEnabled = !!resolvedBusinessId && (!localState || preferQaWorkspace)
   const { data: qaStakeholders } = useStakeholders(
     { business_id: resolvedBusinessId || '__none__' },
     { enabled: qaFallbackStateEnabled },
@@ -150,10 +151,10 @@ export default function BusinessDetailPage() {
   const causes = localState?.causes || []
   const campaigns = localState?.campaigns || []
   const qrCodes = localState?.qrCodes || []
-  const materials = localState?.materials || qaMaterials
-  const allStakeholders = localState?.stakeholders || qaStakeholders
+  const materials = preferQaWorkspace ? qaMaterials : (localState?.materials || qaMaterials)
+  const allStakeholders = preferQaWorkspace ? qaStakeholders : (localState?.stakeholders || qaStakeholders)
   const assignments = React.useMemo(() => localState?.assignments ?? [], [localState?.assignments])
-  const fallbackEntityHooksEnabled = !localState && !localStateLoading && !!resolvedBusinessId
+  const fallbackEntityHooksEnabled = (!localState || preferQaWorkspace) && !localStateLoading && !!resolvedBusinessId
   const { data: outreach, loading: outreachLoading, refetch: refetchOutreachItems } = useOutreach({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
   const { data: tasks, loading: tasksLoading, refetch: refetchTaskItems } = useTasks({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
   const { data: notes, loading: notesLoading, refetch: refetchNoteItems } = useNotes({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
@@ -165,12 +166,12 @@ export default function BusinessDetailPage() {
   const { insert: insertNote, loading: insertingNote } = useNoteInsert()
   const { update: updateTask } = useTaskUpdate()
 
-  const outreachItems = localState?.outreach || outreach
-  const outreachBusy = localState ? false : outreachLoading
-  const taskItems = localState?.tasks || tasks
-  const tasksBusy = localState ? false : tasksLoading
-  const noteItems = localState?.notes || notes
-  const notesBusy = localState ? false : notesLoading
+  const outreachItems = preferQaWorkspace ? outreach : (localState?.outreach || outreach)
+  const outreachBusy = preferQaWorkspace ? outreachLoading : (localState ? false : outreachLoading)
+  const taskItems = preferQaWorkspace ? tasks : (localState?.tasks || tasks)
+  const tasksBusy = preferQaWorkspace ? tasksLoading : (localState ? false : tasksLoading)
+  const noteItems = preferQaWorkspace ? notes : (localState?.notes || notes)
+  const notesBusy = preferQaWorkspace ? notesLoading : (localState ? false : notesLoading)
 
   const profileMap = React.useMemo(() => new Map(profiles.map(item => [item.id, item])), [profiles])
   const city = biz?.city_id ? cities.find(item => item.id === biz.city_id) || null : null
@@ -187,12 +188,12 @@ export default function BusinessDetailPage() {
     { stakeholder_id: businessStakeholder?.id || '__none__' },
     { enabled: qaFallbackStateEnabled && !!businessStakeholder?.id },
   )
-  const allGeneratedMaterials = localState?.generatedMaterials || qaGeneratedMaterials
+  const allGeneratedMaterials = preferQaWorkspace ? qaGeneratedMaterials : (localState?.generatedMaterials || qaGeneratedMaterials)
   const businessStakeholderCodes = React.useMemo(() => {
     if (!businessStakeholder) return null
-    const source = localState?.stakeholderCodes || qaStakeholderCodes
+    const source = preferQaWorkspace ? qaStakeholderCodes : (localState?.stakeholderCodes || qaStakeholderCodes)
     return (source as Array<{ stakeholder_id: string; referral_code: string | null; connection_code: string | null; join_url: string | null }>).find(sc => sc.stakeholder_id === businessStakeholder.id) || null
-  }, [businessStakeholder, localState?.stakeholderCodes, qaStakeholderCodes])
+  }, [businessStakeholder, localState?.stakeholderCodes, preferQaWorkspace, qaStakeholderCodes])
   const businessJoinUrl = React.useMemo(() => {
     if (businessStakeholderCodes?.join_url) return businessStakeholderCodes.join_url
     if (businessStakeholderCodes?.connection_code) {
@@ -694,7 +695,7 @@ export default function BusinessDetailPage() {
       {activeTab === 'overview' && (
         readOnly ? (
           <ReadOnlyBusinessOverview biz={biz} qaBusiness={qaBusiness} />
-        ) : localStateLoading ? (
+        ) : localStateLoading && !preferQaWorkspace ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
             <span className="ml-2 text-sm text-surface-500">Loading business workspace...</span>
@@ -705,7 +706,7 @@ export default function BusinessDetailPage() {
               biz={biz}
               localBusinessId={localBusinessId}
               qaBusinessId={businessResponse?.qaBusinessId || qaBusinessId}
-              localState={localState}
+              localState={preferQaWorkspace ? null : localState}
               city={city}
               owner={owner}
               linkedCause={linkedCause}

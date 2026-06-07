@@ -5,6 +5,8 @@ import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { ensureBusinessStakeholderSetup } from '@/lib/server/stakeholder-lifecycle'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { ensureQaBusinessStakeholderContext } from '@/lib/server/qa-business-stakeholders'
+import { getQaAccountIdFromLocal } from '@/lib/server/qa-dashboard-shared'
 import type { Business, Stakeholder } from '@/lib/types/database'
 
 export const runtime = 'nodejs'
@@ -97,14 +99,8 @@ async function handleQaMaterialsAction(
 ): Promise<NextResponse> {
   let stakeholderId: string | null = null
   try {
-    const res = await fetchQaApi(`/api/dashboard/v1/Stakeholder?businessAccountId=${encodeURIComponent(businessId)}`)
-    const json = await parseQaResponse<unknown>(res, 'Failed to load stakeholder.')
-    const items = Array.isArray(json) ? json
-      : (json && typeof json === 'object' && Array.isArray((json as Record<string, unknown>).items))
-        ? (json as Record<string, unknown>).items as unknown[]
-        : []
-    const first = items[0] as { id?: string | number } | undefined
-    if (first?.id != null) stakeholderId = String(first.id)
+    const context = await ensureQaBusinessStakeholderContext(businessId)
+    stakeholderId = String(context.stakeholder.id)
   } catch { /* fall through */ }
 
   try {
@@ -184,6 +180,24 @@ async function handleQaMaterialsAction(
   }
 }
 
+async function resolveQaBusinessRouteId(businessId: string) {
+  if (/^\d+$/.test(businessId)) return businessId
+
+  const supabase = createServiceClient()
+  const { data: business } = await supabase
+    .from('businesses')
+    .select('external_id, metadata')
+    .eq('id', businessId)
+    .maybeSingle()
+
+  const qaBusinessId = business ? getQaAccountIdFromLocal(business as { external_id: string | null; metadata: Record<string, unknown> | null }) : null
+  if (qaBusinessId === null) {
+    throw new Error('This business is not linked to a QA business yet.')
+  }
+
+  return String(qaBusinessId)
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } },
@@ -203,7 +217,8 @@ export async function POST(
 
     const probeSession = await getAuthenticatedSession()
     if (probeSession?.source === 'qa') {
-      return handleQaMaterialsAction(params.id, parsed.data)
+      const qaBusinessId = await resolveQaBusinessRouteId(params.id)
+      return handleQaMaterialsAction(qaBusinessId, parsed.data)
     }
 
     const context = await getMaterialsContext(params.id)

@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { generateMaterialsForStakeholder } from '@/lib/server/material-engine'
+import { ensureQaBusinessStakeholderContext } from '@/lib/server/qa-business-stakeholders'
 import type { Stakeholder } from '@/lib/types/database'
 
 export async function POST(request: NextRequest) {
@@ -15,14 +16,21 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient()
 
   const body = await request.json()
-  const { stakeholderId, templateId } = body as { stakeholderId: string; templateId: string }
+  let { stakeholderId, templateId, businessId } = body as { stakeholderId?: string; templateId?: string; businessId?: string }
 
-  if (!stakeholderId || !templateId) {
-    return NextResponse.json({ error: 'stakeholderId and templateId are required.' }, { status: 400 })
+  if (!templateId || (!stakeholderId && !businessId)) {
+    return NextResponse.json({ error: 'templateId and either stakeholderId or businessId are required.' }, { status: 400 })
   }
 
   if (session.source === 'qa') {
     try {
+      if (!stakeholderId && businessId) {
+        const context = await ensureQaBusinessStakeholderContext(businessId)
+        stakeholderId = String(context.stakeholder.id)
+      }
+      if (!stakeholderId) {
+        return NextResponse.json({ error: 'A stakeholder could not be prepared for this business.' }, { status: 400 })
+      }
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -36,6 +44,28 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
+  }
+
+  if (!stakeholderId && businessId) {
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('id', businessId)
+      .single()
+
+    if (!business) {
+      return NextResponse.json({ error: 'Business not found.' }, { status: 404 })
+    }
+
+    const ensuredStakeholder = await import('@/lib/server/stakeholder-lifecycle')
+      .then((module) => module.ensureBusinessStakeholderSetup(supabase, business as any, profile.id))
+      .catch(() => null)
+
+    stakeholderId = ensuredStakeholder?.id || undefined
+  }
+
+  if (!stakeholderId) {
+    return NextResponse.json({ error: 'A stakeholder could not be prepared for this business.' }, { status: 400 })
   }
 
   // Verify the user owns this stakeholder
