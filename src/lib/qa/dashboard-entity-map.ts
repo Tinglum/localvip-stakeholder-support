@@ -28,6 +28,12 @@ export type QaEntityKey =
   | 'outreach_scripts'
   | 'material_assignments'
   | 'materials'
+  | 'organizations'
+  | 'stakeholder_assignments'
+  | 'admin_tasks'
+  | 'business_referrals'
+  | 'city_access_requests'
+  | 'template_rules'
 
 export interface QaEntityConfig {
   /** Backend endpoint path under /api/dashboard/v1 */
@@ -65,20 +71,20 @@ export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
   outreach_scripts: { endpoint: '/api/dashboard/v1/OutreachScript', listWrapperKey: 'items' },
   material_assignments: { endpoint: '/api/dashboard/v1/MaterialAssignment', listWrapperKey: 'items' },
   materials: { endpoint: '/api/dashboard/v1/Material', listWrapperKey: 'items' },
+  // Wired to live QA backends added 2026-06 (controllers + AddDashboardCrmCompletion migration).
+  organizations: { endpoint: '/api/dashboard/v1/Organization', listWrapperKey: 'items' },
+  stakeholder_assignments: { endpoint: '/api/dashboard/v1/StakeholderAssignment', listWrapperKey: 'items' },
+  admin_tasks: { endpoint: '/api/dashboard/v1/AdminTask', listWrapperKey: 'items' },
+  business_referrals: { endpoint: '/api/dashboard/v1/BusinessReferral', listWrapperKey: 'items' },
+  city_access_requests: { endpoint: '/api/dashboard/v1/CityAccessRequest', listWrapperKey: 'items' },
+  template_rules: { endpoint: '/api/dashboard/v1/TemplateRule', listWrapperKey: 'items' },
 }
 
 /**
  * Tables that exist in the frontend but have no QA backend equivalent yet.
  * The dynamic API route returns [] for these to avoid breaking pages.
  */
-export const EMPTY_FALLBACK_TABLES = new Set([
-  'organizations',
-  'stakeholder_assignments',
-  'admin_tasks',
-  'business_referrals',
-  'city_access_requests',
-  'template_rules',
-])
+export const EMPTY_FALLBACK_TABLES = new Set<string>([])
 
 /** Convert camelCase → snake_case (for object keys) */
 export function toSnakeCase(key: string): string {
@@ -255,6 +261,25 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     business_id: 'businessAccountId',
     cause_id: 'causeAccountId',
   },
+  stakeholder_assignments: {
+    // Frontend stakeholder_id is the assigned dashboard user (QA user id).
+    stakeholder_id: 'stakeholderUserId',
+    assigned_by: 'assignedByUserId',
+  },
+  business_referrals: {
+    source_business_id: 'sourceBusinessAccountId',
+    created_by: 'createdByUserId',
+    target_business_id: 'targetBusinessAccountId',
+    converted_business_id: 'convertedBusinessAccountId',
+  },
+  city_access_requests: {
+    requester_id: 'requesterUserId',
+    reviewed_by: 'reviewedByUserId',
+  },
+  template_rules: {
+    created_by: 'createdByUserId',
+  },
+  // organizations + admin_tasks: plain snake↔camel conversion is sufficient.
 }
 
 /**
@@ -278,6 +303,17 @@ const ID_FIELDS_REQUIRING_LONG = new Set([
   'qrCodeId',
   'entityId',
   'userId',
+  // Added with the 6 newly-wired entities
+  'stakeholderUserId',
+  'assignedByUserId',
+  'sourceBusinessAccountId',
+  'targetBusinessAccountId',
+  'convertedBusinessAccountId',
+  'targetCityId',
+  'targetContactId',
+  'requesterUserId',
+  'reviewedByUserId',
+  'requestedCityId',
 ])
 
 function isValidLongId(v: unknown): boolean {
@@ -335,7 +371,7 @@ export function toBackendShape(
       // skip — backend would 400 on this
       continue
     }
-    if (backendKey === 'metadata' && v && typeof v === 'object' && !Array.isArray(v)) {
+    if ((backendKey === 'metadata' || backendKey === 'payloadJson') && v && typeof v === 'object' && !Array.isArray(v)) {
       out[backendKey] = JSON.stringify(v)
       continue
     }
@@ -455,6 +491,16 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     if (typeof row.name === 'string' && !row.title) row.title = row.name
     if (typeof row.file_type === 'string' && !row.type) row.type = row.file_type
     if (row.status == null) row.status = 'active'
+  },
+  admin_tasks: (row) => {
+    // Backend stores payload as a JSON string; frontend expects an object.
+    if (typeof row.payload_json === 'string' && row.payload_json) {
+      try {
+        row.payload_json = JSON.parse(row.payload_json as string)
+      } catch {
+        row.payload_json = null
+      }
+    }
   },
 }
 
