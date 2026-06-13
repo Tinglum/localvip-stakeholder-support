@@ -154,6 +154,17 @@ export function buildQaBusinessLogoUrl(qaBusiness: QaDashboardAccountSummary | Q
   return null
 }
 
+export function buildQaBusinessCoverUrl(qaBusiness: QaDashboardAccountSummary | QaDashboardAccountDetail | null) {
+  if (!qaBusiness) return null
+  const cover = 'coverPhotoUrl' in qaBusiness ? (qaBusiness as QaDashboardAccountDetail).coverPhotoUrl : null
+  const absolute = resolveImageUrl(cover)
+  if (absolute) return absolute
+  if (hasQaImageFilename(cover)) {
+    return `/api/qa/businesses/${qaBusiness.id}/cover`
+  }
+  return null
+}
+
 export function buildQaCauseLogoUrl(qaCause: QaDashboardAccountSummary | QaDashboardAccountDetail | null) {
   if (!qaCause) return null
   const absolute = resolveImageUrl('imageUrl' in qaCause ? qaCause.imageUrl : null)

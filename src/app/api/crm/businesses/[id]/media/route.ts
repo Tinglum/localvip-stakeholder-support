@@ -47,13 +47,12 @@ export async function POST(
           method: 'POST',
           body: fd,
         })
-        const json = await parseQaResponse<unknown>(res, `Failed to upload ${mediaType}.`)
-        const row = (json && typeof json === 'object' ? json : {}) as Record<string, unknown>
-        const fileUrl = (row.imageUrl as string | undefined)
-          || (row.logoUrl as string | undefined)
-          || (row.coverPhotoUrl as string | undefined)
-          || (row.CoverPhotoUrl as string | undefined)
-          || null
+        await parseQaResponse<unknown>(res, `Failed to upload ${mediaType}.`)
+        // Return the dashboard proxy URL (always reflects current QA state) so
+        // the preview renders immediately, not the bare QA filename.
+        const fileUrl = mediaType === 'logo'
+          ? `/api/qa/businesses/${encodeURIComponent(params.id)}/logo`
+          : `/api/qa/businesses/${encodeURIComponent(params.id)}/cover`
         return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true })
       } catch (err) {
         return NextResponse.json(

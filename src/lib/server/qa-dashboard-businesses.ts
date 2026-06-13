@@ -10,6 +10,7 @@ import type {
 import { QaApiError, fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import {
   buildQaBusinessLogoUrl,
+  buildQaBusinessCoverUrl,
   buildQaAccountFields,
   buildQaAccountMetadata,
   createAccountIndex,
@@ -80,7 +81,7 @@ export function mergeBusinessRecord(
     linked_material_id: localBusiness?.linked_material_id || null,
     linked_qr_code_id: localBusiness?.linked_qr_code_id || null,
     logo_url: buildQaBusinessLogoUrl(qaBusiness) || resolveImageUrl(qaFields.image_url) || localBusiness?.logo_url || null,
-    cover_photo_url: localBusiness?.cover_photo_url || null,
+    cover_photo_url: buildQaBusinessCoverUrl(qaBusiness) || localBusiness?.cover_photo_url || null,
     linked_qr_collection_id: localBusiness?.linked_qr_collection_id || null,
     duplicate_of: localBusiness?.duplicate_of || null,
     external_id: qaBusiness ? String(qaBusiness.id) : localBusiness?.external_id || null,

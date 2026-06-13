@@ -43,6 +43,7 @@ export interface QaDashboardAccountDetail extends QaDashboardAccountSummary {
   zipCode: string | null
   fullAddress: string | null
   imageUrl: string | null
+  coverPhotoUrl: string | null
   marketing: number | null
   txFee: number | null
   salesTax: number | null
