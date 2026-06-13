@@ -41,7 +41,7 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } },
 ) {
-  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner'])
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'business'])
   if ('error' in access) return access.error
 
   const qaBusinessId = parseQaRouteId(params.id)
