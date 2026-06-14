@@ -149,14 +149,32 @@ export default function MyCausesPage() {
 
   const addCause = (cause: CatalogCause) => {
     if (selectedIds.has(cause.causeId) || !canAddMore) return
-    setSelection((prev) =>
-      rebalance([...prev, { causeId: cause.causeId, name: cause.name, weightBp: 0 }])
-    )
+    setSelection((prev) => [
+      ...prev,
+      // First cause defaults to 100%; additional causes start at 0% so you can
+      // set each yourself (matching the app's slider behaviour).
+      { causeId: cause.causeId, name: cause.name, weightBp: prev.length === 0 ? 10000 : 0 },
+    ])
   }
 
   const removeCause = (causeId: number) => {
-    setSelection((prev) => rebalance(prev.filter((cause) => cause.causeId !== causeId)))
+    setSelection((prev) => prev.filter((cause) => cause.causeId !== causeId))
   }
+
+  const setWeight = (causeId: number, percent: number) => {
+    const clamped = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0))
+    setSelection((prev) =>
+      prev.map((cause) =>
+        cause.causeId === causeId ? { ...cause, weightBp: Math.round(clamped * 100) } : cause
+      )
+    )
+  }
+
+  const splitEvenly = () => setSelection((prev) => rebalance(prev))
+
+  const totalBp = selection.reduce((sum, cause) => sum + cause.weightBp, 0)
+  const totalPercent = Math.round((totalBp / 100) * 100) / 100
+  const isHundred = totalBp === 10000
 
   // ── Search (results only when there's a query) ────────────
   const searchResults = React.useMemo(() => {
@@ -216,9 +234,9 @@ export default function MyCausesPage() {
             )}
           </div>
           {selectedCount > 0 && (
-            <Badge variant="info" className="shrink-0">
+            <Badge variant={isHundred ? 'success' : 'warning'} className="shrink-0">
               <PieChart className="h-3 w-3" />
-              100% allocated
+              {totalPercent}% allocated
             </Badge>
           )}
         </CardContent>
@@ -238,7 +256,7 @@ export default function MyCausesPage() {
         <CardHeader>
           <CardTitle>Your selections</CardTitle>
           <CardDescription>
-            Allocation weights are split evenly across your causes.
+            Set how much of your impact each cause receives. Your total should equal 100%.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -265,17 +283,24 @@ export default function MyCausesPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-surface-900">{cause.name}</p>
-                    <p className="text-xs text-surface-500">
-                      {(cause.weightBp / 100).toFixed(cause.weightBp % 100 === 0 ? 0 : 2)}% of your impact
-                    </p>
-                  </div>
-                  <div className="hidden w-32 sm:block">
-                    <div className="h-1.5 overflow-hidden rounded-full bg-surface-100">
+                    <div className="mt-1.5 hidden h-1.5 overflow-hidden rounded-full bg-surface-100 sm:block">
                       <div
                         className="h-full rounded-full bg-brand-500 transition-all"
                         style={{ width: `${Math.min(100, cause.weightBp / 100)}%` }}
                       />
                     </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={Math.round(cause.weightBp / 100)}
+                      onChange={(event) => setWeight(cause.causeId, Number(event.target.value))}
+                      className="w-16 text-right"
+                      aria-label={`Allocation percent for ${cause.name}`}
+                    />
+                    <span className="text-sm text-surface-500">%</span>
                   </div>
                   <Button
                     variant="ghost"
@@ -288,6 +313,21 @@ export default function MyCausesPage() {
                 </li>
               ))}
             </ul>
+          )}
+          {!loading && selection.length > 0 && (
+            <div className="mt-3 flex items-center justify-between border-t border-surface-100 pt-3">
+              <span
+                className={cn(
+                  'text-sm font-medium',
+                  isHundred ? 'text-success-700' : 'text-warning-700'
+                )}
+              >
+                Total allocated: {totalPercent}%{isHundred ? '' : ' — should be 100%'}
+              </span>
+              <Button variant="outline" size="sm" onClick={splitEvenly}>
+                Split evenly
+              </Button>
+            </div>
           )}
           {!loading && !canAddMore && (
             <p className="mt-3 flex items-center gap-1.5 text-xs text-surface-500">
