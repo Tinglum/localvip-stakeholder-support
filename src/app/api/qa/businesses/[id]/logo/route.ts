@@ -59,10 +59,10 @@ export async function GET(
     return NextResponse.redirect(imageName)
   }
 
+  // Logos are served as static files under /uploads/logos on the QA host
+  // (same as covers). The old /Businesses/GetLogo MVC endpoints don't return
+  // the image, so the static path is the reliable source.
   return proxyQaImage([
-    `/Businesses/GetLogo?id=${qaBusinessId}`,
-    `/Businesses/GetImage?id=${qaBusinessId}`,
-    `/Businesses/GetLogo?fileName=${encodeURIComponent(imageName)}`,
-    `/Businesses/GetImage?fileName=${encodeURIComponent(imageName)}`,
+    `/uploads/logos/${encodeURIComponent(imageName)}`,
   ])
 }
