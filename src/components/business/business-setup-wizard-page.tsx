@@ -84,6 +84,8 @@ export function BusinessSetupWizardPage() {
   const [captureDescription, setCaptureDescription] = React.useState('')
   const [captureValue, setCaptureValue] = React.useState('')
   const [cashbackPercent, setCashbackPercent] = React.useState(10)
+  const [cashbackTouched, setCashbackTouched] = React.useState(false)
+  const [activating, setActivating] = React.useState(false)
   const [captureOfferId, setCaptureOfferId] = React.useState<string | null>(null)
   const [cashbackOfferId, setCashbackOfferId] = React.useState<string | null>(null)
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -194,40 +196,51 @@ export function BusinessSetupWizardPage() {
         metadata: nextMetadata as Record<string, unknown>,
       })
 
-      const capturePayload = {
-        business_id: business.id,
-        offer_type: 'capture' as const,
-        status: captureHeadline ? 'active' as const : 'draft' as const,
-        headline: captureHeadline || 'Join our list and get access to exclusive offers',
-        description: captureDescription || 'This offer is only used to collect your first 100 customers before you go live.',
-        value_type: 'label',
-        value_label: captureValue || null,
-        cashback_percent: null,
-        starts_at: null,
-        ends_at: null,
-        metadata: { source: 'business_setup' },
+      // Only persist a capture offer once the business has actually written a
+      // headline (or one already exists). Avoids eagerly creating a placeholder
+      // offer that makes the 100-List step look "Done" before it really is.
+      let savedCapture: { id?: string } | null = null
+      if (captureHeadline.trim() || captureOfferId) {
+        const capturePayload = {
+          business_id: business.id,
+          offer_type: 'capture' as const,
+          status: captureHeadline.trim() ? 'active' as const : 'draft' as const,
+          headline: captureHeadline.trim() || 'Customer capture offer',
+          description: captureDescription || '',
+          value_type: 'label',
+          value_label: captureValue || null,
+          cashback_percent: null,
+          starts_at: null,
+          ends_at: null,
+          metadata: { source: 'business_setup' },
+        }
+        savedCapture = captureOfferId
+          ? await updateOffer(captureOfferId, capturePayload)
+          : await insertOffer(capturePayload)
       }
 
-      const cashbackPayload = {
-        business_id: business.id,
-        offer_type: 'cashback' as const,
-        status: 'active' as const,
-        headline: 'Standard LocalVIP Cashback',
-        description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
-        value_type: 'cashback_percent',
-        value_label: `${cashbackPercent}% cashback`,
-        cashback_percent: cashbackPercent,
-        starts_at: null,
-        ends_at: null,
-        metadata: { source: 'business_setup' },
+      // Likewise, only write the cashback offer once the business has explicitly
+      // set a rate this session (or one already exists). The 10% default is a
+      // suggestion, not a completed choice.
+      let savedCashback: { id?: string } | null = null
+      if (cashbackTouched || cashbackOfferId) {
+        const cashbackPayload = {
+          business_id: business.id,
+          offer_type: 'cashback' as const,
+          status: 'active' as const,
+          headline: 'Standard LocalVIP Cashback',
+          description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
+          value_type: 'cashback_percent',
+          value_label: `${cashbackPercent}% cashback`,
+          cashback_percent: cashbackPercent,
+          starts_at: null,
+          ends_at: null,
+          metadata: { source: 'business_setup' },
+        }
+        savedCashback = cashbackOfferId
+          ? await updateOffer(cashbackOfferId, cashbackPayload)
+          : await insertOffer(cashbackPayload)
       }
-
-      const savedCapture = captureOfferId
-        ? await updateOffer(captureOfferId, capturePayload)
-        : await insertOffer(capturePayload)
-      const savedCashback = cashbackOfferId
-        ? await updateOffer(cashbackOfferId, cashbackPayload)
-        : await insertOffer(cashbackPayload)
 
       if (savedCapture?.id) setCaptureOfferId(savedCapture.id)
       if (savedCashback?.id) setCashbackOfferId(savedCashback.id)
@@ -263,6 +276,7 @@ export function BusinessSetupWizardPage() {
     captureValue,
     cashbackOfferId,
     cashbackPercent,
+    cashbackTouched,
     category,
     coverFile,
     coverUrl,
@@ -334,21 +348,29 @@ export function BusinessSetupWizardPage() {
   const scopedBusiness = business
 
   const completeProfile = !!name.trim() && !!category.trim() && !!description.trim()
+  // Branding was previously never checked (fell through to `true`), so it always
+  // showed "Done". Require an actual logo and cover image to count it complete.
+  const completeBranding = !!(logoUrl || logoFile) && !!(coverUrl || coverFile)
   const completeCapture = !!captureHeadline.trim()
-  const completeCashback = cashbackPercent >= 5 && cashbackPercent <= 25
+  // The 10% default is only a suggestion — the step isn't "done" until the
+  // business has explicitly set a rate this session or saved one before.
+  const completeCashback =
+    cashbackPercent >= 5 && cashbackPercent <= 25 && (cashbackTouched || !!cashbackOfferId)
   const readyToActivate = completeProfile && completeCapture && completeCashback
   const completedStepsCount = STEPS.filter((item) =>
     item.key === 'profile' ? completeProfile
-      : item.key === 'capture' ? completeCapture
-        : item.key === 'cashback' ? completeCashback
-          : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
-            : true
+      : item.key === 'branding' ? completeBranding
+        : item.key === 'capture' ? completeCapture
+          : item.key === 'cashback' ? completeCashback
+            : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
+              : true
   ).length
   const completionRatio = completedStepsCount / STEPS.length
   const activeStepMeta = STEPS.find((item) => item.key === step) || STEPS[0]
 
   function getStepCompletion(key: StepKey) {
     if (key === 'profile') return completeProfile
+    if (key === 'branding') return completeBranding
     if (key === 'capture') return completeCapture
     if (key === 'cashback') return completeCashback
     if (key === 'activate') return readyToActivate && launchPhase !== 'setup'
@@ -356,13 +378,22 @@ export function BusinessSetupWizardPage() {
   }
 
   async function activatePortal() {
-    await persistChanges()
-    const activated = await updateBusiness(scopedBusiness.id, {
-      launch_phase: 'capturing_100',
-      activation_status: 'in_progress',
-    })
-    if (!activated) return
-    window.location.href = '/portal/clients'
+    setActivating(true)
+    try {
+      // Save the latest setup first.
+      await persistChanges()
+      // launch_phase / activation_status are local CRM workspace fields the QA
+      // backend doesn't persist, so this update may no-op or 501. Attempt it,
+      // but don't block activation (or navigation) on it succeeding — otherwise
+      // the button appears to "do nothing".
+      await updateBusiness(scopedBusiness.id, {
+        launch_phase: 'capturing_100',
+        activation_status: 'in_progress',
+      })
+      window.location.href = '/portal/clients'
+    } finally {
+      setActivating(false)
+    }
   }
 
   return (
@@ -675,7 +706,10 @@ export function BusinessSetupWizardPage() {
                     max={25}
                     step={1}
                     value={cashbackPercent}
-                    onChange={(event) => setCashbackPercent(Number(event.target.value))}
+                    onChange={(event) => {
+                      setCashbackPercent(Number(event.target.value))
+                      setCashbackTouched(true)
+                    }}
                     className="mt-5 w-full"
                   />
                   <div className="mt-2 flex justify-between text-xs text-surface-400">
@@ -706,9 +740,18 @@ export function BusinessSetupWizardPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => void activatePortal()} disabled={!readyToActivate}>
-                    Activate business portal
-                    <Rocket className="h-4 w-4" />
+                  <Button onClick={() => void activatePortal()} disabled={!readyToActivate || activating}>
+                    {activating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Activating...
+                      </>
+                    ) : (
+                      <>
+                        Activate business portal
+                        <Rocket className="h-4 w-4" />
+                      </>
+                    )}
                   </Button>
                   <Button asChild variant="outline">
                     <Link href="/portal/business">
