@@ -289,7 +289,7 @@ export default function MyWalletPage() {
             </p>
             <p>
               <span className="font-medium text-surface-800">Cause impact</span> tracks the value
-              you've helped direct toward the causes you care about.
+              you&apos;ve helped direct toward the causes you care about.
             </p>
             <p className="text-xs text-surface-400">
               This page is read-only. Payments, transfers, and donations are managed elsewhere.
