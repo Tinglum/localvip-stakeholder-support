@@ -31,10 +31,20 @@ export function CommunitySupportQrCard({ cause, totalSupporters }: CommunitySupp
 
       try {
         const response = await fetch(`/api/community/share?causeId=${cause.id}`)
-        const payload = await response.json()
+        // Read text and parse defensively — an empty/HTML error body makes a bare
+        // response.json() throw a cryptic "Unexpected end of JSON input".
+        const raw = await response.text()
+        let payload: { error?: string } & Partial<CommunitySupportResource> = {}
+        if (raw) {
+          try {
+            payload = JSON.parse(raw)
+          } catch {
+            payload = { error: 'Supporter QR could not be prepared.' }
+          }
+        }
 
         if (!response.ok) {
-          throw new Error(payload.error || 'Supporter QR could not be prepared.')
+          throw new Error(payload.error || `Supporter QR could not be prepared (${response.status}).`)
         }
 
         if (!cancelled) {

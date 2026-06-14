@@ -86,7 +86,17 @@ export function PublicBusinessJoinForm({
         }),
       })
 
-      const payload = await response.json()
+      // Parse defensively so a customer never sees a cryptic "Unexpected end of
+      // JSON input" if the endpoint returns an empty/HTML error body.
+      const raw = await response.text()
+      let payload: { error?: string } & Partial<JoinSuccessPayload> = {}
+      if (raw) {
+        try {
+          payload = JSON.parse(raw)
+        } catch {
+          payload = { error: 'Your offer could not be claimed.' }
+        }
+      }
 
       if (!response.ok) {
         throw new Error(payload.error || 'Your offer could not be claimed.')
