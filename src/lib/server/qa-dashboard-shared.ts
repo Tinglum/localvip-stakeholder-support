@@ -42,6 +42,8 @@ function emptyQaAccountFields(): QaAccountFields {
     twilio_welcome_message: null,
     is_deleted: null,
     stripe_onboarding_complete: null,
+    referral_code: null,
+    branch_referral_url: null,
   }
 }
 
@@ -239,6 +241,8 @@ export function buildQaAccountFields(qaAccount: QaDashboardAccountSummary | QaDa
         stripe_onboarding_complete: 'hasStripeOnboarding' in qaAccount
           ? (qaAccount.hasStripeOnboarding ?? null)
           : null,
+        referral_code: 'referralCode' in qaAccount ? (qaAccount.referralCode ?? null) : null,
+        branch_referral_url: 'branchReferralUrl' in qaAccount ? (qaAccount.branchReferralUrl ?? null) : null,
       }
     : {}
 

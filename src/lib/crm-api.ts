@@ -50,6 +50,8 @@ export interface QaDashboardAccountDetail extends QaDashboardAccountSummary {
   taxId: string | null
   timeZone: string | null
   hasStripeOnboarding?: boolean | null
+  referralCode?: string | null
+  branchReferralUrl?: string | null
 }
 
 export type QaBusinessListItem = QaDashboardAccountSummary
@@ -98,6 +100,8 @@ export interface QaAccountFields {
   twilio_welcome_message?: string | null
   is_deleted?: boolean | null
   stripe_onboarding_complete?: boolean | null
+  referral_code?: string | null
+  branch_referral_url?: string | null
 }
 
 export interface CrmBusiness extends Business, QaAccountFields {}

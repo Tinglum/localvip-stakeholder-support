@@ -228,11 +228,16 @@ export function BusinessExecutionOverview({
   const coverInputRef = React.useRef<HTMLInputElement>(null)
   const writeBusinessId = localBusinessId || queryBusinessId
 
+  const qaReferralCode = (workspaceBusiness as { referral_code?: string | null }).referral_code || ''
+  const qaBranchReferralUrl = (workspaceBusiness as { branch_referral_url?: string | null }).branch_referral_url || ''
+
   React.useEffect(() => {
-    setReferralCode(codes?.referral_code || '')
+    // Auto-populate from the business's own QA referral code/link when no
+    // per-stakeholder code has been saved yet, so the dashboard shows the
+    // RIGHT link for THIS business instead of "referral codes needed".
+    setReferralCode(codes?.referral_code || qaReferralCode || '')
     setConnectionCode(codes?.connection_code || '')
-      // No per-business codes saved yet — pre-fill from operator's QA profile as a starting suggestion
-  }, [codes?.connection_code, codes?.referral_code])
+  }, [codes?.connection_code, codes?.referral_code, qaReferralCode])
 
   React.useEffect(() => {
     setCaptureHeadline(captureOffer.headline || '')
