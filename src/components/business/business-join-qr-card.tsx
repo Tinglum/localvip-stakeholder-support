@@ -128,10 +128,21 @@ export function BusinessJoinQrCard({
 
       try {
         const response = await fetch(`/api/business-portal/collect?businessId=${business.id}`)
-        const payload = await response.json()
+        // The endpoint can return an empty/non-JSON body on a server error, which
+        // makes a bare response.json() throw a cryptic "Unexpected end of JSON
+        // input". Read the text first and parse defensively.
+        const raw = await response.text()
+        let payload: { error?: string } & Partial<BusinessJoinResource> = {}
+        if (raw) {
+          try {
+            payload = JSON.parse(raw)
+          } catch {
+            payload = { error: 'Customer capture could not be prepared.' }
+          }
+        }
 
         if (!response.ok) {
-          throw new Error(payload.error || 'Customer capture could not be prepared.')
+          throw new Error(payload.error || `Customer capture could not be prepared (${response.status}).`)
         }
 
         if (!cancelled) {
@@ -401,10 +412,18 @@ export function BusinessJoinQrCard({
         }),
       })
 
-      const payload = await response.json()
+      const raw = await response.text()
+      let payload: { error?: string } & Partial<BusinessJoinResource> = {}
+      if (raw) {
+        try {
+          payload = JSON.parse(raw)
+        } catch {
+          payload = { error: 'QR appearance could not be saved.' }
+        }
+      }
 
       if (!response.ok) {
-        throw new Error(payload.error || 'QR appearance could not be saved.')
+        throw new Error(payload.error || `QR appearance could not be saved (${response.status}).`)
       }
 
       setResource(payload as BusinessJoinResource)

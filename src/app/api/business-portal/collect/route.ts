@@ -36,9 +36,15 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
   if (session.source === 'qa') {
-    const result = await buildQaResource(session, businessId)
-    if (result instanceof NextResponse) return result
-    return NextResponse.json(result.resource)
+    try {
+      const result = await buildQaResource(session, businessId)
+      if (result instanceof NextResponse) return result
+      return NextResponse.json(result.resource)
+    } catch (error) {
+      // Always return JSON so the client doesn't choke on an empty/HTML 500 body.
+      const message = error instanceof Error ? error.message : 'Customer capture could not be prepared.'
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
   }
 
   // Demo / Supabase path

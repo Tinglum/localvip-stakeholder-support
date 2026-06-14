@@ -29,7 +29,8 @@ function getFolderLabel(folder: MaterialLibraryFolder) {
   return MATERIAL_LIBRARY_FOLDERS.find((f) => f.value === folder)?.label || folder
 }
 
-function getTemplateDescription(template: MaterialTemplate): string {
+function getTemplateDescription(template: MaterialTemplate | null): string {
+  if (!template) return ''
   const meta = template.metadata as Record<string, unknown> | null
   if (meta?.description && typeof meta.description === 'string') return meta.description
   return ''
@@ -113,23 +114,33 @@ export function TemplateLibraryPage() {
     is_active: 'true',
   } as Record<string, string>)
 
-  // Filter to selfserve only and by stakeholder type
+  // Filter to selfserve only and by stakeholder type.
+  // Coerce the array fields defensively — QA rows can come back with these
+  // missing/null, and a bare `.includes`/`.map` on undefined crashes the page.
   const selfserveTemplates = React.useMemo(() => {
-    return allTemplates.filter((t) => {
-      if (!t.tiers.includes('selfserve')) return false
+    return allTemplates
+      .map((t) => ({
+        ...t,
+        tiers: Array.isArray(t.tiers) ? t.tiers : [],
+        stakeholder_types: Array.isArray(t.stakeholder_types) ? t.stakeholder_types : [],
+        audience_tags: Array.isArray(t.audience_tags) ? t.audience_tags : [],
+        scope_cities: Array.isArray(t.scope_cities) ? t.scope_cities : [],
+      }))
+      .filter((t) => {
+        if (!t.tiers.includes('selfserve')) return false
 
-      // Filter by stakeholder type if we know it
-      if (stakeholder && t.stakeholder_types.length > 0) {
-        const st = stakeholder.type
-        if (!t.stakeholder_types.includes(st)) {
-          // Allow cause/school to see community templates
-          if ((st === 'cause' || st === 'school') && t.stakeholder_types.includes('community')) return true
-          return false
+        // Filter by stakeholder type if we know it
+        if (stakeholder && t.stakeholder_types.length > 0) {
+          const st = stakeholder.type
+          if (!t.stakeholder_types.includes(st)) {
+            // Allow cause/school to see community templates
+            if ((st === 'cause' || st === 'school') && t.stakeholder_types.includes('community')) return true
+            return false
+          }
         }
-      }
 
-      return true
-    })
+        return true
+      })
   }, [allTemplates, stakeholder])
 
   // ─── Filters ─────────────────────────────────────
@@ -169,7 +180,7 @@ export function TemplateLibraryPage() {
         const q = search.toLowerCase()
         const desc = getTemplateDescription(t)
         if (
-          !t.name.toLowerCase().includes(q) &&
+          !(t.name || '').toLowerCase().includes(q) &&
           !desc.toLowerCase().includes(q) &&
           !t.audience_tags.some((tag) => tag.toLowerCase().includes(q))
         ) {
@@ -420,7 +431,7 @@ export function TemplateLibraryPage() {
           <DialogHeader>
             <DialogTitle>{selectedTemplate?.name}</DialogTitle>
             <DialogDescription>
-              {getTemplateDescription(selectedTemplate!)}
+              {getTemplateDescription(selectedTemplate)}
             </DialogDescription>
           </DialogHeader>
 

@@ -242,20 +242,27 @@ async function ensureQaStakeholderCodes(
       joinUrl,
     }
 
-    if (existing?.id != null) {
-      const putRes = await fetchQaApi(`/api/dashboard/v1/StakeholderCode/${encodeURIComponent(String(existing.id))}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      await parseQaResponse<unknown>(putRes, 'Failed to save stakeholder codes.')
-    } else {
-      const postRes = await fetchQaApi('/api/dashboard/v1/StakeholderCode', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      await parseQaResponse<unknown>(postRes, 'Failed to create stakeholder codes.')
+    // Best-effort persistence: the codes above are already computed locally, so a
+    // failure to write them back to QA should not break the whole QR/offer-link
+    // resource. Swallow write errors and continue with the computed values.
+    try {
+      if (existing?.id != null) {
+        const putRes = await fetchQaApi(`/api/dashboard/v1/StakeholderCode/${encodeURIComponent(String(existing.id))}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        await parseQaResponse<unknown>(putRes, 'Failed to save stakeholder codes.')
+      } else {
+        const postRes = await fetchQaApi('/api/dashboard/v1/StakeholderCode', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        await parseQaResponse<unknown>(postRes, 'Failed to create stakeholder codes.')
+      }
+    } catch {
+      // Ignore — fall back to the locally computed codes.
     }
   }
 
