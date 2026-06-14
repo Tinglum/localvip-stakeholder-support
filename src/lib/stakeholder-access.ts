@@ -418,7 +418,10 @@ export function canAccessPath(profile: Profile, pathname: string) {
   }
 
   if (shell === 'consumer') {
-    return pathname === '/dashboard' || pathname.startsWith('/dashboard/')
+    return [
+      '/dashboard',
+      '/portal/me',
+    ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   }
 
   if (shell === 'field') {
