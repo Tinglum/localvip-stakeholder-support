@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import {
   Wallet,
   Coins,
@@ -43,7 +44,7 @@ function normalizeAmount(payload: AmountPayload, keys: string[] = ['amount', 'Am
 }
 
 function formatUsd(value: number | null): string {
-  if (value === null) return '—'
+  if (value === null) return '-'
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -158,7 +159,7 @@ export default function MyWalletPage() {
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="My Wallet & Earnings"
-        description="A live snapshot of your balance, lifetime rewards, and the impact you've created."
+        description="See what money is ready to use, what you have earned over time, and how much support has gone to your causes."
         breadcrumb={[{ label: 'Portal', href: '/portal' }, { label: 'Wallet & Earnings' }]}
         actions={
           <Button
@@ -172,6 +173,26 @@ export default function MyWalletPage() {
           </Button>
         }
       />
+
+      <Card className="mb-6 border-brand-100 bg-brand-50/60">
+        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-surface-900">Start here</p>
+            <p className="text-sm text-surface-600">
+              This page is a simple summary. Check your available balance first, then use the
+              shortcuts below to explore where your earnings came from and which causes you support.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm">
+              <Link href="/portal/me/network">See network earnings</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/portal/me/causes">Manage my causes</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {error && (
         <Card className="mb-6 border-danger-200 bg-danger-50">
@@ -195,7 +216,7 @@ export default function MyWalletPage() {
           value={available}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption="Ready to spend across the network"
+          caption="Money you can use right now"
           loading={loading}
           emphasize
         />
@@ -204,7 +225,7 @@ export default function MyWalletPage() {
           value={cashback}
           icon={<Coins className="h-5 w-5 text-success-600" />}
           accent="bg-success-50"
-          caption="Total cashback earned to date"
+          caption="Money back from your own purchases"
           loading={loading}
         />
         <WalletTile
@@ -212,7 +233,7 @@ export default function MyWalletPage() {
           value={bonusCash}
           icon={<Network className="h-5 w-5 text-hato-600" />}
           accent="bg-hato-50"
-          caption="Lifetime bonus cash from your network"
+          caption="Extra earnings from people in your network"
           loading={loading}
         />
         <WalletTile
@@ -220,7 +241,7 @@ export default function MyWalletPage() {
           value={socialImpact}
           icon={<HeartHandshake className="h-5 w-5 text-warning-600" />}
           accent="bg-warning-50"
-          caption="Total directed to causes you support"
+          caption="Support sent to the causes you chose"
           loading={loading}
         />
       </div>
@@ -231,32 +252,32 @@ export default function MyWalletPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Earnings breakdown</CardTitle>
-                <CardDescription>How your lifetime rewards add up.</CardDescription>
+                <CardDescription>Where your totals come from, in plain language.</CardDescription>
               </div>
               <Badge variant="info" className="gap-1">
                 <Sparkles className="h-3 w-3" />
-                View only
+                Summary only
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="pt-2">
             <BreakdownRow
               label="Lifetime cashback"
-              description="Rewards from your own purchases"
+              description="Money back you earned from buying through the platform"
               value={cashback}
               icon={<Coins className="h-4 w-4" />}
               loading={loading}
             />
             <BreakdownRow
               label="Network earnings"
-              description="Bonus cash earned through your network"
+              description="Extra money earned because your network is active"
               value={bonusCash}
               icon={<Network className="h-4 w-4" />}
               loading={loading}
             />
             <BreakdownRow
               label="Cause impact"
-              description="Contributions directed to your causes"
+              description="Value that has been directed to the causes you picked"
               value={socialImpact}
               icon={<HeartHandshake className="h-4 w-4" />}
               loading={loading}
@@ -279,20 +300,26 @@ export default function MyWalletPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>About your wallet</CardTitle>
-            <CardDescription>What these numbers mean.</CardDescription>
+            <CardTitle>What these numbers mean</CardTitle>
+            <CardDescription>Quick answers for first-time users.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 pt-2 text-sm text-surface-600">
             <p>
-              <span className="font-medium text-surface-800">Available balance</span> is what you can
-              currently spend. Cashback and network earnings flow into it over time.
+              <span className="font-medium text-surface-800">Available balance</span> is the amount
+              ready for you to use now.
             </p>
             <p>
-              <span className="font-medium text-surface-800">Cause impact</span> tracks the value
-              you&apos;ve helped direct toward the causes you care about.
+              <span className="font-medium text-surface-800">Lifetime cashback</span> and
+              <span className="font-medium text-surface-800"> network earnings</span> show how your
+              balance has grown over time.
             </p>
-            <p className="text-xs text-surface-400">
-              This page is read-only. Payments, transfers, and donations are managed elsewhere.
+            <p>
+              <span className="font-medium text-surface-800">Cause impact</span> shows how much value
+              has gone toward the causes you support.
+            </p>
+            <p className="rounded-lg bg-surface-50 px-3 py-2 text-xs text-surface-500">
+              This page does not change anything. Use it to check your totals, then head to Network
+              or Causes if you want to take the next step.
             </p>
           </CardContent>
         </Card>

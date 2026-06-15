@@ -16,7 +16,6 @@ import { Badge } from '@/components/ui/badge'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -57,6 +56,12 @@ import { formatDate } from '@/lib/utils'
 import type { BusinessContactStatus, Contact } from '@/lib/types/database'
 
 const SUGGESTED_TAGS = ['Past customer', 'Friend', 'Family', 'Local supporter', 'Regular']
+const FIRST_CONTACT_EXAMPLES = [
+  'Your best regular customer',
+  'A friend who already recommends you',
+  'A family member who will support your launch',
+  'A past customer you would happily text today',
+]
 
 const INITIAL_FORM = {
   name: '',
@@ -342,10 +347,10 @@ export function BusinessMy100ListPage() {
     <div className="space-y-8">
       <PageHeader
         title="Build Your 100 List"
-        description="These are people who already know, trust, and support your business."
+        description="Start with the people most likely to say yes first. This page helps you choose who to add, what to do next, and how to keep moving."
         actions={
           <Button className={BUSINESS_ACCENT_BUTTON_CLASS} onClick={() => handleOpenCreate()}>
-            <Plus className="h-4 w-4" /> Add Contact
+            <Plus className="h-4 w-4" /> Add first contact
           </Button>
         }
       />
@@ -398,14 +403,55 @@ export function BusinessMy100ListPage() {
         />
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Start here</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <p className="text-sm text-surface-600">
+            If you are not sure what to do first, follow these steps in order. The goal is simple: add a few easy yeses before you worry about filling all 100 spots.
+          </p>
+          <div className="grid gap-3 md:grid-cols-3">
+            <StepCard
+              number="1"
+              title="Add 5 people you already know well"
+              description="Think of regulars, friends, family, and past customers who would be happy to hear from you."
+            />
+            <StepCard
+              number="2"
+              title="Use the QR code or invite buttons"
+              description="Once names are on the list, mark who you have invited and who has already joined."
+            />
+            <StepCard
+              number="3"
+              title="Repeat in small batches"
+              description="Add another 5 to 10 people each day so this stays easy and never feels overwhelming."
+            />
+          </div>
+          <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+            <p className="text-sm font-semibold text-surface-900">Easy first examples</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {FIRST_CONTACT_EXAMPLES.map((example) => (
+                <span
+                  key={example}
+                  className="rounded-full border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700"
+                >
+                  {example}
+                </span>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Manual entry</CardTitle>
+            <CardTitle>Add one person now</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-surface-600">
-              Add people one by one when you already know who you want to invite next.
+              Use this when someone comes to mind right away. You only need a name and one way to reach them.
             </p>
             <div className="flex flex-wrap gap-2">
               {SUGGESTED_TAGS.map((tag) => (
@@ -413,6 +459,12 @@ export function BusinessMy100ListPage() {
                   <Plus className="h-3.5 w-3.5" /> {tag}
                 </Button>
               ))}
+            </div>
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+              <p className="text-sm font-semibold text-surface-900">Example</p>
+              <p className="mt-1 text-sm text-surface-600">
+                Add Sarah, a regular customer, with her phone number, then mark her as invited after you text her.
+              </p>
             </div>
             <Button className={`w-full sm:w-auto ${BUSINESS_ACCENT_BUTTON_CLASS}`} onClick={() => handleOpenCreate()}>
               <Plus className="h-4 w-4" /> Add contact
@@ -422,15 +474,15 @@ export function BusinessMy100ListPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Bulk add</CardTitle>
+            <CardTitle>Import a bigger list</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-surface-600">
-              Import a sheet instead of typing contacts one by one. Paste directly from Excel or Google Sheets, or upload a CSV file, then preview and map the columns before importing.
+              If you already have names in Excel, Google Sheets, or a CSV file, bring them in here instead of typing them one by one.
             </p>
             {bulkMessage && <p className="text-sm text-success-600">{bulkMessage}</p>}
             <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-sm font-semibold text-surface-900">Expected headers</p>
+              <p className="text-sm font-semibold text-surface-900">What your file should include</p>
               <p className="mt-2 text-sm leading-6 text-surface-600">
                 Name, Phone, Email, and Tag work best. If your sheet has First Name and Last Name instead of one Name column, the importer can combine them automatically.
               </p>
@@ -449,7 +501,7 @@ export function BusinessMy100ListPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-surface-600">
-            Start with people who already like you, know your team, or come in often. That is the fastest path to momentum.
+            Start with people who already like you, know your team, or come in often. Do not start with strangers.
           </p>
           <div className="flex flex-wrap gap-2">
             {SUGGESTED_TAGS.map((tag) => (
@@ -474,7 +526,7 @@ export function BusinessMy100ListPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Our Clients</CardTitle>
+          <CardTitle>Your contact list</CardTitle>
         </CardHeader>
         <CardContent>
           <DataTable
@@ -486,8 +538,8 @@ export function BusinessMy100ListPage() {
             emptyState={
               <EmptyState
                 icon={<Users className="h-8 w-8" />}
-                title="Start your 100 list"
-                description="Add the first people who already know your business so you have a real launch list to work from."
+                title="Add your first few easy yeses"
+                description="Start with people who already know your business so you can build early momentum without overthinking it."
                 action={{ label: 'Add Contact', onClick: () => handleOpenCreate() }}
               />
             }
@@ -500,22 +552,34 @@ export function BusinessMy100ListPage() {
           <DialogHeader>
             <DialogTitle>{editingContact ? 'Edit contact' : 'Add contact'}</DialogTitle>
             <DialogDescription>
-              Keep this lightweight. You only need a name plus a phone number or email to get someone onto the list.
+              Keep this simple. You only need a name plus a phone number or email.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-surface-700">Name *</label>
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+              <Input
+                value={form.name}
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Jane Smith"
+              />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">Phone</label>
-                <Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
+                <Input
+                  value={form.phone}
+                  onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                  placeholder="(555) 123-4567"
+                />
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">Email</label>
-                <Input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+                <Input
+                  value={form.email}
+                  onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                  placeholder="jane@example.com"
+                />
               </div>
             </div>
             <div>
@@ -556,6 +620,30 @@ export function BusinessMy100ListPage() {
           refetch()
         }}
       />
+    </div>
+  )
+}
+
+function StepCard({
+  number,
+  title,
+  description,
+}: {
+  number: string
+  title: string
+  description: string
+}) {
+  return (
+    <div className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e5f000] text-sm font-semibold text-[#445000]">
+          {number}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-surface-900">{title}</p>
+          <p className="mt-1 text-sm text-surface-600">{description}</p>
+        </div>
+      </div>
     </div>
   )
 }

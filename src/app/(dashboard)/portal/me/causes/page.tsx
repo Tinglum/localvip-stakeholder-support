@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import {
   Heart,
   Search,
@@ -49,8 +50,6 @@ function selectionKey(selection: SelectedCause[]) {
   return JSON.stringify(selectionPayload(selection))
 }
 
-// Evenly distribute 100% (10000 bp) across the selected causes, giving any
-// rounding remainder to the first cause so the weights always sum to 10000.
 function rebalance(selection: SelectedCause[]): SelectedCause[] {
   if (selection.length === 0) return []
   const base = Math.floor(10000 / selection.length)
@@ -72,7 +71,6 @@ export default function MyCausesPage() {
   const lastSavedKeyRef = React.useRef<string | null>(null)
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Initial load ──────────────────────────────────────────
   React.useEffect(() => {
     let active = true
     ;(async () => {
@@ -87,7 +85,6 @@ export default function MyCausesPage() {
         const nextSelection: SelectedCause[] = Array.isArray(json?.selection) ? json.selection : []
         setCatalog(nextCatalog)
         setSelection(nextSelection)
-        // Baseline so autosave never fires for the freshly loaded state.
         lastSavedKeyRef.current = selectionKey(nextSelection)
       } catch (error) {
         if (!active) return
@@ -101,7 +98,6 @@ export default function MyCausesPage() {
     }
   }, [])
 
-  // ── Autosave (debounced) ──────────────────────────────────
   const persistSelection = React.useCallback(async (next: SelectedCause[]) => {
     const payload = selectionPayload(next)
     const key = JSON.stringify(payload)
@@ -139,7 +135,6 @@ export default function MyCausesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey(selection), loading])
 
-  // ── Mutations ─────────────────────────────────────────────
   const selectedIds = React.useMemo(
     () => new Set(selection.map((cause) => cause.causeId)),
     [selection]
@@ -151,8 +146,6 @@ export default function MyCausesPage() {
     if (selectedIds.has(cause.causeId) || !canAddMore) return
     setSelection((prev) => [
       ...prev,
-      // First cause defaults to 100%; additional causes start at 0% so you can
-      // set each yourself (matching the app's slider behaviour).
       { causeId: cause.causeId, name: cause.name, weightBp: prev.length === 0 ? 10000 : 0 },
     ])
   }
@@ -176,7 +169,6 @@ export default function MyCausesPage() {
   const totalPercent = Math.round((totalBp / 100) * 100) / 100
   const isHundred = totalBp === 10000
 
-  // ── Search (results only when there's a query) ────────────
   const searchResults = React.useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     if (!query) return []
@@ -198,12 +190,31 @@ export default function MyCausesPage() {
     <div className="mx-auto max-w-4xl">
       <PageHeader
         title="My Causes"
-        description="Choose the organizations your impact supports. Changes save automatically."
+        description="Choose where your support goes. Pick up to five causes and decide how to split your impact between them."
         breadcrumb={[{ label: 'Portal', href: '/portal' }, { label: 'My Causes' }]}
         actions={<SaveIndicator status={saveStatus} />}
       />
 
-      {/* Summary */}
+      <Card className="mb-6 border-brand-100 bg-brand-50/60">
+        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-surface-900">How this works</p>
+            <p className="text-sm text-surface-600">
+              Add the causes you care about, then make sure the percentages add up to 100%. Your
+              changes save automatically a moment after you stop typing.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm">
+              <a href="#cause-search">Find a cause</a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/portal/me/wallet">View wallet summary</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="mb-6 overflow-hidden">
         <CardContent className="flex items-center gap-4 p-5">
           <div
@@ -228,7 +239,7 @@ export default function MyCausesPage() {
               <>
                 <p className="text-subheading text-surface-900">No causes selected yet</p>
                 <p className="text-body text-surface-500">
-                  Search below to start guiding your impact.
+                  Use the search below to choose where your support should go.
                 </p>
               </>
             )}
@@ -251,25 +262,24 @@ export default function MyCausesPage() {
         </Card>
       )}
 
-      {/* Selected causes */}
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Your selections</CardTitle>
           <CardDescription>
-            Set how much of your impact each cause receives. Your total should equal 100%.
+            Set how much of your support each cause receives. The total should add up to 100%.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-surface-400">
               <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-sm">Loading your causes…</span>
+              <span className="text-sm">Loading your causes...</span>
             </div>
           ) : selection.length === 0 ? (
             <EmptyState
               icon={<Heart className="h-6 w-6" />}
-              title="No causes selected"
-              description="Find an organization below to start making an impact."
+              title="No causes selected yet"
+              description="Search for a cause below, add it to your list, and then set how much of your support it should receive."
             />
           ) : (
             <ul className="space-y-2.5">
@@ -322,7 +332,7 @@ export default function MyCausesPage() {
                   isHundred ? 'text-success-700' : 'text-warning-700'
                 )}
               >
-                Total allocated: {totalPercent}%{isHundred ? '' : ' — should be 100%'}
+                Total allocated: {totalPercent}%{isHundred ? '' : ' - this should be 100%'}
               </span>
               <Button variant="outline" size="sm" onClick={splitEvenly}>
                 Split evenly
@@ -335,22 +345,31 @@ export default function MyCausesPage() {
               You&apos;ve reached the maximum of {MAX_CAUSES} causes. Remove one to add another.
             </p>
           )}
+          {!loading && selection.length > 0 ? (
+            <div className="mt-4 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 text-sm leading-6 text-surface-600">
+              <p className="font-semibold text-surface-900">Easy tip</p>
+              <p className="mt-1">
+                If you do not want to fine-tune each percentage, click <strong>Split evenly</strong> and keep moving.
+              </p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
-      {/* Search / add */}
       <Card>
         <CardHeader>
           <CardTitle>Find a cause</CardTitle>
-          <CardDescription>Search the catalog to add an organization to support.</CardDescription>
+          <CardDescription>
+            Search by name, city, or keyword to add an organization to your list.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent id="cause-search">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search organizations…"
+              placeholder="Search organizations..."
               className="pl-9"
               disabled={loading}
             />
@@ -358,12 +377,17 @@ export default function MyCausesPage() {
 
           <div className="mt-4">
             {!searchQuery.trim() ? (
-              <p className="py-6 text-center text-sm text-surface-400">
-                Start typing above to find an organization to support.
-              </p>
+              <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50 px-4 py-6 text-center">
+                <p className="text-sm font-medium text-surface-700">
+                  Start typing to find a cause to support.
+                </p>
+                <p className="mt-1 text-sm text-surface-500">
+                  Try a cause name, a city, or a word from its mission.
+                </p>
+              </div>
             ) : searchResults.length === 0 ? (
               <p className="py-6 text-center text-sm text-surface-400">
-                No causes match &ldquo;{searchQuery.trim()}&rdquo;.
+                No causes match &quot;{searchQuery.trim()}&quot;.
               </p>
             ) : (
               <ul className="space-y-2">
@@ -432,7 +456,7 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
     return (
       <span className="flex items-center gap-1.5 text-xs font-medium text-surface-500">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Saving…
+        Saving...
       </span>
     )
   }
@@ -449,7 +473,7 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
   return (
     <span className="flex items-center gap-1.5 text-xs font-medium text-danger-700">
       <CloudOff className="h-3.5 w-3.5" />
-      Couldn&apos;t save — retrying on next change
+      Couldn&apos;t save - retrying on next change
     </span>
   )
 }

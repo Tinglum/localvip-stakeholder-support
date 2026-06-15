@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import {
   ArrowRight,
   Building2,
@@ -15,6 +16,7 @@ import {
   Share2,
   Sparkles,
   Store,
+  Users,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -549,24 +551,88 @@ export function BusinessGrowPage() {
     <div className="space-y-8">
       <PageHeader
         title="Grow with Other Businesses"
-        description="Use real local referrals to open CRM leads, send a stronger message, and keep every intro tied into the system."
+        description="Pick a business, use a simple message, and save the intro so nothing gets lost."
+        actions={
+          <Button variant="outline" asChild>
+            <Link href="/portal/clients">
+              Open my 100 list
+              <Users className="h-4 w-4" />
+            </Link>
+          </Button>
+        }
       />
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+        <Card className="overflow-hidden border-surface-200">
+          <CardContent className="space-y-4 bg-[linear-gradient(135deg,_rgba(245,158,11,0.12),_rgba(255,255,255,0.98)_42%,_rgba(16,185,129,0.12)_100%)] px-6 py-6">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">How this page works</p>
+              <h2 className="text-2xl font-semibold text-surface-900">Three easy steps</h2>
+              <p className="max-w-2xl text-sm leading-6 text-surface-600">
+                You do not need to understand the CRM side first. Just work through these in order and the system will
+                keep up with you.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <SimpleStepCard
+                number="1"
+                title="Pick a business"
+                description="Choose a nearby business you already know or would feel comfortable approaching."
+              />
+              <SimpleStepCard
+                number="2"
+                title="Use the message"
+                description="Start from the suggested message, then make it sound more like you if you want."
+              />
+              <SimpleStepCard
+                number="3"
+                title="Save the intro"
+                description="Track it here so your team can follow up later without guessing what happened."
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Helpful shortcuts</CardTitle>
+            <CardDescription>Use these if you need a quick supporting task before inviting another business.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <QuickGrowLink
+              href="/dashboard"
+              title="Check my next business step"
+              description="Go back to the business dashboard if you want the simplest next action."
+            />
+            <QuickGrowLink
+              href="/portal/business"
+              title="Review my business profile"
+              description="Make sure your description and offer are easy to explain before reaching out."
+            />
+            <QuickGrowLink
+              href="/materials/mine"
+              title="Open my business materials"
+              description="Use support materials if you want extra examples, scripts, or share assets."
+            />
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <GrowthStat
           label="Current capture offer"
           value={captureOffer?.value_label || captureOffer?.headline || 'Offer not set'}
-          hint="This is the pre-launch offer you can reference when telling another business your setup is already in motion."
+          hint="This is the simple offer you can mention when explaining how your business is already building momentum."
         />
         <GrowthStat
           label="Customers collected"
           value={`${joinedCount}`}
-          hint="Your 100-list progress gives the message a more credible business-to-business proof point."
+          hint="This gives you an easy real-world number to mention when another business asks how things are going."
         />
         <GrowthStat
           label="CRM invites tracked"
           value={`${trackedCrmCount}`}
-          hint={`${newLeadCount} of these opened brand-new CRM business leads.`}
+          hint={`${newLeadCount} of these created brand-new business leads for follow-up.`}
         />
       </div>
 
@@ -696,6 +762,10 @@ export function BusinessGrowPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-5 p-5">
+              <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-4 text-sm leading-6 text-brand-800">
+                Keep this simple: you only need the business name and a basic reason they are a good fit to get started.
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <InputBlock label="Business to invite">
                   <Input
@@ -919,7 +989,7 @@ export function BusinessGrowPage() {
                       disabled={submitting || !targetBusinessName.trim() || !editorContent.trim()}
                     >
                       {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
-                      Open CRM lead + Track
+                      Save intro in CRM
                     </Button>
                     <Button
                       type="button"
@@ -927,7 +997,7 @@ export function BusinessGrowPage() {
                       disabled={submitting || !targetBusinessName.trim() || !editorContent.trim()}
                     >
                       {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-                      Copy + Open in CRM
+                      Copy message + save intro
                     </Button>
                   </div>
 
@@ -937,7 +1007,7 @@ export function BusinessGrowPage() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-surface-200 px-4 py-10 text-sm text-surface-500">
-                  Pick or type a business and the referral script will generate here.
+                  Pick or type a business and your message will appear here.
                 </div>
               )}
             </CardContent>
@@ -1065,5 +1135,48 @@ export function BusinessGrowPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function SimpleStepCard({
+  number,
+  title,
+  description,
+}: {
+  number: string
+  title: string
+  description: string
+}) {
+  return (
+    <div className="rounded-2xl border border-white/90 bg-white/90 px-4 py-4 shadow-sm">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700">
+        {number}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-surface-900">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-surface-500">{description}</p>
+    </div>
+  )
+}
+
+function QuickGrowLink({
+  href,
+  title,
+  description,
+}: {
+  href: string
+  title: string
+  description: string
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-start justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors hover:bg-white"
+    >
+      <div>
+        <p className="text-sm font-semibold text-surface-900">{title}</p>
+        <p className="mt-1 text-sm leading-6 text-surface-500">{description}</p>
+      </div>
+      <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-surface-400" />
+    </Link>
   )
 }

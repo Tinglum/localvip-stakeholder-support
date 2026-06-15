@@ -166,12 +166,19 @@ export function BusinessProfilePage() {
   const activationTone = getActivationTone(business.activation_status || (launchPhase === 'setup' ? 'not_started' : launchPhase === 'live' || launchPhase === 'ready_to_go_live' ? 'active' : 'in_progress'))
   const activationLabel = getActivationLabel(business.activation_status || (launchPhase === 'setup' ? 'not_started' : launchPhase === 'live' || launchPhase === 'ready_to_go_live' ? 'active' : 'in_progress'))
   const linkedCause = causes.find((cause) => cause.id === business.linked_cause_id) || null
+  const profileReadyCount = [
+    name.trim() ? 1 : 0,
+    category.trim() ? 1 : 0,
+    description.trim() ? 1 : 0,
+    avgTicket.trim() ? 1 : 0,
+    products.trim() ? 1 : 0,
+  ].reduce((sum, value) => sum + value, 0)
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="My Business"
-        description="Keep your profile clean, your launch status clear, and your customer-facing story easy to understand."
+        description="This is the simple version of your business details. Start by making sure a new customer can quickly understand what you sell and why they should come in."
         actions={
           <div className="flex items-center gap-3">
             <Badge variant={activationTone} dot>
@@ -183,6 +190,23 @@ export function BusinessProfilePage() {
           </div>
         }
       />
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Start here</p>
+            <p className="mt-2 text-lg font-semibold text-surface-900">Fill in the basics first, then move to your next action.</p>
+            <p className="mt-1 max-w-2xl text-sm text-surface-600">
+              If you only do three things on this page, make sure your business name, short description, and products or services are easy for a customer to understand.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+            <p className="text-sm font-semibold text-surface-900">Profile basics completed</p>
+            <p className="mt-1 text-2xl font-bold text-surface-900">{profileReadyCount} / 5</p>
+            <p className="mt-1 text-sm text-surface-500">Name, category, description, average ticket, products/services</p>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <InfoCard label="Launch phase" value={launchPhaseLabel(launchPhase)} detail="Progress through setup, customer capture, and going live." icon={<Building2 className="h-5 w-5" />} />
@@ -196,26 +220,45 @@ export function BusinessProfilePage() {
           <CardHeader>
             <CardTitle>Business profile</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Business name</label>
-              <Input value={name} onChange={(event) => setName(event.target.value)} />
+          <CardContent className="space-y-5">
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+              <p className="text-sm font-semibold text-surface-900">What to fill in first</p>
+              <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-surface-600">
+                <li>Write the business name exactly how customers know it.</li>
+                <li>Add a short category so people immediately understand the type of business.</li>
+                <li>Write a plain-language description of what you sell or do.</li>
+              </ol>
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
-              <Input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Restaurant, coffee shop, salon..." />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Average ticket</label>
-              <Input value={avgTicket} onChange={(event) => setAvgTicket(event.target.value)} placeholder="$12, $25, $60..." />
-            </div>
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
-              <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} />
-            </div>
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-medium text-surface-700">Products / services</label>
-              <Input value={products} onChange={(event) => setProducts(event.target.value)} placeholder="Coffee, pastries, lunch, catering" />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-sm font-medium text-surface-700">Business name</label>
+                <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Main Street Coffee" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
+                <Input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Coffee shop, salon, bakery..." />
+                <p className="mt-1 text-xs text-surface-500">Example: Coffee shop</p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-surface-700">Average ticket</label>
+                <Input value={avgTicket} onChange={(event) => setAvgTicket(event.target.value)} placeholder="$12, $25, $60..." />
+                <p className="mt-1 text-xs text-surface-500">Example: The usual amount one customer spends in a visit.</p>
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
+                <Textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  rows={5}
+                  placeholder="We serve specialty coffee, fresh pastries, and quick lunch options for busy locals."
+                />
+                <p className="mt-1 text-xs text-surface-500">Keep it simple. Write the way you would explain the business to a new customer.</p>
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1.5 block text-sm font-medium text-surface-700">Products / services</label>
+                <Input value={products} onChange={(event) => setProducts(event.target.value)} placeholder="Coffee, pastries, lunch, catering" />
+                <p className="mt-1 text-xs text-surface-500">Separate items with commas. Example: Haircuts, color, beard trims</p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -223,18 +266,20 @@ export function BusinessProfilePage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Offer separation</CardTitle>
+              <CardTitle>Understand your two offers</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-amber-700">Customer Capture Offer (Pre-launch)</p>
                 <p className="mt-2 text-lg font-semibold text-surface-900">{captureOffer.headline}</p>
                 <p className="mt-2 text-sm leading-6 text-surface-600">{captureOffer.description}</p>
+                <p className="mt-2 text-xs text-amber-800">Use this to get people interested before you are fully live.</p>
               </div>
               <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-brand-700">LocalVIP Cashback (Live)</p>
                 <p className="mt-2 text-lg font-semibold text-surface-900">{formatCashbackLabel(cashbackOffer.cashback_percent)}</p>
                 <p className="mt-2 text-sm leading-6 text-surface-600">{cashbackOffer.description}</p>
+                <p className="mt-2 text-xs text-brand-800">Use this to bring customers back again after launch.</p>
               </div>
             </CardContent>
           </Card>
@@ -244,9 +289,15 @@ export function BusinessProfilePage() {
               <CardTitle>What to do next</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <ActionLink href="/portal/setup" title="Open setup flow" description="Finish branding, capture offer, cashback, and activation." />
-              <ActionLink href="/portal/clients" title="Open My 100 List" description="Collect customers through your QR and build toward 100." />
-              <ActionLink href="/portal/grow" title="Grow with other businesses" description="Invite nearby businesses into the network with simple share copy." />
+              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                <p className="text-sm font-semibold text-surface-900">Recommended order</p>
+                <p className="mt-1 text-sm text-surface-600">
+                  Follow these in order if you want the clearest path forward.
+                </p>
+              </div>
+              <ActionLink href="/portal/setup" step="Step 1" title="Finish setup details" description="Review branding, your capture offer, cashback, and activation settings." />
+              <ActionLink href="/portal/clients" step="Step 2" title="Build your My 100 List" description="Add the first customers and supporters who are most likely to join quickly." />
+              <ActionLink href="/portal/grow" step="Step 3" title="Grow through nearby businesses" description="Share the program with other local businesses once your own basics are ready." />
             </CardContent>
           </Card>
         </div>
@@ -290,16 +341,19 @@ function InfoCard({
 
 function ActionLink({
   href,
+  step,
   title,
   description,
 }: {
   href: string
+  step: string
   title: string
   description: string
 }) {
   return (
     <Link href={href} className="flex items-start justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors hover:border-surface-300 hover:bg-surface-0">
       <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">{step}</p>
         <p className="text-sm font-semibold text-surface-900">{title}</p>
         <p className="mt-1 text-xs text-surface-500">{description}</p>
       </div>

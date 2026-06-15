@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import {
   ChevronDown,
   ChevronRight,
@@ -128,7 +129,7 @@ export default function MyNetworkPage() {
 
     const groups: LevelGroup[] = []
     for (let level = 1; level <= MAX_LEVELS; level += 1) {
-      const members = (byLevel.get(level) ?? []).sort((a, b) => b.earnings - a.earnings)
+      const members = (byLevel.get(level) ?? []).sort((a, b) => a.level - b.level || b.earnings - a.earnings)
       groups.push({
         level,
         members,
@@ -176,7 +177,7 @@ export default function MyNetworkPage() {
       <div className="flex min-h-[55vh] items-center justify-center">
         <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-5 py-4 text-sm text-surface-500 shadow-sm">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-          Mapping your network...
+          Loading your network...
         </div>
       </div>
     )
@@ -187,7 +188,7 @@ export default function MyNetworkPage() {
       <div className="space-y-6">
         <PageHeader
           title="My Network"
-          description="Your 10-level referral downline and the earnings it generates."
+          description="See the people connected to you and the earnings they help create over time."
         />
         <EmptyState
           icon={<Network className="h-8 w-8" />}
@@ -205,7 +206,7 @@ export default function MyNetworkPage() {
     <div className="space-y-8">
       <PageHeader
         title="My Network"
-        description="Your 10-level referral downline and the earnings it generates."
+        description="See the people connected to you and the earnings they help create over time."
         actions={
           <Button variant="outline" onClick={() => void load()}>
             <TrendingUp className="h-4 w-4" /> Refresh
@@ -213,28 +214,51 @@ export default function MyNetworkPage() {
         }
       />
 
-      {/* Summary cards */}
+      <Card className="border-brand-100 bg-brand-50/60">
+        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-surface-900">Start here</p>
+            <p className="text-sm leading-6 text-surface-600">
+              This page shows your people in levels. Level 1 means people directly connected to you. Higher levels are
+              people connected through them.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm">
+              <Link href="/portal/me">Back to my home</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/portal/me/wallet">Check my money</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Total network earnings"
           value={formatCurrency(totalEarnings)}
           icon={<Coins className="h-5 w-5" />}
           accent="text-success-600"
+          hint="All network-related earnings so far"
         />
         <SummaryCard
           label="Network members"
           value={formatNumber(totalMembers)}
           icon={<Users className="h-5 w-5" />}
+          hint="Everyone currently visible in your network"
         />
         <SummaryCard
           label="Active levels"
           value={`${activeLevels} / ${MAX_LEVELS}`}
           icon={<Layers className="h-5 w-5" />}
+          hint="How many of your 10 levels currently have people in them"
         />
         <SummaryCard
           label="Direct referrals"
           value={formatNumber(directReferrals)}
           icon={<UserCircle2 className="h-5 w-5" />}
+          hint="People directly connected to you"
         />
       </div>
 
@@ -242,43 +266,60 @@ export default function MyNetworkPage() {
         <EmptyState
           icon={<Network className="h-8 w-8" />}
           title="Your network is just getting started"
-          description="Once people join through your referral link, your 10-level downline will appear here with live earnings."
+          description="When people begin joining through you, they will appear here. Start by sharing your link from your dashboard."
         />
       ) : (
         <>
-          {/* Member search */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Search className="h-4 w-4 text-surface-400" /> Find a member
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search by name or location across all 10 levels..."
-              />
-              {normalizedQuery && (
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-[0.16em] text-surface-500">
-                    {searchResults.length} {searchResults.length === 1 ? 'match' : 'matches'}
-                  </p>
-                  {searchResults.length === 0 ? (
-                    <p className="text-sm text-surface-500">No members match “{query}”.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {searchResults.slice(0, 50).map((node) => (
-                        <MemberRow key={`search-${node.id}`} node={node} showLevel />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <div className="grid gap-6 xl:grid-cols-[1fr,1fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle>Find a person</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm leading-6 text-surface-500">
+                  Search by name or location if you want to quickly find someone without opening every level.
+                </p>
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search by name or location..."
+                />
+                {normalizedQuery ? (
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase tracking-[0.16em] text-surface-500">
+                      {searchResults.length} {searchResults.length === 1 ? 'match' : 'matches'}
+                    </p>
+                    {searchResults.length === 0 ? (
+                      <p className="text-sm text-surface-500">
+                        No people match &quot;{query}&quot;.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {searchResults.slice(0, 50).map((node) => (
+                          <MemberRow key={`search-${node.id}`} node={node} showLevel />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
 
-          {/* Per-level breakdown */}
+            <Card>
+              <CardHeader>
+                <CardTitle>What the levels mean</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm leading-6 text-surface-600">
+                <p><strong className="text-surface-900">Level 1:</strong> people directly connected to you.</p>
+                <p><strong className="text-surface-900">Level 2 and above:</strong> people connected through someone else in your network.</p>
+                <p><strong className="text-surface-900">Earnings:</strong> the value currently attributed to that person or level.</p>
+                <p className="rounded-xl bg-surface-50 px-3 py-2 text-xs text-surface-500">
+                  You do not need to open every level every time. Start with Level 1 if you only want the most direct view.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 pb-4">
               <CardTitle className="flex items-center gap-2">
@@ -326,7 +367,7 @@ export default function MyNetworkPage() {
                         <div>
                           <p className="text-sm font-semibold text-surface-900">Level {group.level}</p>
                           <p className="text-xs text-surface-500">
-                            {group.members.length} {group.members.length === 1 ? 'member' : 'members'}
+                            {group.members.length} {group.members.length === 1 ? 'person' : 'people'}
                           </p>
                         </div>
                       </div>
@@ -337,13 +378,13 @@ export default function MyNetworkPage() {
                         </span>
                       </div>
                     </button>
-                    {isExpanded && !isEmpty && (
+                    {isExpanded && !isEmpty ? (
                       <div className="space-y-2 bg-surface-0 p-3">
                         {group.members.map((node) => (
                           <MemberRow key={`level-${group.level}-${node.id}`} node={node} />
                         ))}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )
               })}
@@ -360,11 +401,13 @@ function SummaryCard({
   value,
   icon,
   accent,
+  hint,
 }: {
   label: string
   value: string
   icon: React.ReactNode
   accent?: string
+  hint: string
 }) {
   return (
     <Card>
@@ -373,6 +416,7 @@ function SummaryCard({
           <div>
             <p className="text-caption uppercase tracking-wider text-surface-500">{label}</p>
             <p className={cn('mt-1 text-2xl font-bold text-surface-900', accent)}>{value}</p>
+            <p className="mt-2 text-xs leading-5 text-surface-400">{hint}</p>
           </div>
           <div className="rounded-lg bg-surface-100 p-2 text-surface-500">{icon}</div>
         </div>
@@ -391,23 +435,23 @@ function MemberRow({ node, showLevel = false }: { node: DecoratedNode; showLevel
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-semibold text-surface-900">{node.name || 'Member'}</p>
-            {showLevel && (
+            {showLevel ? (
               <Badge variant="outline" className="shrink-0">
                 L{node.level}
               </Badge>
-            )}
+            ) : null}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-surface-500">
-            {node.location && (
+            {node.location ? (
               <span className="flex items-center gap-1">
                 <MapPin className="h-3 w-3" /> {node.location}
               </span>
-            )}
-            {node.joinedAt && (
+            ) : null}
+            {node.joinedAt ? (
               <span className="flex items-center gap-1">
                 <CalendarDays className="h-3 w-3" /> Joined {formatDate(node.joinedAt)}
               </span>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
