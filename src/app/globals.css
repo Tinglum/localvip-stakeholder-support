@@ -26,6 +26,23 @@
     color: #0f172a;
   }
 
+  /* Branded, consistent keyboard focus ring across interactive elements */
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  summary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(var(--brand-primary), 0.55);
+    border-radius: 0.5rem;
+  }
+
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+
   /* Print styles */
   @media print {
     .no-print {
@@ -67,6 +84,11 @@
   }
   .card-hover {
     @apply card transition-all hover:-translate-y-0.5 hover:shadow-card-hover;
+  }
+
+  /* Eyebrow label used above section titles for a more branded hierarchy */
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.16em] text-brand-700;
   }
 
   /* Stat card */

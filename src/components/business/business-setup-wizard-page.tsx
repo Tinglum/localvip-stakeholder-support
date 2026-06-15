@@ -347,7 +347,10 @@ export function BusinessSetupWizardPage() {
 
   const scopedBusiness = business
 
-  const completeProfile = !!name.trim() && !!category.trim() && !!description.trim()
+  // Profile completion is based on the fields QA actually persists (name +
+  // description). Category/avg ticket/products aren't QA columns, so requiring
+  // them would leave the step permanently incomplete after a reload.
+  const completeProfile = !!name.trim() && !!description.trim()
   // Branding was previously never checked (fell through to `true`), so it always
   // showed "Done". Require an actual logo and cover image to count it complete.
   const completeBranding = !!(logoUrl || logoFile) && !!(coverUrl || coverFile)
@@ -357,12 +360,16 @@ export function BusinessSetupWizardPage() {
   const completeCashback =
     cashbackPercent >= 5 && cashbackPercent <= 25 && (cashbackTouched || !!cashbackOfferId)
   const readyToActivate = completeProfile && completeCapture && completeCashback
+  // The activate step counts as complete once everything needed to launch is in
+  // place. It can't depend on launch_phase because QA doesn't persist it, which
+  // would keep the wizard stuck below 100% forever.
+  const completeActivate = readyToActivate && completeBranding
   const completedStepsCount = STEPS.filter((item) =>
     item.key === 'profile' ? completeProfile
       : item.key === 'branding' ? completeBranding
         : item.key === 'capture' ? completeCapture
           : item.key === 'cashback' ? completeCashback
-            : item.key === 'activate' ? readyToActivate && launchPhase !== 'setup'
+            : item.key === 'activate' ? completeActivate
               : true
   ).length
   const completionRatio = completedStepsCount / STEPS.length
@@ -373,7 +380,7 @@ export function BusinessSetupWizardPage() {
     if (key === 'branding') return completeBranding
     if (key === 'capture') return completeCapture
     if (key === 'cashback') return completeCashback
-    if (key === 'activate') return readyToActivate && launchPhase !== 'setup'
+    if (key === 'activate') return completeActivate
     return true
   }
 

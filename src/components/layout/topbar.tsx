@@ -117,6 +117,31 @@ function getProfileHref(profile: Profile, shell: string) {
   return '/dashboard'
 }
 
+function getQuickLinks(shell: string): { label: string; href: string }[] {
+  if (shell === 'business') {
+    return [
+      { label: 'My 100 list', href: '/portal/clients' },
+      { label: 'My business profile', href: '/portal/business' },
+      { label: 'My materials', href: '/materials/mine' },
+      { label: 'Setup steps', href: '/portal/setup' },
+    ]
+  }
+  if (shell === 'consumer') {
+    return [
+      { label: 'My wallet', href: '/portal/me/wallet' },
+      { label: 'My network', href: '/portal/me/network' },
+      { label: 'My causes', href: '/portal/me/causes' },
+      { label: 'My transactions', href: '/portal/me/transactions' },
+    ]
+  }
+  return [
+    { label: 'Dashboard home', href: '/dashboard' },
+    { label: 'Businesses', href: '/crm/businesses' },
+    { label: 'Causes', href: '/crm/causes' },
+    { label: 'Business onboarding', href: '/onboarding/business' },
+  ]
+}
+
 function getActionCenterContent(shell: string, pathname: string) {
   if (shell === 'business') {
     return {
@@ -187,6 +212,7 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
     () => getActionCenterContent(access.shell, pathname),
     [access.shell, pathname]
   )
+  const quickLinks = React.useMemo(() => getQuickLinks(access.shell), [access.shell])
 
   React.useEffect(() => {
     const prev = readHistory()
@@ -327,6 +353,7 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
             placeholder={searchPlaceholder}
             onSubmit={handleSearchSubmit}
             className="max-w-md"
+            quickLinks={quickLinks}
           />
         </div>
 
@@ -456,6 +483,7 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
             className="max-w-none"
             inputClassName="h-11 rounded-2xl"
             showShortcut={false}
+            quickLinks={quickLinks}
           />
         </DialogContent>
       </Dialog>

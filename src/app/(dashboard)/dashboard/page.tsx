@@ -49,7 +49,7 @@ import { InfluencerDashboardPage } from '@/components/influencer/influencer-dash
 import { LaunchPartnerDashboardPage } from '@/components/partner/launch-partner-dashboard-page'
 import { ROLES, ROLE_THEMES, ROLE_TOOLS } from '@/lib/constants'
 import { getStakeholderAccess } from '@/lib/stakeholder-access'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Store,
@@ -302,7 +302,70 @@ function TeamDashboardPage() {
   const firstName = profile.full_name?.split(' ')[0] || 'there'
   const primaryImmediateItem = immediateItems[0] ?? null
   const openWorkCount = openBusinessOnboarding.length + openCauseOnboarding.length
-  const activityCount = recentOutreach.length + recentActivity.length
+
+  // ── Deltas / trends (#9): real "new this week" counts from created_at ──
+  const newBusinessesThisWeek = React.useMemo(
+    () => businessData.filter((b) => withinDays(b.created_at, 7)).length,
+    [businessData]
+  )
+  const newCausesThisWeek = React.useMemo(
+    () => causeData.filter((c) => withinDays(c.created_at, 7)).length,
+    [causeData]
+  )
+
+  // ── One merged activity feed (#8): outreach + cross-team, newest first ──
+  const mergedActivity = React.useMemo(() => {
+    const fromOutreach = recentOutreach.map((item) => ({
+      key: `outreach-${item.id}`,
+      kind: 'outreach',
+      title:
+        `${((item.type || 'activity') as string).replace('_', ' ').replace(/^\w/, (v) => v.toUpperCase())}` +
+        (item.subject ? `: ${item.subject}` : ''),
+      when: item.created_at,
+      href: getOutreachActivityHref(item),
+      tone: item.outcome === 'positive' ? 'success' : item.outcome === 'negative' ? 'danger' : 'info',
+    }))
+    const fromCross = recentActivity.map((item) => ({
+      key: `${item.kind}-${item.id}`,
+      kind: item.kind,
+      title: item.title,
+      when: item.when,
+      href: undefined as string | undefined,
+      tone: item.kind === 'task' ? 'warning' : item.kind === 'audit' ? 'default' : 'success',
+    }))
+    return [...fromOutreach, ...fromCross]
+      .filter((x) => x.when)
+      .sort((a, b) => new Date(b.when).getTime() - new Date(a.when).getTime())
+      .slice(0, 10)
+  }, [recentOutreach, recentActivity])
+  const activityCount = mergedActivity.length
+
+  // ── Pipeline aging / conversion (#10) ──
+  const pipelineAgingCount = React.useMemo(
+    () =>
+      businessData.filter(
+        (b) => OPEN_PIPELINE_STAGES.has(b.stage) && !withinDays(b.updated_at || b.created_at, 14)
+      ).length,
+    [businessData]
+  )
+  const conversionRate = React.useMemo(() => {
+    const total = businessData.length
+    if (!total) return 0
+    const converted = businessData.filter((b) => b.stage === 'onboarded' || b.stage === 'live').length
+    return Math.round((converted / total) * 100)
+  }, [businessData])
+
+  // ── Contextual counts for the common-task cards (#14) ──
+  const toolCounts: Record<string, { count: number; label: string } | undefined> = {
+    '/crm/businesses': { count: openBusinessOnboarding.length, label: 'in progress' },
+    '/onboarding/business': { count: openBusinessOnboarding.length, label: 'to move' },
+    '/onboarding/cause': { count: openCauseOnboarding.length, label: 'to move' },
+    '/admin/users': { count: pendingCityRequests.length, label: 'pending' },
+    '/admin/material-engine/tasks': {
+      count: materialTasksNeedingSetup.length + materialTasksReadyToGenerate.length,
+      label: 'queued',
+    },
+  }
 
   return (
     <div className="space-y-8">
@@ -424,11 +487,21 @@ function TeamDashboardPage() {
           <h2 className="text-2xl font-semibold text-surface-900">Your key numbers</h2>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <StatCard label="Total Businesses" value={businessCount} icon={<Store className="h-5 w-5" />} />
-          <StatCard label="Total Causes" value={causeCount} icon={<Heart className="h-5 w-5" />} />
-          <StatCard label="Customers" value={consumerCount} icon={<Users className="h-5 w-5" />} />
-          <StatCard label="Stakeholders" value={stakeholderCount} icon={<Users className="h-5 w-5" />} />
-          <StatCard label="QR Codes" value={qrCodeCount} icon={<QrCode className="h-5 w-5" />} />
+          <StatCard
+            label="Total Businesses"
+            value={businessCount}
+            subtitle={newBusinessesThisWeek > 0 ? `+${newBusinessesThisWeek} new this week` : 'No new ones this week'}
+            icon={<Store className="h-5 w-5" />}
+          />
+          <StatCard
+            label="Total Causes"
+            value={causeCount}
+            subtitle={newCausesThisWeek > 0 ? `+${newCausesThisWeek} new this week` : 'No new ones this week'}
+            icon={<Heart className="h-5 w-5" />}
+          />
+          <StatCard label="Customers" value={consumerCount} subtitle="People signed up" icon={<Users className="h-5 w-5" />} />
+          <StatCard label="Stakeholders" value={stakeholderCount} subtitle="Team & partners" icon={<Users className="h-5 w-5" />} />
+          <StatCard label="QR Codes" value={qrCodeCount} subtitle="Live join codes" icon={<QrCode className="h-5 w-5" />} />
         </div>
       </div>
 
@@ -443,6 +516,7 @@ function TeamDashboardPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {roleTools.map((tool, index) => {
             const Icon = ICON_MAP[tool.icon] || FileText
+            const ctx = toolCounts[tool.href]
 
             return (
               <Link key={index} href={tool.href}>
@@ -455,9 +529,14 @@ function TeamDashboardPage() {
                       <Icon className="h-5 w-5" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-surface-800 transition-colors group-hover:text-brand-700">
-                        {tool.label}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-surface-800 transition-colors group-hover:text-brand-700">
+                          {tool.label}
+                        </p>
+                        {ctx && ctx.count > 0 ? (
+                          <Badge variant="warning">{ctx.count} {ctx.label}</Badge>
+                        ) : null}
+                      </div>
                       <p className="mt-0.5 text-xs text-surface-400">{tool.description}</p>
                     </div>
                     <ArrowRight className="mt-1 h-4 w-4 text-surface-300 transition-colors group-hover:text-brand-500" />
@@ -481,81 +560,56 @@ function TeamDashboardPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Recent outreach updates</CardTitle>
+              <CardTitle>What&apos;s happening</CardTitle>
               <Link href="/crm/outreach">
                 <Button variant="ghost" size="sm">
                   View all <ArrowRight className="h-3.5 w-3.5" />
                 </Button>
               </Link>
             </div>
+            <p className="text-sm leading-6 text-surface-500">One combined feed of outreach and cross-team updates, newest first.</p>
           </CardHeader>
           <CardContent>
-            {outreachLoading ? (
-              <p className="text-sm text-surface-400">Loading activities...</p>
-            ) : recentOutreach.length === 0 ? (
-              <p className="text-sm text-surface-400">No recent outreach activity yet.</p>
+            {outreachLoading && mergedActivity.length === 0 ? (
+              <p className="text-sm text-surface-400">Loading activity...</p>
+            ) : mergedActivity.length === 0 ? (
+              <p className="text-sm text-surface-400">No recent activity yet. Updates from the team will show up here.</p>
             ) : (
-              <div className="space-y-3">
-                {recentOutreach.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={getOutreachActivityHref(item)}
-                    className="group flex items-center justify-between rounded-lg px-2 py-2 transition-colors hover:bg-surface-50"
-                  >
-                    <div>
-                      <p className="text-sm text-surface-700 transition-colors group-hover:text-brand-700">
-                        {((item.type || 'activity') as string).replace('_', ' ').replace(/^\w/, (value) => value.toUpperCase())}
-                        {item.subject ? `: ${item.subject}` : ''}
-                      </p>
-                      <p className="text-xs text-surface-400">
-                        {item.entity_type || '—'} / {formatDate(item.created_at)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
+              <div className="space-y-2">
+                {mergedActivity.map((item) => {
+                  const row = (
+                    <div className="group flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-surface-50">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-surface-700 transition-colors group-hover:text-brand-700">{item.title}</p>
+                        <p className="text-xs text-surface-400">{formatDate(item.when)}</p>
+                      </div>
                       <Badge
                         variant={
-                          item.outcome === 'positive'
+                          item.tone === 'success'
                             ? 'success'
-                            : item.outcome === 'negative'
+                            : item.tone === 'danger'
                               ? 'danger'
-                              : item.outcome === 'neutral'
+                              : item.tone === 'warning'
                                 ? 'warning'
-                                : 'default'
+                                : item.tone === 'info'
+                                  ? 'info'
+                                  : 'default'
                         }
                       >
-                        {item.outcome || item.type}
+                        {item.kind}
                       </Badge>
-                      <ArrowRight className="h-3.5 w-3.5 text-surface-300 transition-colors group-hover:text-brand-500" />
                     </div>
-                  </Link>
-                ))}
+                  )
+                  return item.href ? (
+                    <Link key={item.key} href={item.href} className="block">{row}</Link>
+                  ) : (
+                    <div key={item.key}>{row}</div>
+                  )
+                })}
               </div>
             )}
           </CardContent>
         </Card>
-
-        {recentActivity.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Cross-team activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2">
-                {recentActivity.slice(0, 8).map((item) => (
-                  <li key={`${item.kind}-${item.id}`} className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-surface-50">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-surface-700">{item.title}</p>
-                      <p className="text-xs text-surface-400">{formatDate(item.when)}</p>
-                    </div>
-                    <Badge variant={item.kind === 'audit' ? 'default' : item.kind === 'outreach' ? 'info' : item.kind === 'task' ? 'warning' : 'success'}>
-                      {item.kind}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
 
           <Card>
             <CardHeader>
@@ -592,6 +646,18 @@ function TeamDashboardPage() {
                     <span className="w-8 text-right text-xs font-medium text-surface-600">{stage.count}</span>
                   </button>
                 ))}
+                <div className="mt-2 grid grid-cols-2 gap-3 border-t border-surface-100 pt-4">
+                  <div className="rounded-xl bg-surface-50 px-3 py-2">
+                    <p className="text-xs text-surface-500">Conversion to onboarded/live</p>
+                    <p className="mt-1 text-lg font-semibold text-surface-900">{conversionRate}%</p>
+                  </div>
+                  <div className={cn('rounded-xl px-3 py-2', pipelineAgingCount > 0 ? 'bg-warning-50' : 'bg-surface-50')}>
+                    <p className="text-xs text-surface-500">Stuck 14+ days</p>
+                    <p className={cn('mt-1 text-lg font-semibold', pipelineAgingCount > 0 ? 'text-warning-700' : 'text-surface-900')}>
+                      {pipelineAgingCount}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>
@@ -677,6 +743,15 @@ function TeamDashboardPage() {
       </Dialog>
     </div>
   )
+}
+
+const OPEN_PIPELINE_STAGES = new Set(['lead', 'contacted', 'interested', 'in_progress'])
+
+function withinDays(date: string | null | undefined, days: number) {
+  if (!date) return false
+  const then = new Date(date).getTime()
+  if (Number.isNaN(then)) return false
+  return Date.now() - then <= days * 24 * 60 * 60 * 1000
 }
 
 function getGreeting() {

@@ -86,14 +86,21 @@ export function BusinessDashboardPage() {
   const { data: contacts, loading: contactsLoading, refetch } = useContacts(contactFilters)
   const { data: offers } = useOffers({ business_id: business?.id || '__none__' })
 
+  // Refresh quietly when the owner returns to the tab, plus a calm 60s tick while
+  // the page is actually visible — no constant background polling.
   React.useEffect(() => {
     if (!business) return
 
-    const interval = window.setInterval(() => {
-      refetch({ silent: true })
-    }, 15000)
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') refetch({ silent: true })
+    }
+    document.addEventListener('visibilitychange', refreshIfVisible)
+    const interval = window.setInterval(refreshIfVisible, 60000)
 
-    return () => window.clearInterval(interval)
+    return () => {
+      document.removeEventListener('visibilitychange', refreshIfVisible)
+      window.clearInterval(interval)
+    }
   }, [business, refetch])
 
   if (businessesLoading || (business && contactsLoading)) {
@@ -130,6 +137,9 @@ export function BusinessDashboardPage() {
   const todayAdds = contacts.filter((contact) => isCreatedToday(contact.created_at)).length
   const progressPercent = Math.min(100, Math.round((contacts.length / 100) * 100))
   const activityFeed = buildActivityFeed(contacts)
+  // Beginner "do this now" signals (#22): added-but-not-invited, invited-but-not-joined.
+  const addedNotInvited = Math.max(0, contacts.length - invitedCount)
+  const invitedNotJoined = Math.max(0, invitedCount - joinedCount)
 
   const guidedSteps: GuidedStep[] = [
     {
@@ -293,6 +303,13 @@ export function BusinessDashboardPage() {
                   <p className="mt-1 text-2xl font-semibold text-surface-900">{joinedCount}</p>
                 </div>
               </div>
+              <details className="mt-3 rounded-2xl border border-surface-200 bg-surface-50 px-3 py-2 text-xs text-surface-600">
+                <summary className="cursor-pointer font-medium text-surface-700">What do Invited and Joined mean?</summary>
+                <p className="mt-2 leading-6">
+                  <strong>Invited</strong> = people you have already reached out to. <strong>Joined</strong> = people who
+                  finished signing up to your list. Your goal is simply to turn Invited into Joined.
+                </p>
+              </details>
               <div className="mt-4 rounded-2xl border border-surface-200 bg-white px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Done so far</p>
                 <p className="mt-1 text-sm text-surface-700">
@@ -303,6 +320,22 @@ export function BusinessDashboardPage() {
           </div>
         </div>
       </Card>
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-xl font-semibold text-surface-900">Your #1 growth tool: share your join QR</h2>
+          <p className="mt-1 text-sm leading-6 text-surface-500">
+            This is the fastest way to grow. Show it, let people scan, and they join your list on the spot.
+          </p>
+        </div>
+        <BusinessJoinQrCard
+          business={business}
+          totalClients={contacts.length}
+          todayAdds={todayAdds}
+          progressPercent={progressPercent}
+          compact
+        />
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
         <Card>
@@ -449,14 +482,6 @@ export function BusinessDashboardPage() {
         />
       </div>
 
-      <BusinessJoinQrCard
-        business={business}
-        totalClients={contacts.length}
-        todayAdds={todayAdds}
-        progressPercent={progressPercent}
-        compact
-      />
-
       <div>
         <div className="mb-3">
           <h2 className="text-xl font-semibold text-surface-900">Simple tools</h2>
@@ -500,7 +525,7 @@ export function BusinessDashboardPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>Recent wins and movement</CardTitle>
+              <CardTitle>Wins and what needs attention</CardTitle>
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/portal/activity">
                   View all
@@ -509,7 +534,35 @@ export function BusinessDashboardPage() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {(addedNotInvited > 0 || invitedNotJoined > 0) && (
+              <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Do this now</p>
+                {addedNotInvited > 0 && (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-amber-900">
+                      {addedNotInvited} {addedNotInvited === 1 ? 'person is' : 'people are'} on your list but not invited yet.
+                    </p>
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href="/portal/clients">Invite them</Link>
+                    </Button>
+                  </div>
+                )}
+                {invitedNotJoined > 0 && (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-amber-900">
+                      {invitedNotJoined} invited {invitedNotJoined === 1 ? 'person hasn’t' : 'people haven’t'} joined yet — a friendly nudge helps.
+                    </p>
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href="/portal/clients">Follow up</Link>
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+            {activityFeed.length > 0 && (
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-success-700">Recent wins</p>
+            )}
             {activityFeed.length === 0 ? (
               <p className="text-sm text-surface-500">
                 This area will fill in as you add people, invite them, and see them join through your business.

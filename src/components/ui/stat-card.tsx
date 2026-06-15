@@ -6,6 +6,8 @@ interface StatCardProps {
   value: number | string
   change?: number
   changePeriod?: string
+  /** A small plain-language line under the value, e.g. "+3 new this week". */
+  subtitle?: string
   icon?: React.ReactNode
   className?: string
   format?: 'number' | 'percent' | 'raw'
@@ -16,6 +18,7 @@ export function StatCard({
   value,
   change,
   changePeriod = 'vs last period',
+  subtitle,
   icon,
   className,
   format = 'number',
@@ -44,6 +47,7 @@ export function StatCard({
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-surface-500">{label}</p>
           <p className="mt-2 text-3xl font-bold tracking-tight text-surface-900">{displayValue}</p>
+          {subtitle && <p className="mt-1 text-xs text-surface-500">{subtitle}</p>}
         </div>
         {icon && (
           <div className="rounded-2xl bg-surface-100 p-3 text-surface-500 shadow-inner">

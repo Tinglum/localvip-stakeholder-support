@@ -639,28 +639,28 @@ export function ConsumerDashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Account details</CardTitle>
+            <CardTitle>Your account</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <AccountRow icon={<QrCode className="h-4 w-4" />} label="Referral code" value={consumer.referralCode || '-'} mono />
-            <AccountRow icon={<CreditCard className="h-4 w-4" />} label="Transactions" value={`${data.summary.counts.transactions}`} />
-            <AccountRow icon={<Smartphone className="h-4 w-4" />} label="Registered devices" value={`${data.summary.counts.devices}`} />
+            <AccountRow icon={<QrCode className="h-4 w-4" />} label="Your share code" value={consumer.referralCode || '—'} mono />
+            <AccountRow icon={<CreditCard className="h-4 w-4" />} label="Purchases tracked" value={`${data.summary.counts.transactions}`} />
+            <AccountRow icon={<Smartphone className="h-4 w-4" />} label="Phones signed in" value={`${data.summary.counts.devices}`} />
             <details className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
-              <summary className="cursor-pointer font-medium text-surface-700">What is my referral code?</summary>
+              <summary className="cursor-pointer font-medium text-surface-700">What is my share code?</summary>
               <p className="mt-3 leading-6">
-                Your referral code is the short code tied to your account. You may see it in sharing tools, support tasks,
-                or when someone is linking activity back to you.
+                This is your personal code for inviting friends. When someone joins with it, the people you invite are
+                linked to you — that is how your network and bonus cash grow.
               </p>
             </details>
             <details className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
-              <summary className="cursor-pointer font-medium text-surface-700">Show device list</summary>
+              <summary className="cursor-pointer font-medium text-surface-700">See my phones &amp; devices</summary>
               <div className="mt-3 space-y-2">
                 {data.devices.length === 0 ? (
-                  <p>No devices registered yet.</p>
+                  <p>No phones signed in yet. They&apos;ll show up here after you log in on a device.</p>
                 ) : (
                   data.devices.map((device) => (
                     <div key={device.id} className="flex items-center justify-between rounded-xl border border-white bg-white px-3 py-2">
-                      <span className="font-mono text-xs text-surface-600">Device {device.deviceId}</span>
+                      <span className="text-xs text-surface-600">Signed-in device</span>
                       <span className="text-xs text-surface-500">{formatDate(device.createdDate)}</span>
                     </div>
                   ))
