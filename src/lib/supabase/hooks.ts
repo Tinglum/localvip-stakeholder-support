@@ -365,6 +365,7 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
           phone: (b.ownerPhone as string) || null,
           website: null,
           category: null,
+          public_description: (b.description as string) || null,
           address: (b.fullAddress as string) || (b.address1 as string) || null,
           city: (b.city as string) || null,
           state: (b.state as string) || null,
