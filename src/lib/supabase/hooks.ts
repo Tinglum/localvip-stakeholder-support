@@ -376,6 +376,15 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
           brand: 'localvip',
           stage: 'lead',
           status: b.active ? 'active' : 'inactive',
+          // Map the saved logo/cover so the business setup Branding step shows them.
+          // The QA list returns bare filenames; route them through the same-origin
+          // proxy the detail uses (absolute URLs pass through unchanged).
+          logo_url: b.imageUrl
+            ? (/^https?:\/\//i.test(String(b.imageUrl)) ? String(b.imageUrl) : `/api/qa/businesses/${b.id}/logo`)
+            : null,
+          cover_photo_url: b.coverPhotoUrl
+            ? (/^https?:\/\//i.test(String(b.coverPhotoUrl)) ? String(b.coverPhotoUrl) : `/api/qa/businesses/${b.id}/cover`)
+            : null,
           metadata: { qaId: b.id, headline: b.headline },
           created_at: (b.createdDate as string) || new Date().toISOString(),
           updated_at: (b.updatedDate as string) || new Date().toISOString(),
