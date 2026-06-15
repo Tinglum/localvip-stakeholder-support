@@ -10,7 +10,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions, breadcrumb, className }: PageHeaderProps) {
   return (
-    <div className={cn('mb-6', className)}>
+    <div className={cn('mb-6 rounded-[1.75rem] border border-surface-200/90 bg-white/80 p-5 shadow-sm backdrop-blur-sm sm:p-6', className)}>
       {breadcrumb && (
         <nav className="mb-2 flex items-center gap-1.5 text-xs text-surface-400">
           {breadcrumb.map((item, idx) => (
@@ -27,14 +27,15 @@ export function PageHeader({ title, description, actions, breadcrumb, className 
           ))}
         </nav>
       )}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-display text-surface-900">{title}</h1>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-600">Overview</p>
+          <h1 className="mt-2 text-display text-surface-900">{title}</h1>
           {description && (
-            <p className="mt-1 text-body text-surface-500">{description}</p>
+            <p className="mt-2 max-w-3xl text-body text-surface-500">{description}</p>
           )}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </div>
   )

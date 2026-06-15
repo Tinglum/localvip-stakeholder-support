@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -10,8 +10,20 @@
     --brand-accent: 236 128 18;
   }
 
+  html {
+    font-family: 'Manrope', sans-serif;
+  }
+
   body {
-    @apply bg-surface-50 text-surface-800 antialiased;
+    @apply text-surface-800 antialiased;
+    background:
+      radial-gradient(circle at top left, rgba(var(--brand-primary), 0.08), transparent 24%),
+      linear-gradient(180deg, #f8fafc 0%, #ffffff 42%, #f3f8ff 100%);
+  }
+
+  ::selection {
+    background: rgba(var(--brand-primary), 0.18);
+    color: #0f172a;
   }
 
   /* Print styles */
@@ -51,10 +63,10 @@
 
   /* Card styles */
   .card {
-    @apply rounded-card border border-surface-200 bg-surface-0 shadow-card;
+    @apply rounded-card border border-surface-200/90 bg-surface-0/95 shadow-card backdrop-blur-sm;
   }
   .card-hover {
-    @apply card transition-shadow hover:shadow-card-hover;
+    @apply card transition-all hover:-translate-y-0.5 hover:shadow-card-hover;
   }
 
   /* Stat card */

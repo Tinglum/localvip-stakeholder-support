@@ -4,6 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
+  ArrowRight,
   Bell,
   ChevronDown,
   ChevronLeft,
@@ -116,6 +117,54 @@ function getProfileHref(profile: Profile, shell: string) {
   return '/dashboard'
 }
 
+function getActionCenterContent(shell: string, pathname: string) {
+  if (shell === 'business') {
+    return {
+      title: 'Keep business setup simple',
+      description: 'Pick one task, finish it, then come back for the next step.',
+      items: [
+        { label: 'Open my next business step', href: '/dashboard' },
+        { label: 'Open my 100 list', href: '/portal/clients' },
+        { label: 'Check my business profile', href: '/portal/business' },
+      ],
+    }
+  }
+
+  if (shell === 'consumer') {
+    return {
+      title: 'Your easiest next move',
+      description: 'Start with your money, then your people, then your causes.',
+      items: [
+        { label: 'Check my money', href: '/portal/me/wallet' },
+        { label: 'See my network', href: '/portal/me/network' },
+        { label: 'Choose my causes', href: '/portal/me/causes' },
+      ],
+    }
+  }
+
+  if (shell === 'community') {
+    return {
+      title: 'Community work in order',
+      description: 'Check supporters first, then share tools, then business activity.',
+      items: [
+        { label: 'See supporters', href: '/community/supporters' },
+        { label: 'Open share tools', href: '/community/share' },
+        { label: 'Review community businesses', href: '/community/businesses' },
+      ],
+    }
+  }
+
+  return {
+    title: pathname.startsWith('/admin') ? 'Admin action center' : 'Workspace shortcuts',
+    description: 'Use these links to jump to the next useful area without hunting through the menu.',
+    items: [
+      { label: 'Go to dashboard home', href: '/dashboard' },
+      { label: 'Open businesses', href: '/crm/businesses' },
+      { label: 'Open onboarding', href: '/onboarding/business' },
+    ],
+  }
+}
+
 interface TopbarProps {
   profile: Profile
   sidebarCollapsed: boolean
@@ -134,6 +183,10 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
   const [history, setHistory] = React.useState<{ path: string; label: string }[]>([])
   const pageContext = React.useMemo(() => getPageContext(pathname), [pathname])
   const profileHref = getProfileHref(profile, access.shell)
+  const actionCenter = React.useMemo(
+    () => getActionCenterContent(access.shell, pathname),
+    [access.shell, pathname]
+  )
 
   React.useEffect(() => {
     const prev = readHistory()
@@ -251,7 +304,7 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-surface-400">
             <span>{pageContext.section}</span>
-            {trail.length > 0 ? <span className="hidden sm:inline">•</span> : null}
+            {trail.length > 0 ? <span className="hidden sm:inline">/</span> : null}
             {trail.length > 0 ? (
               <button
                 onClick={() => handleTrailClick(trail[0].path)}
@@ -317,15 +370,27 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
               <p className="mb-2 text-sm font-semibold text-surface-800">Action Center</p>
               <div className="space-y-2">
                 <div className="rounded-xl border border-surface-200 bg-surface-50 px-3 py-3">
-                  <p className="text-sm font-medium text-surface-800">Nothing urgent right now.</p>
+                  <p className="text-sm font-medium text-surface-800">{actionCenter.title}</p>
                   <p className="mt-1 text-xs leading-5 text-surface-500">
-                    When alerts are ready, this area will show the next thing that needs attention.
+                    {actionCenter.description}
                   </p>
+                </div>
+                <div className="space-y-2">
+                  {actionCenter.items.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="flex items-center justify-between rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 hover:text-brand-700"
+                    >
+                      <span>{item.label}</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  ))}
                 </div>
                 <Button variant="outline" size="sm" className="w-full" asChild>
                   <Link href="/dashboard">
                     <Home className="h-3.5 w-3.5" />
-                    Go to dashboard
+                    Back to dashboard home
                   </Link>
                 </Button>
               </div>

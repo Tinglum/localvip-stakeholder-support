@@ -395,7 +395,7 @@ export function BusinessDashboardPage() {
                 </li>
                 <li className="flex gap-3">
                   <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 text-xs font-semibold text-surface-700">2</span>
-                  <span>Use one short sentence: “Scan this to join our LocalVIP list.”</span>
+                  <span>Use one short sentence: &quot;Scan this to join our LocalVIP list.&quot;</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 text-xs font-semibold text-surface-700">3</span>
@@ -457,6 +457,45 @@ export function BusinessDashboardPage() {
         compact
       />
 
+      <div>
+        <div className="mb-3">
+          <h2 className="text-xl font-semibold text-surface-900">Simple tools</h2>
+          <p className="mt-1 text-sm leading-6 text-surface-500">
+            These are the easiest places to go when you want to take action quickly.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SimpleToolCard
+            href="/portal/clients"
+            title="Open my 100 list"
+            label="Best first step"
+            description="Add people, invite them, and keep your list moving."
+            icon={<Users className="h-5 w-5" />}
+          />
+          <SimpleToolCard
+            href="/portal/business"
+            title="Review my business profile"
+            label="Profile check"
+            description="Make sure your business description and category are easy to understand."
+            icon={<Store className="h-5 w-5" />}
+          />
+          <SimpleToolCard
+            href="/materials/mine"
+            title="Open my materials"
+            label="Helpful support"
+            description="See the flyers, scripts, and tools made for business owners."
+            icon={<FileText className="h-5 w-5" />}
+          />
+          <SimpleToolCard
+            href="/portal/grow"
+            title="Invite another business"
+            label="Growth option"
+            description="Use this when you are ready to help another local business join."
+            icon={<Heart className="h-5 w-5" />}
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.05fr,0.95fr]">
         <Card>
           <CardHeader>
@@ -504,11 +543,13 @@ export function BusinessDashboardPage() {
               title="Customer capture offer"
               body={captureOffer.headline}
               detail={captureOffer.description || 'Add a short reason for someone to join your list.'}
+              example="Example: Join our VIP list and get your first LocalVIP welcome perk."
             />
             <InfoPanel
               title="LocalVIP cashback"
               body={formatCashbackLabel(cashbackOffer.cashback_percent)}
               detail={cashbackOffer.description || 'Set the customer reward you want people to receive when you are live.'}
+              example="Example: Customers receive cashback every time they shop with us through LocalVIP."
             />
             <InfoPanel
               title="Products and services"
@@ -518,11 +559,13 @@ export function BusinessDashboardPage() {
                   : 'Add your main products or services.'
               }
               detail="People understand your business faster when the main things you sell are easy to read."
+              example="Example: Coffee, pastries, catering, and custom cakes."
             />
             <InfoPanel
               title="Description"
               body={business.public_description || portal.description || 'Describe what makes your business special.'}
               detail="A short plain-English description is enough. Think about how you would explain the business out loud."
+              example="Example: We are a neighborhood bakery known for fresh bread, custom cakes, and friendly service."
             />
           </CardContent>
         </Card>
@@ -633,17 +676,54 @@ function InfoPanel({
   title,
   body,
   detail,
+  example,
 }: {
   title: string
   body: string
   detail: string
+  example?: string
 }) {
   return (
     <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{title}</p>
       <p className="mt-2 text-sm font-semibold leading-6 text-surface-900">{body}</p>
       <p className="mt-2 text-sm leading-6 text-surface-600">{detail}</p>
+      {example ? (
+        <details className="mt-3 rounded-xl border border-surface-200 bg-white px-3 py-2 text-sm text-surface-600">
+          <summary className="cursor-pointer font-medium text-surface-700">See an example</summary>
+          <p className="mt-2 leading-6">{example}</p>
+        </details>
+      ) : null}
     </div>
+  )
+}
+
+function SimpleToolCard({
+  href,
+  title,
+  label,
+  description,
+  icon,
+}: {
+  href: string
+  title: string
+  label: string
+  description: string
+  icon: React.ReactNode
+}) {
+  return (
+    <Link href={href}>
+      <Card className="h-full transition-all hover:-translate-y-0.5 hover:shadow-card-hover">
+        <CardContent className="flex h-full items-start gap-4 p-5">
+          <div className="rounded-2xl bg-brand-50 p-3 text-brand-700">{icon}</div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-600">{label}</p>
+            <p className="mt-1 text-sm font-semibold text-surface-900">{title}</p>
+            <p className="mt-1 text-sm leading-6 text-surface-500">{description}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   )
 }
 

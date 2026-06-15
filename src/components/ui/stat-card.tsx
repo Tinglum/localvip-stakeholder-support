@@ -42,17 +42,17 @@ export function StatCard({
     <div className={cn('stat-card', className)}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-caption text-surface-500 uppercase tracking-wider">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-surface-900">{displayValue}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-surface-500">{label}</p>
+          <p className="mt-2 text-3xl font-bold tracking-tight text-surface-900">{displayValue}</p>
         </div>
         {icon && (
-          <div className="rounded-lg bg-surface-100 p-2 text-surface-500">
+          <div className="rounded-2xl bg-surface-100 p-3 text-surface-500 shadow-inner">
             {icon}
           </div>
         )}
       </div>
       {change !== undefined && (
-        <div className={cn('mt-3 flex items-center gap-1 text-xs', trendColor)}>
+        <div className={cn('mt-4 inline-flex items-center gap-1 rounded-full bg-surface-50 px-2.5 py-1 text-xs', trendColor)}>
           <TrendIcon className="h-3.5 w-3.5" />
           <span className="font-medium">{change > 0 ? '+' : ''}{change.toFixed(1)}%</span>
           <span className="text-surface-400">{changePeriod}</span>
