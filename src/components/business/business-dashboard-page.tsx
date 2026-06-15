@@ -5,8 +5,14 @@ import Link from 'next/link'
 import {
   ArrowRight,
   BarChart3,
+  CheckCircle2,
+  Circle,
+  Clock3,
   FileText,
   Heart,
+  Info,
+  QrCode,
+  Sparkles,
   Store,
   Users,
 } from 'lucide-react'
@@ -16,7 +22,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
-import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import { getBusinessJoinCaptureData } from '@/lib/business-join'
 import { formatCashbackLabel, resolveBusinessOffer } from '@/lib/offers'
@@ -45,30 +50,39 @@ type ActivityItem = {
   tone: 'default' | 'success' | 'info'
 }
 
+type GuidedStep = {
+  key: string
+  label: string
+  shortLabel: string
+  href: string
+  ctaLabel: string
+  complete: boolean
+  detail: string
+  why: string
+  time: string
+}
+
 export function BusinessDashboardPage() {
   const { profile } = useAuth()
-  const businessFilters = React.useMemo<Record<string, string>>(
-    () => {
-      const filters: Record<string, string> = {}
-      if (profile.business_id) {
-        filters.id = profile.business_id
-      } else {
-        filters.owner_id = profile.id
-      }
-      return filters
-    },
-    [profile.business_id, profile.id]
-  )
+  const businessFilters = React.useMemo<Record<string, string>>(() => {
+    const filters: Record<string, string> = {}
+    if (profile.business_id) {
+      filters.id = profile.business_id
+    } else {
+      filters.owner_id = profile.id
+    }
+    return filters
+  }, [profile.business_id, profile.id])
+
   const { data: businesses, loading: businessesLoading } = useBusinesses(businessFilters)
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
-  const contactFilters = React.useMemo<Record<string, string>>(
-    () => {
-      const filters: Record<string, string> = {}
-      filters.business_id = business?.id || '__none__'
-      return filters
-    },
-    [business?.id]
-  )
+
+  const contactFilters = React.useMemo<Record<string, string>>(() => {
+    const filters: Record<string, string> = {}
+    filters.business_id = business?.id || '__none__'
+    return filters
+  }, [business?.id])
+
   const { data: contacts, loading: contactsLoading, refetch } = useContacts(contactFilters)
   const { data: offers } = useOffers({ business_id: business?.id || '__none__' })
 
@@ -77,7 +91,7 @@ export function BusinessDashboardPage() {
 
     const interval = window.setInterval(() => {
       refetch({ silent: true })
-    }, 5000)
+    }, 15000)
 
     return () => window.clearInterval(interval)
   }, [business, refetch])
@@ -87,7 +101,7 @@ export function BusinessDashboardPage() {
       <div className="flex min-h-[55vh] items-center justify-center">
         <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-5 py-4 text-sm text-surface-500 shadow-sm">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-          Loading your business portal...
+          Loading your business dashboard...
         </div>
       </div>
     )
@@ -97,8 +111,8 @@ export function BusinessDashboardPage() {
     return (
       <EmptyState
         icon={<Store className="h-8 w-8" />}
-        title="Your business portal is almost ready"
-        description="A business needs to be linked to this account before we can show your dashboard."
+        title="Your business dashboard is almost ready"
+        description="A business needs to be linked to this account before we can show your simple setup steps."
       />
     )
   }
@@ -115,93 +129,94 @@ export function BusinessDashboardPage() {
   const joinedCount = contacts.filter((contact) => getContactListStatus(contact) === 'joined').length
   const todayAdds = contacts.filter((contact) => isCreatedToday(contact.created_at)).length
   const progressPercent = Math.min(100, Math.round((contacts.length / 100) * 100))
-
-  const nextSteps = [
-    {
-      label: 'Build your 100 List',
-      href: '/portal/clients',
-      complete: contacts.length > 0,
-      detail: contacts.length > 0 ? `${contacts.length} people added so far` : 'Start with the first 10 people who already know your business',
-    },
-    {
-      label: 'Invite your first 10 customers',
-      href: '/portal/clients',
-      complete: invitedCount >= 10,
-      detail: invitedCount > 0 ? `${invitedCount} invited` : 'Mark people invited as you reach out',
-    },
-    {
-      label: 'Share your customer capture QR',
-      href: '/portal/clients',
-      complete: hasCaptureReady,
-      detail: hasCaptureReady ? 'Your capture QR and join page are ready to use in-store' : 'Your QR and join page will appear in My 100 List',
-    },
-    {
-      label: 'Review your business profile',
-      href: '/portal/business',
-      complete: !!business.category && !!(business.public_description || portal.description),
-      detail: business.category ? `Category set to ${business.category}` : 'Add your category, description, and offer details',
-    },
-    {
-      label: 'Get ready to go live',
-      href: '/portal/setup',
-      complete: launchPhase === 'ready_to_go_live' || launchPhase === 'live',
-      detail: launchPhase === 'ready_to_go_live' || launchPhase === 'live'
-        ? 'Your first 100 customers are in place'
-        : 'Complete your first 100 customers to unlock the live cashback phase',
-    },
-  ]
-  const immediateItems = nextSteps
-    .filter((step) => !step.complete)
-    .map((step, index) => ({
-      id: `business-step-${index}`,
-      title: step.label,
-      detail: step.detail,
-      href: step.href,
-      ctaLabel: 'Open step',
-      priority: index === 0 ? 'high' as const : 'medium' as const,
-      badge: 'Business',
-    }))
-
-  const oldestUnjoinedContact = [...contacts]
-    .filter((contact) => getContactListStatus(contact) !== 'joined')
-    .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
-    .at(0)
-
-  const suggestedItems = [
-    {
-      id: 'business-suggestion-new-inquiry',
-      title: 'Add a new inquiry',
-      detail: 'Keep the 100 List growing by adding another customer, regular, or supporter who already knows your business.',
-      href: '/portal/clients',
-      ctaLabel: 'Open My 100 List',
-    },
-    {
-      id: 'business-suggestion-follow-up',
-      title: oldestUnjoinedContact
-        ? `Follow up with ${getContactDisplayName(oldestUnjoinedContact)}`
-        : 'Follow up with your oldest open item',
-      detail: oldestUnjoinedContact
-        ? 'This is the oldest person in your list who still needs another push to move forward.'
-        : 'If you have anyone still waiting on a next touch, move that relationship first.',
-      href: '/portal/clients',
-      ctaLabel: 'Review open contacts',
-    },
-    {
-      id: 'business-suggestion-b2b',
-      title: 'Invite another business',
-      detail: 'Grow your network by inviting a nearby or complementary business into LocalVIP.',
-      href: '/portal/grow',
-      ctaLabel: 'Open growth tools',
-    },
-  ]
-
   const activityFeed = buildActivityFeed(contacts)
+
+  const guidedSteps: GuidedStep[] = [
+    {
+      key: 'step-list',
+      label: 'Build your first customer list',
+      shortLabel: 'Start your list',
+      href: '/portal/clients',
+      ctaLabel: contacts.length > 0 ? 'Open my list' : 'Add your first people',
+      complete: contacts.length > 0,
+      detail: contacts.length > 0
+        ? `${contacts.length} people are already in your list.`
+        : 'Start with the first 10 people who already know your business.',
+      why: 'This is how you build your first 100 supporters without cold outreach.',
+      time: '5 to 10 minutes',
+    },
+    {
+      key: 'step-invite',
+      label: 'Invite people you already know',
+      shortLabel: 'Invite people',
+      href: '/portal/clients',
+      ctaLabel: invitedCount > 0 ? 'Review invitations' : 'Start inviting',
+      complete: invitedCount >= 10,
+      detail: invitedCount > 0
+        ? `${invitedCount} people have already been invited.`
+        : 'Mark people as invited as you text, call, or talk to them in person.',
+      why: 'Simple follow-up is what turns your list into real joins.',
+      time: '10 minutes',
+    },
+    {
+      key: 'step-qr',
+      label: 'Share your join QR code',
+      shortLabel: 'Share your QR',
+      href: '/portal/clients',
+      ctaLabel: hasCaptureReady ? 'Open QR tools' : 'Finish QR setup',
+      complete: hasCaptureReady,
+      detail: hasCaptureReady
+        ? 'Your join link and QR code are ready to use in person.'
+        : 'Your QR and join link will appear here once your setup is ready.',
+      why: 'A visible QR code makes it easy for customers to join on the spot.',
+      time: '2 minutes',
+    },
+    {
+      key: 'step-profile',
+      label: 'Check your business profile',
+      shortLabel: 'Check profile',
+      href: '/portal/business',
+      ctaLabel: 'Review profile',
+      complete: !!business.category && !!(business.public_description || portal.description),
+      detail: business.category
+        ? `Your business category is set to ${business.category}.`
+        : 'Add your category, a short description, and your offer details.',
+      why: 'A clear profile helps customers quickly understand what you offer.',
+      time: '5 minutes',
+    },
+    {
+      key: 'step-live',
+      label: 'Get ready to go live',
+      shortLabel: 'Go live',
+      href: '/portal/setup',
+      ctaLabel: 'Open setup',
+      complete: launchPhase === 'ready_to_go_live' || launchPhase === 'live',
+      detail:
+        launchPhase === 'ready_to_go_live' || launchPhase === 'live'
+          ? 'Your first 100 customers are in place and you are ready to grow.'
+          : 'Complete your first 100 customers to unlock the live cashback phase.',
+      why: 'This is the point where your setup turns into steady, repeatable growth.',
+      time: 'Ongoing',
+    },
+  ]
+
+  const pendingSteps = guidedSteps.filter((step) => !step.complete)
+  const completedSteps = guidedSteps.filter((step) => step.complete)
+  const nextStep = pendingSteps[0] || completedSteps[completedSteps.length - 1]
+  const launchLabel =
+    launchPhase === 'capturing_100'
+      ? 'Building your first 100'
+      : launchPhase === 'ready_to_go_live'
+        ? 'Ready to go live'
+        : launchPhase === 'live'
+          ? 'Live'
+          : 'Setup'
 
   return (
     <div className="space-y-8">
       <PageHeader
         title={`Welcome, ${business.name}`}
-        description="Here's how to grow your business and support your community."
+        description="This page shows the one best next step, what it means, and the simplest way to keep moving."
         actions={
           <Badge variant={getActivationTone(activationStatus)} dot>
             {getActivationLabel(activationStatus)}
@@ -210,17 +225,51 @@ export function BusinessDashboardPage() {
       />
 
       <Card className="overflow-hidden border-surface-200">
-        <div className="bg-gradient-to-r from-amber-50 via-white to-lime-50 px-6 py-6">
-          <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
-            <StakeholderActionQueue
-              title="Immediate next steps"
-              description="Keep this simple: finish what is still incomplete, and as soon as it is done it drops out of this overview."
-              items={immediateItems}
-              suggestions={suggestedItems}
-            />
+        <div className="bg-[linear-gradient(135deg,_rgba(245,158,11,0.15),_rgba(255,255,255,0.96)_38%,_rgba(132,204,22,0.16)_100%)] px-6 py-6">
+          <div className="grid gap-6 lg:grid-cols-[1.15fr,0.85fr]">
+            <div className="space-y-5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700 shadow-sm">
+                <Sparkles className="h-3.5 w-3.5" />
+                Today&apos;s best next step
+              </div>
+
+              <div>
+                <h2 className="text-3xl font-bold tracking-tight text-surface-900">
+                  {nextStep?.label || 'Your setup is in a strong place'}
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-surface-600 sm:text-base">
+                  {nextStep?.detail || 'Your main steps are complete. Keep your list active and keep sharing your business.'}
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <InfoTile
+                  icon={<Clock3 className="h-4 w-4" />}
+                  title="How long it takes"
+                  description={nextStep?.time || 'A quick check-in'}
+                />
+                <InfoTile
+                  icon={<Info className="h-4 w-4" />}
+                  title="Why it matters"
+                  description={nextStep?.why || 'It keeps your business growth moving in the right order.'}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button asChild size="lg">
+                  <Link href={nextStep?.href || '/portal/clients'}>
+                    {nextStep?.ctaLabel || 'Open next step'}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button variant="outline" size="lg" asChild>
+                  <Link href="/portal/setup">See full setup path</Link>
+                </Button>
+              </div>
+            </div>
 
             <div className="rounded-[1.75rem] border border-white/90 bg-white/90 p-5 shadow-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Progress to 100</p>
                   <p className="mt-2 text-3xl font-bold text-surface-900">{contacts.length} / 100</p>
@@ -244,35 +293,159 @@ export function BusinessDashboardPage() {
                   <p className="mt-1 text-2xl font-semibold text-surface-900">{joinedCount}</p>
                 </div>
               </div>
+              <div className="mt-4 rounded-2xl border border-surface-200 bg-white px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Done so far</p>
+                <p className="mt-1 text-sm text-surface-700">
+                  {completedSteps.length} of {guidedSteps.length} setup steps completed
+                </p>
+              </div>
             </div>
           </div>
         </div>
       </Card>
 
+      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Simple setup path</CardTitle>
+            <p className="text-sm leading-6 text-surface-500">
+              Work from top to bottom. Each step tells you what to do, why it matters, and how long it usually takes.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {guidedSteps.map((step) => (
+              <div
+                key={step.key}
+                className={cn(
+                  'rounded-2xl border p-4 shadow-sm transition-colors',
+                  step.complete ? 'border-success-200 bg-success-50/60' : 'border-surface-200 bg-white'
+                )}
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {step.complete ? (
+                        <CheckCircle2 className="h-4 w-4 text-success-600" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-surface-300" />
+                      )}
+                      <p className="text-sm font-semibold text-surface-900">{step.label}</p>
+                      <Badge variant={step.complete ? 'success' : 'info'}>
+                        {step.complete ? 'Done' : 'Do next'}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-surface-600">{step.detail}</p>
+                    <div className="mt-3 grid gap-2 text-xs text-surface-500 sm:grid-cols-2">
+                      <div className="rounded-xl bg-surface-50 px-3 py-2">
+                        <span className="font-medium text-surface-700">Why this matters:</span> {step.why}
+                      </div>
+                      <div className="rounded-xl bg-surface-50 px-3 py-2">
+                        <span className="font-medium text-surface-700">Typical time:</span> {step.time}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button asChild size="sm" variant={step.complete ? 'outline' : 'default'}>
+                      <Link href={step.href}>
+                        {step.ctaLabel}
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>What these words mean</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-surface-600">
+              <PlainLanguageItem
+                label="Customer capture offer"
+                meaning="The simple offer you use to help people join your first 100-list. This is for early growth, not your long-term cashback."
+              />
+              <PlainLanguageItem
+                label="LocalVIP cashback"
+                meaning="The reward customers get back when your business is live and running normally."
+              />
+              <PlainLanguageItem
+                label="Launch phase"
+                meaning="This tells you whether you are still building your first 100 people, ready to go live, or already live."
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden border-surface-200">
+            <CardHeader>
+              <CardTitle>How to use your join QR</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-4 text-sm leading-6 text-brand-800">
+                Keep this very simple: show the QR, ask the customer to scan it, and tell them it is the easiest way
+                to join your business list.
+              </div>
+              <ol className="space-y-3 text-sm text-surface-600">
+                <li className="flex gap-3">
+                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 text-xs font-semibold text-surface-700">1</span>
+                  <span>Keep the QR visible at the counter, till, table, or wherever people naturally pause.</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 text-xs font-semibold text-surface-700">2</span>
+                  <span>Use one short sentence: “Scan this to join our LocalVIP list.”</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 text-xs font-semibold text-surface-700">3</span>
+                  <span>Check your list later and mark the people you already invited so nothing gets forgotten.</span>
+                </li>
+              </ol>
+              <div className="flex flex-wrap gap-3">
+                <Button asChild>
+                  <Link href="/portal/clients">
+                    Open QR and join tools
+                    <QrCode className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/materials/mine">Open business materials</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SnapshotCard
           icon={<Users className="h-5 w-5" />}
-          label="Total customers referred"
+          label="People who have joined"
           value={joinedCount}
-          detail={`${contacts.length} total in your list`}
+          detail={`${contacts.length} total people are in your list right now.`}
+          explainer="This number shows how many people from your business list have already joined through your invite flow."
         />
         <SnapshotCard
           icon={<Heart className="h-5 w-5" />}
-          label="Customer capture offer"
+          label="Your join offer"
           value={captureOffer.value_label || captureOffer.headline}
-          detail="Used to get your first 100 customers"
+          detail="This is the offer you use while building your first 100 people."
+          explainer="Think of this as your early growth offer. It helps people join before you move into your ongoing live rewards."
         />
         <SnapshotCard
           icon={<BarChart3 className="h-5 w-5" />}
-          label="LocalVIP cashback"
+          label="Live cashback"
           value={formatCashbackLabel(cashbackOffer.cashback_percent)}
-          detail="Used to generate ongoing sales"
+          detail="This is the standard reward customers receive when you are live."
+          explainer="Once your setup is complete, this becomes the ongoing customer reward tied to your business."
         />
         <SnapshotCard
           icon={<Store className="h-5 w-5" />}
-          label="Launch phase"
-          value={launchPhase === 'capturing_100' ? 'Capturing 100' : launchPhase === 'ready_to_go_live' ? 'Ready To Go Live' : launchPhase === 'live' ? 'Live' : 'Setup'}
-          detail={business.category || 'Set your business category'}
+          label="Current stage"
+          value={launchLabel}
+          detail={business.category || 'Add your business category in your profile.'}
+          explainer="This stage tells you how far along your business is, from setup through live operation."
         />
       </div>
 
@@ -284,51 +457,24 @@ export function BusinessDashboardPage() {
         compact
       />
 
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-surface-800">Quick Actions</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <QuickAction
-            href="/portal/clients"
-            icon={<Users className="h-5 w-5" />}
-            title="Build Your 100 List"
-            description="Add the people who already know and support your business."
-          />
-          <QuickAction
-            href="/portal/clients"
-            icon={<ArrowRight className="h-5 w-5" />}
-            title="Invite Customers"
-            description="Mark outreach as you text, call, and talk to people."
-          />
-          <QuickAction
-            href="/materials/mine"
-            icon={<FileText className="h-5 w-5" />}
-            title="View Materials"
-            description="Open the scripts and flyers meant for business owners."
-          />
-          <QuickAction
-            href="/portal/business"
-            icon={<Store className="h-5 w-5" />}
-            title="View My Business Profile"
-            description="Keep your offer, products, and profile details current."
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr,0.8fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.05fr,0.95fr]">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>Activity Feed</CardTitle>
-              <Link href="/portal/activity">
-                <Button variant="ghost" size="sm">
-                  View all <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
+              <CardTitle>Recent wins and movement</CardTitle>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/portal/activity">
+                  View all
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
             {activityFeed.length === 0 ? (
-              <p className="text-sm text-surface-500">Your activity feed will fill in as you add and invite people from your list.</p>
+              <p className="text-sm text-surface-500">
+                This area will fill in as you add people, invite them, and see them join through your business.
+              </p>
             ) : (
               <div className="space-y-3">
                 {activityFeed.map((item) => (
@@ -351,31 +497,33 @@ export function BusinessDashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Business Snapshot</CardTitle>
+            <CardTitle>Business basics at a glance</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Customer Capture Offer</p>
-              <p className="mt-2 text-lg font-semibold text-surface-900">{captureOffer.headline}</p>
-              <p className="mt-2 text-sm text-surface-600">{captureOffer.description}</p>
-            </div>
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">LocalVIP Cashback</p>
-              <p className="mt-2 text-lg font-semibold text-surface-900">{formatCashbackLabel(cashbackOffer.cashback_percent)}</p>
-              <p className="mt-2 text-sm text-surface-600">{cashbackOffer.description}</p>
-            </div>
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Products / Services</p>
-              <p className="mt-2 text-sm text-surface-700">
-                {getBusinessProducts(business).length > 0
+            <InfoPanel
+              title="Customer capture offer"
+              body={captureOffer.headline}
+              detail={captureOffer.description || 'Add a short reason for someone to join your list.'}
+            />
+            <InfoPanel
+              title="LocalVIP cashback"
+              body={formatCashbackLabel(cashbackOffer.cashback_percent)}
+              detail={cashbackOffer.description || 'Set the customer reward you want people to receive when you are live.'}
+            />
+            <InfoPanel
+              title="Products and services"
+              body={
+                getBusinessProducts(business).length > 0
                   ? getBusinessProducts(business).join(', ')
-                  : 'Add your main products and services so LocalVIP can explain your business clearly.'}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Description</p>
-              <p className="mt-2 text-sm leading-6 text-surface-700">{business.public_description || portal.description || 'Describe what makes your business special.'}</p>
-            </div>
+                  : 'Add your main products or services.'
+              }
+              detail="People understand your business faster when the main things you sell are easy to read."
+            />
+            <InfoPanel
+              title="Description"
+              body={business.public_description || portal.description || 'Describe what makes your business special.'}
+              detail="A short plain-English description is enough. Think about how you would explain the business out loud."
+            />
           </CardContent>
         </Card>
       </div>
@@ -389,8 +537,8 @@ function buildActivityFeed(contacts: Contact[]): ActivityItem[] {
   for (const contact of contacts) {
     items.push({
       id: `${contact.id}-added`,
-      title: `${getContactDisplayName(contact)} added to your 100 list`,
-      detail: 'A new supporter was added to your business network.',
+      title: `${getContactDisplayName(contact)} was added to your list`,
+      detail: 'You added another person who already knows your business.',
       createdAt: contact.created_at,
       tone: 'default',
     })
@@ -398,8 +546,8 @@ function buildActivityFeed(contacts: Contact[]): ActivityItem[] {
     if (contact.invited_at) {
       items.push({
         id: `${contact.id}-invited`,
-        title: `${getContactDisplayName(contact)} marked as invited`,
-        detail: 'You recorded an invite for this person.',
+        title: `${getContactDisplayName(contact)} was marked as invited`,
+        detail: 'You recorded that you reached out to this person.',
         createdAt: contact.invited_at,
         tone: 'info',
       })
@@ -409,7 +557,7 @@ function buildActivityFeed(contacts: Contact[]): ActivityItem[] {
       items.push({
         id: `${contact.id}-joined`,
         title: `${getContactDisplayName(contact)} joined`,
-        detail: 'This person has now joined through your business list.',
+        detail: 'This person completed the join flow through your business list.',
         createdAt: contact.joined_at,
         tone: 'success',
       })
@@ -421,16 +569,45 @@ function buildActivityFeed(contacts: Contact[]): ActivityItem[] {
     .slice(0, 6)
 }
 
+function InfoTile({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode
+  title: string
+  description: string
+}) {
+  return (
+    <div className="rounded-2xl border border-white/90 bg-white/90 px-4 py-4 shadow-sm">
+      <div className="inline-flex rounded-xl bg-brand-50 p-2 text-brand-700">{icon}</div>
+      <p className="mt-3 text-sm font-semibold text-surface-900">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-surface-500">{description}</p>
+    </div>
+  )
+}
+
+function PlainLanguageItem({ label, meaning }: { label: string; meaning: string }) {
+  return (
+    <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+      <p className="text-sm font-semibold text-surface-900">{label}</p>
+      <p className="mt-1 text-sm leading-6 text-surface-600">{meaning}</p>
+    </div>
+  )
+}
+
 function SnapshotCard({
   icon,
   label,
   value,
   detail,
+  explainer,
 }: {
   icon: React.ReactNode
   label: string
   value: React.ReactNode
   detail: string
+  explainer: string
 }) {
   return (
     <Card className="border-surface-200">
@@ -443,33 +620,33 @@ function SnapshotCard({
           <div className="rounded-2xl bg-surface-100 p-3 text-surface-600">{icon}</div>
         </div>
         <p className="text-sm text-surface-500">{detail}</p>
+        <details className="rounded-2xl border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-600">
+          <summary className="cursor-pointer font-medium text-surface-700">What this means</summary>
+          <p className="mt-2 leading-6">{explainer}</p>
+        </details>
       </CardContent>
     </Card>
   )
 }
 
-function QuickAction({
-  href,
-  icon,
+function InfoPanel({
   title,
-  description,
+  body,
+  detail,
 }: {
-  href: string
-  icon: React.ReactNode
   title: string
-  description: string
+  body: string
+  detail: string
 }) {
   return (
-    <Link href={href}>
-      <Card className="h-full border-surface-200 transition-all hover:-translate-y-0.5 hover:shadow-card-hover">
-        <CardContent className="flex h-full items-start gap-4 p-5">
-          <div className="rounded-2xl bg-brand-50 p-3 text-brand-700">{icon}</div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-surface-900">{title}</p>
-            <p className="mt-1 text-sm text-surface-500">{description}</p>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+    <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{title}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-surface-900">{body}</p>
+      <p className="mt-2 text-sm leading-6 text-surface-600">{detail}</p>
+    </div>
   )
+}
+
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ')
 }

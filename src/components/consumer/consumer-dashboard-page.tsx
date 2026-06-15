@@ -3,16 +3,21 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
+  ArrowRight,
   Calendar,
+  CheckCircle2,
+  Copy,
   CreditCard,
+  ExternalLink,
   Heart,
   Loader2,
   Mail,
   MapPin,
   Phone,
   QrCode,
+  Share2,
   Smartphone,
-  TrendingUp,
+  Sparkles,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -22,7 +27,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
-import { StatCard } from '@/components/ui/stat-card'
 
 interface ConsumerSummary {
   consumer: {
@@ -110,7 +114,7 @@ function formatMoney(value: number | undefined | null) {
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) return '—'
+  if (!value) return '-'
   try {
     return new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
   } catch {
@@ -123,6 +127,7 @@ export function ConsumerDashboardPage() {
   const [data, setData] = React.useState<ConsumerDashboardPayload | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'error'>('idle')
 
   React.useEffect(() => {
     let cancelled = false
@@ -171,300 +176,507 @@ export function ConsumerDashboardPage() {
     return (
       <EmptyState
         icon={<Wallet className="h-8 w-8" />}
-        title="Your client dashboard is still connecting"
-        description={error || 'We could not load your wallet, network, and transaction overview yet.'}
+        title="Your personal dashboard is still connecting"
+        description={error || 'We could not load your money, sharing tools, and progress overview yet.'}
       />
     )
   }
 
   const consumer = data.summary.consumer
   const wallet = data.wallet || data.summary.wallet
-  const payoutMethod = data.wallet?.bank || 'Not configured yet'
+  const payoutMethod = data.wallet?.bank || 'Not set up yet'
   const fullName = `${consumer.firstName} ${consumer.lastName}`.trim() || profile.full_name || consumer.email
-  const transactionPreview = data.transactions.slice(0, 8)
+  const shareUrl = consumer.sharedURL
+  const walletReady = data.summary.stripeOnboarded
+  const transactionPreview = data.transactions.slice(0, 6)
+  const nextRewardStep = !walletReady
+    ? 'Finish wallet setup so your money is ready when rewards arrive.'
+    : data.summary.counts.friends < 5
+      ? 'Invite one more friend to keep growing your network.'
+      : data.summary.counts.causes < 10
+        ? 'Pick another cause to grow your impact.'
+        : 'Keep sharing your link and using LocalVIP.'
+
+  async function handleCopyLink() {
+    if (!shareUrl) return
+
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopyState('copied')
+      window.setTimeout(() => setCopyState('idle'), 2000)
+    } catch {
+      setCopyState('error')
+      window.setTimeout(() => setCopyState('idle'), 2000)
+    }
+  }
 
   return (
     <div className="space-y-8">
       <PageHeader
         title={`Welcome back, ${consumer.firstName || fullName}`}
-        description="Your LocalVIP client dashboard keeps your wallet, transaction history, referral link, and network all in one place."
+        description="Your dashboard keeps the important things simple: your money, your next easy step, and your share tools."
         actions={
           <div className="flex flex-wrap gap-2">
-            {consumer.sharedURL ? (
-              <Button asChild>
-                <a href={consumer.sharedURL} target="_blank" rel="noopener noreferrer">
-                  Share my link
-                  <QrCode className="h-4 w-4" />
-                </a>
-              </Button>
-            ) : null}
-            <Button asChild variant="outline">
-              <Link href="/dashboard">
-                Refresh overview
-              </Link>
-            </Button>
+            <Badge variant={consumer.isEnabled ? 'success' : 'default'} dot>
+              {consumer.isEnabled ? 'Account active' : 'Account inactive'}
+            </Badge>
+            <Badge variant={walletReady ? 'success' : 'warning'}>
+              {walletReady ? 'Wallet ready' : 'Wallet setup needed'}
+            </Badge>
           </div>
         }
       />
 
-      <div className="rounded-2xl border border-surface-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <h2 className="text-2xl font-semibold text-surface-900">{fullName}</h2>
-              <Badge variant={consumer.isEnabled ? 'success' : 'default'} dot>
-                {consumer.isEnabled ? 'active account' : 'inactive account'}
-              </Badge>
-              <Badge variant={data.summary.stripeOnboarded ? 'success' : 'warning'}>
-                {data.summary.stripeOnboarded ? 'wallet ready' : 'wallet setup pending'}
-              </Badge>
-            </div>
-            <div className="flex flex-wrap items-center gap-4 text-sm text-surface-600">
-              <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{consumer.email}</span>
-              {consumer.phoneNumber ? <span className="inline-flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{consumer.phoneNumber}</span> : null}
-              {(consumer.city || consumer.state) ? (
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {[consumer.city, consumer.state, consumer.country].filter(Boolean).join(', ')}
-                </span>
-              ) : null}
-              <span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />Joined {formatDate(consumer.createdDate)}</span>
-            </div>
-          </div>
+      <Card className="overflow-hidden border-surface-200">
+        <div className="bg-[linear-gradient(135deg,_rgba(59,130,246,0.12),_rgba(255,255,255,0.98)_42%,_rgba(16,185,129,0.12)_100%)] px-6 py-6">
+          <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
+            <div className="space-y-5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700 shadow-sm">
+                <Sparkles className="h-3.5 w-3.5" />
+                Your three main things
+              </div>
 
-          <div className="grid grid-cols-2 gap-3 text-right sm:grid-cols-3">
-            <div>
-              <div className="text-xs uppercase tracking-wider text-surface-500">Referral code</div>
-              <div className="mt-1 font-mono text-sm font-semibold text-surface-900">{consumer.referralCode || '—'}</div>
+              <div>
+                <h2 className="text-3xl font-bold tracking-tight text-surface-900">Keep it simple</h2>
+                <p className="mt-3 text-sm leading-7 text-surface-600 sm:text-base">
+                  Check what money is ready, follow your easiest next step, and share your link when you want to grow.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <PriorityCard
+                  icon={<Wallet className="h-4 w-4" />}
+                  title="Money ready now"
+                  value={formatMoney(wallet?.availableAmount)}
+                  detail="This is the amount available for payout."
+                />
+                <PriorityCard
+                  icon={<CheckCircle2 className="h-4 w-4" />}
+                  title="Next easy step"
+                  value={walletReady ? 'Share and grow' : 'Finish setup'}
+                  detail={nextRewardStep}
+                />
+                <PriorityCard
+                  icon={<Share2 className="h-4 w-4" />}
+                  title="Your share tool"
+                  value={shareUrl ? 'Link ready' : 'Link coming soon'}
+                  detail={shareUrl ? 'Your personal share link is ready to copy.' : 'Your share link is not available yet.'}
+                />
+              </div>
             </div>
-            <div>
-              <div className="text-xs uppercase tracking-wider text-surface-500">5 friends</div>
-              <div className="mt-1 text-lg font-semibold text-surface-900">{data.summary.counts.friends}/5</div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wider text-surface-500">10 causes</div>
-              <div className="mt-1 text-lg font-semibold text-surface-900">{data.summary.counts.causes}/10</div>
+
+            <div className="rounded-[1.75rem] border border-white/90 bg-white/90 p-5 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-semibold text-surface-900">{fullName}</h3>
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-surface-600">
+                    <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{consumer.email}</span>
+                    {consumer.phoneNumber ? <span className="inline-flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{consumer.phoneNumber}</span> : null}
+                    {(consumer.city || consumer.state) ? (
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {[consumer.city, consumer.state, consumer.country].filter(Boolean).join(', ')}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="inline-flex items-center gap-1 text-sm text-surface-500">
+                    <Calendar className="h-3.5 w-3.5" />
+                    Joined {formatDate(consumer.createdDate)}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm">
+                  <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Referral code</p>
+                  <p className="mt-1 font-mono font-semibold text-surface-900">{consumer.referralCode || '-'}</p>
+                </div>
+              </div>
+
+              {!walletReady ? (
+                <div className="mt-5 rounded-2xl border border-warning-200 bg-warning-50 px-4 py-4">
+                  <p className="text-sm font-semibold text-warning-800">Finish wallet setup</p>
+                  <p className="mt-1 text-sm leading-6 text-warning-800/90">
+                    This is the last step needed before payouts can move smoothly when money becomes available.
+                  </p>
+                  <Button className="mt-3" asChild>
+                    <Link href="/portal/me/wallet">
+                      Finish wallet setup
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
-        <StatCard label="Wallet balance" value={formatMoney(wallet?.availableAmount)} icon={<Wallet className="h-5 w-5" />} />
-        <StatCard label="Current wallet" value={formatMoney(wallet?.currentAmount)} icon={<CreditCard className="h-5 w-5" />} />
-        <StatCard label="Lifetime cashback" value={formatMoney(data.summary.lifetimeCashback)} icon={<TrendingUp className="h-5 w-5" />} />
-        <StatCard label="Bonus cash" value={formatMoney(data.summary.lifetimeBonusCash)} icon={<TrendingUp className="h-5 w-5" />} />
-        <StatCard label="Transactions" value={data.summary.counts.transactions} icon={<CreditCard className="h-5 w-5" />} />
-        <StatCard label="Devices" value={data.summary.counts.devices} icon={<Smartphone className="h-5 w-5" />} />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Wallet className="h-4 w-4" />Wallet</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="flex items-baseline justify-between">
-              <span className="text-surface-500">Available now</span>
-              <span className="text-2xl font-semibold text-surface-900">{formatMoney(wallet?.availableAmount)}</span>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-surface-500">Current balance</span>
-              <span className="text-surface-700">{formatMoney(wallet?.currentAmount)}</span>
-            </div>
-            {wallet?.walletStatus ? (
-              <div className="flex items-baseline justify-between">
-                <span className="text-surface-500">Status</span>
-                <Badge variant="info">{wallet.walletStatus}</Badge>
-              </div>
-            ) : null}
-            <div className="flex items-baseline justify-between">
-              <span className="text-surface-500">Payout method</span>
-              <span className="text-surface-700">{payoutMethod}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><QrCode className="h-4 w-4" />Share & referral</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div>
-              <div className="text-surface-500">Referral code</div>
-              <div className="mt-1 font-mono text-surface-900">{consumer.referralCode || '—'}</div>
-            </div>
-            <div>
-              <div className="text-surface-500">Share URL</div>
-              <div className="mt-1 break-all text-surface-700">
-                {consumer.sharedURL ? (
-                  <a href={consumer.sharedURL} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
-                    {consumer.sharedURL}
-                  </a>
-                ) : '—'}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" />Your 5-friends network ({data.friends.length}/5)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {data.friends.length === 0 ? (
-              <p className="py-4 text-center text-sm text-surface-400">No friends linked yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {data.friends.map((friend) => (
-                  <div key={friend.id} className="flex items-center justify-between rounded-lg border border-surface-200 p-3">
-                    <div>
-                      <div className="font-medium text-surface-900">{friend.firstName} {friend.lastName}</div>
-                      <div className="text-xs text-surface-500">{friend.email}</div>
-                    </div>
-                    <Badge variant={friend.isActive ? 'success' : 'default'} dot>
-                      {friend.isActive ? 'active' : 'inactive'}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Heart className="h-4 w-4" />Your 10-causes network ({data.causes.length}/10)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {data.causes.length === 0 ? (
-              <p className="py-4 text-center text-sm text-surface-400">No causes linked yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {data.causes.map((cause) => (
-                  <div key={cause.id} className="flex items-center justify-between rounded-lg border border-surface-200 p-3">
-                    <div>
-                      <div className="font-medium text-surface-900">{cause.name}</div>
-                      <div className="text-xs text-surface-500">{cause.ownerEmail || 'No owner email available'}</div>
-                    </div>
-                    <Badge variant={cause.isActive ? 'success' : 'default'} dot>
-                      {cause.isActive ? 'active' : 'inactive'}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><TrendingUp className="h-4 w-4" />Recent transactions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {transactionPreview.length === 0 ? (
-            <p className="py-4 text-center text-sm text-surface-400">No transactions yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-surface-200 text-left text-xs uppercase tracking-wider text-surface-500">
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Amount</th>
-                    <th className="px-3 py-2">Tip</th>
-                    <th className="px-3 py-2">Cashback</th>
-                    <th className="px-3 py-2">Fee</th>
-                    <th className="px-3 py-2">Final</th>
-                    <th className="px-3 py-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactionPreview.map((transaction) => (
-                    <tr key={transaction.id} className="border-b border-surface-100">
-                      <td className="px-3 py-2 text-surface-600">{formatDate(transaction.createdDate)}</td>
-                      <td className="px-3 py-2 font-medium text-surface-900">{formatMoney(transaction.amount)}</td>
-                      <td className="px-3 py-2 text-surface-600">{formatMoney(transaction.tip)}</td>
-                      <td className="px-3 py-2 text-emerald-600">{formatMoney(transaction.cashback)}</td>
-                      <td className="px-3 py-2 text-surface-600">{formatMoney(transaction.txFee)}</td>
-                      <td className="px-3 py-2 font-medium text-surface-900">{formatMoney(transaction.finalAmount)}</td>
-                      <td className="px-3 py-2">
-                        <Badge variant={transaction.transactionStatus === 'completed' ? 'success' : 'default'}>
-                          {transaction.transactionStatus || 'pending'}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Cashback history</CardTitle>
+            <CardTitle>Money and payout</CardTitle>
           </CardHeader>
-          <CardContent>
-            {(data.cashback?.recent.length ?? 0) === 0 ? (
-              <p className="py-4 text-center text-sm text-surface-400">No cashback yet.</p>
-            ) : (
-              <div className="space-y-1 text-sm">
-                {data.cashback!.recent.slice(0, 10).map((row) => (
-                  <div key={row.id} className="flex items-center justify-between border-b border-surface-100 py-1.5">
-                    <span className="text-surface-600">{formatDate(row.createdDate)} • Account {row.accountId}</span>
-                    <span className="font-medium text-emerald-600">+{formatMoney(row.amount)}</span>
-                  </div>
-                ))}
+          <CardContent className="space-y-4">
+            <MoneyRow
+              label="Available now"
+              value={formatMoney(wallet?.availableAmount)}
+              explanation="This is money that is ready to be paid out."
+            />
+            <MoneyRow
+              label="Current balance"
+              value={formatMoney(wallet?.currentAmount)}
+              explanation="This includes money that may still be processing."
+            />
+            <MoneyRow
+              label="Lifetime cashback"
+              value={formatMoney(data.summary.lifetimeCashback)}
+              explanation="This is the total cashback you have earned over time."
+            />
+            <MoneyRow
+              label="Bonus cash"
+              value={formatMoney(data.summary.lifetimeBonusCash)}
+              explanation="This is extra reward money earned through sharing and network activity."
+            />
+
+            <details className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
+              <summary className="cursor-pointer font-medium text-surface-700">What these money words mean</summary>
+              <div className="mt-3 space-y-2 leading-6">
+                <p><strong>Available now:</strong> money that is ready for payout.</p>
+                <p><strong>Current balance:</strong> everything in your wallet, including money still moving through the system.</p>
+                <p><strong>Payout method:</strong> where your money will go once it is paid out.</p>
               </div>
-            )}
+            </details>
+
+            <div className="rounded-2xl border border-surface-200 bg-white px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-surface-900">Payout method</p>
+                  <p className="mt-1 text-sm text-surface-600">{payoutMethod}</p>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/portal/me/wallet">Open wallet</Link>
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Bonus cash</CardTitle>
+            <CardTitle>Share your link</CardTitle>
           </CardHeader>
-          <CardContent>
-            {(data.bonusCash?.recent.length ?? 0) === 0 ? (
-              <p className="py-4 text-center text-sm text-surface-400">No bonus cash yet.</p>
-            ) : (
-              <div className="space-y-1 text-sm">
-                {data.bonusCash!.recent.slice(0, 10).map((row) => (
-                  <div key={row.id} className="flex items-center justify-between border-b border-surface-100 py-1.5">
-                    <span className="text-surface-600">{formatDate(row.createdDate)} • Account {row.accountId}</span>
-                    <span className="font-medium text-emerald-600">+{formatMoney(row.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+          <CardContent className="space-y-4">
+            <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-4 text-sm leading-6 text-brand-800">
+              The simplest way to grow is to share your personal link with people you already know.
+            </div>
+
+            <div className="rounded-2xl border border-surface-200 bg-white px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Your share link</p>
+              <p className="mt-2 break-all text-sm text-surface-700">{shareUrl || 'Your share link is not available yet.'}</p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => { void handleCopyLink() }} disabled={!shareUrl}>
+                <Copy className="h-4 w-4" />
+                {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy failed' : 'Copy link'}
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/portal/me/network">
+                  See my network
+                  <Users className="h-4 w-4" />
+                </Link>
+              </Button>
+              {shareUrl ? (
+                <Button variant="outline" asChild>
+                  <a href={shareUrl} target="_blank" rel="noopener noreferrer">
+                    Open share page
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+
+            <details className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
+              <summary className="cursor-pointer font-medium text-surface-700">What should I say when I share?</summary>
+              <p className="mt-3 leading-6">
+                Keep it short: &quot;Here&apos;s my LocalVIP link if you want to join with me.&quot; Short and personal usually works best.
+              </p>
+            </details>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Smartphone className="h-4 w-4" />Registered devices</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.devices.length === 0 ? (
-            <p className="py-4 text-center text-sm text-surface-400">No devices registered.</p>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <AchievementCard
+          icon={<Users className="h-4 w-4" />}
+          title="Your 5-friends goal"
+          progress={data.friends.length}
+          goal={5}
+          nextStep={data.friends.length < 5 ? 'Invite one more friend to keep this moving.' : 'You reached your 5-friends goal.'}
+        >
+          {data.friends.length === 0 ? (
+            <p className="text-sm text-surface-500">No friends linked yet.</p>
           ) : (
-            <div className="space-y-2 text-sm">
-              {data.devices.map((device) => (
-                <div key={device.id} className="flex items-center justify-between rounded-lg border border-surface-200 p-3">
-                  <div className="font-mono text-xs text-surface-600">Device {device.deviceId}</div>
-                  <span className="text-xs text-surface-500">{formatDate(device.createdDate)}</span>
+            <div className="space-y-2">
+              {data.friends.map((friend) => (
+                <div key={friend.id} className="flex items-center justify-between rounded-xl border border-surface-200 p-3">
+                  <div>
+                    <div className="font-medium text-surface-900">{friend.firstName} {friend.lastName}</div>
+                    <div className="text-xs text-surface-500">{friend.email}</div>
+                  </div>
+                  <Badge variant={friend.isActive ? 'success' : 'default'} dot>
+                    {friend.isActive ? 'Active' : 'Pending'}
+                  </Badge>
                 </div>
               ))}
             </div>
           )}
+        </AchievementCard>
+
+        <AchievementCard
+          icon={<Heart className="h-4 w-4" />}
+          title="Your 10-causes goal"
+          progress={data.causes.length}
+          goal={10}
+          nextStep={data.causes.length < 10 ? 'Pick another cause when you are ready to grow your impact.' : 'You reached your 10-causes goal.'}
+        >
+          {data.causes.length === 0 ? (
+            <p className="text-sm text-surface-500">No causes linked yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {data.causes.map((cause) => (
+                <div key={cause.id} className="flex items-center justify-between rounded-xl border border-surface-200 p-3">
+                  <div>
+                    <div className="font-medium text-surface-900">{cause.name}</div>
+                    <div className="text-xs text-surface-500">{cause.ownerEmail || 'No owner email available'}</div>
+                  </div>
+                  <Badge variant={cause.isActive ? 'success' : 'default'} dot>
+                    {cause.isActive ? 'Active' : 'Pending'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </AchievementCard>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Recent activity and rewards</CardTitle>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/portal/me/transactions">Open full history</Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {transactionPreview.length === 0 ? (
+            <p className="text-sm text-surface-500">No activity yet. Your purchases and rewards will appear here once you start using LocalVIP.</p>
+          ) : (
+            transactionPreview.map((transaction) => (
+              <details key={transaction.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+                <summary className="cursor-pointer list-none">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-surface-900">{formatDate(transaction.createdDate)}</p>
+                      <p className="text-sm text-surface-500">
+                        You earned {formatMoney(transaction.cashback)} cashback on a {formatMoney(transaction.amount)} purchase.
+                      </p>
+                    </div>
+                    <Badge variant={transaction.transactionStatus === 'completed' ? 'success' : 'default'}>
+                      {transaction.transactionStatus || 'Pending'}
+                    </Badge>
+                  </div>
+                </summary>
+                <div className="mt-4 grid gap-2 rounded-2xl border border-white bg-white p-4 text-sm text-surface-600 sm:grid-cols-2">
+                  <div><strong className="text-surface-800">Purchase amount:</strong> {formatMoney(transaction.amount)}</div>
+                  <div><strong className="text-surface-800">Cashback earned:</strong> {formatMoney(transaction.cashback)}</div>
+                  <div><strong className="text-surface-800">Tip:</strong> {formatMoney(transaction.tip)}</div>
+                  <div><strong className="text-surface-800">Processing fee:</strong> {formatMoney(transaction.txFee)}</div>
+                  <div><strong className="text-surface-800">Final total:</strong> {formatMoney(transaction.finalAmount)}</div>
+                </div>
+              </details>
+            ))
+          )}
         </CardContent>
       </Card>
+
+      <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Reward history</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <RewardHistory
+              title="Cashback"
+              rows={data.cashback?.recent || []}
+              emptyText="No cashback yet."
+            />
+            <RewardHistory
+              title="Bonus cash"
+              rows={data.bonusCash?.recent || []}
+              emptyText="No bonus cash yet."
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Account details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <AccountRow icon={<QrCode className="h-4 w-4" />} label="Referral code" value={consumer.referralCode || '-'} mono />
+            <AccountRow icon={<CreditCard className="h-4 w-4" />} label="Transactions" value={`${data.summary.counts.transactions}`} />
+            <AccountRow icon={<Smartphone className="h-4 w-4" />} label="Registered devices" value={`${data.summary.counts.devices}`} />
+            <details className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
+              <summary className="cursor-pointer font-medium text-surface-700">Show device list</summary>
+              <div className="mt-3 space-y-2">
+                {data.devices.length === 0 ? (
+                  <p>No devices registered yet.</p>
+                ) : (
+                  data.devices.map((device) => (
+                    <div key={device.id} className="flex items-center justify-between rounded-xl border border-white bg-white px-3 py-2">
+                      <span className="font-mono text-xs text-surface-600">Device {device.deviceId}</span>
+                      <span className="text-xs text-surface-500">{formatDate(device.createdDate)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+function PriorityCard({
+  icon,
+  title,
+  value,
+  detail,
+}: {
+  icon: React.ReactNode
+  title: string
+  value: string
+  detail: string
+}) {
+  return (
+    <div className="rounded-2xl border border-white/90 bg-white/90 px-4 py-4 shadow-sm">
+      <div className="inline-flex rounded-xl bg-brand-50 p-2 text-brand-700">{icon}</div>
+      <p className="mt-3 text-sm font-semibold text-surface-900">{title}</p>
+      <p className="mt-1 text-base font-semibold text-surface-900">{value}</p>
+      <p className="mt-1 text-sm leading-6 text-surface-500">{detail}</p>
+    </div>
+  )
+}
+
+function MoneyRow({
+  label,
+  value,
+  explanation,
+}: {
+  label: string
+  value: string
+  explanation: string
+}) {
+  return (
+    <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-surface-900">{label}</p>
+          <p className="mt-1 text-sm leading-6 text-surface-500">{explanation}</p>
+        </div>
+        <p className="text-2xl font-bold text-surface-900">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+function AchievementCard({
+  icon,
+  title,
+  progress,
+  goal,
+  nextStep,
+  children,
+}: {
+  icon: React.ReactNode
+  title: string
+  progress: number
+  goal: number
+  nextStep: string
+  children: React.ReactNode
+}) {
+  const percent = Math.min(100, Math.round((progress / goal) * 100))
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <div className="rounded-xl bg-brand-50 p-2 text-brand-700">{icon}</div>
+          <div>
+            <CardTitle>{title}</CardTitle>
+            <p className="text-sm text-surface-500">{progress} of {goal} completed</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="h-3 overflow-hidden rounded-full bg-surface-100">
+          <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-emerald-500" style={{ width: `${percent}%` }} />
+        </div>
+        <p className="text-sm leading-6 text-surface-600">{nextStep}</p>
+        {children}
+      </CardContent>
+    </Card>
+  )
+}
+
+function RewardHistory({
+  title,
+  rows,
+  emptyText,
+}: {
+  title: string
+  rows: { id: number; amount: number; accountId: number; createdDate: string | null }[]
+  emptyText: string
+}) {
+  return (
+    <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+      <p className="text-sm font-semibold text-surface-900">{title}</p>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-surface-500">{emptyText}</p>
+      ) : (
+        <div className="mt-3 space-y-2 text-sm">
+          {rows.slice(0, 6).map((row) => (
+            <div key={row.id} className="flex items-center justify-between rounded-xl border border-white bg-white px-3 py-2">
+              <span className="text-surface-600">{formatDate(row.createdDate)}</span>
+              <span className="font-medium text-emerald-600">+{formatMoney(row.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AccountRow({
+  icon,
+  label,
+  value,
+  mono = false,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+      <div className="flex items-center gap-2 text-surface-700">
+        <div className="rounded-lg bg-white p-2 text-brand-700">{icon}</div>
+        <span className="text-sm font-medium">{label}</span>
+      </div>
+      <span className={mono ? 'font-mono text-sm text-surface-900' : 'text-sm text-surface-900'}>{value}</span>
     </div>
   )
 }

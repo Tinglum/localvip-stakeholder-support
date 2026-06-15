@@ -300,43 +300,146 @@ function TeamDashboardPage() {
 
   const greeting = getGreeting()
   const firstName = profile.full_name?.split(' ')[0] || 'there'
+  const primaryImmediateItem = immediateItems[0] ?? null
+  const openWorkCount = openBusinessOnboarding.length + openCauseOnboarding.length
+  const activityCount = recentOutreach.length + recentActivity.length
 
   return (
     <div className="space-y-8">
-      <div>
-        <div className="mb-1 flex items-center gap-3">
-          <h1 className="text-display text-surface-900">
-            {greeting}, {firstName}
-          </h1>
-          <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${roleTheme?.bg || ''}`}
-            style={{ color: roleTheme?.primary }}
-          >
-            {roleTheme?.label || ROLES[profile.role]?.label}
-          </span>
+      <Card className="overflow-hidden border-surface-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_transparent_42%),linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] shadow-sm">
+        <CardContent className="p-6 sm:p-8">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-3xl space-y-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${roleTheme?.bg || ''}`}
+                  style={{ color: roleTheme?.primary }}
+                >
+                  {roleTheme?.label || ROLES[profile.role]?.label}
+                </span>
+                <Badge variant="outline">Beginner-friendly view</Badge>
+              </div>
+
+              <div className="space-y-3">
+                <h1 className="text-display text-surface-900">
+                  {greeting}, {firstName}
+                </h1>
+                <p className="max-w-2xl text-base leading-7 text-surface-600">
+                  {isAdmin
+                    ? 'Start with the urgent list below, then use the common tasks and progress sections to keep the team moving one clear step at a time.'
+                    : 'Start with the first task below, then use the common tasks and progress sections to keep moving forward one simple step at a time.'}
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-surface-200 bg-white/90 p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
+                    Start here
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-surface-900">{immediateItems.length}</p>
+                  <p className="mt-1 text-sm leading-6 text-surface-600">
+                    {immediateItems.length === 1
+                      ? 'urgent item needs attention first.'
+                      : 'urgent items are waiting for movement first.'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-surface-200 bg-white/90 p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
+                    Keep moving
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-surface-900">{openWorkCount}</p>
+                  <p className="mt-1 text-sm leading-6 text-surface-600">
+                    businesses and causes still in active onboarding.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-surface-200 bg-white/90 p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
+                    Stay informed
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-surface-900">{activityCount}</p>
+                  <p className="mt-1 text-sm leading-6 text-surface-600">
+                    recent updates are listed lower on the page.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="w-full max-w-md rounded-3xl border border-brand-200 bg-white/95 p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+                Best next move
+              </p>
+              {primaryImmediateItem ? (
+                <div className="mt-3 space-y-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-surface-900">{primaryImmediateItem.title}</h2>
+                    <p className="mt-2 text-sm leading-6 text-surface-600">{primaryImmediateItem.detail}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {primaryImmediateItem.priority ? (
+                      <Badge variant={primaryImmediateItem.priority === 'high' ? 'danger' : 'warning'}>
+                        {primaryImmediateItem.priority === 'high' ? 'Do this first' : 'Good next task'}
+                      </Badge>
+                    ) : null}
+                    {primaryImmediateItem.badge ? <Badge variant="outline">{primaryImmediateItem.badge}</Badge> : null}
+                  </div>
+                  <Button asChild>
+                    <Link href={primaryImmediateItem.href}>
+                      {primaryImmediateItem.ctaLabel || 'Open'}
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  <p className="text-sm leading-6 text-surface-600">
+                    Your urgent queue is clear. Use the suggested tasks below to keep momentum going.
+                  </p>
+                  <Badge variant="success">Everything urgent is handled</Badge>
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Priority queue</p>
+          <h2 className="text-2xl font-semibold text-surface-900">Start here before anything else</h2>
+          <p className="max-w-3xl text-sm leading-6 text-surface-500">
+            This section stays focused on work that needs movement now. When the list clears, the dashboard automatically suggests the next best operating moves.
+          </p>
         </div>
-        <p className="mt-1 text-body text-surface-500">
-          {isAdmin ? "Here's what still needs movement right now." : "Here's your progress and next steps."}
-        </p>
+        <StakeholderActionQueue
+          title="Most important next steps"
+          description="Open the first item, finish it, then come back here for the next clear move."
+          items={immediateItems}
+          suggestions={suggestedItems}
+        />
       </div>
 
-      <StakeholderActionQueue
-        title="Immediate next steps"
-        description="Only work that still needs movement stays here. Once it is done, it drops away and the dashboard suggests the next three smart operating moves."
-        items={immediateItems}
-        suggestions={suggestedItems}
-      />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Total Businesses" value={businessCount} icon={<Store className="h-5 w-5" />} />
-        <StatCard label="Total Causes" value={causeCount} icon={<Heart className="h-5 w-5" />} />
-        <StatCard label="Customers" value={consumerCount} icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Stakeholders" value={stakeholderCount} icon={<Users className="h-5 w-5" />} />
-        <StatCard label="QR Codes" value={qrCodeCount} icon={<QrCode className="h-5 w-5" />} />
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">At a glance</p>
+          <h2 className="text-2xl font-semibold text-surface-900">Your key numbers</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <StatCard label="Total Businesses" value={businessCount} icon={<Store className="h-5 w-5" />} />
+          <StatCard label="Total Causes" value={causeCount} icon={<Heart className="h-5 w-5" />} />
+          <StatCard label="Customers" value={consumerCount} icon={<Users className="h-5 w-5" />} />
+          <StatCard label="Stakeholders" value={stakeholderCount} icon={<Users className="h-5 w-5" />} />
+          <StatCard label="QR Codes" value={qrCodeCount} icon={<QrCode className="h-5 w-5" />} />
+        </div>
       </div>
 
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-surface-800">Quick Actions</h2>
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Common tasks</p>
+          <h2 className="text-2xl font-semibold text-surface-900">Open a tool quickly</h2>
+          <p className="text-sm leading-6 text-surface-500">
+            Use these shortcuts when you already know the job you want to do.
+          </p>
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {roleTools.map((tool, index) => {
             const Icon = ICON_MAP[tool.icon] || FileText
@@ -366,11 +469,19 @@ function TeamDashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Updates and progress</p>
+          <h2 className="text-2xl font-semibold text-surface-900">See what changed and where work is sitting</h2>
+          <p className="max-w-3xl text-sm leading-6 text-surface-500">
+            Check these sections after the priority queue so you can spot movement, follow up quickly, and keep onboarding moving.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Recent Activity</CardTitle>
+              <CardTitle>Recent outreach updates</CardTitle>
               <Link href="/crm/outreach">
                 <Button variant="ghost" size="sm">
                   View all <ArrowRight className="h-3.5 w-3.5" />
@@ -426,7 +537,7 @@ function TeamDashboardPage() {
         {recentActivity.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Recent Activity (all sources)</CardTitle>
+              <CardTitle>Cross-team activity</CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2">
@@ -446,20 +557,20 @@ function TeamDashboardPage() {
           </Card>
         )}
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>{isAdmin ? 'Pipeline Overview' : 'Your Progress'}</CardTitle>
-              <Link href={isAdmin ? '/crm/businesses' : '/analytics'}>
-                <Button variant="ghost" size="sm">
-                  Details <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {businessLoading ? (
-              <p className="text-sm text-surface-400">Loading pipeline...</p>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>{isAdmin ? 'Pipeline overview' : 'Your progress'}</CardTitle>
+                <Link href={isAdmin ? '/crm/businesses' : '/analytics'}>
+                  <Button variant="ghost" size="sm">
+                    Details <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {businessLoading ? (
+                <p className="text-sm text-surface-400">Loading pipeline...</p>
             ) : (
               <div className="space-y-4">
                 {stageCounts.map((stage, index) => (
@@ -485,6 +596,7 @@ function TeamDashboardPage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
 
       {isAdmin ? (
