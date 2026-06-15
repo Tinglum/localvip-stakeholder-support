@@ -253,9 +253,13 @@ export function BusinessExecutionOverview({
 
   const joinUrl = React.useMemo(() => {
     if (codes?.join_url) return codes.join_url
+    // Use the business's own Branch.io referral link from QA — every business
+    // has one, so there is no stakeholder code to set up.
+    if (qaBranchReferralUrl) return qaBranchReferralUrl
+    if (qaReferralCode) return `https://localvip.com/?ref=${encodeURIComponent(qaReferralCode)}`
     if (!connectionCode.trim()) return ''
     return buildStakeholderJoinUrl('business', connectionCode)
-  }, [codes?.join_url, connectionCode])
+  }, [codes?.join_url, connectionCode, qaBranchReferralUrl, qaReferralCode])
 
   /** Parse a QA referral link and save codes in one click.
    *  Accepts any of these formats:
@@ -797,8 +801,10 @@ export function BusinessExecutionOverview({
                   <CardTitle>Codes and material engine</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* ── Import overlay: shown when no codes are saved yet ── */}
-                  {!codes?.referral_code && !codes?.connection_code && (
+                  {/* ── Import overlay: only when the business genuinely has no
+                       referral code anywhere (QA businesses always have one, so
+                       this effectively never shows). ── */}
+                  {!codes?.referral_code && !codes?.connection_code && !qaReferralCode && (
                     <div className="relative">
                       {/* Blurred preview of the fields behind */}
                       <div className="select-none rounded-xl blur-sm pointer-events-none" aria-hidden>

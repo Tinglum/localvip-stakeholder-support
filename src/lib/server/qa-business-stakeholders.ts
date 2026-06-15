@@ -59,17 +59,6 @@ function asItems<T>(value: unknown): T[] {
   return []
 }
 
-function parseMetadata(value: unknown) {
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value) as Record<string, unknown>
-    } catch {
-      return {}
-    }
-  }
-  return isRecord(value) ? value : {}
-}
-
 function buildSyntheticBusiness(qaBusiness: QaBusinessDetail): Business {
   return {
     id: String(qaBusiness.id),
@@ -324,13 +313,22 @@ export async function ensureQaBusinessStakeholderContext(businessId: string) {
 }
 
 export async function buildQaBusinessJoinResource(businessId: string): Promise<BusinessJoinResource> {
-  const { business: qaBusiness, stakeholder, codes } = await ensureQaBusinessStakeholderContext(businessId)
+  const businessRes = await fetchQaApi(`/api/dashboard/v1/Business/${encodeURIComponent(businessId)}`)
+  const qaBusiness = await parseQaResponse<QaBusinessDetail>(businessRes, 'Failed to load business.')
+  if (!qaBusiness) {
+    throw new Error('The QA business could not be loaded.')
+  }
+
   const syntheticBusiness = buildSyntheticBusiness(qaBusiness)
-  const metadata = parseMetadata(stakeholder.metadata)
-  const appearance = normalizeAppearance(syntheticBusiness, metadata)
+  const appearance = normalizeAppearance(syntheticBusiness, {})
   const offer = buildOfferSummary(await fetchQaCaptureOffer(businessId))
-  const qrCodeLabel = codes.connectionCode || codes.referralCode || buildCodeSeed(`${qaBusiness.id}`, 'biz')
-  const joinUrl = codes.joinUrl || buildStakeholderJoinUrl('business', codes.connectionCode)
+
+  // Drive the QR + offer link straight off the business's own referral code and
+  // Branch.io link from QA. Every QA business is created with these, so there is
+  // no stakeholder / StakeholderCode indirection to set up.
+  const referralCode = sanitizeStakeholderCodeValue(qaBusiness.referralCode) || `biz-${qaBusiness.id}`
+  const joinUrl = (qaBusiness.branchReferralUrl || '').trim()
+    || `https://localvip.com/?ref=${encodeURIComponent(referralCode)}`
   const joinSlug = buildJoinSlug(qaBusiness)
 
   return {
@@ -341,8 +339,8 @@ export async function buildQaBusinessJoinResource(businessId: string): Promise<B
     joinUrl,
     displayUrl: getBusinessJoinDisplayUrl(joinUrl),
     redirectUrl: joinUrl,
-    shortCode: qrCodeLabel,
-    qrCodeId: `qa-stakeholder-${stakeholder.id}`,
+    shortCode: referralCode,
+    qrCodeId: `qa-business-${qaBusiness.id}`,
     frameText: appearance.frameText || DEFAULT_JOIN_FRAME,
     logoUrl: appearance.logoUrl,
     qrAppearance: appearance,
@@ -357,51 +355,27 @@ export async function updateQaBusinessStakeholderAppearance(
   businessId: string,
   appearancePatch: Partial<BusinessJoinQrAppearance>,
 ) {
-  const { stakeholder } = await ensureQaBusinessStakeholderContext(businessId)
-  const stakeholderId = String(stakeholder.id)
-  const existingMetadata = parseMetadata(stakeholder.metadata)
-  const businessRes = await fetchQaApi(`/api/dashboard/v1/Business/${encodeURIComponent(businessId)}`)
-  const qaBusiness = await parseQaResponse<QaBusinessDetail>(businessRes, 'Failed to load business.')
-  if (!qaBusiness) {
-    throw new Error('The QA business could not be loaded.')
-  }
-  const currentAppearance = normalizeAppearance(buildSyntheticBusiness(qaBusiness), existingMetadata)
+  // QR appearance is no longer persisted through a stakeholder record. Apply the
+  // requested look on top of the business-derived defaults and return the
+  // updated resource.
+  const resource = await buildQaBusinessJoinResource(businessId)
+  const current = resource.qrAppearance
   const nextAppearance: BusinessJoinQrAppearance = {
-    ...currentAppearance,
+    ...current,
     ...appearancePatch,
-    useBusinessLogo: appearancePatch.useBusinessLogo ?? currentAppearance.useBusinessLogo,
-    logoUrl: (appearancePatch.useBusinessLogo ?? currentAppearance.useBusinessLogo)
-      ? currentAppearance.logoUrl
-      : null,
+    useBusinessLogo: appearancePatch.useBusinessLogo ?? current.useBusinessLogo,
+    logoUrl: (appearancePatch.useBusinessLogo ?? current.useBusinessLogo) ? current.logoUrl : null,
     gradientColors: Array.isArray(appearancePatch.gradientColors) && appearancePatch.gradientColors.length >= 2
       ? [appearancePatch.gradientColors[0], appearancePatch.gradientColors[1]]
-      : currentAppearance.gradientColors,
+      : current.gradientColors,
   }
 
-  const metadata = {
-    ...existingMetadata,
-    qr_appearance: {
-      foregroundColor: nextAppearance.foregroundColor,
-      backgroundColor: nextAppearance.backgroundColor,
-      frameText: nextAppearance.frameText,
-      useBusinessLogo: nextAppearance.useBusinessLogo,
-      dotStyle: nextAppearance.dotStyle,
-      cornerStyle: nextAppearance.cornerStyle,
-      gradientType: nextAppearance.gradientType,
-      gradientColors: nextAppearance.gradientColors,
-    },
+  return {
+    ...resource,
+    frameText: nextAppearance.frameText || resource.frameText,
+    logoUrl: nextAppearance.logoUrl,
+    qrAppearance: nextAppearance,
   }
-
-  const putRes = await fetchQaApi(`/api/dashboard/v1/Stakeholder/${encodeURIComponent(stakeholderId)}`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      name: stakeholder.name || undefined,
-      metadata: JSON.stringify(metadata),
-    }),
-  })
-  await parseQaResponse<unknown>(putRes, 'Failed to update QR appearance.')
-  return buildQaBusinessJoinResource(businessId)
 }
 
 export function buildImportedBusinessPayload(
