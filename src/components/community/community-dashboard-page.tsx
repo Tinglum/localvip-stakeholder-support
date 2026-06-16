@@ -16,6 +16,7 @@ import {
   Loader2,
   Megaphone,
   MessageSquare,
+  Network,
   Plus,
   QrCode,
   Rocket,
@@ -27,6 +28,7 @@ import {
   Users,
   Zap,
 } from 'lucide-react'
+import { NetworkTreeView } from '@/components/network/network-tree-view'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -63,7 +65,19 @@ import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constan
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
 
-type DashboardTab = 'overview' | 'businesses' | 'materials' | 'qr' | 'tasks' | 'activity'
+type DashboardTab = 'overview' | 'businesses' | 'network' | 'materials' | 'qr' | 'tasks' | 'activity'
+
+function getCauseQaAccountId(cause: { external_id?: string | null; metadata?: Record<string, unknown> | null } | null): string | null {
+  if (!cause) return null
+  if (cause.external_id && /^\d+$/.test(cause.external_id.trim())) {
+    return cause.external_id.trim()
+  }
+  const meta = (cause.metadata as Record<string, unknown> | null) || {}
+  const candidate = meta.qaAccountId ?? meta.qaCauseId ?? meta.qa_account_id
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate)
+  if (typeof candidate === 'string' && /^\d+$/.test(candidate.trim())) return candidate.trim()
+  return null
+}
 
 export function CommunityDashboardPage() {
   const { profile, roleLabel } = useAuth()
@@ -355,6 +369,7 @@ export function CommunityDashboardPage() {
   const tabs: Array<{ key: DashboardTab; label: string; icon: React.ReactNode; count?: number }> = [
     { key: 'overview', label: 'Overview', icon: <Rocket className="h-4 w-4" /> },
     { key: 'businesses', label: 'Businesses', icon: <Store className="h-4 w-4" />, count: supportingBusinesses.length },
+    { key: 'network', label: 'Network', icon: <Network className="h-4 w-4" /> },
     { key: 'materials', label: 'Materials', icon: <FileText className="h-4 w-4" />, count: generatedCount },
     { key: 'qr', label: 'QR & Codes', icon: <QrCode className="h-4 w-4" /> },
     { key: 'tasks', label: 'Tasks & Notes', icon: <ClipboardList className="h-4 w-4" />, count: openTasks.length },
@@ -653,6 +668,27 @@ export function CommunityDashboardPage() {
                 )
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── NETWORK TAB ── */}
+      {activeTab === 'network' && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-surface-900">Your {entityLabel.toLowerCase()} network</h2>
+            <p className="text-sm text-surface-500">
+              Everyone connected to {scopedCause.name} across up to 10 levels, and the earnings they help create. This view is read-only.
+            </p>
+          </div>
+          {getCauseQaAccountId(scopedCause) ? (
+            <NetworkTreeView accountId={getCauseQaAccountId(scopedCause)} nodeLabel="cause" />
+          ) : (
+            <EmptyState
+              icon={<Network className="h-8 w-8" />}
+              title="Network is not connected yet"
+              description={`This ${entityLabel.toLowerCase()} is not linked to a network account yet. Once it is fully set up on the platform, your downline will appear here.`}
+            />
           )}
         </div>
       )}

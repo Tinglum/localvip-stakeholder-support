@@ -11,11 +11,14 @@ import {
   FileText,
   Heart,
   Info,
+  Network,
   QrCode,
+  Rocket,
   Sparkles,
   Store,
   Users,
 } from 'lucide-react'
+import { NetworkTreeView } from '@/components/network/network-tree-view'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -62,8 +65,23 @@ type GuidedStep = {
   time: string
 }
 
+type BusinessDashboardTab = 'overview' | 'network'
+
+function getBusinessQaAccountId(business: { external_id?: string | null; metadata?: Record<string, unknown> | null } | null): string | null {
+  if (!business) return null
+  if (business.external_id && /^\d+$/.test(business.external_id.trim())) {
+    return business.external_id.trim()
+  }
+  const meta = (business.metadata as Record<string, unknown> | null) || {}
+  const candidate = meta.qaAccountId ?? meta.qaBusinessId ?? meta.qa_account_id
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate)
+  if (typeof candidate === 'string' && /^\d+$/.test(candidate.trim())) return candidate.trim()
+  return null
+}
+
 export function BusinessDashboardPage() {
   const { profile } = useAuth()
+  const [activeTab, setActiveTab] = React.useState<BusinessDashboardTab>('overview')
   const businessFilters = React.useMemo<Record<string, string>>(() => {
     const filters: Record<string, string> = {}
     if (profile.business_id) {
@@ -210,6 +228,8 @@ export function BusinessDashboardPage() {
     },
   ]
 
+  const qaAccountId = getBusinessQaAccountId(business)
+
   const pendingSteps = guidedSteps.filter((step) => !step.complete)
   const completedSteps = guidedSteps.filter((step) => step.complete)
   const nextStep = pendingSteps[0] || completedSteps[completedSteps.length - 1]
@@ -234,6 +254,46 @@ export function BusinessDashboardPage() {
         }
       />
 
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-surface-200 bg-surface-50 p-1">
+        {([
+          { key: 'overview' as const, label: 'Overview', icon: <Rocket className="h-4 w-4" /> },
+          { key: 'network' as const, label: 'Network', icon: <Network className="h-4 w-4" /> },
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              'flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors',
+              activeTab === tab.key ? 'bg-white text-brand-700 shadow-sm' : 'text-surface-500 hover:text-surface-700',
+            )}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'network' ? (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold text-surface-900">Your business network</h2>
+            <p className="mt-1 text-sm leading-6 text-surface-500">
+              Everyone connected to {business.name} across up to 10 levels, and the earnings they help create. This view is read-only.
+            </p>
+          </div>
+          {qaAccountId ? (
+            <NetworkTreeView accountId={qaAccountId} nodeLabel="business" />
+          ) : (
+            <EmptyState
+              icon={<Network className="h-8 w-8" />}
+              title="Network is not connected yet"
+              description="This business is not linked to a network account yet. Once it is fully set up on the platform, your downline will appear here."
+            />
+          )}
+        </div>
+      ) : (
+      <>
       <Card className="overflow-hidden border-surface-200">
         <div className="bg-[linear-gradient(135deg,_rgba(245,158,11,0.15),_rgba(255,255,255,0.96)_38%,_rgba(132,204,22,0.16)_100%)] px-6 py-6">
           <div className="grid gap-6 lg:grid-cols-[1.15fr,0.85fr]">
@@ -623,6 +683,8 @@ export function BusinessDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
     </div>
   )
 }

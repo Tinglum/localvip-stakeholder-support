@@ -83,7 +83,7 @@ const SHARED_OPERATOR_CRM_ITEMS: NavItem = {
   children: [
     { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 0 },
     { label: 'Schools / Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
-    { label: 'Contacts', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
+    { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
     { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 0 },
     { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
     { label: 'Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 0 },
@@ -139,7 +139,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 0 },
       { label: 'Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
-      { label: 'Contacts', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
+      { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
       { label: 'Stakeholders', href: '/crm/stakeholders', icon: 'UserCheck', minLevel: 0 },
       { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 0 },
       { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },

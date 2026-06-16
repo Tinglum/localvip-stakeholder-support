@@ -366,6 +366,106 @@ export async function fetchQaConsumerTypes() {
   return parseQaJsonResponse<QaConsumerType[]>(res, 'The QA consumer types request failed.')
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard network + nodes + admin login-as (new QA endpoints)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface QaNetworkNode {
+  id: number | string
+  parentId: number | string | null
+  level: number
+  name: string
+  city: string | null
+  state: string | null
+  joinedAt: string | null
+}
+
+export interface QaNetworkBranchSize {
+  id: number | string
+  directReferrals: number
+}
+
+export interface QaNetworkEarnings {
+  id: number | string
+  earnings: number
+}
+
+export interface QaNetworkTree {
+  rootId: number | string
+  depth: number
+  totalNodes: number
+  nodes: QaNetworkNode[]
+  branchSizes?: QaNetworkBranchSize[]
+  earningsById?: QaNetworkEarnings[]
+  totalNetworkEarnings?: number
+}
+
+export type QaNodeType = 'all' | 'customer' | 'business' | 'cause'
+
+export interface QaNodeListItem {
+  accountId: number | string
+  userId: number | string
+  name: string
+  email: string | null
+  phone: string | null
+  city: string | null
+  state: string | null
+  type: Exclude<QaNodeType, 'all'> | string
+  referralCode: string | null
+  joinedAt: string | null
+  directReferralCount: number
+}
+
+export interface QaNodeList {
+  items: QaNodeListItem[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
+export interface QaLoginAsResult {
+  accessToken: string
+  tokenType: string
+  expiresIn: number
+  user: {
+    id: number | string
+    email: string
+    accountType: string | number
+  }
+}
+
+export async function fetchQaNetworkTree(accountId: number | string, depth = 10): Promise<QaNetworkTree> {
+  const res = await fetchQaApi(
+    `/api/dashboard/v1/Network/Tree?accountId=${encodeURIComponent(String(accountId))}&depth=${encodeURIComponent(String(depth))}`,
+  )
+  return parseQaJsonResponse<QaNetworkTree>(res, 'The QA network tree could not be loaded.')
+}
+
+export async function fetchQaNodes(params: {
+  type?: QaNodeType
+  search?: string
+  page?: number
+  pageSize?: number
+}): Promise<QaNodeList> {
+  const query = new URLSearchParams()
+  query.set('type', params.type || 'all')
+  if (params.search) query.set('search', params.search)
+  query.set('page', String(params.page ?? 1))
+  query.set('pageSize', String(params.pageSize ?? 25))
+
+  const res = await fetchQaApi(`/api/dashboard/v1/Nodes?${query.toString()}`)
+  return parseQaJsonResponse<QaNodeList>(res, 'The QA nodes list could not be loaded.')
+}
+
+export async function qaAdminLoginAs(targetUserId: number | string): Promise<QaLoginAsResult> {
+  const res = await fetchQaApi('/api/dashboard/v1/Admin/LoginAs', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ targetUserId }),
+  })
+  return parseQaJsonResponse<QaLoginAsResult>(res, 'Login-as could not be completed.')
+}
+
 export async function updateQaConsumerType(id: number, consumerTypeId: number) {
   const res = await fetchQaApi(`/api/dashboard/v1/Consumer/${id}/consumer-type`, {
     method: 'PATCH',
