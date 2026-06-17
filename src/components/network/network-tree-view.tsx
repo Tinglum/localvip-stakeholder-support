@@ -28,11 +28,14 @@ import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
+type NodeType = 'customer' | 'business' | 'cause'
+
 interface NetworkNode {
   id: number | string
   parentId: number | string | null
   level: number
   name: string
+  type?: NodeType | string
   city: string | null
   state: string | null
   joinedAt: string | null
@@ -258,6 +261,23 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
   const activeLevels = levelGroups.filter((group) => group.members.length > 0).length
   const directReferrals = levelGroups.find((group) => group.level === 1)?.members.length ?? 0
 
+  // Break the network down by node type so businesses and causes are called
+  // out separately from customers in the overview.
+  const typeBreakdown = React.useMemo(() => {
+    const make = () => ({ count: 0, spend: 0 })
+    const totals: Record<NodeType, { count: number; spend: number }> = {
+      customer: make(),
+      business: make(),
+      cause: make(),
+    }
+    for (const node of decoratedNodes) {
+      const type: NodeType = node.type === 'business' || node.type === 'cause' ? node.type : 'customer'
+      totals[type].count += 1
+      totals[type].spend += node.spend
+    }
+    return totals
+  }, [decoratedNodes])
+
   const normalizedQuery = query.trim().toLowerCase()
   const searchResults = React.useMemo<DecoratedNode[]>(() => {
     if (!normalizedQuery) return []
@@ -393,6 +413,30 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
           hint={`People directly connected to this ${nodeLabel}`}
         />
       </div>
+
+      {(typeBreakdown.business.count > 0 || typeBreakdown.cause.count > 0) ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <p className="mb-3 text-sm font-semibold text-slate-700">Network make-up</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              { type: 'customer' as NodeType, label: 'Customers', icon: <UserCircle2 className="h-4 w-4" /> },
+              { type: 'business' as NodeType, label: 'Businesses', icon: <Network className="h-4 w-4" /> },
+              { type: 'cause' as NodeType, label: 'Causes & schools', icon: <Coins className="h-4 w-4" /> },
+            ]).map(({ type, label, icon }) => (
+              <div key={type} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                <div className="flex items-center gap-2 text-slate-600">
+                  {icon}
+                  <span className="text-sm font-medium">{label}</span>
+                </div>
+                <div className="text-right">
+                  <div className="text-base font-semibold text-slate-900">{formatNumber(typeBreakdown[type].count)}</div>
+                  <div className="text-xs text-slate-500">{formatCurrency(typeBreakdown[type].spend)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {!hasNetwork ? (
         <EmptyState
@@ -548,6 +592,17 @@ function MemberRow({ node, showLevel = false }: { node: DecoratedNode; showLevel
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-semibold text-surface-900">{node.name || 'Member'}</p>
+            {node.type === 'business' || node.type === 'cause' ? (
+              <Badge
+                variant="outline"
+                className={cn(
+                  'shrink-0',
+                  node.type === 'business' ? 'border-blue-300 text-blue-700' : 'border-purple-300 text-purple-700',
+                )}
+              >
+                {node.type === 'business' ? 'Business' : 'Cause'}
+              </Badge>
+            ) : null}
             {showLevel ? (
               <Badge variant="outline" className="shrink-0">
                 L{node.level}

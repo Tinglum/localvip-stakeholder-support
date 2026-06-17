@@ -375,6 +375,7 @@ export interface QaNetworkNode {
   parentId: number | string | null
   level: number
   name: string
+  type?: 'customer' | 'business' | 'cause' | string
   city: string | null
   state: string | null
   joinedAt: string | null
