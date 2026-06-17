@@ -47,9 +47,11 @@ function resolveCurrentStakeholder(
 
 export function StakeholderGeneratedMaterialsPage() {
   const { profile, shell, isAdmin, localProfileId } = useAuth()
-  const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
+  const { data: stakeholders, loading: stakeholdersLoading, refetch: refetchStakeholders } = useStakeholders()
   const { data: generatedMaterials, loading: generatedLoading, refetch: refetchGenerated } = useGeneratedMaterials()
   const { data: materials, loading: materialsLoading, refetch } = useMaterials()
+  const [provisioning, setProvisioning] = React.useState(false)
+  const provisionAttempted = React.useRef(false)
   const [search, setSearch] = React.useState('')
   const [selectedFolder, setSelectedFolder] = React.useState<MaterialLibraryFolder | 'all'>('all')
   const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
@@ -61,6 +63,36 @@ export function StakeholderGeneratedMaterialsPage() {
     () => resolveCurrentStakeholder(profile, localProfileId, stakeholders),
     [localProfileId, profile, stakeholders],
   )
+
+  // Auto-provision a business's materials on first view (QA only) — no admin,
+  // no "added as a stakeholder" step. Ensures the QA context + generates the
+  // default materials, then refetches.
+  React.useEffect(() => {
+    if (provisionAttempted.current) return
+    if (stakeholdersLoading || generatedLoading || materialsLoading) return
+    if (stakeholder) return
+    if (profile.role !== 'business') return
+    const businessId = profile.business_id ? String(profile.business_id) : null
+    if (!businessId || !/^\d+$/.test(businessId)) return
+    provisionAttempted.current = true
+    setProvisioning(true)
+    void (async () => {
+      try {
+        const res = await fetch('/api/portal/ensure-materials', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ businessId }),
+        })
+        if (res.ok) {
+          refetchStakeholders?.({ silent: true })
+          refetchGenerated?.({ silent: true })
+          refetch?.({ silent: true })
+        }
+      } finally {
+        setProvisioning(false)
+      }
+    })()
+  }, [stakeholder, stakeholdersLoading, generatedLoading, materialsLoading, profile.role, profile.business_id, refetchStakeholders, refetchGenerated, refetch])
 
   const linkedGenerated = React.useMemo(() => {
     if (!stakeholder) return []
@@ -146,13 +178,21 @@ export function StakeholderGeneratedMaterialsPage() {
   }
 
   if (!stakeholder) {
+    const isBusiness = profile.role === 'business'
     return (
       <div className="space-y-6">
-        <PageHeader title="Materials" description="Your personalized library will appear here as soon as your stakeholder setup is complete." />
+        <PageHeader
+          title="Materials"
+          description={isBusiness ? 'Setting up your material library…' : 'Your personalized library will appear here once your setup is connected.'}
+        />
         <EmptyState
           icon={<FolderOpen className="h-8 w-8" />}
-          title="No stakeholder library yet"
-          description="An admin still needs to connect your setup codes and generate your first materials."
+          title={isBusiness ? 'Preparing your materials…' : 'No material library yet'}
+          description={
+            isBusiness
+              ? 'We are generating your materials now — this only takes a moment. Refresh in a few seconds if they do not appear.'
+              : 'Your materials will appear here once your setup is connected.'
+          }
         />
       </div>
     )
