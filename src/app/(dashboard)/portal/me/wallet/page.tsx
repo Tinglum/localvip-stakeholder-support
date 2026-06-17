@@ -23,11 +23,23 @@ type AmountPayload =
   | { amount?: unknown; Amount?: unknown; availableAmount?: unknown; [key: string]: unknown }
   | null
 
+interface SelectedCause {
+  accountId: number | string
+  name: string | null
+  receivedLifetime: number
+}
+
+interface CauseImpactPayload {
+  yourContributionLifetime?: number
+  selectedCausesReceivedLifetime?: number
+  selectedCauses?: SelectedCause[]
+}
+
 interface WalletResponse {
   available: AmountPayload
   cashback: AmountPayload
   bonusCash: AmountPayload
-  socialImpact: AmountPayload
+  causeImpact: CauseImpactPayload | null
 }
 
 function normalizeAmount(payload: AmountPayload, keys: string[] = ['amount', 'Amount']): number | null {
@@ -148,7 +160,13 @@ export default function MyWalletPage() {
   const available = normalizeAmount(data?.available ?? null, ['availableAmount', 'amount', 'Amount'])
   const cashback = normalizeAmount(data?.cashback ?? null)
   const bonusCash = normalizeAmount(data?.bonusCash ?? null)
-  const socialImpact = normalizeAmount(data?.socialImpact ?? null)
+  const yourContribution = typeof data?.causeImpact?.yourContributionLifetime === 'number'
+    ? data.causeImpact.yourContributionLifetime
+    : null
+  const causesReceived = typeof data?.causeImpact?.selectedCausesReceivedLifetime === 'number'
+    ? data.causeImpact.selectedCausesReceivedLifetime
+    : null
+  const selectedCauses = data?.causeImpact?.selectedCauses ?? []
 
   const lifetimeEarned =
     cashback === null && bonusCash === null
@@ -210,13 +228,13 @@ export default function MyWalletPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <WalletTile
           label="Available Balance"
           value={available}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption="Money you can use right now"
+          caption="Cashback + network earnings ready to use"
           loading={loading}
           emphasize
         />
@@ -229,21 +247,70 @@ export default function MyWalletPage() {
           loading={loading}
         />
         <WalletTile
-          label="Network Earnings"
+          label="Lifetime Network Earnings"
           value={bonusCash}
           icon={<Network className="h-5 w-5 text-hato-600" />}
           accent="bg-hato-50"
           caption="Extra earnings from people in your network"
           loading={loading}
         />
-        <WalletTile
-          label="Cause Impact"
-          value={socialImpact}
-          icon={<HeartHandshake className="h-5 w-5 text-warning-600" />}
-          accent="bg-warning-50"
-          caption="Support sent to the causes you chose"
-          loading={loading}
-        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-2">
+          <WalletTile
+            label="Your Cause Contributions"
+            value={yourContribution}
+            icon={<HeartHandshake className="h-5 w-5 text-warning-600" />}
+            accent="bg-warning-50"
+            caption="Total you've directed to your causes (lifetime)"
+            loading={loading}
+          />
+          <WalletTile
+            label="Your Causes Received"
+            value={causesReceived}
+            icon={<Sparkles className="h-5 w-5 text-warning-600" />}
+            accent="bg-warning-50"
+            caption="Total your selected causes received from everyone (lifetime)"
+            loading={loading}
+          />
+        </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Your selected causes</CardTitle>
+            <CardDescription>What each is supported by, all-time.</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {loading ? (
+              <div className="space-y-2">
+                <div className="h-5 w-full animate-pulse rounded bg-surface-100" />
+                <div className="h-5 w-3/4 animate-pulse rounded bg-surface-100" />
+              </div>
+            ) : selectedCauses.length === 0 ? (
+              <p className="text-sm text-surface-400">
+                No causes selected yet.{' '}
+                <Link href="/portal/me/causes" className="text-brand-600 underline">
+                  Choose your causes
+                </Link>
+                .
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {selectedCauses.map((cause) => (
+                  <li
+                    key={cause.accountId}
+                    className="flex items-center justify-between gap-3 border-b border-surface-100 pb-2 last:border-0 last:pb-0"
+                  >
+                    <span className="truncate text-sm text-surface-700">{cause.name || 'Cause'}</span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-surface-900">
+                      {formatUsd(cause.receivedLifetime)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -269,16 +336,16 @@ export default function MyWalletPage() {
               loading={loading}
             />
             <BreakdownRow
-              label="Network earnings"
+              label="Lifetime network earnings"
               description="Extra money earned because your network is active"
               value={bonusCash}
               icon={<Network className="h-4 w-4" />}
               loading={loading}
             />
             <BreakdownRow
-              label="Cause impact"
-              description="Value that has been directed to the causes you picked"
-              value={socialImpact}
+              label="Your cause contributions"
+              description="Value you have directed to the causes you picked (lifetime)"
+              value={yourContribution}
               icon={<HeartHandshake className="h-4 w-4" />}
               loading={loading}
             />

@@ -23,17 +23,33 @@ export async function GET() {
     return access.error
   }
 
-  const [available, cashback, bonusCash, socialImpact] = await Promise.all([
+  const [available, cashback, bonusCash, causeImpact] = await Promise.all([
     readOptionalQaJson('/api/mobile/v1/Wallet/available').catch(() => null),
     readOptionalQaJson('/api/mobile/v1/Payment/cashback/lifetime').catch(() => null),
     readOptionalQaJson('/api/mobile/v1/Payment/bonuscash/lifetime').catch(() => null),
-    readOptionalQaJson('/api/mobile/v1/Payment/SocialImpact').catch(() => null),
+    readOptionalQaJson('/api/mobile/v1/Payment/CauseImpactSummary').catch(() => null),
   ])
 
+  // Available balance reflects cashback (already in the wallet) PLUS lifetime
+  // network earnings, which aren't separately walleted in this data set.
+  const pickNumber = (payload: unknown, keys: string[]): number => {
+    if (typeof payload === 'number') return Number.isFinite(payload) ? payload : 0
+    if (payload && typeof payload === 'object') {
+      for (const key of keys) {
+        const raw = (payload as Record<string, unknown>)[key]
+        if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+        if (typeof raw === 'string' && raw.trim() && Number.isFinite(Number(raw))) return Number(raw)
+      }
+    }
+    return 0
+  }
+  const availableBase = pickNumber(available, ['availableAmount', 'amount', 'Amount'])
+  const networkLifetime = pickNumber(bonusCash, ['Amount', 'amount'])
+
   return NextResponse.json({
-    available,
+    available: availableBase + networkLifetime,
     cashback,
     bonusCash,
-    socialImpact,
+    causeImpact,
   })
 }
