@@ -390,14 +390,54 @@ export interface QaNetworkEarnings {
   earnings: number
 }
 
+export interface QaNetworkSpend {
+  id: number | string
+  spend: number
+}
+
+export interface QaNetworkMonthlySpend {
+  year: number
+  month: number
+  spend: number
+}
+
+export interface QaNetworkProjectionPoint {
+  monthLabel: string
+  projectedSpend: number
+  projectedIncome: number | null
+}
+
+export interface QaNetworkProjection {
+  basis: 'all_time_average' | 'selected_period'
+  period: 'day' | 'week' | 'month' | 'year' | 'all' | 'custom'
+  startDate: string | null
+  endDate: string | null
+  currentWindowSpend: number
+  previousWindowSpend: number | null
+  currentMonthlySpendRate: number
+  previousMonthlySpendRate: number | null
+  observedGrowthRate: number
+  incomeConversionRate: number | null
+  projected12MonthSpend: number
+  projected12MonthIncome: number | null
+  next12Months: QaNetworkProjectionPoint[]
+}
+
 export interface QaNetworkTree {
   rootId: number | string
   depth: number
   totalNodes: number
   nodes: QaNetworkNode[]
+  period?: 'day' | 'week' | 'month' | 'year' | 'all' | 'custom'
+  startDate?: string | null
+  endDate?: string | null
   branchSizes?: QaNetworkBranchSize[]
   earningsById?: QaNetworkEarnings[]
   totalNetworkEarnings?: number
+  spendById?: QaNetworkSpend[]
+  totalNetworkSpend?: number
+  monthlyNetworkSpend?: QaNetworkMonthlySpend[]
+  projection?: QaNetworkProjection
 }
 
 export type QaNodeType = 'all' | 'customer' | 'business' | 'cause'
@@ -434,10 +474,15 @@ export interface QaLoginAsResult {
   }
 }
 
-export async function fetchQaNetworkTree(accountId: number | string, depth = 10): Promise<QaNetworkTree> {
-  const res = await fetchQaApi(
-    `/api/dashboard/v1/Network/Tree?accountId=${encodeURIComponent(String(accountId))}&depth=${encodeURIComponent(String(depth))}`,
-  )
+export async function fetchQaNetworkTree(
+  accountId: number | string,
+  depth = 10,
+  window?: { startDate?: string | null; endDate?: string | null },
+): Promise<QaNetworkTree> {
+  const params = new URLSearchParams({ accountId: String(accountId), depth: String(depth) })
+  if (window?.startDate) params.set('startDate', window.startDate)
+  if (window?.endDate) params.set('endDate', window.endDate)
+  const res = await fetchQaApi(`/api/dashboard/v1/Network/Tree?${params.toString()}`)
   return parseQaJsonResponse<QaNetworkTree>(res, 'The QA network tree could not be loaded.')
 }
 

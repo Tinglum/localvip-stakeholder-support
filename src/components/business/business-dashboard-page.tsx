@@ -279,7 +279,7 @@ export function BusinessDashboardPage() {
           <div>
             <h2 className="text-xl font-semibold text-surface-900">Your business network</h2>
             <p className="mt-1 text-sm leading-6 text-surface-500">
-              Everyone connected to {business.name} across up to 10 levels, and the earnings they help create. This view is read-only.
+              Everyone connected to {business.name} across up to 10 levels, and the tracked spend tied to each member. This view is read-only.
             </p>
           </div>
           {qaAccountId ? (

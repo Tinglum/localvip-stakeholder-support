@@ -43,26 +43,69 @@ interface EarningsEntry {
   earnings: number
 }
 
+interface SpendEntry {
+  id: number | string
+  spend: number
+}
+
 interface NetworkResponse {
   nodes: NetworkNode[]
+  period?: NetworkPeriod
+  startDate?: string | null
+  endDate?: string | null
   branchSizes?: Array<{ id: number | string; directReferrals: number }> | null
   earningsById?: EarningsEntry[]
   totalNetworkEarnings?: number
+  spendById?: SpendEntry[] | Record<string, number> | null
+  totalNetworkSpend?: number
+  projection?: NetworkProjection | null
   totalNodes?: number
 }
 
+interface NetworkProjectionPoint {
+  monthLabel: string
+  projectedSpend: number
+  projectedIncome: number | null
+}
+
+interface NetworkProjection {
+  basis: 'all_time_average' | 'selected_period'
+  period: NetworkPeriod
+  startDate: string | null
+  endDate: string | null
+  currentWindowSpend: number
+  previousWindowSpend: number | null
+  currentMonthlySpendRate: number
+  previousMonthlySpendRate: number | null
+  observedGrowthRate: number
+  incomeConversionRate: number | null
+  projected12MonthSpend: number
+  projected12MonthIncome: number | null
+  next12Months: NetworkProjectionPoint[]
+}
+
 interface DecoratedNode extends NetworkNode {
-  earnings: number
+  spend: number
   location: string
 }
 
 interface LevelGroup {
   level: number
   members: DecoratedNode[]
-  earnings: number
+  spend: number
 }
 
+type NetworkPeriod = 'day' | 'week' | 'month' | 'year' | 'all' | 'custom'
+
 const MAX_LEVELS = 10
+const NETWORK_PERIOD_OPTIONS: Array<{ value: NetworkPeriod; label: string }> = [
+  { value: 'day', label: 'Day' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+  { value: 'year', label: 'Year' },
+  { value: 'all', label: 'All time' },
+  { value: 'custom', label: 'Custom' },
+]
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -78,6 +121,10 @@ function buildLocation(node: NetworkNode): string {
   return parts.join(', ')
 }
 
+function formatPercent(value: number): string {
+  return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`
+}
+
 interface NetworkTreeViewProps {
   accountId?: number | string | null
   fetchUrl?: string
@@ -90,13 +137,36 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [query, setQuery] = React.useState('')
+  const [period, setPeriod] = React.useState<NetworkPeriod>('all')
+  const [startDate, setStartDate] = React.useState('')
+  const [endDate, setEndDate] = React.useState('')
   const [expandedLevels, setExpandedLevels] = React.useState<Record<number, boolean>>({})
 
   const url = React.useMemo(() => {
-    if (fetchUrl) return fetchUrl
-    if (accountId === null || accountId === undefined || accountId === '') return null
-    return `/api/dashboard/network/tree?accountId=${encodeURIComponent(String(accountId))}&depth=10`
-  }, [accountId, fetchUrl])
+    let nextUrl: string | null = null
+    if (fetchUrl) {
+      nextUrl = fetchUrl
+    } else if (accountId !== null && accountId !== undefined && accountId !== '') {
+      nextUrl = `/api/dashboard/network/tree?accountId=${encodeURIComponent(String(accountId))}&depth=10`
+    }
+
+    if (!nextUrl) return null
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+    const resolved = new URL(nextUrl, origin)
+    resolved.searchParams.set('period', period)
+    if (period === 'custom') {
+      if (startDate) resolved.searchParams.set('startDate', startDate)
+      else resolved.searchParams.delete('startDate')
+      if (endDate) resolved.searchParams.set('endDate', endDate)
+      else resolved.searchParams.delete('endDate')
+    } else {
+      resolved.searchParams.delete('startDate')
+      resolved.searchParams.delete('endDate')
+    }
+
+    return `${resolved.pathname}${resolved.search}`
+  }, [accountId, endDate, fetchUrl, period, startDate])
 
   const load = React.useCallback(async () => {
     if (!url) {
@@ -125,21 +195,37 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
     void load()
   }, [load])
 
-  const earningsMap = React.useMemo(() => {
+  const spendMap = React.useMemo(() => {
     const map = new Map<string, number>()
+    const rawSpend = data?.spendById
+
+    if (Array.isArray(rawSpend)) {
+      for (const entry of rawSpend) {
+        map.set(String(entry.id), Number(entry.spend) || 0)
+      }
+      return map
+    }
+
+    if (rawSpend && typeof rawSpend === 'object') {
+      for (const [id, spend] of Object.entries(rawSpend)) {
+        map.set(String(id), Number(spend) || 0)
+      }
+      return map
+    }
+
     for (const entry of data?.earningsById ?? []) {
       map.set(String(entry.id), Number(entry.earnings) || 0)
     }
     return map
-  }, [data?.earningsById])
+  }, [data?.earningsById, data?.spendById])
 
   const decoratedNodes = React.useMemo<DecoratedNode[]>(() => {
     return (data?.nodes ?? []).map((node) => ({
       ...node,
-      earnings: earningsMap.get(String(node.id)) ?? 0,
+      spend: spendMap.get(String(node.id)) ?? 0,
       location: buildLocation(node),
     }))
-  }, [data?.nodes, earningsMap])
+  }, [data?.nodes, spendMap])
 
   const levelGroups = React.useMemo<LevelGroup[]>(() => {
     const byLevel = new Map<number, DecoratedNode[]>()
@@ -153,21 +239,22 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
 
     const groups: LevelGroup[] = []
     for (let level = 1; level <= MAX_LEVELS; level += 1) {
-      const members = (byLevel.get(level) ?? []).sort((a, b) => a.level - b.level || b.earnings - a.earnings)
+      const members = (byLevel.get(level) ?? []).sort((a, b) => a.level - b.level || b.spend - a.spend)
       groups.push({
         level,
         members,
-        earnings: members.reduce((sum, member) => sum + member.earnings, 0),
+        spend: members.reduce((sum, member) => sum + member.spend, 0),
       })
     }
     return groups
   }, [decoratedNodes])
 
   const totalMembers = data?.totalNodes ?? decoratedNodes.length
-  const totalEarnings = React.useMemo(() => {
+  const totalSpend = React.useMemo(() => {
+    if (typeof data?.totalNetworkSpend === 'number') return data.totalNetworkSpend
     if (typeof data?.totalNetworkEarnings === 'number') return data.totalNetworkEarnings
-    return decoratedNodes.reduce((sum, node) => sum + node.earnings, 0)
-  }, [data?.totalNetworkEarnings, decoratedNodes])
+    return decoratedNodes.reduce((sum, node) => sum + node.spend, 0)
+  }, [data?.totalNetworkEarnings, data?.totalNetworkSpend, decoratedNodes])
   const activeLevels = levelGroups.filter((group) => group.members.length > 0).length
   const directReferrals = levelGroups.find((group) => group.level === 1)?.members.length ?? 0
 
@@ -179,7 +266,7 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
         const haystack = `${node.name} ${node.location}`.toLowerCase()
         return haystack.includes(normalizedQuery)
       })
-      .sort((a, b) => a.level - b.level || b.earnings - a.earnings)
+      .sort((a, b) => a.level - b.level || b.spend - a.spend)
   }, [decoratedNodes, normalizedQuery])
 
   const toggleLevel = (level: number) => {
@@ -195,6 +282,20 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
   }
 
   const collapseAll = () => setExpandedLevels({})
+  const activeRangeLabel = React.useMemo(() => {
+    if (period === 'all') return 'All time'
+    if (period === 'custom') {
+      if (startDate && endDate) return `${formatDate(startDate)} to ${formatDate(endDate)}`
+      if (startDate) return `From ${formatDate(startDate)}`
+      if (endDate) return `Up to ${formatDate(endDate)}`
+      return 'Custom range'
+    }
+    const option = NETWORK_PERIOD_OPTIONS.find((entry) => entry.value === period)
+    if (data?.startDate && data?.endDate) {
+      return `${option?.label || 'Selected period'}: ${formatDate(data.startDate)} to ${formatDate(data.endDate)}`
+    }
+    return option?.label || 'Selected period'
+  }, [data?.endDate, data?.startDate, endDate, period, startDate])
 
   if (loading) {
     return (
@@ -222,19 +323,56 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <Button variant="outline" size="sm" onClick={() => void load()}>
-          <TrendingUp className="h-4 w-4" /> Refresh
-        </Button>
+      <div className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-surface-900">Time period</p>
+            <p className="text-sm text-surface-500">
+              Switch between recent periods or set your own date range to inspect this network.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {NETWORK_PERIOD_OPTIONS.map((option) => (
+                <Button
+                  key={option.value}
+                  variant={period === option.value ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setPeriod(option.value)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 xl:items-end">
+            {period === 'custom' ? (
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <label className="space-y-1 text-sm text-surface-600">
+                  <span className="block text-xs font-medium uppercase tracking-[0.16em] text-surface-500">From</span>
+                  <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+                </label>
+                <label className="space-y-1 text-sm text-surface-600">
+                  <span className="block text-xs font-medium uppercase tracking-[0.16em] text-surface-500">To</span>
+                  <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+                </label>
+              </div>
+            ) : null}
+            <div className="flex items-center gap-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{activeRangeLabel}</p>
+              <Button variant="outline" size="sm" onClick={() => void load()}>
+                <TrendingUp className="h-4 w-4" /> Refresh
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
-          label="Total network earnings"
-          value={formatCurrency(totalEarnings)}
+          label="Total network spend"
+          value={formatCurrency(totalSpend)}
           icon={<Coins className="h-5 w-5" />}
           accent="text-success-600"
-          hint="All network-related earnings so far"
+          hint="All tracked member spend across this network so far"
         />
         <SummaryCard
           label="Network members"
@@ -264,34 +402,38 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
         />
       ) : (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Find a person</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search by name or location..."
-              />
-              {normalizedQuery ? (
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-[0.16em] text-surface-500">
-                    {searchResults.length} {searchResults.length === 1 ? 'match' : 'matches'}
-                  </p>
-                  {searchResults.length === 0 ? (
-                    <p className="text-sm text-surface-500">No people match &quot;{query}&quot;.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {searchResults.slice(0, 50).map((node) => (
-                        <MemberRow key={`search-${node.id}`} node={node} showLevel />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+          <div className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle>Find a person</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search by name or location..."
+                />
+                {normalizedQuery ? (
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase tracking-[0.16em] text-surface-500">
+                      {searchResults.length} {searchResults.length === 1 ? 'match' : 'matches'}
+                    </p>
+                    {searchResults.length === 0 ? (
+                      <p className="text-sm text-surface-500">No people match &quot;{query}&quot;.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {searchResults.slice(0, 50).map((node) => (
+                          <MemberRow key={`search-${node.id}`} node={node} showLevel />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <ProjectionCard projection={data?.projection ?? null} activeRangeLabel={activeRangeLabel} />
+          </div>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3 pb-4">
@@ -345,7 +487,7 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
                       <div className="flex items-center gap-3">
                         <Badge variant="info">{formatNumber(group.members.length)}</Badge>
                         <span className="text-sm font-semibold text-success-600">
-                          {formatCurrency(group.earnings)}
+                          {formatCurrency(group.spend)}
                         </span>
                       </div>
                     </button>
@@ -427,9 +569,124 @@ function MemberRow({ node, showLevel = false }: { node: DecoratedNode; showLevel
         </div>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold text-success-600">{formatCurrency(node.earnings)}</p>
-        <p className="text-[11px] uppercase tracking-wide text-surface-400">earned</p>
+        <p className="text-sm font-semibold text-success-600">{formatCurrency(node.spend)}</p>
+        <p className="text-[11px] uppercase tracking-wide text-surface-400">spent</p>
       </div>
+    </div>
+  )
+}
+
+function ProjectionCard({
+  projection,
+  activeRangeLabel,
+}: {
+  projection: NetworkProjection | null
+  activeRangeLabel: string
+}) {
+  const maxProjectedSpend = Math.max(...(projection?.next12Months.map((entry) => entry.projectedSpend) ?? [0]), 1)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>12-month projection</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!projection ? (
+          <p className="text-sm text-surface-500">
+            Projection data will appear here once we can calculate a trend from the selected network period.
+          </p>
+        ) : (
+          <>
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Projection basis</p>
+              <p className="mt-2 text-sm leading-6 text-surface-700">
+                {projection.basis === 'all_time_average'
+                  ? `Using the all-time average pace from ${projection.startDate ? formatDate(projection.startDate) : 'the earliest tracked date'} through ${projection.endDate ? formatDate(projection.endDate) : 'today'}.`
+                  : `Using the selected period (${activeRangeLabel}) compared with the immediately previous matching window.`}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Projected 12-month spend</p>
+                <p className="mt-2 text-2xl font-bold text-surface-900">{formatCurrency(projection.projected12MonthSpend)}</p>
+                <p className="mt-2 text-xs text-surface-500">
+                  Current monthly pace: {formatCurrency(projection.currentMonthlySpendRate)}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Potential 12-month income</p>
+                <p className="mt-2 text-2xl font-bold text-surface-900">
+                  {projection.projected12MonthIncome == null ? 'Waiting on income ratio' : formatCurrency(projection.projected12MonthIncome)}
+                </p>
+                <p className="mt-2 text-xs text-surface-500">
+                  {projection.incomeConversionRate == null
+                    ? 'Spend trend is ready. Income estimate unlocks once network earnings establish a real conversion ratio.'
+                    : `Observed income conversion: ${formatPercent(projection.incomeConversionRate)}`}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <MetricPill
+                label="Trend vs previous window"
+                value={projection.previousMonthlySpendRate == null ? 'Not enough history' : formatPercent(projection.observedGrowthRate)}
+                tone={projection.observedGrowthRate >= 0 ? 'success' : 'default'}
+              />
+              <MetricPill
+                label="Previous monthly pace"
+                value={projection.previousMonthlySpendRate == null ? 'Not enough history' : formatCurrency(projection.previousMonthlySpendRate)}
+                tone="default"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Projected next 12 months</p>
+              <div className="space-y-2">
+                {projection.next12Months.map((entry) => (
+                  <div key={entry.monthLabel} className="rounded-xl border border-surface-200 bg-surface-50 px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-surface-900">{entry.monthLabel}</p>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-surface-900">{formatCurrency(entry.projectedSpend)}</p>
+                        <p className="text-xs text-surface-500">
+                          {entry.projectedIncome == null ? 'Income pending' : `Income ${formatCurrency(entry.projectedIncome)}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-200">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-brand-500 via-amber-500 to-lime-500"
+                        style={{ width: `${Math.max(6, (entry.projectedSpend / maxProjectedSpend) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function MetricPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: 'default' | 'success'
+}) {
+  return (
+    <div className={cn(
+      'rounded-2xl border p-4',
+      tone === 'success' ? 'border-success-200 bg-success-50/60' : 'border-surface-200 bg-white',
+    )}>
+      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-surface-900">{value}</p>
     </div>
   )
 }

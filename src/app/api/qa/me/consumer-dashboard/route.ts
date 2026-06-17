@@ -1,54 +1,9 @@
 import { NextResponse } from 'next/server'
-import type { QaConsumerListItem } from '@/lib/auth/qa-api'
 import { fetchQaApi, getQaUserProfile, parseQaJsonResponse } from '@/lib/auth/qa-api'
 import { getAuthenticatedSession, type ResolvedAuthSession } from '@/lib/server/auth-session'
+import { fetchConsumerDetailOptional, resolveCurrentConsumerId, toQaNumber } from '@/lib/server/qa-consumer'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { qaRouteErrorResponse } from '@/lib/server/qa-route'
-
-function parseConsumerIdCandidate(value: unknown) {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value
-  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim())
-  return null
-}
-
-async function fetchConsumerDetailOptional(consumerId: number) {
-  try {
-    const detailRes = await fetchQaApi(`/api/dashboard/v1/Consumer/${consumerId}`)
-    return await parseQaJsonResponse<Record<string, unknown>>(detailRes, 'Failed to load consumer detail.')
-  } catch {
-    return null
-  }
-}
-
-async function resolveCurrentConsumerId(session: ResolvedAuthSession) {
-  const metadata = ((session.profile.metadata as Record<string, unknown> | null) || {})
-  const qaClaims = session.qaClaims?.raw && typeof session.qaClaims.raw === 'object'
-    ? session.qaClaims.raw as Record<string, unknown>
-    : {}
-
-  const candidates = [
-    session.viewingAs?.targetUserId,
-    session.qaClaims?.sub,
-    metadata.view_as_target_user_id,
-    metadata.qa_subject,
-    qaClaims.sub,
-  ]
-
-  for (const candidate of candidates) {
-    const parsed = parseConsumerIdCandidate(candidate)
-    if (!parsed) continue
-    const detail = await fetchConsumerDetailOptional(parsed)
-    if (detail) return parsed
-  }
-
-  const targetEmail = session.viewingAs?.targetEmail || session.profile.email || session.qaClaims?.email || null
-  if (!targetEmail) return null
-
-  const listRes = await fetchQaApi('/api/dashboard/v1/Consumer')
-  const consumers = await parseQaJsonResponse<QaConsumerListItem[]>(listRes, 'Failed to resolve current consumer.')
-  const match = consumers.find((consumer) => consumer.email?.trim().toLowerCase() === targetEmail.trim().toLowerCase())
-  return match?.id || null
-}
 
 async function readOptionalQaJson<T>(path: string, fallback: T): Promise<T> {
   try {
@@ -57,15 +12,6 @@ async function readOptionalQaJson<T>(path: string, fallback: T): Promise<T> {
   } catch {
     return fallback
   }
-}
-
-function toNumber(value: unknown) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return 0
 }
 
 function buildSummaryFallback(
@@ -105,8 +51,8 @@ function buildSummaryFallback(
       consumerType: typeof consumer.consumerType === 'string' ? consumer.consumerType : 'Normal',
     },
     wallet: {
-      availableAmount: toNumber(walletRecord.availableAmount),
-      currentAmount: toNumber(walletRecord.currentAmount),
+      availableAmount: toQaNumber(walletRecord.availableAmount),
+      currentAmount: toQaNumber(walletRecord.currentAmount),
       walletStatus: typeof walletRecord.walletStatus === 'string' ? walletRecord.walletStatus : '',
     },
     stripeOnboarded:
@@ -115,8 +61,8 @@ function buildSummaryFallback(
         : typeof consumer.hasStripeOnboarding === 'boolean'
           ? consumer.hasStripeOnboarding
           : false,
-    lifetimeCashback: toNumber(cashbackRecord.lifetimeTotal ?? cashbackRecord.totalAmount),
-    lifetimeBonusCash: toNumber(bonusCashRecord.lifetimeTotal ?? bonusCashRecord.totalAmount),
+    lifetimeCashback: toQaNumber(cashbackRecord.lifetimeTotal ?? cashbackRecord.totalAmount),
+    lifetimeBonusCash: toQaNumber(bonusCashRecord.lifetimeTotal ?? bonusCashRecord.totalAmount),
     counts: {
       transactions: transactionList.length,
       friends: friendList.length,

@@ -678,7 +678,7 @@ export function CommunityDashboardPage() {
           <div>
             <h2 className="text-lg font-semibold text-surface-900">Your {entityLabel.toLowerCase()} network</h2>
             <p className="text-sm text-surface-500">
-              Everyone connected to {scopedCause.name} across up to 10 levels, and the earnings they help create. This view is read-only.
+              Everyone connected to {scopedCause.name} across up to 10 levels, and the tracked spend tied to each member. This view is read-only.
             </p>
           </div>
           {getCauseQaAccountId(scopedCause) ? (
