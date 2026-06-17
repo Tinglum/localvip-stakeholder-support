@@ -140,6 +140,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
       { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 0 },
       { label: 'Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
       { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
+      { label: 'Team', href: '/crm/stakeholders', icon: 'UserCheck', minLevel: 0 },
       { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 0 },
       { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
       { label: 'Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 0 },
@@ -168,12 +169,14 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Business', href: '/onboarding/business', icon: 'Store', minLevel: 0 },
       { label: 'Cause', href: '/onboarding/cause', icon: 'Heart', minLevel: 0 },
+      { label: 'Team', href: '/onboarding/stakeholder', icon: 'UserPlus', minLevel: 0 },
     ],
   },
   { label: 'Analytics', href: '/analytics', icon: 'TrendingUp', minLevel: 0 },
   {
     label: 'Admin', href: '/admin', icon: 'Settings', minLevel: 0,
     children: [
+      { label: 'Team', href: '/admin/stakeholders', icon: 'FolderKanban', minLevel: 0 },
       { label: 'Material Tasks', href: '/admin/material-engine/tasks', icon: 'ListChecks', minLevel: 0 },
       { label: 'Template Manager', href: '/admin/material-engine/templates', icon: 'LayoutTemplate', minLevel: 0 },
       { label: 'Users', href: '/admin/users', icon: 'Users', minLevel: 0 },
