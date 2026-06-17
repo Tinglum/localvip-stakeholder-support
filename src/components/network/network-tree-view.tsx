@@ -79,6 +79,7 @@ interface NetworkProjection {
   currentWindowSpend: number
   previousWindowSpend: number | null
   currentMonthlySpendRate: number
+  currentMonthlyIncomeRate: number | null
   previousMonthlySpendRate: number | null
   observedGrowthRate: number
   incomeConversionRate: number | null
@@ -122,10 +123,6 @@ function formatCurrency(value: number): string {
 function buildLocation(node: NetworkNode): string {
   const parts = [node.city, node.state].filter((part): part is string => Boolean(part && part.trim()))
   return parts.join(', ')
-}
-
-function formatPercent(value: number): string {
-  return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%`
 }
 
 interface NetworkTreeViewProps {
@@ -638,8 +635,6 @@ function ProjectionCard({
   projection: NetworkProjection | null
   activeRangeLabel: string
 }) {
-  const maxProjectedSpend = Math.max(...(projection?.next12Months.map((entry) => entry.projectedSpend) ?? [0]), 1)
-
   return (
     <Card>
       <CardHeader>
@@ -657,91 +652,42 @@ function ProjectionCard({
               <p className="mt-2 text-sm leading-6 text-surface-700">
                 {projection.basis === 'all_time_average'
                   ? `Using the all-time average pace from ${projection.startDate ? formatDate(projection.startDate) : 'the earliest tracked date'} through ${projection.endDate ? formatDate(projection.endDate) : 'today'}.`
-                  : `Using the selected period (${activeRangeLabel}) compared with the immediately previous matching window.`}
+                  : `Using the selected period (${activeRangeLabel}) and assuming that monthly activity stays at the current pace.`}
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-surface-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Projected 12-month spend</p>
-                <p className="mt-2 text-2xl font-bold text-surface-900">{formatCurrency(projection.projected12MonthSpend)}</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Current monthly pace</p>
+                <p className="mt-2 text-2xl font-bold text-surface-900">{formatCurrency(projection.currentMonthlySpendRate)}</p>
                 <p className="mt-2 text-xs text-surface-500">
-                  Current monthly pace: {formatCurrency(projection.currentMonthlySpendRate)}
+                  Monthly income at this pace:{' '}
+                  {projection.currentMonthlyIncomeRate == null ? 'Waiting on income ratio' : formatCurrency(projection.currentMonthlyIncomeRate)}
                 </p>
               </div>
               <div className="rounded-2xl border border-surface-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Potential 12-month income</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Projected 12-month income</p>
                 <p className="mt-2 text-2xl font-bold text-surface-900">
                   {projection.projected12MonthIncome == null ? 'Waiting on income ratio' : formatCurrency(projection.projected12MonthIncome)}
                 </p>
                 <p className="mt-2 text-xs text-surface-500">
                   {projection.incomeConversionRate == null
-                    ? 'Spend trend is ready. Income estimate unlocks once network earnings establish a real conversion ratio.'
-                    : `Observed income conversion: ${formatPercent(projection.incomeConversionRate)}`}
+                    ? 'This estimate appears once network earnings establish a real conversion ratio.'
+                    : `Assumes the current month pace continues unchanged for the next 12 months.`}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <MetricPill
-                label="Trend vs previous window"
-                value={projection.previousMonthlySpendRate == null ? 'Not enough history' : formatPercent(projection.observedGrowthRate)}
-                tone={projection.observedGrowthRate >= 0 ? 'success' : 'default'}
-              />
-              <MetricPill
-                label="Previous monthly pace"
-                value={projection.previousMonthlySpendRate == null ? 'Not enough history' : formatCurrency(projection.previousMonthlySpendRate)}
-                tone="default"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Projected next 12 months</p>
-              <div className="space-y-2">
-                {projection.next12Months.map((entry) => (
-                  <div key={entry.monthLabel} className="rounded-xl border border-surface-200 bg-surface-50 px-3 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-surface-900">{entry.monthLabel}</p>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-surface-900">{formatCurrency(entry.projectedSpend)}</p>
-                        <p className="text-xs text-surface-500">
-                          {entry.projectedIncome == null ? 'Income pending' : `Income ${formatCurrency(entry.projectedIncome)}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-200">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-brand-500 via-amber-500 to-lime-500"
-                        style={{ width: `${Math.max(6, (entry.projectedSpend / maxProjectedSpend) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="rounded-2xl border border-surface-200 bg-white p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">What this means</p>
+              <p className="mt-2 text-sm leading-6 text-surface-700">
+                This is a simple hold-steady forecast, not a growth forecast. If the current monthly activity continues as-is,
+                this is the estimated income over the next 12 months.
+              </p>
             </div>
           </>
         )}
       </CardContent>
     </Card>
-  )
-}
-
-function MetricPill({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: string
-  tone: 'default' | 'success'
-}) {
-  return (
-    <div className={cn(
-      'rounded-2xl border p-4',
-      tone === 'success' ? 'border-success-200 bg-success-50/60' : 'border-surface-200 bg-white',
-    )}>
-      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-surface-900">{value}</p>
-    </div>
   )
 }

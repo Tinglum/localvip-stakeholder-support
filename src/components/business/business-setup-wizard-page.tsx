@@ -347,23 +347,27 @@ export function BusinessSetupWizardPage() {
 
   const scopedBusiness = business
 
-  // Profile completion is based on the fields QA actually persists (name +
-  // description). Category/avg ticket/products aren't QA columns, so requiring
-  // them would leave the step permanently incomplete after a reload.
+  // Profile completion is based on the two customer-facing details every
+  // business page needs today: a visible name and a real description.
   const completeProfile = !!name.trim() && !!description.trim()
   // Branding was previously never checked (fell through to `true`), so it always
   // showed "Done". Require an actual logo and cover image to count it complete.
   const completeBranding = !!(logoUrl || logoFile) && !!(coverUrl || coverFile)
-  const completeCapture = !!captureHeadline.trim()
+  // The capture offer isn't truly ready until the headline, long description,
+  // and short value label are all filled in.
+  const completeCapture =
+    !!captureHeadline.trim()
+    && !!captureDescription.trim()
+    && !!captureValue.trim()
   // The 10% default is only a suggestion — the step isn't "done" until the
   // business has explicitly set a rate this session or saved one before.
   const completeCashback =
     cashbackPercent >= 5 && cashbackPercent <= 25 && (cashbackTouched || !!cashbackOfferId)
-  const readyToActivate = completeProfile && completeCapture && completeCashback
+  const readyToActivate = completeProfile && completeBranding && completeCapture && completeCashback
   // The activate step counts as complete once everything needed to launch is in
   // place. It can't depend on launch_phase because QA doesn't persist it, which
   // would keep the wizard stuck below 100% forever.
-  const completeActivate = readyToActivate && completeBranding
+  const completeActivate = readyToActivate
   const completedStepsCount = STEPS.filter((item) =>
     item.key === 'profile' ? completeProfile
       : item.key === 'branding' ? completeBranding
@@ -735,8 +739,9 @@ export function BusinessSetupWizardPage() {
                 <CardTitle>Activate Your Portal</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <StatusPill label="Profile" ready={completeProfile} />
+                  <StatusPill label="Branding" ready={completeBranding} />
                   <StatusPill label="100-List Offer" ready={completeCapture} />
                   <StatusPill label="Cashback" ready={completeCashback} />
                 </div>

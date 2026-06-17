@@ -2,11 +2,11 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Heart, Loader2, Search, UserCheck, Users } from 'lucide-react'
+import { Building2, Heart, Loader2, Search, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SearchResult {
-  type: 'business' | 'cause' | 'contact' | 'stakeholder'
+  type: 'business' | 'cause' | 'contact'
   id: number | string
   name: string
   subtitle?: string | null
@@ -16,14 +16,12 @@ const ICONS: Record<SearchResult['type'], React.ElementType> = {
   business: Building2,
   cause: Heart,
   contact: Users,
-  stakeholder: UserCheck,
 }
 
 const HREFS: Record<SearchResult['type'], (id: string | number) => string> = {
   business: (id) => `/crm/businesses/${id}`,
   cause: (id) => `/crm/causes/${id}`,
   contact: (id) => `/crm/contacts/${id}`,
-  stakeholder: (id) => `/crm/stakeholders/${id}`,
 }
 
 interface TopbarSearchProps {

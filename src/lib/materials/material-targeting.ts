@@ -113,7 +113,10 @@ export function materialMatchesTargeting(material: Material, profile: Profile) {
   const targetRoles = (material.target_roles || []).map(normalizeMaterialRole)
   const shellRole = access.shell === 'consumer' ? 'community' : access.shell
 
-  if (targetRoles.length === 0) return false
+  // Materials are not gated by a stakeholder level: an untargeted material is
+  // available to everyone (this is how auto-generated business/cause materials
+  // surface, since they carry no role targeting).
+  if (targetRoles.length === 0) return true
 
   const roleMatches = targetRoles.includes(shellRole) || targetRoles.includes(normalizeMaterialRole(profile.role))
   if (!roleMatches) return false

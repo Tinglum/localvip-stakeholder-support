@@ -22,6 +22,7 @@ export interface QaNetworkProjection {
   currentWindowSpend: number
   previousWindowSpend: number | null
   currentMonthlySpendRate: number
+  currentMonthlyIncomeRate: number | null
   previousMonthlySpendRate: number | null
   observedGrowthRate: number
   incomeConversionRate: number | null
@@ -103,12 +104,11 @@ function averageSpend(series: QaNetworkMonthlySpend[]) {
   return series.reduce((sum, m) => sum + m.spend, 0) / series.length
 }
 
-function buildProjectionSeries(baseMonthlySpend: number, growthRate: number, incomeConversionRate: number | null) {
+function buildProjectionSeries(baseMonthlySpend: number, incomeConversionRate: number | null) {
   const points: QaNetworkProjectionPoint[] = []
   const start = new Date()
-  let current = Math.max(baseMonthlySpend, 0)
+  const current = Math.max(baseMonthlySpend, 0)
   for (let i = 0; i < 12; i += 1) {
-    current = i === 0 ? current : Math.max(current * (1 + growthRate), 0)
     const monthDate = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + i + 1, 1))
     points.push({
       monthLabel: monthDate.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
@@ -121,8 +121,8 @@ function buildProjectionSeries(baseMonthlySpend: number, growthRate: number, inc
 
 /**
  * Build the 12-month forecast from the backend's monthly spend series.
- * Growth is the recent-3-month vs prior-3-month pace, clamped so a small
- * sample can't produce an explosive (or collapsing) forecast.
+ * This is intentionally a flat annualization of the current monthly pace,
+ * not a compounding growth forecast.
  */
 function buildProjection(
   tree: QaNetworkTree,
@@ -142,19 +142,17 @@ function buildProjection(
   const prior = monthly.slice(-6, -3)
   const currentMonthlySpendRate = recent.length > 0 ? averageSpend(recent) : (monthly.length > 0 ? averageSpend(monthly.slice(-1)) : 0)
   const previousMonthlySpendRate = prior.length > 0 ? averageSpend(prior) : null
+  const currentMonthlyIncomeRate = incomeConversionRate == null ? null : currentMonthlySpendRate * incomeConversionRate
 
   const rawGrowth =
     previousMonthlySpendRate && previousMonthlySpendRate > 0
       ? (currentMonthlySpendRate - previousMonthlySpendRate) / previousMonthlySpendRate
       : 0
-  // Clamp to [-50%, +50%] per month so the trend is realistic, not runaway.
-  const observedGrowthRate = Math.max(-0.5, Math.min(rawGrowth, 0.5))
+  const observedGrowthRate = rawGrowth
 
-  const next12Months = buildProjectionSeries(currentMonthlySpendRate, observedGrowthRate, incomeConversionRate)
-  const projected12MonthSpend = next12Months.reduce((sum, p) => sum + p.projectedSpend, 0)
-  const projected12MonthIncome = incomeConversionRate == null
-    ? null
-    : next12Months.reduce((sum, p) => sum + (p.projectedIncome ?? 0), 0)
+  const next12Months = buildProjectionSeries(currentMonthlySpendRate, incomeConversionRate)
+  const projected12MonthSpend = currentMonthlySpendRate * 12
+  const projected12MonthIncome = currentMonthlyIncomeRate == null ? null : currentMonthlyIncomeRate * 12
 
   return {
     basis: window.period === 'all' ? 'all_time_average' : 'selected_period',
@@ -164,6 +162,7 @@ function buildProjection(
     currentWindowSpend,
     previousWindowSpend: previousMonthlySpendRate,
     currentMonthlySpendRate,
+    currentMonthlyIncomeRate,
     previousMonthlySpendRate,
     observedGrowthRate,
     incomeConversionRate,

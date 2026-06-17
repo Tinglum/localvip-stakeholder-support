@@ -416,6 +416,7 @@ export interface QaNetworkProjection {
   currentWindowSpend: number
   previousWindowSpend: number | null
   currentMonthlySpendRate: number
+  currentMonthlyIncomeRate: number | null
   previousMonthlySpendRate: number | null
   observedGrowthRate: number
   incomeConversionRate: number | null

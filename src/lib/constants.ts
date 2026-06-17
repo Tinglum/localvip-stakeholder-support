@@ -224,7 +224,6 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Causes', href: '/crm/causes', icon: 'Heart', minLevel: 40 },
       { label: 'Consumers', href: '/crm/consumers', icon: 'UserPlus', minLevel: 40 },
       { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 40 },
-      { label: 'Stakeholders', href: '/crm/stakeholders', icon: 'UserCheck', minLevel: 40 },
       { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 40 },
       { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 20 },
       { label: 'Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 20 },
@@ -254,7 +253,6 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Business', href: '/onboarding/business', icon: 'Store', minLevel: 40 },
       { label: 'Cause', href: '/onboarding/cause', icon: 'Heart', minLevel: 40 },
-      { label: 'Stakeholder', href: '/onboarding/stakeholder', icon: 'UserPlus', minLevel: 90 },
     ],
   },
   {
@@ -282,7 +280,7 @@ export const QR_DESTINATION_PRESETS = [
   { value: 'localvip_business', label: 'LocalVIP Business Page', urlTemplate: 'https://localvip.com/business' },
   { value: 'localvip_cause', label: 'LocalVIP Cause Page', urlTemplate: 'https://localvip.com/cause' },
   { value: 'hato_landing', label: 'HATO Landing Page', urlTemplate: 'https://helpateacherout.com' },
-  { value: 'referral', label: 'Stakeholder Referral Page', urlTemplate: 'https://localvip.com/ref/{code}' },
+  { value: 'referral', label: 'Referral Page', urlTemplate: 'https://localvip.com/ref/{code}' },
   { value: 'campaign', label: 'Campaign Landing', urlTemplate: 'https://localvip.com/c/{slug}' },
   { value: 'custom', label: 'Custom URL', urlTemplate: '' },
 ] as const
