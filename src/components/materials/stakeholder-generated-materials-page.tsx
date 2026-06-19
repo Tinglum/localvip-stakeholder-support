@@ -72,17 +72,11 @@ export function StakeholderGeneratedMaterialsPage() {
     if (stakeholdersLoading || generatedLoading || materialsLoading) return
     if (stakeholder) return
     if (profile.role !== 'business') return
-    const businessId = profile.business_id ? String(profile.business_id) : null
-    if (!businessId || !/^\d+$/.test(businessId)) return
     provisionAttempted.current = true
     setProvisioning(true)
     void (async () => {
       try {
-        const res = await fetch('/api/portal/ensure-materials', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ businessId }),
-        })
+        const res = await fetch('/api/portal/ensure-materials', { method: 'POST' })
         if (res.ok) {
           refetchStakeholders?.({ silent: true })
           refetchGenerated?.({ silent: true })
@@ -92,7 +86,7 @@ export function StakeholderGeneratedMaterialsPage() {
         setProvisioning(false)
       }
     })()
-  }, [stakeholder, stakeholdersLoading, generatedLoading, materialsLoading, profile.role, profile.business_id, refetchStakeholders, refetchGenerated, refetch])
+  }, [stakeholder, stakeholdersLoading, generatedLoading, materialsLoading, profile.role, refetchStakeholders, refetchGenerated, refetch])
 
   const linkedGenerated = React.useMemo(() => {
     if (!stakeholder) return []
