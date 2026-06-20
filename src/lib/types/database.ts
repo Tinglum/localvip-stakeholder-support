@@ -790,9 +790,11 @@ export interface QrCode {
   foreground_color: string
   background_color: string
   frame_text: string | null
+  entity_type: string | null
+  entity_id: string | number | null
   campaign_id: string | null
   city_id: string | null
-  stakeholder_id: string | null
+  stakeholder_id?: string | null // deprecated: use entity_type/entity_id
   business_id: string | null
   cause_id: string | null
   collection_id: string | null

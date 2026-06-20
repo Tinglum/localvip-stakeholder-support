@@ -245,30 +245,6 @@ export default function QrAnalyticsPage() {
   const { events, businessNames, causeNames, loading: dataLoading } = useAnalyticsData(timeRange)
   const loading = qrLoading || dataLoading
 
-  // Load stakeholder codes keyed by stakeholder_id (via the QA backend)
-  const [stakeholderCodes, setStakeholderCodes] = React.useState<Map<string, StakeholderCodeEntry>>(new Map())
-  React.useEffect(() => {
-    const ids = new Set(allQrCodes.map(q => q.stakeholder_id).filter(Boolean) as string[])
-    if (ids.size === 0) { setStakeholderCodes(new Map()); return }
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await fetch('/api/qa/dashboard/stakeholder_codes', { cache: 'no-store' })
-        if (!res.ok) return
-        const raw = await res.json()
-        const rows: Array<StakeholderCodeEntry & { stakeholder_id: string }> = (Array.isArray(raw) ? raw : raw?.items ?? [])
-          .map((r: Record<string, unknown>) => ({
-            stakeholder_id: String(r.stakeholder_id ?? ''),
-            referral_code: (r.referral_code as string) ?? null,
-            connection_code: (r.connection_code as string) ?? null,
-            join_url: (r.join_url as string) ?? null,
-          }))
-          .filter((r: { stakeholder_id: string }) => ids.has(r.stakeholder_id))
-        if (!cancelled) setStakeholderCodes(new Map(rows.map(c => [c.stakeholder_id, c])))
-      } catch { /* silent */ }
-    })()
-    return () => { cancelled = true }
-  }, [allQrCodes])
 
   // Apply entity filter to QR codes
   const qrCodes = React.useMemo(() => {
@@ -443,9 +419,9 @@ export default function QrAnalyticsPage() {
             : null,
         entityType: qr.business_id ? 'business' : qr.cause_id ? 'cause' : null,
         entityId: qr.business_id || qr.cause_id || null,
-        codes: qr.stakeholder_id ? (stakeholderCodes.get(qr.stakeholder_id) || null) : null,
+        codes: null,
       }))
-  }, [qrCodes, filteredEvents, businessNames, causeNames, stakeholderCodes])
+  }, [qrCodes, filteredEvents, businessNames, causeNames])
 
   // ── Recent events feed ──
   const recentEvents = React.useMemo(() => {

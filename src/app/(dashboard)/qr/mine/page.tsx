@@ -18,13 +18,6 @@ import { BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { generateQRDataURL } from '@/lib/qr/generate'
 
-interface StakeholderCodeEntry {
-  stakeholder_id: string
-  referral_code: string | null
-  connection_code: string | null
-  join_url: string | null
-}
-
 export default function MyQrCodesPage() {
   const { profile } = useAuth()
   const { data: qrCodes, loading, error, refetch } = useQrCodes({ created_by: profile.id })
@@ -32,31 +25,6 @@ export default function MyQrCodesPage() {
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [qrPreviews, setQrPreviews] = React.useState<Record<string, string>>({})
   const [deleting, setDeleting] = React.useState<string | null>(null)
-  const [stakeholderCodes, setStakeholderCodes] = React.useState<Map<string, StakeholderCodeEntry>>(new Map())
-
-  // Enrich each QR with its stakeholder's codes via the QA backend.
-  React.useEffect(() => {
-    const ids = Array.from(new Set(qrCodes.map(q => q.stakeholder_id).filter(Boolean))) as string[]
-    if (ids.length === 0) { setStakeholderCodes(new Map()); return }
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await fetch('/api/qa/dashboard/stakeholder_codes', { cache: 'no-store' })
-        if (!res.ok) return
-        const raw = await res.json()
-        const rows: StakeholderCodeEntry[] = (Array.isArray(raw) ? raw : raw?.items ?? [])
-          .map((r: Record<string, unknown>) => ({
-            stakeholder_id: String(r.stakeholder_id ?? ''),
-            referral_code: (r.referral_code as string) ?? null,
-            connection_code: (r.connection_code as string) ?? null,
-            join_url: (r.join_url as string) ?? null,
-          }))
-          .filter((r: StakeholderCodeEntry) => ids.includes(r.stakeholder_id))
-        if (!cancelled) setStakeholderCodes(new Map(rows.map(c => [c.stakeholder_id, c])))
-      } catch { /* silent — codes are nice-to-have */ }
-    })()
-    return () => { cancelled = true }
-  }, [qrCodes])
 
   // Generate preview images when qrCodes change
   React.useEffect(() => {

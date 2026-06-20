@@ -78,7 +78,10 @@ export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
  * Tables that exist in the frontend but have no QA backend equivalent yet.
  * The dynamic API route returns [] for these to avoid breaking pages.
  */
-export const EMPTY_FALLBACK_TABLES = new Set<string>([])
+export const EMPTY_FALLBACK_TABLES = new Set<string>([
+  'stakeholders',
+  'stakeholder_codes',
+])
 
 /** Convert camelCase → snake_case (for object keys) */
 export function toSnakeCase(key: string): string {
