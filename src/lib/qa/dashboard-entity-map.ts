@@ -7,8 +7,6 @@
  */
 
 export type QaEntityKey =
-  | 'stakeholders'
-  | 'stakeholder_codes'
   | 'contacts'
   | 'tasks'
   | 'notes'
@@ -29,7 +27,6 @@ export type QaEntityKey =
   | 'material_assignments'
   | 'materials'
   | 'organizations'
-  | 'stakeholder_assignments'
   | 'admin_tasks'
   | 'business_referrals'
   | 'city_access_requests'
@@ -50,8 +47,6 @@ export interface QaEntityConfig {
  * and will be returned as empty arrays by the dynamic API route.
  */
 export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
-  stakeholders: { endpoint: '/api/dashboard/v1/Stakeholder', listWrapperKey: 'items' },
-  stakeholder_codes: { endpoint: '/api/dashboard/v1/StakeholderCode' },
   contacts: { endpoint: '/api/dashboard/v1/Contact', listWrapperKey: 'items' },
   tasks: { endpoint: '/api/dashboard/v1/Task', listWrapperKey: 'items' },
   notes: { endpoint: '/api/dashboard/v1/Note' },
@@ -73,7 +68,6 @@ export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
   materials: { endpoint: '/api/dashboard/v1/Material', listWrapperKey: 'items' },
   // Wired to live QA backends added 2026-06 (controllers + AddDashboardCrmCompletion migration).
   organizations: { endpoint: '/api/dashboard/v1/Organization', listWrapperKey: 'items' },
-  stakeholder_assignments: { endpoint: '/api/dashboard/v1/StakeholderAssignment', listWrapperKey: 'items' },
   admin_tasks: { endpoint: '/api/dashboard/v1/AdminTask', listWrapperKey: 'items' },
   business_referrals: { endpoint: '/api/dashboard/v1/BusinessReferral', listWrapperKey: 'items' },
   city_access_requests: { endpoint: '/api/dashboard/v1/CityAccessRequest', listWrapperKey: 'items' },
@@ -142,12 +136,6 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     cause_id: 'CauseAccountId',
     owner_id: 'OwnerUserId',
   },
-  stakeholders: {
-    business_id: 'BusinessAccountId',
-    cause_id: 'CauseAccountId',
-    owner_id: 'OwnerUserId',
-    profile_id: 'ProfileUserId',
-  },
   tasks: {
     assigned_to: 'AssignedToUserId',
     created_by: 'CreatedByUserId',
@@ -206,12 +194,6 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     new_values: 'NewValues',
     old_values: 'OldValues',
   },
-  stakeholder_codes: {
-    stakeholder_id: 'StakeholderId',
-    referral_code: 'ReferralCode',
-    connection_code: 'ConnectionCode',
-    join_url: 'JoinUrl',
-  },
   onboarding_flows: {
     entity_id: 'EntityId',
     entity_type: 'EntityType',
@@ -221,7 +203,8 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     assigned_to: 'AssignedToUserId',
   },
   generated_materials: {
-    stakeholder_id: 'StakeholderId',
+    business_id: 'BusinessAccountId',
+    cause_id: 'CauseAccountId',
     template_id: 'TemplateId',
     generated_file_url: 'GeneratedFileUrl',
     generated_file_name: 'GeneratedFileName',
@@ -280,11 +263,6 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     status: 'Status',
     metadata: 'Metadata',
   },
-  stakeholder_assignments: {
-    // Frontend stakeholder_id is the assigned dashboard user (QA user id).
-    stakeholder_id: 'StakeholderUserId',
-    assigned_by: 'AssignedByUserId',
-  },
   business_referrals: {
     source_business_id: 'SourceBusinessAccountId',
     created_by: 'CreatedByUserId',
@@ -316,14 +294,12 @@ const ID_FIELDS_REQUIRING_LONG = new Set([
   'performedByUserId',
   'campaignId',
   'cityId',
-  'stakeholderId',
   'templateId',
   'flowId',
   'qrCodeId',
   'entityId',
   'userId',
   // Added with the 6 newly-wired entities
-  'stakeholderUserId',
   'assignedByUserId',
   'sourceBusinessAccountId',
   'targetBusinessAccountId',
@@ -503,9 +479,6 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
       row.value_label = `${row.cashback_percent}% cashback`
     }
   },
-  stakeholders: (row) => {
-    if (typeof row.brand === 'string') row.brand = row.brand.toLowerCase()
-  },
   contacts: (row) => {
     if (typeof row.brand === 'string') row.brand = row.brand.toLowerCase()
   },
@@ -548,8 +521,7 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     if (typeof row.is_enabled === 'boolean') {
       row.status = row.is_enabled ? 'active' : 'inactive'
     }
-    // Expose the QA account/consumer types in metadata so the Stakeholders page
-    // can filter normal consumers out of the stakeholder list.
+    // Expose the QA account/consumer types in metadata
     const acct = (row.account_type ?? row.accountType) as unknown
     const ctype = (row.consumer_type ?? row.consumerType) as unknown
     row.metadata = {
@@ -623,8 +595,6 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     else if (row.campaign_id == null) row.campaign_id = null
     if (typeof metadata?.city_id === 'string') row.city_id = metadata.city_id
     else if (row.city_id == null) row.city_id = null
-    if (typeof metadata?.stakeholder_id === 'string') row.stakeholder_id = metadata.stakeholder_id
-    else if (row.stakeholder_id == null) row.stakeholder_id = null
     if (typeof metadata?.business_id === 'string') row.business_id = metadata.business_id
     else if (row.business_id == null) row.business_id = null
     if (typeof metadata?.cause_id === 'string') row.cause_id = metadata.cause_id
@@ -643,7 +613,6 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
       if (row.entity_type === 'business' && !row.business_id) row.business_id = entityId
       if (row.entity_type === 'cause' && !row.cause_id) row.cause_id = entityId
       if (row.entity_type === 'contact' && row.contact_id == null) row.contact_id = entityId
-      if (row.entity_type === 'stakeholder' && !row.stakeholder_id) row.stakeholder_id = entityId
     }
     if (typeof row.name !== 'string' || !row.name) {
       row.name = `QR ${String(row.short_code || row.id || '').trim()}`.trim() || 'QR Code'
