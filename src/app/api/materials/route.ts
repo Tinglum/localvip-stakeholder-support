@@ -71,12 +71,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Title, type, and brand are required.' }, { status: 400 })
   }
 
+  const qaPayload: Record<string, unknown> = { ...body }
+  if (
+    qaPayload.metadata &&
+    typeof qaPayload.metadata === 'object' &&
+    !Array.isArray(qaPayload.metadata)
+  ) {
+    qaPayload.metadata = JSON.stringify(qaPayload.metadata)
+  }
+
   if (session.source === 'qa') {
     try {
       const res = await fetchQaApi('/api/dashboard/v1/Material', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...body, createdByUserId: session.userId }),
+        body: JSON.stringify({ ...qaPayload, createdByUserId: session.userId }),
       })
       const json = await parseQaResponse<unknown>(res, 'Failed to create material.')
       return NextResponse.json(json as Material)

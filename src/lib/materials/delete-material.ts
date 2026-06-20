@@ -9,6 +9,13 @@ interface DeleteMaterialResult {
   error?: string
 }
 
+function resolveDeleteTarget(id: string) {
+  if (id.startsWith('tpl-')) {
+    return { table: 'material_templates', id: id.slice(4) }
+  }
+  return { table: 'materials', id }
+}
+
 /**
  * Delete a material via the QA dashboard proxy. The backend handles dependency
  * cleanup; the optional `manageReferences` flag is preserved for API parity
@@ -19,7 +26,8 @@ export async function deleteMaterial(
   _options?: DeleteMaterialOptions,
 ): Promise<DeleteMaterialResult> {
   try {
-    const res = await fetch(`/api/qa/dashboard/materials/${encodeURIComponent(material.id)}`, {
+    const target = resolveDeleteTarget(String(material.id))
+    const res = await fetch(`/api/qa/dashboard/${target.table}/${encodeURIComponent(target.id)}`, {
       method: 'DELETE',
     })
     if (!res.ok) {

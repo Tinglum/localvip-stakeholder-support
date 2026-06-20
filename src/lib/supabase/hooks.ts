@@ -658,7 +658,21 @@ export function useQrCodes(filters?: Record<string, string>, options?: UseQueryO
     return filters
   }, [filters])
 
-  return useQaQuery<QrCode>('qr_codes', { filters: normalizedFilters, enabled: options?.enabled })
+  const createdBy = normalizedFilters?.created_by || null
+  const backendFilters = React.useMemo(() => {
+    if (!normalizedFilters) return normalizedFilters
+    if (!createdBy) return normalizedFilters
+
+    const { created_by: _createdBy, ...rest } = normalizedFilters
+    return { ...rest, pageSize: 250 }
+  }, [createdBy, normalizedFilters])
+  const query = useQaQuery<QrCode>('qr_codes', { filters: backendFilters, enabled: options?.enabled })
+  const data = React.useMemo(() => {
+    if (!createdBy) return query.data
+    return query.data.filter((item) => String(item.created_by || '') === String(createdBy))
+  }, [createdBy, query.data])
+
+  return { ...query, data }
 }
 export function useQrCodeCollections(_filters?: Record<string, string>) {
   return useQaQuery<QrCodeCollection>('qr_code_collections')

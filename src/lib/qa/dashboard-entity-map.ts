@@ -180,6 +180,9 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     created_by: 'createdByUserId',
     entity_id: 'entityId',
     entity_type: 'entityType',
+    short_code: 'code',
+    destination_url: 'targetUrl',
+    qr_image_url: 'qrImageUrl',
   },
   offers: {
     business_id: 'businessAccountId',
@@ -322,6 +325,23 @@ function isValidLongId(v: unknown): boolean {
   return false
 }
 
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 /**
  * Convert a frontend-shaped payload (snake_case + frontend field names)
  * to a backend-shaped payload (camelCase + backend field names).
@@ -334,8 +354,58 @@ export function toBackendShape(
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
   const aliases = FIELD_ALIASES[entityKey] || {}
+  let sourcePayload = payload
+
+  if (entityKey === 'qr_codes') {
+    const existingMetadata = asObjectRecord(payload.metadata) || {}
+    const derivedEntityType =
+      typeof payload.entity_type === 'string' && payload.entity_type.trim()
+        ? payload.entity_type.trim()
+        : payload.business_id
+          ? 'business'
+          : payload.cause_id
+            ? 'cause'
+            : payload.contact_id
+              ? 'contact'
+              : payload.stakeholder_id
+                ? 'stakeholder'
+                : null
+    const derivedEntityId =
+      payload.entity_id
+      ?? payload.business_id
+      ?? payload.cause_id
+      ?? payload.contact_id
+      ?? payload.stakeholder_id
+      ?? null
+
+    sourcePayload = {
+      ...payload,
+      ...(derivedEntityType ? { entity_type: derivedEntityType } : {}),
+      ...(derivedEntityId != null ? { entity_id: derivedEntityId } : {}),
+      metadata: {
+        ...existingMetadata,
+        name: payload.name ?? existingMetadata.name ?? null,
+        brand: payload.brand ?? existingMetadata.brand ?? null,
+        redirect_url: payload.redirect_url ?? existingMetadata.redirect_url ?? null,
+        foreground_color: payload.foreground_color ?? existingMetadata.foreground_color ?? null,
+        background_color: payload.background_color ?? existingMetadata.background_color ?? null,
+        frame_text: payload.frame_text ?? existingMetadata.frame_text ?? null,
+        logo_url: payload.logo_url ?? existingMetadata.logo_url ?? null,
+        campaign_id: payload.campaign_id ?? existingMetadata.campaign_id ?? null,
+        city_id: payload.city_id ?? existingMetadata.city_id ?? null,
+        stakeholder_id: payload.stakeholder_id ?? existingMetadata.stakeholder_id ?? null,
+        business_id: payload.business_id ?? existingMetadata.business_id ?? null,
+        cause_id: payload.cause_id ?? existingMetadata.cause_id ?? null,
+        contact_id: payload.contact_id ?? existingMetadata.contact_id ?? null,
+        collection_id: payload.collection_id ?? existingMetadata.collection_id ?? null,
+        destination_preset: payload.destination_preset ?? existingMetadata.destination_preset ?? null,
+        version: payload.version ?? existingMetadata.version ?? 1,
+      },
+    }
+  }
+
   const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(payload)) {
+  for (const [k, v] of Object.entries(sourcePayload)) {
     if (entityKey === 'tasks' && k === 'completed_at') continue
 
     if (entityKey === 'offers') {
@@ -491,9 +561,74 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     if (typeof row.status === 'string' && !row.stage) row.stage = row.status
   },
   qr_codes: (row) => {
+    const metadata = asObjectRecord(row.metadata)
+    row.metadata = metadata || null
     if (typeof row.code === 'string' && !row.short_code) row.short_code = row.code
     if (typeof row.target_url === 'string' && !row.destination_url) row.destination_url = row.target_url
-    if (typeof row.target_url === 'string' && !row.redirect_url) row.redirect_url = row.target_url
+    if (typeof metadata?.redirect_url === 'string' && metadata.redirect_url.trim()) {
+      row.redirect_url = metadata.redirect_url
+    } else if (typeof row.short_code === 'string' && row.short_code.trim() && !row.redirect_url) {
+      row.redirect_url = `https://localvip.com/q/${row.short_code}`
+    } else if (typeof row.target_url === 'string' && !row.redirect_url) {
+      row.redirect_url = row.target_url
+    }
+    if (typeof metadata?.name === 'string' && metadata.name.trim() && !row.name) {
+      row.name = metadata.name
+    }
+    if (typeof metadata?.brand === 'string' && metadata.brand.trim() && !row.brand) {
+      row.brand = metadata.brand.toLowerCase()
+    }
+    if (typeof row.brand !== 'string' || !row.brand) {
+      row.brand = 'localvip'
+    } else {
+      row.brand = row.brand.toLowerCase()
+    }
+    if (typeof metadata?.foreground_color === 'string' && metadata.foreground_color.trim()) {
+      row.foreground_color = metadata.foreground_color
+    } else if (row.foreground_color == null) {
+      row.foreground_color = '#000000'
+    }
+    if (typeof metadata?.background_color === 'string' && metadata.background_color.trim()) {
+      row.background_color = metadata.background_color
+    } else if (row.background_color == null) {
+      row.background_color = '#ffffff'
+    }
+    if (typeof metadata?.frame_text === 'string') {
+      row.frame_text = metadata.frame_text
+    } else if (row.frame_text == null) {
+      row.frame_text = null
+    }
+    if (typeof metadata?.logo_url === 'string') {
+      row.logo_url = metadata.logo_url
+    } else if (row.logo_url == null) {
+      row.logo_url = null
+    }
+    if (typeof metadata?.campaign_id === 'string') row.campaign_id = metadata.campaign_id
+    else if (row.campaign_id == null) row.campaign_id = null
+    if (typeof metadata?.city_id === 'string') row.city_id = metadata.city_id
+    else if (row.city_id == null) row.city_id = null
+    if (typeof metadata?.stakeholder_id === 'string') row.stakeholder_id = metadata.stakeholder_id
+    else if (row.stakeholder_id == null) row.stakeholder_id = null
+    if (typeof metadata?.business_id === 'string') row.business_id = metadata.business_id
+    else if (row.business_id == null) row.business_id = null
+    if (typeof metadata?.cause_id === 'string') row.cause_id = metadata.cause_id
+    else if (row.cause_id == null) row.cause_id = null
+    if (typeof metadata?.contact_id === 'string') {
+      row.contact_id = metadata.contact_id
+    }
+    if (typeof metadata?.collection_id === 'string') row.collection_id = metadata.collection_id
+    else if (row.collection_id == null) row.collection_id = null
+    if (typeof metadata?.destination_preset === 'string') row.destination_preset = metadata.destination_preset
+    else if (row.destination_preset == null) row.destination_preset = null
+    if (typeof metadata?.version === 'number') row.version = metadata.version
+    else if (row.version == null) row.version = 1
+    if (typeof row.entity_type === 'string' && row.entity_id != null) {
+      const entityId = String(row.entity_id)
+      if (row.entity_type === 'business' && !row.business_id) row.business_id = entityId
+      if (row.entity_type === 'cause' && !row.cause_id) row.cause_id = entityId
+      if (row.entity_type === 'contact' && row.contact_id == null) row.contact_id = entityId
+      if (row.entity_type === 'stakeholder' && !row.stakeholder_id) row.stakeholder_id = entityId
+    }
     if (typeof row.name !== 'string' || !row.name) {
       row.name = `QR ${String(row.short_code || row.id || '').trim()}`.trim() || 'QR Code'
     }

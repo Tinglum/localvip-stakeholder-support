@@ -593,6 +593,7 @@ export default function QRGeneratorPage() {
   // Generate final QR code and save to Supabase
   async function handleGenerate() {
     if (!name.trim()) return
+    setGenerated(false)
     setIsGenerating(true)
 
     try {
@@ -617,7 +618,7 @@ export default function QRGeneratorPage() {
 
       setPreviewUrl(dataUrl)
 
-      // Save to Supabase qr_codes table
+      // Save to the QA dashboard QR API.
       const redirectUrl = `https://localvip.com/q/${code}`
       const savedQr = await insertQrCode({
         name: name.trim(),
@@ -630,14 +631,14 @@ export default function QRGeneratorPage() {
         frame_text: frameText || null,
         campaign_id: campaign || null,
         city_id: city || null,
-        stakeholder_id: stakeholder || null,
+        stakeholder_id: stakeholder || profile.id,
         business_id: business || null,
         cause_id: cause || null,
         scan_count: 0,
         version: 1,
         status: 'active',
         created_by: profile.id,
-        logo_url: null,
+        logo_url: activeLogoUrl || null,
         collection_id: selectedTemplateCollectionId,
         destination_preset: null,
         metadata: {
@@ -658,7 +659,11 @@ export default function QRGeneratorPage() {
         },
       })
 
-      if (savedQr && sourceBusiness && (!business || business === sourceBusiness.id)) {
+      if (!savedQr) {
+        return
+      }
+
+      if (sourceBusiness && (!business || business === sourceBusiness.id)) {
         await updateBusiness(sourceBusiness.id, { linked_qr_code_id: savedQr.id })
       }
 
@@ -1546,6 +1551,11 @@ export default function QRGeneratorPage() {
               </>
             )}
           </Button>
+          {saveError && (
+            <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
+              {saveError}
+            </div>
+          )}
         </div>
 
         {/* Right panel: live preview */}
