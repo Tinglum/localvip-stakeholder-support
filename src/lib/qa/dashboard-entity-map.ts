@@ -437,6 +437,18 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
   },
   generated_materials: (row) => {
     row.tags = csvToArray(row.tags)
+    // Backend GeneratedMaterialController emits completed/error/pending; the
+    // dashboard's GeneratedMaterialStatus union is generated/failed/pending.
+    const status = typeof row.generation_status === 'string' ? row.generation_status.toLowerCase() : ''
+    if (status === 'completed' || status === 'complete') row.generation_status = 'generated'
+    else if (status === 'error' || status === 'failed') row.generation_status = 'failed'
+    // The backend stores a server-relative path (/uploads/generated/...). The
+    // dashboard runs on a different origin, so make it absolute against the QA
+    // host or the file 404s when previewed/downloaded.
+    if (typeof row.generated_file_url === 'string' && row.generated_file_url.startsWith('/')) {
+      const base = (process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').replace(/\/$/, '')
+      row.generated_file_url = base + row.generated_file_url
+    }
   },
   profiles: (row) => {
     // Backend returns createdDate (→ created_date). Many pages expect created_at.

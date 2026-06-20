@@ -43,11 +43,16 @@ export async function POST() {
     for (const tpl of templates) {
       const templateId = idOf(tpl, 'id', 'Id')
       if (!templateId || existingTemplateIds.has(templateId)) continue
+      // Carry the template's folder/tags so the generated rows group correctly in
+      // the My Materials view (the backend stores these verbatim, defaulting to
+      // null otherwise).
+      const libraryFolder = idOf(tpl, 'libraryFolder', 'LibraryFolder', 'library_folder') || undefined
+      const tags = idOf(tpl, 'audienceTags', 'AudienceTags', 'audience_tags', 'tags', 'Tags') || undefined
       try {
         await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ stakeholderId, templateId }),
+          body: JSON.stringify({ stakeholderId, templateId, libraryFolder, tags }),
         })
         generated += 1
       } catch {

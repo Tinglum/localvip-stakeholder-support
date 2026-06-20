@@ -16,7 +16,6 @@ import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { useAuth } from '@/lib/auth/context'
 import {
   getAudienceLabel,
-  getMaterialLibraryFolderMeta,
   MATERIAL_LIBRARY_FOLDERS,
 } from '@/lib/material-engine'
 import {
@@ -31,6 +30,53 @@ import {
 } from '@/lib/supabase/hooks'
 import type { GeneratedMaterial, Material, MaterialLibraryFolder, Stakeholder } from '@/lib/types/database'
 import { formatDate } from '@/lib/utils'
+
+// QA's GeneratedMaterial is self-contained (its own file url/name) and is not
+// joined to a separate Material row the way the Supabase model was. When there
+// is no linked Material, synthesize one from the generated record so the card
+// UI (preview / download / title) still renders.
+function materialFromGenerated(generated: GeneratedMaterial): Material {
+  const fileName = generated.generated_file_name || 'Material'
+  const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Material'
+  const url = generated.generated_file_url
+  const isPdf = !!url && url.toLowerCase().endsWith('.pdf')
+  return {
+    id: generated.id,
+    title,
+    description: null,
+    type: isPdf ? 'pdf' : 'other',
+    brand: 'localvip',
+    file_url: url,
+    file_name: fileName,
+    file_size: null,
+    mime_type: isPdf ? 'application/pdf' : null,
+    thumbnail_url: null,
+    category: null,
+    use_case: null,
+    target_roles: [],
+    campaign_id: null,
+    city_id: null,
+    is_template: false,
+    version: generated.version_number ?? 1,
+    status: 'active',
+    created_by: '',
+    metadata: null,
+    created_at: generated.generated_at || generated.updated_at,
+    updated_at: generated.updated_at,
+  }
+}
+
+// Generated materials carry the template's folder, which on QA uses a
+// format-based taxonomy (flyers, qr_posters, signage, social) rather than the
+// dashboard's audience-based MATERIAL_LIBRARY_FOLDERS. Resolve a friendly
+// label/description for whatever value actually comes back.
+function folderMetaFor(folder: MaterialLibraryFolder | string | null | undefined): { label: string; description: string } {
+  const known = MATERIAL_LIBRARY_FOLDERS.find((item) => item.value === folder)
+  if (known) return { label: known.label, description: known.description }
+  if (!folder) return { label: 'Materials', description: '' }
+  const label = String(folder).replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim()
+  return { label: label || 'Materials', description: '' }
+}
 
 function resolveCurrentStakeholder(
   profile: ReturnType<typeof useAuth>['profile'],
@@ -52,6 +98,11 @@ export function StakeholderGeneratedMaterialsPage() {
   const { data: materials, loading: materialsLoading, refetch } = useMaterials()
   const [provisioning, setProvisioning] = React.useState(false)
   const provisionAttempted = React.useRef(false)
+  // The QA stakeholder id resolved server-side by /api/portal/ensure-materials.
+  // Needed because an impersonated/QA business profile carries no business_id,
+  // localProfileId, or organization_id, so resolveCurrentStakeholder can't match
+  // on its own — we resolve by this id instead.
+  const [ensuredStakeholderId, setEnsuredStakeholderId] = React.useState<string | null>(null)
   const [search, setSearch] = React.useState('')
   const [selectedFolder, setSelectedFolder] = React.useState<MaterialLibraryFolder | 'all'>('all')
   const [previewMaterial, setPreviewMaterial] = React.useState<Material | null>(null)
@@ -59,10 +110,15 @@ export function StakeholderGeneratedMaterialsPage() {
   const [updatingId, setUpdatingId] = React.useState<string | null>(null)
   const [confirmUpdate, setConfirmUpdate] = React.useState<{ generated: GeneratedMaterial; material: Material } | null>(null)
 
-  const stakeholder = React.useMemo(
-    () => resolveCurrentStakeholder(profile, localProfileId, stakeholders),
-    [localProfileId, profile, stakeholders],
-  )
+  const stakeholder = React.useMemo(() => {
+    const resolved = resolveCurrentStakeholder(profile, localProfileId, stakeholders)
+    if (resolved) return resolved
+    // QA fallback: match the stakeholder the server provisioned for this session.
+    if (ensuredStakeholderId) {
+      return stakeholders.find((item) => String(item.id) === ensuredStakeholderId) || null
+    }
+    return null
+  }, [localProfileId, profile, stakeholders, ensuredStakeholderId])
 
   // Auto-provision a business's materials on first view (QA only) — no admin,
   // no "added as a stakeholder" step. Ensures the QA context + generates the
@@ -78,6 +134,8 @@ export function StakeholderGeneratedMaterialsPage() {
       try {
         const res = await fetch('/api/portal/ensure-materials', { method: 'POST' })
         if (res.ok) {
+          const data = await res.json().catch(() => null)
+          if (data?.stakeholderId != null) setEnsuredStakeholderId(String(data.stakeholderId))
           refetchStakeholders?.({ silent: true })
           refetchGenerated?.({ silent: true })
           refetch?.({ silent: true })
@@ -91,10 +149,12 @@ export function StakeholderGeneratedMaterialsPage() {
   const linkedGenerated = React.useMemo(() => {
     if (!stakeholder) return []
     return generatedMaterials
-      .filter((item) => item.stakeholder_id === stakeholder.id && item.generation_status === 'generated')
+      .filter((item) => String(item.stakeholder_id) === String(stakeholder.id) && item.generation_status === 'generated')
       .map((item) => ({
         generated: item,
-        material: materials.find((material) => material.id === item.material_id) || null,
+        material:
+          (item.material_id ? materials.find((material) => material.id === item.material_id) : null)
+          || materialFromGenerated(item),
       }))
       .filter((item) => item.material)
   }, [generatedMaterials, materials, stakeholder])
@@ -123,6 +183,14 @@ export function StakeholderGeneratedMaterialsPage() {
     }
     return map
   }, [filtered])
+
+  const presentFolders = React.useMemo(() => {
+    const set = new Set<string>()
+    for (const { generated } of linkedGenerated) {
+      if (generated.library_folder) set.add(String(generated.library_folder))
+    }
+    return Array.from(set)
+  }, [linkedGenerated])
 
   const outdatedCount = linkedGenerated.filter(({ generated }) => generated.is_outdated).length
 
@@ -289,13 +357,13 @@ export function StakeholderGeneratedMaterialsPage() {
         >
           All folders
         </button>
-        {MATERIAL_LIBRARY_FOLDERS.map((folder) => (
+        {presentFolders.map((folder) => (
           <button
-            key={folder.value}
-            onClick={() => setSelectedFolder(folder.value)}
-            className={`rounded-full px-4 py-2 text-sm ${selectedFolder === folder.value ? 'bg-brand-600 text-white' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}
+            key={folder}
+            onClick={() => setSelectedFolder(folder as MaterialLibraryFolder)}
+            className={`rounded-full px-4 py-2 text-sm ${selectedFolder === folder ? 'bg-brand-600 text-white' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}
           >
-            {folder.label}
+            {folderMetaFor(folder).label}
           </button>
         ))}
       </div>
@@ -308,7 +376,7 @@ export function StakeholderGeneratedMaterialsPage() {
         />
       ) : (
         Array.from(grouped.entries()).map(([folder, items]) => {
-          const folderMeta = getMaterialLibraryFolderMeta(folder)
+          const folderMeta = folderMetaFor(folder)
           return (
             <div key={folder} className="space-y-4">
               <div>
