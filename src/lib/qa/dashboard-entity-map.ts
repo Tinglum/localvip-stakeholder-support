@@ -182,23 +182,10 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     entity_type: 'EntityType',
     short_code: 'Code',
     destination_url: 'TargetUrl',
-    redirect_url: 'RedirectUrl',
     qr_image_url: 'QrImageUrl',
-    business_id: 'BusinessAccountId',
-    cause_id: 'CauseAccountId',
-    contact_id: 'ContactId',
-    stakeholder_id: 'StakeholderId',
-    campaign_id: 'CampaignId',
-    city_id: 'CityId',
-    collection_id: 'CollectionId',
-    foreground_color: 'ForegroundColor',
-    background_color: 'BackgroundColor',
-    frame_text: 'FrameText',
-    logo_url: 'LogoUrl',
     scan_count: 'ScanCount',
-    destination_preset: 'DestinationPreset',
-    metadata: 'Metadata',
     status: 'Status',
+    metadata: 'Metadata',
   },
   offers: {
     business_id: 'BusinessAccountId',
@@ -387,6 +374,7 @@ export function toBackendShape(
 
   if (entityKey === 'qr_codes') {
     const existingMetadata = asObjectRecord(payload.metadata) || {}
+    // Map frontend fields to entity_type/entity_id if not explicitly provided
     const derivedEntityType =
       typeof payload.entity_type === 'string' && payload.entity_type.trim()
         ? payload.entity_type.trim()
@@ -396,15 +384,12 @@ export function toBackendShape(
             ? 'cause'
             : payload.contact_id
               ? 'contact'
-              : payload.stakeholder_id
-                ? 'stakeholder'
-                : null
+              : null
     const derivedEntityId =
       payload.entity_id
       ?? payload.business_id
       ?? payload.cause_id
       ?? payload.contact_id
-      ?? payload.stakeholder_id
       ?? null
 
     sourcePayload = {
@@ -422,7 +407,6 @@ export function toBackendShape(
         logo_url: payload.logo_url ?? existingMetadata.logo_url ?? null,
         campaign_id: payload.campaign_id ?? existingMetadata.campaign_id ?? null,
         city_id: payload.city_id ?? existingMetadata.city_id ?? null,
-        stakeholder_id: payload.stakeholder_id ?? existingMetadata.stakeholder_id ?? null,
         business_id: payload.business_id ?? existingMetadata.business_id ?? null,
         cause_id: payload.cause_id ?? existingMetadata.cause_id ?? null,
         contact_id: payload.contact_id ?? existingMetadata.contact_id ?? null,
@@ -472,7 +456,8 @@ export function toBackendShape(
       // skip — backend would 400 on this
       continue
     }
-    if ((backendKey === 'metadata' || backendKey === 'payloadJson') && v && typeof v === 'object' && !Array.isArray(v)) {
+    const backendKeyLower = backendKey.toLowerCase()
+    if ((backendKeyLower === 'metadata' || backendKeyLower === 'paylodjson') && v && typeof v === 'object' && !Array.isArray(v)) {
       out[backendKey] = JSON.stringify(v)
       continue
     }
