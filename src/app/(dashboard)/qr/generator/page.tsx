@@ -653,9 +653,6 @@ export default function QRGeneratorPage() {
           logo_edit: logoFile ? logoEditSettings : null,
           source_entity_type: sourceEntityType,
           source_entity_id: sourceBusiness?.id || sourceCause?.id || null,
-          referral_code: sourceCodes?.referral_code || null,
-          connection_code: sourceCodes?.connection_code || null,
-          join_url: sourceJoinUrl || null,
           template_collection_id: selectedTemplateCollectionId,
         },
       })
@@ -1028,26 +1025,8 @@ export default function QRGeneratorPage() {
                       <p className="text-xs leading-5 text-surface-500">
                         Pull the current referral code and connection code straight into this QR so you do not have to rebuild it manually.
                       </p>
-                      {sourceCodes ? (
-                        <p className="text-xs text-surface-500">
-                          Referral: <span className="font-medium text-surface-700">{sourceCodes.referral_code}</span>
-                          {' • '}
-                          Connection: <span className="font-medium text-surface-700">{sourceCodes.connection_code}</span>
-                        </p>
-                      ) : (
-                        <p className="text-xs text-warning-700">
-                          Codes have not been added to this stakeholder yet.
-                        </p>
-                      )}
+                      {/* Stakeholder codes removed */}
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={applySourceCodesToDraft}
-                      disabled={!sourceCodes || !sourceJoinUrl}
-                    >
-                      Add {sourceEntityName}&apos;s referral code and connection code
-                    </Button>
                   </div>
                 </div>
               )}

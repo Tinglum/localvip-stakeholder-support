@@ -154,44 +154,6 @@ export default function MyQrCodesPage() {
                   </div>
                   <span className="text-xs text-surface-400">{formatDate(qr.created_at)}</span>
                 </div>
-                {/* Codes display */}
-                {qr.stakeholder_id && stakeholderCodes.get(qr.stakeholder_id) && (() => {
-                  const c = stakeholderCodes.get(qr.stakeholder_id!)!
-                  return (
-                    <div className="mt-3 rounded-lg border border-surface-100 bg-surface-50 p-2.5 space-y-1.5">
-                      <p className="text-[10px] uppercase tracking-wide font-medium text-surface-400 flex items-center gap-1">
-                        <Key className="h-2.5 w-2.5" /> Referral codes
-                      </p>
-                      {c.referral_code && (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] text-surface-500">Referral</span>
-                          <div className="flex items-center gap-1">
-                            <code className="rounded bg-white border border-surface-200 px-1.5 py-0.5 text-xs font-mono text-surface-800">{c.referral_code}</code>
-                            <button onClick={() => copyToClipboard(c.referral_code!)} className="text-surface-300 hover:text-brand-600 transition-colors" title="Copy"><Copy className="h-3 w-3" /></button>
-                          </div>
-                        </div>
-                      )}
-                      {c.connection_code && (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] text-surface-500">Connection</span>
-                          <div className="flex items-center gap-1">
-                            <code className="rounded bg-white border border-surface-200 px-1.5 py-0.5 text-xs font-mono text-surface-800">{c.connection_code}</code>
-                            <button onClick={() => copyToClipboard(c.connection_code!)} className="text-surface-300 hover:text-brand-600 transition-colors" title="Copy"><Copy className="h-3 w-3" /></button>
-                          </div>
-                        </div>
-                      )}
-                      {c.join_url && (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] text-surface-500">Join URL</span>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => copyToClipboard(c.join_url!)} className="text-surface-300 hover:text-brand-600 transition-colors" title="Copy link"><Copy className="h-3 w-3" /></button>
-                            <a href={c.join_url} target="_blank" rel="noopener noreferrer" className="text-surface-300 hover:text-brand-600 transition-colors" title="Open join page"><ExternalLink className="h-3 w-3" /></a>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()}
                 <div className="mt-3 flex gap-1">
                   <Button variant="ghost" size="icon-sm" title="Copy link" onClick={() => copyToClipboard(qr.redirect_url || qr.destination_url)}>
                     <Copy className="h-3.5 w-3.5" />
@@ -248,29 +210,6 @@ export default function MyQrCodesPage() {
                     <Badge variant={qr.brand === 'hato' ? 'hato' : 'info'}>{BRANDS[qr.brand]?.label ?? qr.brand}</Badge>
                   </div>
                   <p className="text-xs text-surface-400 truncate">{qr.destination_url}</p>
-                  {/* Inline codes for list view */}
-                  {qr.stakeholder_id && stakeholderCodes.get(qr.stakeholder_id) && (() => {
-                    const c = stakeholderCodes.get(qr.stakeholder_id!)!
-                    return (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                        {c.referral_code && (
-                          <span className="flex items-center gap-1 text-[10px] text-surface-500">
-                            <Key className="h-2.5 w-2.5" />
-                            <code className="rounded bg-surface-100 px-1 py-0.5 font-mono">{c.referral_code}</code>
-                            <button onClick={() => copyToClipboard(c.referral_code!)} className="text-surface-300 hover:text-brand-600" title="Copy referral code"><Copy className="h-2.5 w-2.5" /></button>
-                          </span>
-                        )}
-                        {c.join_url && (
-                          <span className="flex items-center gap-1 text-[10px] text-surface-500">
-                            <a href={c.join_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-brand-600 hover:underline">
-                              <ExternalLink className="h-2.5 w-2.5" /> Join page
-                            </a>
-                            <button onClick={() => copyToClipboard(c.join_url!)} className="text-surface-300 hover:text-brand-600" title="Copy join URL"><Copy className="h-2.5 w-2.5" /></button>
-                          </span>
-                        )}
-                      </div>
-                    )
-                  })()}
                 </div>
                 <div className="flex items-center gap-4 text-xs text-surface-500 shrink-0">
                   <span className="flex items-center gap-1"><BarChart3 className="h-3.5 w-3.5" />{qr.scan_count} scans</span>
