@@ -33,7 +33,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { MaterialEditDialog } from '@/components/materials/material-edit-dialog'
-import { StakeholderGeneratedMaterialsPage } from '@/components/materials/stakeholder-generated-materials-page'
 import { useAuth } from '@/lib/auth/context'
 import { deleteMaterial } from '@/lib/materials/delete-material'
 import {
@@ -354,16 +353,7 @@ function UploadMaterialDialog({
 }
 
 export default function MyMaterialsPage() {
-  const { profile, shell } = useAuth()
-
-  if (profile.role === 'business') {
-    return <StakeholderGeneratedMaterialsPage />
-  }
-
-  if (['community', 'launch_partner', 'influencer'].includes(shell)) {
-    return <StakeholderGeneratedMaterialsPage />
-  }
-
+  // All users now use the standard materials page
   return <StandardMaterialsPage />
 }
 

@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
-import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import {
   buildBusinessQueueState,
@@ -328,14 +327,7 @@ export function LaunchPartnerDashboardPage() {
               />
             </CardContent>
           </Card>
-        ) : (
-          <StakeholderActionQueue
-            title="Immediate next steps"
-            description="This is the launch-partner queue for anything blocked, overdue, or due today. When those are clear, the dashboard points you to the next three smart moves."
-            items={immediateItems}
-            suggestions={suggestedItems}
-          />
-        )}
+        ) : null}
 
         <Card>
           <CardHeader>

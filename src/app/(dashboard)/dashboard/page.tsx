@@ -40,7 +40,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { StatCard } from '@/components/ui/stat-card'
-import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { BusinessDashboardPage } from '@/components/business/business-dashboard-page'
 import { CommunityDashboardPage } from '@/components/community/community-dashboard-page'
 import { ConsumerDashboardPage } from '@/components/consumer/consumer-dashboard-page'
@@ -473,12 +472,6 @@ function TeamDashboardPage() {
             This section stays focused on work that needs movement now. When the list clears, the dashboard automatically suggests the next best operating moves.
           </p>
         </div>
-        <StakeholderActionQueue
-          title="Most important next steps"
-          description="Open the first item, finish it, then come back here for the next clear move."
-          items={immediateItems}
-          suggestions={suggestedItems}
-        />
       </div>
 
       <div className="space-y-3">

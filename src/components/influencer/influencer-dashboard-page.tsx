@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { EmptyState } from '@/components/ui/empty-state'
-import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import { useQrCodes } from '@/lib/supabase/hooks'
 
@@ -125,12 +124,7 @@ export function InfluencerDashboardPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <StakeholderActionQueue
-          title="Immediate next steps"
-          description="When there is something urgent to set up or prove, it lives here. Once it is clear, the dashboard shifts to the next three strongest growth moves."
-          items={immediateItems}
-          suggestions={suggestedItems}
-        />
+        {/* StakeholderActionQueue removed */}
 
         <Card>
           <CardHeader>

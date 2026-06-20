@@ -35,7 +35,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
-import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import {
   useBusinesses,
@@ -455,12 +454,7 @@ export function CommunityDashboardPage() {
 
           {/* Action queue + next steps */}
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <StakeholderActionQueue
-              title="What to do next"
-              description={`These are the actions that will move your ${entityLabel.toLowerCase()} forward right now.`}
-              items={immediateItems}
-              suggestions={suggestedItems}
-            />
+            {/* StakeholderActionQueue removed */}
 
             <Card>
               <CardHeader>

@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
-import { StakeholderActionQueue } from '@/components/dashboard/stakeholder-action-queue'
 import { useAuth } from '@/lib/auth/context'
 import {
   buildBusinessQueueState,
@@ -304,14 +303,7 @@ export function FieldOutreachDashboardPage() {
               />
             </CardContent>
           </Card>
-        ) : (
-          <StakeholderActionQueue
-            title="Immediate next steps"
-            description="Anything blocked, overdue, or due today stays here until you move it. Once it is handled, it drops out of the overview."
-            items={immediateItems}
-            suggestions={suggestedItems}
-          />
-        )}
+        ) : null}
 
         <Card>
           <CardHeader>
