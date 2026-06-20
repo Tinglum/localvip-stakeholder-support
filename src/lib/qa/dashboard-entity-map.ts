@@ -423,7 +423,9 @@ export function toBackendShape(
         continue
       }
       if (k === 'cashback_percent') {
-        out.discountValue = v == null ? null : String(v)
+        if (payload.offer_type === 'cashback' || payload.value_type === 'cashback_percent') {
+          out.discountValue = v == null ? null : String(v)
+        }
         continue
       }
       if (k === 'starts_at') {

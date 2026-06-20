@@ -72,7 +72,7 @@ export function BusinessActivityPage() {
       <EmptyState
         icon={<BarChart3 className="h-8 w-8" />}
         title="Activity will show up here"
-        description="A business needs to be linked to this account before we can show progress."
+        description="We couldn't find your business details for this account yet."
       />
     )
   }

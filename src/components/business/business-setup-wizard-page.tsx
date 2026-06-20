@@ -186,7 +186,7 @@ export function BusinessSetupWizardPage() {
         cashback_offer_description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
       }
 
-      await updateBusiness(business.id, {
+      const savedBusiness = await updateBusiness(business.id, {
         name,
         category: category || null,
         public_description: description || null,
@@ -197,6 +197,9 @@ export function BusinessSetupWizardPage() {
         cover_photo_url: nextCoverUrl || null,
         metadata: nextMetadata as Record<string, unknown>,
       })
+      if (!savedBusiness) {
+        throw new Error('Business setup could not be saved.')
+      }
 
       // Only persist a capture offer once the business has actually written a
       // headline (or one already exists). Avoids eagerly creating a placeholder
@@ -219,6 +222,9 @@ export function BusinessSetupWizardPage() {
         savedCapture = captureOfferId
           ? await updateOffer(captureOfferId, capturePayload)
           : await insertOffer(capturePayload)
+        if (!savedCapture) {
+          throw new Error('The 100-list offer could not be saved.')
+        }
       }
 
       // Likewise, only write the cashback offer once the business has explicitly
@@ -242,6 +248,9 @@ export function BusinessSetupWizardPage() {
         savedCashback = cashbackOfferId
           ? await updateOffer(cashbackOfferId, cashbackPayload)
           : await insertOffer(cashbackPayload)
+        if (!savedCashback) {
+          throw new Error('The cashback offer could not be saved.')
+        }
       }
 
       if (savedCapture?.id) setCaptureOfferId(savedCapture.id)
@@ -342,7 +351,7 @@ export function BusinessSetupWizardPage() {
       <EmptyState
         icon={<Store className="h-8 w-8" />}
         title="Business setup will appear here"
-        description="A business needs to be linked to this account before setup can begin."
+        description="We couldn't find your business details for this account yet."
       />
     )
   }

@@ -13,6 +13,9 @@ function resolveDeleteTarget(id: string) {
   if (id.startsWith('tpl-')) {
     return { table: 'material_templates', id: id.slice(4) }
   }
+  if (id.startsWith('gen-')) {
+    return { table: 'generated_materials', id: id.slice(4) }
+  }
   return { table: 'materials', id }
 }
 

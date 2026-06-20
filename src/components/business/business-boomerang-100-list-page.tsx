@@ -132,8 +132,8 @@ export function BusinessBoomerang100ListPage() {
     return (
       <EmptyState
         icon={<Users className="h-8 w-8" />}
-        title="No linked business yet"
-        description="This account is not linked to a QA business, so there is no 100-list to manage."
+        title="Your 100-list will show up here"
+        description="We couldn't find your business details for this account yet."
       />
     )
   }

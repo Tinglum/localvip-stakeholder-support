@@ -5,6 +5,12 @@ import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Material } from '@/lib/types/database'
 
+function resolveQaActorUserId(session: Awaited<ReturnType<typeof getAuthenticatedSession>>) {
+  const candidate = session?.viewingAs?.targetUserId
+    ?? (session?.qaClaims?.sub != null ? Number(session.qaClaims.sub) : null)
+  return candidate != null && Number.isFinite(Number(candidate)) ? Number(candidate) : null
+}
+
 export async function GET() {
   const session = await getAuthenticatedSession()
   if (!session) {
@@ -82,10 +88,11 @@ export async function POST(request: NextRequest) {
 
   if (session.source === 'qa') {
     try {
+      const createdByUserId = resolveQaActorUserId(session)
       const res = await fetchQaApi('/api/dashboard/v1/Material', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...qaPayload, createdByUserId: session.userId }),
+        body: JSON.stringify({ ...qaPayload, createdByUserId }),
       })
       const json = await parseQaResponse<unknown>(res, 'Failed to create material.')
       return NextResponse.json(json as Material)
