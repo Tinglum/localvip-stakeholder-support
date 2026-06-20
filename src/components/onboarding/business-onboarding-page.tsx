@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/dialog'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { computeBusinessExecutionSteps, computeBusinessOnboardingChecklist } from '@/lib/business-execution'
+import { getBusinessPortalActivationReview, isBusinessPendingLiveReview } from '@/lib/business-portal'
 import { getEntityTheme } from '@/lib/entity-themes'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
 import { asUuid } from '@/lib/uuid'
@@ -345,6 +346,7 @@ export default function BusinessOnboardingPage() {
   const summary = React.useMemo(() => {
     const live = filteredBusinesses.filter(business => business.stage === 'live').length
     const onboarding = filteredBusinesses.filter(business => business.stage === 'in_progress' || business.stage === 'onboarded').length
+    const readyForReview = filteredBusinesses.filter((business) => isBusinessPendingLiveReview(business)).length
     const followUps = outreach.filter(activity =>
       activity.entity_type === 'business'
       && !!activity.next_step_date
@@ -352,8 +354,15 @@ export default function BusinessOnboardingPage() {
     ).length
     const assigned = filteredBusinesses.filter(business => assignmentsByBusiness.has(business.id)).length
 
-    return { total: filteredBusinesses.length, live, onboarding, followUps, assigned }
+    return { total: filteredBusinesses.length, live, onboarding, readyForReview, followUps, assigned }
   }, [assignmentsByBusiness, filteredBusinesses, outreach])
+
+  const nextReadyForReviewBusiness = React.useMemo(
+    () => filteredBusinesses.find((business) => isBusinessPendingLiveReview(business))
+      || businesses.find((business) => isBusinessPendingLiveReview(business))
+      || null,
+    [businesses, filteredBusinesses]
+  )
 
   // ── Unique city/campaign options for filter dropdowns ─────────
   const cityOptions = React.useMemo(() => {
@@ -427,6 +436,7 @@ export default function BusinessOnboardingPage() {
     const generatedReady = generated.filter((item) => item.generation_status === 'generated')
     const businessOffers = offersByBusiness.get(business.id) || []
     const businessQrCodes = qrByBusiness.get(business.id) || []
+    const activationReview = getBusinessPortalActivationReview(business)
     const businessSteps = computeBusinessExecutionSteps({
       business,
       steps: stepsByFlow.get(flow?.id || '') || [],
@@ -512,6 +522,8 @@ export default function BusinessOnboardingPage() {
       qrGeneratorHref,
       logoUrl,
       coverPhotoUrl,
+      activationReview,
+      pendingLiveReview: activationReview.state === 'pending',
     }
   }
 
@@ -577,7 +589,7 @@ export default function BusinessOnboardingPage() {
       />
 
       {/* ── Summary stat cards ─────────────────────────────────── */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr),repeat(4,minmax(0,0.55fr))]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr),repeat(5,minmax(0,0.55fr))]">
         <Card className={`overflow-hidden border shadow-sm ${businessTheme.border}`}>
           <CardContent className={`flex h-full min-h-[120px] flex-col justify-between gap-4 bg-gradient-to-r ${businessTheme.gradient} p-5`}>
             <div className="flex items-start gap-4">
@@ -601,15 +613,37 @@ export default function BusinessOnboardingPage() {
             </div>
           </CardContent>
         </Card>
-        <div className="grid grid-cols-2 gap-3 xl:col-span-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 xl:col-span-5 xl:grid-cols-5">
           <CompactBusinessMetricCard label="Pipeline" value={summary.total} />
           <CompactBusinessMetricCard label="Active Build" value={summary.onboarding} />
+          <CompactBusinessMetricCard label="Live Review" value={summary.readyForReview} />
           <CompactBusinessMetricCard label="Live" value={summary.live} />
           <CompactBusinessMetricCard label="Follow-ups" value={summary.followUps} />
         </div>
       </div>
 
       {/* ── Filter bar ─────────────────────────────────────────── */}
+      {summary.readyForReview > 0 && nextReadyForReviewBusiness ? (
+        <Card className="border-amber-200 bg-amber-50/70 shadow-sm">
+          <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-amber-900">Businesses waiting for go-live review</p>
+              <p className="text-sm text-amber-800">
+                {summary.readyForReview} {summary.readyForReview === 1 ? 'business has' : 'businesses have'} finished portal setup and can be reviewed before going live.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+              onClick={() => setSelectedBusinessId(nextReadyForReviewBusiness.id)}
+            >
+              Review next business
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card className="overflow-hidden border border-surface-200 shadow-sm">
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -776,7 +810,7 @@ function BusinessOnboardingSummaryCard({
   detail: any
   onOpen: () => void
 }) {
-  const { checklist, owner, city, linkedCause, businessTasks, businessOutreach, coverPhotoUrl } = detail
+  const { checklist, owner, city, linkedCause, businessTasks, businessOutreach, coverPhotoUrl, pendingLiveReview } = detail
   const progressColors = getProgressColor(checklist.percent)
 
   return (
@@ -806,6 +840,11 @@ function BusinessOnboardingSummaryCard({
               <Badge variant={getStageBadgeVariant(business.stage)} dot className="shrink-0">
                 {ONBOARDING_STAGES[business.stage]?.label}
               </Badge>
+              {pendingLiveReview ? (
+                <Badge variant="warning" className="shrink-0">
+                  Live review needed
+                </Badge>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-surface-700">
               {city ? (
@@ -992,6 +1031,8 @@ function BusinessDetailModal({
     cashbackOffer,
     qrGeneratorHref,
     codes,
+    activationReview,
+    pendingLiveReview,
   } = detail
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
@@ -1006,6 +1047,8 @@ function BusinessDetailModal({
   const progressColors = getProgressColor(checklist.percent)
   const [showChecklist, setShowChecklist] = React.useState(false)
   const [activeSection, setActiveSection] = React.useState<BusinessModalSection | null>(null)
+  const [liveActionMessage, setLiveActionMessage] = React.useState<string | null>(null)
+  const [liveActionTone, setLiveActionTone] = React.useState<'success' | 'danger'>('success')
   const sectionRefs = React.useRef<Partial<Record<BusinessModalSection, HTMLDivElement | null>>>({})
   const clearHighlightRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1034,6 +1077,35 @@ function BusinessDetailModal({
     }
   }, [])
 
+  async function handleMakeBusinessLive() {
+    setLiveActionMessage(null)
+    setLiveActionTone('success')
+
+    const metadata = {
+      ...((business.metadata as Record<string, unknown> | null) || {}),
+      portal_activation_review_state: 'approved',
+      portal_activation_reviewed_at: new Date().toISOString(),
+      portal_activation_reviewed_by: profile.id,
+    }
+
+    const saved = await updateBusiness(business.id, {
+      stage: 'live',
+      launch_phase: 'live',
+      activation_status: 'active',
+      metadata,
+    })
+
+    if (!saved) {
+      setLiveActionTone('danger')
+      setLiveActionMessage('The business could not be marked live right now.')
+      return
+    }
+
+    setLiveActionTone('success')
+    setLiveActionMessage('Business marked live.')
+    onStageChanged()
+  }
+
   return (
     <div>
       {/* ── Gradient header ────────────────────────────────────── */}
@@ -1056,6 +1128,9 @@ function BusinessDetailModal({
               <Badge variant={getStageBadgeVariant(business.stage)} dot>
                 {ONBOARDING_STAGES[business.stage]?.label}
               </Badge>
+              {pendingLiveReview ? (
+                <Badge variant="warning">Pending live review</Badge>
+              ) : null}
               {business.category && (
                 <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', businessTheme.badge)}>
                   {business.category}
@@ -1092,7 +1167,15 @@ function BusinessDetailModal({
               )}
             </div>
           </div>
-          <StageChanger business={business} onStageChanged={onStageChanged} />
+          <div className="flex flex-wrap items-center gap-2">
+            {pendingLiveReview ? (
+              <Button onClick={() => void handleMakeBusinessLive()} disabled={updateLoading}>
+                {updateLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                Make live
+              </Button>
+            ) : null}
+            <StageChanger business={business} onStageChanged={onStageChanged} />
+          </div>
         </div>
 
         {/* ── Progress bar ───────────────────────────────────── */}
@@ -1146,6 +1229,36 @@ function BusinessDetailModal({
 
       {/* ── Body content ───────────────────────────────────────── */}
       <div className="space-y-6 p-6">
+        {pendingLiveReview ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-amber-900">This business is waiting for final live approval</p>
+                <p className="text-sm text-amber-800">
+                  {activationReview.requestedAt
+                    ? `Submitted from the business portal on ${formatDateTime(activationReview.requestedAt)}. Review the setup, then make the business live when everything looks right.`
+                    : 'The business finished portal setup and is waiting for a final review before it goes live.'}
+                </p>
+              </div>
+              <Button onClick={() => void handleMakeBusinessLive()} disabled={updateLoading}>
+                {updateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Make business live
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {liveActionMessage ? (
+          <div className={cn(
+            'rounded-2xl px-4 py-3 text-sm',
+            liveActionTone === 'success'
+              ? 'border border-success-200 bg-success-50 text-success-700'
+              : 'border border-danger-200 bg-danger-50 text-danger-700'
+          )}>
+            {liveActionMessage}
+          </div>
+        ) : null}
+
         <div className="grid gap-4 lg:grid-cols-2">
           <div
             ref={setSectionRef('profile')}

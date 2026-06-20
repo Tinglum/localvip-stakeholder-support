@@ -32,7 +32,7 @@ const STEPS: Array<{ key: StepKey; label: string; description: string; icon: Rea
   { key: 'branding', label: 'Branding', description: 'Add a logo and cover image for your business-facing pages.', icon: <ImageIcon className="h-4 w-4" /> },
   { key: 'capture', label: '100-List Offer', description: 'Create the pre-launch offer used only to collect your first 100 customers.', icon: <Tag className="h-4 w-4" /> },
   { key: 'cashback', label: 'LocalVIP Cashback', description: 'Set the live cashback customers will receive through LocalVIP.', icon: <Wallet className="h-4 w-4" /> },
-  { key: 'activate', label: 'Activate', description: 'Review your setup and unlock your QR and 100 List.', icon: <Rocket className="h-4 w-4" /> },
+  { key: 'activate', label: 'Activate', description: 'Review your setup and submit it for LocalVIP go-live approval.', icon: <Rocket className="h-4 w-4" /> },
 ]
 const STEP_SEQUENCE: StepKey[] = ['profile', 'branding', 'capture', 'cashback', 'activate']
 
@@ -136,7 +136,10 @@ export function BusinessSetupWizardPage() {
     })
   }, [business, cashbackOffer?.cashback_percent, cashbackOffer?.id, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.logo_url])
 
-  const persistChanges = React.useCallback(async () => {
+  const persistChanges = React.useCallback(async (options?: {
+    businessPatch?: Record<string, unknown>
+    metadataOverrides?: Record<string, unknown>
+  }) => {
     if (!business) return
 
     try {
@@ -184,6 +187,7 @@ export function BusinessSetupWizardPage() {
         cashback_percent: cashbackPercent,
         cashback_offer_title: 'Standard LocalVIP Cashback',
         cashback_offer_description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
+        ...(options?.metadataOverrides || {}),
       }
 
       const savedBusiness = await updateBusiness(business.id, {
@@ -196,6 +200,7 @@ export function BusinessSetupWizardPage() {
         logo_url: nextLogoUrl || null,
         cover_photo_url: nextCoverUrl || null,
         metadata: nextMetadata as Record<string, unknown>,
+        ...(options?.businessPatch || {}),
       })
       if (!savedBusiness) {
         throw new Error('Business setup could not be saved.')
@@ -356,8 +361,6 @@ export function BusinessSetupWizardPage() {
     )
   }
 
-  const scopedBusiness = business
-
   // Profile completion is based on the two customer-facing details every
   // business page needs today: a visible name and a real description.
   const completeProfile = !!name.trim() && !!description.trim()
@@ -433,17 +436,22 @@ export function BusinessSetupWizardPage() {
   async function activatePortal() {
     setActivating(true)
     try {
-      // Save the latest setup first.
-      await persistChanges()
-      // launch_phase / activation_status are local CRM workspace fields the QA
-      // backend doesn't persist, so this update may no-op or 501. Attempt it,
-      // but don't block activation (or navigation) on it succeeding — otherwise
-      // the button appears to "do nothing".
-      await updateBusiness(scopedBusiness.id, {
-        launch_phase: 'capturing_100',
-        activation_status: 'in_progress',
+      const requestedAt = new Date().toISOString()
+      await persistChanges({
+        businessPatch: {
+          stage: 'onboarded',
+          launch_phase: 'ready_to_go_live',
+          activation_status: 'in_progress',
+        },
+        metadataOverrides: {
+          portal_activation_review_state: 'pending',
+          portal_activation_requested_at: requestedAt,
+          portal_activation_requested_by: profile.id,
+          portal_activation_reviewed_at: null,
+          portal_activation_reviewed_by: null,
+        },
       })
-      window.location.href = '/portal/clients'
+      window.location.href = '/portal/clients?review=submitted'
     } finally {
       setActivating(false)
     }
@@ -838,7 +846,7 @@ export function BusinessSetupWizardPage() {
           {step === 'activate' && (
             <Card>
               <CardHeader>
-                <CardTitle>Activate Your Portal</CardTitle>
+                <CardTitle>Submit for Live Review</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -850,7 +858,7 @@ export function BusinessSetupWizardPage() {
                 <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
                   <p className="text-sm font-semibold text-surface-900">What unlocks next</p>
                   <p className="mt-2 text-sm leading-6 text-surface-600">
-                    Once activated, you can use your QR system, build your 100 List, and start collecting customer signups through your capture offer.
+                    Once you submit this, LocalVIP can review the business, confirm everything looks right, and then make it live in the system.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-3">
@@ -858,11 +866,11 @@ export function BusinessSetupWizardPage() {
                     {activating ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Activating...
+                        Submitting...
                       </>
                     ) : (
                       <>
-                        Activate business portal
+                        Submit for live review
                         <Rocket className="h-4 w-4" />
                       </>
                     )}

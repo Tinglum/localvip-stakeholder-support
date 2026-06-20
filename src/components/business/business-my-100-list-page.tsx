@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   CheckCircle2,
   Pencil,
@@ -72,6 +73,7 @@ const INITIAL_FORM = {
 
 export function BusinessMy100ListPage() {
   const { profile } = useAuth()
+  const searchParams = useSearchParams()
   const businessFilters = React.useMemo<Record<string, string>>(
     () => {
       const filters: Record<string, string> = {}
@@ -107,6 +109,7 @@ export function BusinessMy100ListPage() {
   const [formError, setFormError] = React.useState<string | null>(null)
   const [bulkMessage, setBulkMessage] = React.useState<string | null>(null)
   const [rowActionId, setRowActionId] = React.useState<string | null>(null)
+  const reviewSubmitted = searchParams.get('review') === 'submitted'
 
   React.useEffect(() => {
     if (!business) return
@@ -354,6 +357,12 @@ export function BusinessMy100ListPage() {
           </Button>
         }
       />
+
+      {reviewSubmitted ? (
+        <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
+          Your business setup was submitted for live review. A LocalVIP admin can now check everything before making the business live in the system.
+        </div>
+      ) : null}
 
       <Card className={BUSINESS_ACCENT_SURFACE_CLASS}>
         <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">

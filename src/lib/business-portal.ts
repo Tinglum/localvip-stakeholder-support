@@ -30,6 +30,19 @@ export interface BusinessPortalData {
   cashback_offer_title?: string
   cashback_offer_description?: string
   cashback_offer_value?: string
+  portal_activation_review_state?: 'pending' | 'approved'
+  portal_activation_requested_at?: string
+  portal_activation_requested_by?: string
+  portal_activation_reviewed_at?: string
+  portal_activation_reviewed_by?: string
+}
+
+export interface BusinessPortalActivationReview {
+  state: 'pending' | 'approved' | null
+  requestedAt: string | null
+  requestedBy: string | null
+  reviewedAt: string | null
+  reviewedBy: string | null
 }
 
 const FIELD_OUTREACH_ROLES: UserRole[] = ['field', 'intern', 'volunteer']
@@ -133,6 +146,31 @@ export function normalizeBusinessProfile(
 export function getBusinessPortalData(business: Business | null | undefined): BusinessPortalData {
   if (!business?.metadata || typeof business.metadata !== 'object') return {}
   return business.metadata as BusinessPortalData
+}
+
+export function getBusinessPortalActivationReview(
+  business: Business | null | undefined,
+): BusinessPortalActivationReview {
+  const data = getBusinessPortalData(business)
+  const metadataState = data.portal_activation_review_state
+  const state =
+    metadataState === 'pending' || metadataState === 'approved'
+      ? metadataState
+      : business && business.stage !== 'live' && business.launch_phase === 'ready_to_go_live' && business.activation_status !== 'active'
+        ? 'pending'
+        : null
+
+  return {
+    state,
+    requestedAt: typeof data.portal_activation_requested_at === 'string' ? data.portal_activation_requested_at : null,
+    requestedBy: typeof data.portal_activation_requested_by === 'string' ? data.portal_activation_requested_by : null,
+    reviewedAt: typeof data.portal_activation_reviewed_at === 'string' ? data.portal_activation_reviewed_at : null,
+    reviewedBy: typeof data.portal_activation_reviewed_by === 'string' ? data.portal_activation_reviewed_by : null,
+  }
+}
+
+export function isBusinessPendingLiveReview(business: Business | null | undefined): boolean {
+  return getBusinessPortalActivationReview(business).state === 'pending'
 }
 
 export function resolveScopedBusiness(profile: Profile, businesses: Business[]): Business | null {
