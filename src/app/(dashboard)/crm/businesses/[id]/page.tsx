@@ -393,34 +393,12 @@ export default function BusinessDetailPage() {
         </div>
       )}
 
-      {detailQaError && (
-        <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
-          <div>
-            <p className="font-medium">QA business sync warning</p>
-            <p className="mt-1 text-xs text-warning-700">{detailQaError}</p>
-          </div>
-        </div>
-      )}
-
       {localStateError && (
         <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
           <div>
             <p className="font-medium">Business workspace warning</p>
             <p className="mt-1 text-xs text-warning-700">{localStateError}</p>
-          </div>
-        </div>
-      )}
-
-      {qaLinkedBusinessId && (
-        <div className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
-          <div>
-            <p className="font-medium">QA-linked business record</p>
-            <p className="mt-1 text-xs text-sky-800">
-              Blue cards on this page are imported live from the QA server every time this business is opened. Dashboard tabs like onboarding, tasks, notes, outreach, QR, and materials remain dashboard-managed for now.
-            </p>
           </div>
         </div>
       )}

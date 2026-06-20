@@ -34,6 +34,7 @@ const STEPS: Array<{ key: StepKey; label: string; description: string; icon: Rea
   { key: 'cashback', label: 'LocalVIP Cashback', description: 'Set the live cashback customers will receive through LocalVIP.', icon: <Wallet className="h-4 w-4" /> },
   { key: 'activate', label: 'Activate', description: 'Review your setup and unlock your QR and 100 List.', icon: <Rocket className="h-4 w-4" /> },
 ]
+const STEP_SEQUENCE: StepKey[] = ['profile', 'branding', 'capture', 'cashback', 'activate']
 
 function splitProducts(value: string) {
   return value
@@ -70,6 +71,7 @@ export function BusinessSetupWizardPage() {
   const [step, setStep] = React.useState<StepKey>(initialStep)
   const [saveState, setSaveState] = React.useState<SaveState>('idle')
   const [saveError, setSaveError] = React.useState<string | null>(null)
+  const [stepValidation, setStepValidation] = React.useState<Partial<Record<StepKey, boolean>>>({})
 
   const [name, setName] = React.useState('')
   const [category, setCategory] = React.useState('')
@@ -378,6 +380,18 @@ export function BusinessSetupWizardPage() {
   ).length
   const completionRatio = completedStepsCount / STEPS.length
   const activeStepMeta = STEPS.find((item) => item.key === step) || STEPS[0]
+  const showProfileValidation = !!stepValidation.profile
+  const showBrandingValidation = !!stepValidation.branding
+  const showCaptureValidation = !!stepValidation.capture
+  const showCashbackValidation = !!stepValidation.cashback
+  const profileNameMissing = !name.trim()
+  const profileDescriptionMissing = !description.trim()
+  const brandingLogoMissing = !(logoUrl || logoFile)
+  const brandingCoverMissing = !(coverUrl || coverFile)
+  const captureHeadlineMissing = !captureHeadline.trim()
+  const captureDescriptionMissing = !captureDescription.trim()
+  const captureValueMissing = !captureValue.trim()
+  const cashbackMissing = !(cashbackTouched || !!cashbackOfferId)
 
   function getStepCompletion(key: StepKey) {
     if (key === 'profile') return completeProfile
@@ -386,6 +400,25 @@ export function BusinessSetupWizardPage() {
     if (key === 'cashback') return completeCashback
     if (key === 'activate') return completeActivate
     return true
+  }
+
+  function getNextStep(key: StepKey) {
+    const currentIndex = STEP_SEQUENCE.indexOf(key)
+    if (currentIndex < 0 || currentIndex === STEP_SEQUENCE.length - 1) return null
+    return STEP_SEQUENCE[currentIndex + 1]
+  }
+
+  async function handleSaveAndNext(key: StepKey) {
+    setStepValidation((current) => ({ ...current, [key]: true }))
+    if (!getStepCompletion(key)) return
+
+    await persistChanges()
+
+    const nextStep = getNextStep(key)
+    if (!nextStep) return
+
+    setStepValidation((current) => ({ ...current, [key]: false }))
+    setStep(nextStep)
   }
 
   async function activatePortal() {
@@ -581,8 +614,13 @@ export function BusinessSetupWizardPage() {
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Business name</label>
-                  <Input value={name} onChange={(event) => setName(event.target.value)} />
+                  <FieldLabel required>Business name</FieldLabel>
+                  <Input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    className={showProfileValidation && profileNameMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
+                  />
+                  {showProfileValidation && profileNameMissing ? <RequiredFieldHint /> : null}
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
@@ -593,12 +631,24 @@ export function BusinessSetupWizardPage() {
                   <Input value={avgTicket} onChange={(event) => setAvgTicket(event.target.value)} placeholder="$12, $25, $60..." />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
-                  <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
+                  <FieldLabel required>Description</FieldLabel>
+                  <Textarea
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    rows={4}
+                    className={showProfileValidation && profileDescriptionMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
+                  />
+                  {showProfileValidation && profileDescriptionMissing ? <RequiredFieldHint /> : null}
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Products / services</label>
                   <Input value={products} onChange={(event) => setProducts(event.target.value)} placeholder="Coffee, pastries, sandwiches" />
+                </div>
+                <div className="md:col-span-2 flex justify-end">
+                  <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('profile')}>
+                    Save and next
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -612,7 +662,7 @@ export function BusinessSetupWizardPage() {
               <CardContent className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="block text-sm font-medium text-surface-700">Business logo</label>
+                    <FieldLabel required>Business logo</FieldLabel>
                     <p className="text-sm leading-6 text-surface-500">
                       This is your main brand mark. We use it in the middle of your QR code and in smaller places where people should recognize your business right away.
                     </p>
@@ -621,7 +671,8 @@ export function BusinessSetupWizardPage() {
                     </p>
                   </div>
                   <input type="file" accept="image/*" onChange={(event) => setLogoFile(event.target.files?.[0] || null)} />
-                  <div className="flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-surface-300 bg-surface-50">
+                  {showBrandingValidation && brandingLogoMissing ? <RequiredFieldHint /> : null}
+                  <div className={`flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-surface-50 ${showBrandingValidation && brandingLogoMissing ? 'border-red-400' : 'border-surface-300'}`}>
                     {logoFile || logoUrl ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={logoFile ? URL.createObjectURL(logoFile) : logoUrl || ''} alt="Logo preview" className="h-full w-full object-contain p-4" />
@@ -632,7 +683,7 @@ export function BusinessSetupWizardPage() {
                 </div>
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="block text-sm font-medium text-surface-700">Cover image</label>
+                    <FieldLabel required>Cover image</FieldLabel>
                     <p className="text-sm leading-6 text-surface-500">
                       This is the larger photo customers see first on your business page. Use it to show the feel of your business, like your food, your space, your storefront, or your experience.
                     </p>
@@ -641,7 +692,8 @@ export function BusinessSetupWizardPage() {
                     </p>
                   </div>
                   <input type="file" accept="image/*" onChange={(event) => setCoverFile(event.target.files?.[0] || null)} />
-                  <div className="flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-surface-300 bg-surface-50">
+                  {showBrandingValidation && brandingCoverMissing ? <RequiredFieldHint /> : null}
+                  <div className={`flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-surface-50 ${showBrandingValidation && brandingCoverMissing ? 'border-red-400' : 'border-surface-300'}`}>
                     {coverFile || coverUrl ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={coverFile ? URL.createObjectURL(coverFile) : coverUrl || ''} alt="Cover preview" className="h-full w-full object-cover" />
@@ -649,6 +701,12 @@ export function BusinessSetupWizardPage() {
                       <p className="text-sm text-surface-400">Upload the main photo that should represent your business</p>
                     )}
                   </div>
+                </div>
+                <div className="md:col-span-2 flex justify-end">
+                  <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('branding')}>
+                    Save and next
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -670,25 +728,50 @@ export function BusinessSetupWizardPage() {
                   </p>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer headline</label>
+                  <FieldLabel required>Offer headline</FieldLabel>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
                     This is the first line customers notice. Keep it short, clear, and specific, like “Free cookie with any coffee.”
                   </p>
-                  <Input value={captureHeadline} onChange={(event) => setCaptureHeadline(event.target.value)} placeholder="Free coffee with purchase" />
+                  <Input
+                    value={captureHeadline}
+                    onChange={(event) => setCaptureHeadline(event.target.value)}
+                    placeholder="Free coffee with purchase"
+                    className={showCaptureValidation && captureHeadlineMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
+                  />
+                  {showCaptureValidation && captureHeadlineMissing ? <RequiredFieldHint /> : null}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer description</label>
+                  <FieldLabel required>Offer description</FieldLabel>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
                     Explain exactly what they get and any simple condition that comes with it, like “with purchase” or “one per customer.” This is the fuller explanation under the headline.
                   </p>
-                  <Textarea value={captureDescription} onChange={(event) => setCaptureDescription(event.target.value)} rows={4} placeholder="Tell customers exactly what they get when they join your list." />
+                  <Textarea
+                    value={captureDescription}
+                    onChange={(event) => setCaptureDescription(event.target.value)}
+                    rows={4}
+                    placeholder="Tell customers exactly what they get when they join your list."
+                    className={showCaptureValidation && captureDescriptionMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
+                  />
+                  {showCaptureValidation && captureDescriptionMissing ? <RequiredFieldHint /> : null}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Offer value label</label>
+                  <FieldLabel required>Offer value label</FieldLabel>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
                     This is the shorter version we use in tighter spaces, like QR cards, badges, and smaller materials. Keep it compact and easy to scan quickly.
                   </p>
-                  <Input value={captureValue} onChange={(event) => setCaptureValue(event.target.value)} placeholder="Free cookie with purchase" />
+                  <Input
+                    value={captureValue}
+                    onChange={(event) => setCaptureValue(event.target.value)}
+                    placeholder="Free cookie with purchase"
+                    className={showCaptureValidation && captureValueMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
+                  />
+                  {showCaptureValidation && captureValueMissing ? <RequiredFieldHint /> : null}
+                </div>
+                <div className="flex justify-end">
+                  <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('capture')}>
+                    Save and next
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -703,7 +786,11 @@ export function BusinessSetupWizardPage() {
                 <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
                   This is the percentage customers receive back when they shop with you through LocalVIP.
                 </div>
-                <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                <div>
+                  <FieldLabel required>Cashback percentage</FieldLabel>
+                  {showCashbackValidation && cashbackMissing ? <RequiredFieldHint /> : null}
+                </div>
+                <div className={`rounded-2xl border bg-surface-50 px-4 py-4 ${showCashbackValidation && cashbackMissing ? 'border-red-400' : 'border-surface-200'}`}>
                   <div className="flex items-end justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.18em] text-surface-500">Cashback</p>
@@ -728,6 +815,12 @@ export function BusinessSetupWizardPage() {
                     <span>10%</span>
                     <span>25%</span>
                   </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('cashback')}>
+                    Save and next
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -779,6 +872,19 @@ export function BusinessSetupWizardPage() {
       </div>
     </div>
   )
+}
+
+function FieldLabel({ children, required = false }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <label className="mb-1.5 block text-sm font-medium text-surface-700">
+      {children}
+      {required ? <span className="ml-1 text-red-500">*</span> : null}
+    </label>
+  )
+}
+
+function RequiredFieldHint() {
+  return <p className="mt-1 text-sm font-medium text-red-600">(Required field)</p>
 }
 
 function StatusPill({ label, ready }: { label: string; ready: boolean }) {

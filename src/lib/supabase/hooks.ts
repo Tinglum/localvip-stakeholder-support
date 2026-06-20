@@ -63,6 +63,40 @@ function buildQueryString(filters?: Record<string, string | number | boolean | n
   return qs ? `?${qs}` : ''
 }
 
+function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
+  return {
+    id: String(b.id),
+    name: String(b.name || ''),
+    email: (b.ownerEmail as string) || null,
+    phone: (b.ownerPhone as string) || null,
+    website: null,
+    category: null,
+    public_description: (b.description as string) || null,
+    address: (b.fullAddress as string) || (b.address1 as string) || null,
+    city: (b.city as string) || null,
+    state: (b.state as string) || null,
+    country: (b.country as string) || null,
+    zip: (b.zipCode as string) || null,
+    owner_id: null,
+    owner_user_id: null,
+    city_id: null,
+    brand: 'localvip',
+    stage: 'lead',
+    status: b.active ? 'active' : 'inactive',
+    // Route QA filenames through same-origin proxies so setup previews and
+    // completion state can rehydrate after a page reload.
+    logo_url: b.imageUrl
+      ? (/^https?:\/\//i.test(String(b.imageUrl)) ? String(b.imageUrl) : `/api/qa/businesses/${b.id}/logo`)
+      : null,
+    cover_photo_url: b.coverPhotoUrl
+      ? (/^https?:\/\//i.test(String(b.coverPhotoUrl)) ? String(b.coverPhotoUrl) : `/api/qa/businesses/${b.id}/cover`)
+      : null,
+    metadata: { qaId: b.id, qaBusinessId: b.id, headline: b.headline },
+    created_at: (b.createdDate as string) || new Date().toISOString(),
+    updated_at: (b.updatedDate as string) || new Date().toISOString(),
+  } as unknown as Business
+}
+
 function useQaQuery<T>(
   table: string,
   options?: {
@@ -352,44 +386,17 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
       setLoading(true)
       setError(null)
       try {
-        const qs = buildQueryString(JSON.parse(filtersKey) as Record<string, string>)
-        const res = await fetch(`/api/qa/businesses${qs}`, { cache: 'no-store' })
+        const parsedFilters = JSON.parse(filtersKey) as Record<string, string>
+        const scopedId = (parsedFilters.id || parsedFilters.qaId || '').trim()
+        const endpoint = /^\d+$/.test(scopedId)
+          ? `/api/qa/businesses/${scopedId}`
+          : `/api/qa/businesses${buildQueryString(parsedFilters)}`
+        const res = await fetch(endpoint, { cache: 'no-store' })
         if (!res.ok) throw new Error('Failed to load businesses.')
         const json = await res.json()
-        const arr = Array.isArray(json) ? json : []
+        const arr = Array.isArray(json) ? json : (json ? [json] : [])
         // QA list shape → Supabase Business shape (best effort)
-        const mapped: Business[] = arr.map((b: Record<string, unknown>) => ({
-          id: String(b.id),
-          name: String(b.name || ''),
-          email: (b.ownerEmail as string) || null,
-          phone: (b.ownerPhone as string) || null,
-          website: null,
-          category: null,
-          public_description: (b.description as string) || null,
-          address: (b.fullAddress as string) || (b.address1 as string) || null,
-          city: (b.city as string) || null,
-          state: (b.state as string) || null,
-          country: (b.country as string) || null,
-          zip: (b.zipCode as string) || null,
-          owner_id: null,
-          owner_user_id: null,
-          city_id: null,
-          brand: 'localvip',
-          stage: 'lead',
-          status: b.active ? 'active' : 'inactive',
-          // Map the saved logo/cover so the business setup Branding step shows them.
-          // The QA list returns bare filenames; route them through the same-origin
-          // proxy the detail uses (absolute URLs pass through unchanged).
-          logo_url: b.imageUrl
-            ? (/^https?:\/\//i.test(String(b.imageUrl)) ? String(b.imageUrl) : `/api/qa/businesses/${b.id}/logo`)
-            : null,
-          cover_photo_url: b.coverPhotoUrl
-            ? (/^https?:\/\//i.test(String(b.coverPhotoUrl)) ? String(b.coverPhotoUrl) : `/api/qa/businesses/${b.id}/cover`)
-            : null,
-          metadata: { qaId: b.id, headline: b.headline },
-          created_at: (b.createdDate as string) || new Date().toISOString(),
-          updated_at: (b.updatedDate as string) || new Date().toISOString(),
-        } as unknown as Business))
+        const mapped: Business[] = arr.map((b: Record<string, unknown>) => mapQaBusinessRecordToBusiness(b))
         if (!cancelled) setData(mapped)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed.')
