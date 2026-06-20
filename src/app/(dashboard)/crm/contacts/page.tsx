@@ -29,9 +29,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import type { QaNodeListItem, QaNodeType } from '@/lib/auth/qa-api'
 
 const PAGE_SIZE = 25
@@ -59,7 +56,7 @@ export default function CustomersPage() {
   const [items, setItems] = React.useState<QaNodeListItem[]>([])
   const [totalCount, setTotalCount] = React.useState(0)
   const [page, setPage] = React.useState(1)
-  const [type, setType] = React.useState<QaNodeType>('all')
+  const [type] = React.useState<QaNodeType>('customer')
   const [searchInput, setSearchInput] = React.useState('')
   const [search, setSearch] = React.useState('')
   const [loading, setLoading] = React.useState(true)
@@ -129,6 +126,8 @@ export default function CustomersPage() {
       // dashboard re-reads the impersonated identity, then land on its home.
       router.push('/dashboard')
       router.refresh()
+      // Full page reload to ensure UI completely re-renders with impersonated state
+      setTimeout(() => { window.location.href = '/dashboard' }, 100)
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : 'Login-as failed.')
     } finally {
@@ -140,11 +139,11 @@ export default function CustomersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Customers"
-        description="Every node on the platform — customers, businesses, and causes. Search, filter by type, and log in as any of them."
+        description="View all customers, search, and log in as any of them to test their experience."
       />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+        <div className="relative flex-1 max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
           <Input
             value={searchInput}
@@ -153,17 +152,6 @@ export default function CustomersPage() {
             className="pl-9"
           />
         </div>
-        <Select value={type} onValueChange={(value) => { setType(value as QaNodeType); setPage(1) }}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="All types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            <SelectItem value="customer">Customers</SelectItem>
-            <SelectItem value="business">Businesses</SelectItem>
-            <SelectItem value="cause">Causes</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {error && (
