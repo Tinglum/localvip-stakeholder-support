@@ -284,7 +284,6 @@ export default function QRGeneratorPage() {
 
   const campaignOptions = React.useMemo(() => campaignsData.map(c => ({ value: c.id, label: c.name })), [campaignsData])
   const cityOptions = React.useMemo(() => citiesData.map(c => ({ value: c.id, label: `${c.name}, ${c.state}` })), [citiesData])
-  const stakeholderOptions = React.useMemo(() => profilesData.map(p => ({ value: p.id, label: p.full_name })), [profilesData])
   const businessOptions = React.useMemo(() => businessesData.map(b => ({ value: b.id, label: b.name })), [businessesData])
   const causeOptions = React.useMemo(() => causesData.map(c => ({ value: c.id, label: c.name })), [causesData])
   const sourceBusinessId = searchParams.get('businessId')
@@ -357,7 +356,6 @@ export default function QRGeneratorPage() {
   const [showAssignments, setShowAssignments] = React.useState(false)
   const [campaign, setCampaign] = React.useState('')
   const [city, setCity] = React.useState('')
-  const [stakeholder, setStakeholder] = React.useState('')
   const [business, setBusiness] = React.useState('')
   const [cause, setCause] = React.useState('')
   const [tags, setTags] = React.useState('')
@@ -372,28 +370,6 @@ export default function QRGeneratorPage() {
   const activeLogoUrl = logoEditedUrl || logoPreviewUrl
   const contextPrefillRef = React.useRef<string>('')
 
-  const applySourceCodesToDraft = React.useCallback(() => {
-    if (!sourceStakeholder || !sourceCodes || !sourceJoinUrl) return
-    setDestType('url')
-    setDestination({ type: 'url', url: sourceJoinUrl })
-    setShowAssignments(true)
-    setStakeholder(sourceStakeholderProfileId)
-    setTags((current) => normalizeContextTags(current, sourceEntityType || undefined, sourceEntityName))
-
-    if (sourceBusiness) {
-      setBusiness(sourceBusiness.id)
-      setCity(sourceBusiness.city_id || '')
-      setBrand(sourceBusiness.brand)
-    }
-
-    if (sourceCause) {
-      setCause(sourceCause.id)
-      setCity(sourceCause.city_id || '')
-      setBrand(sourceCause.brand)
-    }
-
-    setName((current) => current.trim() || `${sourceEntityName} QR Code`)
-  }, [sourceCause, sourceBusiness, sourceCodes, sourceEntityName, sourceEntityType, sourceJoinUrl, sourceStakeholder, sourceStakeholderProfileId])
 
   const applyExistingQrToDraft = React.useCallback((qr: QrCodeRecord) => {
     const metadata = (qr.metadata as Record<string, unknown> | null) || null
@@ -406,7 +382,6 @@ export default function QRGeneratorPage() {
     setFrameText(qr.frame_text || '')
     setCampaign(qr.campaign_id || '')
     setCity(qr.city_id || sourceBusiness?.city_id || sourceCause?.city_id || '')
-    setStakeholder(qr.stakeholder_id || sourceStakeholderProfileId || '')
     setBusiness(qr.business_id || sourceBusiness?.id || '')
     setCause(qr.cause_id || sourceCause?.id || '')
     setTags(normalizeContextTags(getQrMetadataString(metadata, 'tags'), sourceEntityType || undefined, sourceEntityName))
@@ -426,7 +401,7 @@ export default function QRGeneratorPage() {
     }
     setSelectedTemplateCollectionId(qr.collection_id || getQrMetadataString(metadata, 'template_collection_id') || null)
     setShowAssignments(true)
-  }, [sourceBusiness, sourceCause, sourceEntityName, sourceEntityType, sourceStakeholderProfileId])
+  }, [sourceBusiness, sourceCause, sourceEntityName, sourceEntityType])
 
   // Handle destination type change
   function handleDestTypeChange(type: QRDestinationType) {
@@ -478,7 +453,6 @@ export default function QRGeneratorPage() {
       sourceEntityType || 'context',
       sourceId,
       sourceExistingQr?.id || 'new',
-      sourceCodes?.id || 'no-codes',
     ].join(':')
 
     if (contextPrefillRef.current === prefillKey) return
@@ -501,15 +475,6 @@ export default function QRGeneratorPage() {
         setCity(sourceCause.city_id || '')
         setBrand(sourceCause.brand)
       }
-
-      if (sourceStakeholderProfileId) {
-        setStakeholder(sourceStakeholderProfileId)
-      }
-
-      if (sourceJoinUrl) {
-        setDestType('url')
-        setDestination({ type: 'url', url: sourceJoinUrl })
-      }
     }
 
     contextPrefillRef.current = prefillKey
@@ -517,12 +482,9 @@ export default function QRGeneratorPage() {
     applyExistingQrToDraft,
     sourceBusiness,
     sourceCause,
-    sourceCodes?.id,
     sourceEntityName,
     sourceEntityType,
     sourceExistingQr,
-    sourceJoinUrl,
-    sourceStakeholderProfileId,
   ])
 
   // Resolve encoded data
@@ -865,17 +827,9 @@ export default function QRGeneratorPage() {
               <p className="text-sm text-surface-600">
                 This generator is prefilled from the {sourceEntityType} record, and any QR you generate here will stay connected to that workflow.
               </p>
-              {sourceExistingQr ? (
+              {sourceExistingQr && (
                 <p className="text-xs text-surface-500">
                   The last saved QR settings for this record have already been loaded.
-                </p>
-              ) : sourceJoinUrl ? (
-                <p className="text-xs text-surface-500">
-                  Referral and connection codes are ready. You can apply them again at any time below.
-                </p>
-              ) : (
-                <p className="text-xs text-surface-500">
-                  This record is linked, but its referral / connection codes are still missing.
                 </p>
               )}
             </div>
@@ -886,11 +840,6 @@ export default function QRGeneratorPage() {
                   Return to record
                 </Button>
               </Link>
-              {sourceCodes && sourceJoinUrl ? (
-                <Button variant="outline" size="sm" onClick={applySourceCodesToDraft}>
-                  Add {sourceEntityName}&apos;s referral code and connection code
-                </Button>
-              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -1446,15 +1395,6 @@ export default function QRGeneratorPage() {
                     <Select value={city} onValueChange={setCity}>
                       <SelectTrigger><SelectValue placeholder="Select city..." /></SelectTrigger>
                       <SelectContent>{cityOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-surface-700">
-                      <Users className="h-3.5 w-3.5 text-surface-400" /> Stakeholder
-                    </label>
-                    <Select value={stakeholder} onValueChange={setStakeholder}>
-                      <SelectTrigger><SelectValue placeholder="Select stakeholder..." /></SelectTrigger>
-                      <SelectContent>{stakeholderOptions.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
