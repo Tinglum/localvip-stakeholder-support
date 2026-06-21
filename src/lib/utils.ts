@@ -51,10 +51,11 @@ export function truncate(str: string, length: number): string {
   return str.slice(0, length) + '...'
 }
 
-export function getInitials(name: string): string {
-  return name
+export function getInitials(name: string | null | undefined): string {
+  return (name || '')
     .split(' ')
     .map(n => n[0])
+    .filter(Boolean)
     .join('')
     .toUpperCase()
     .slice(0, 2)
