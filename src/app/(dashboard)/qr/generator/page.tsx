@@ -30,7 +30,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { BRANDS } from '@/lib/constants'
-import { buildStakeholderJoinUrl } from '@/lib/material-engine'
 import { exportPdfWithQrPlacements } from '@/lib/materials/pdf-export'
 import { getQrPlacements } from '@/lib/materials/qr-placement'
 import { generateShortCode } from '@/lib/utils'
@@ -56,10 +55,8 @@ import {
   useQrCodes,
   useQrCodeCollectionInsert,
   useQrCodeCollections,
-  useStakeholders,
-  useStakeholderCodes,
 } from '@/lib/supabase/hooks'
-import type { Material, QrCode as QrCodeRecord, QrCodeCollection, Stakeholder, StakeholderCode } from '@/lib/types/database'
+import type { Material, QrCode as QrCodeRecord, QrCodeCollection } from '@/lib/types/database'
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -283,8 +280,6 @@ export default function QRGeneratorPage() {
   const { data: qrCodesData } = useQrCodes()
   const { data: qrCollectionsData, refetch: refetchQrCollections } = useQrCodeCollections()
   const { insert: insertQrCollection, loading: savingQrTemplate, error: qrTemplateSaveError } = useQrCodeCollectionInsert()
-  const { data: stakeholdersData } = useStakeholders()
-  const { data: stakeholderCodesData } = useStakeholderCodes()
   const { data: materialsData } = useMaterials()
 
   const campaignOptions = React.useMemo(() => campaignsData.map(c => ({ value: c.id, label: c.name })), [campaignsData])
@@ -311,19 +306,6 @@ export default function QRGeneratorPage() {
     if (sourceCauseId) return `/crm/causes/${sourceCauseId}`
     return '/qr/mine'
   }, [searchParams, sourceBusinessId, sourceCauseId])
-  const sourceStakeholder = React.useMemo<Stakeholder | null>(() => {
-    if (sourceBusinessId) {
-      return stakeholdersData.find((item) => item.business_id === sourceBusinessId) || null
-    }
-    if (sourceCauseId) {
-      return stakeholdersData.find((item) => item.cause_id === sourceCauseId) || null
-    }
-    return null
-  }, [sourceBusinessId, sourceCauseId, stakeholdersData])
-  const sourceCodes = React.useMemo<StakeholderCode | null>(() => {
-    if (!sourceStakeholder) return null
-    return stakeholderCodesData.find((item) => item.stakeholder_id === sourceStakeholder.id) || null
-  }, [sourceStakeholder, stakeholderCodesData])
   const sourceExistingQr = React.useMemo<QrCodeRecord | null>(() => {
     if (sourceBusiness?.linked_qr_code_id) {
       return qrCodesData.find((item) => item.id === sourceBusiness.linked_qr_code_id) || null
@@ -336,14 +318,6 @@ export default function QRGeneratorPage() {
     }
     return null
   }, [qrCodesData, sourceBusiness, sourceBusinessId, sourceCauseId])
-  const sourceJoinUrl = React.useMemo(() => {
-    if (!sourceStakeholder || !sourceCodes) return ''
-    if (sourceCodes.join_url) return sourceCodes.join_url
-    if (!sourceCodes.connection_code) return ''
-    return buildStakeholderJoinUrl(sourceStakeholder.type, sourceCodes.connection_code)
-  }, [sourceCodes, sourceStakeholder])
-  const sourceStakeholderProfileId = sourceStakeholder?.owner_user_id || sourceStakeholder?.profile_id || ''
-
   // Materials with QR placement zones
   const materialsWithQrZone = React.useMemo(() =>
     materialsData.filter(m => {
@@ -631,8 +605,6 @@ export default function QRGeneratorPage() {
         frame_text: frameText || null,
         campaign_id: campaign || null,
         city_id: city || null,
-        entity_type: (business || cause || sourceEntityType) ? (business ? 'business' : 'cause') : null,
-        entity_id: business || cause || sourceBusiness?.id || sourceCause?.id || null,
         business_id: business || null,
         cause_id: cause || null,
         scan_count: 0,

@@ -44,8 +44,6 @@ import {
   useOutreach, useOutreachInsert,
   useTasks, useTaskInsert, useTaskUpdate,
   useNotes, useNoteInsert,
-  useStakeholderCodes,
-  useStakeholders,
   useBusinessUpdate,
 } from '@/lib/supabase/hooks'
 import type { CrmBusiness, QaBusinessDetail } from '@/lib/crm-api'
@@ -141,10 +139,6 @@ export default function BusinessDetailPage() {
   const preferQaWorkspace = businessResponse?.qaBusinessId !== null && businessResponse?.qaBusinessId !== undefined
   const { data: localState, loading: localStateLoading, error: localStateError, refetch: refetchLocalState } = useCrmBusinessLocalState(localStateBusinessId)
   const qaFallbackStateEnabled = !!resolvedBusinessId && (!localState || preferQaWorkspace)
-  const { data: qaStakeholders } = useStakeholders(
-    { business_id: resolvedBusinessId || '__none__' },
-    { enabled: qaFallbackStateEnabled },
-  )
   const { data: qaMaterials } = useMaterials(undefined, { enabled: qaFallbackStateEnabled })
   const profiles = React.useMemo(() => localState?.profiles ?? [], [localState?.profiles])
   const cities = localState?.cities || []
@@ -152,7 +146,6 @@ export default function BusinessDetailPage() {
   const campaigns = localState?.campaigns || []
   const qrCodes = localState?.qrCodes || []
   const materials = preferQaWorkspace ? qaMaterials : (localState?.materials || qaMaterials)
-  const allStakeholders = preferQaWorkspace ? qaStakeholders : (localState?.stakeholders || qaStakeholders)
   const assignments = React.useMemo(() => localState?.assignments ?? [], [localState?.assignments])
   const fallbackEntityHooksEnabled = (!localState || preferQaWorkspace) && !localStateLoading && !!resolvedBusinessId
   const { data: outreach, loading: outreachLoading, refetch: refetchOutreachItems } = useOutreach({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
@@ -179,45 +172,11 @@ export default function BusinessDetailPage() {
   const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
   const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
   const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
-  const businessStakeholder = allStakeholders.find(s => resolvedBusinessId && s.business_id === resolvedBusinessId) || allStakeholders[0] || null
-  const { data: qaStakeholderCodes } = useStakeholderCodes(
-    { stakeholder_id: businessStakeholder?.id || '__none__' },
-    { enabled: qaFallbackStateEnabled && !!businessStakeholder?.id },
-  )
-  const { data: qaGeneratedMaterials } = useGeneratedMaterials(
-    { stakeholder_id: businessStakeholder?.id || '__none__' },
-    { enabled: qaFallbackStateEnabled && !!businessStakeholder?.id },
-  )
-  const allGeneratedMaterials = preferQaWorkspace ? qaGeneratedMaterials : (localState?.generatedMaterials || qaGeneratedMaterials)
-  const businessStakeholderCodes = React.useMemo(() => {
-    if (!businessStakeholder) return null
-    const source = preferQaWorkspace ? qaStakeholderCodes : (localState?.stakeholderCodes || qaStakeholderCodes)
-    return (source as Array<{ stakeholder_id: string; referral_code: string | null; connection_code: string | null; join_url: string | null }>).find(sc => sc.stakeholder_id === businessStakeholder.id) || null
-  }, [businessStakeholder, localState?.stakeholderCodes, preferQaWorkspace, qaStakeholderCodes])
-  const businessJoinUrl = React.useMemo(() => {
-    if (businessStakeholderCodes?.join_url) return businessStakeholderCodes.join_url
-    if (businessStakeholderCodes?.connection_code) {
-      return `https://localvip.com/?ref=${businessStakeholderCodes.referral_code || ''}/${businessStakeholderCodes.connection_code}`
-    }
-    return null
-  }, [businessStakeholderCodes])
   const owner = React.useMemo(() => {
     if (!biz) return null
     if (biz.owner_id) return profileMap.get(biz.owner_id) || null
-    if (businessStakeholder?.profile_id) return profileMap.get(businessStakeholder.profile_id) || null
-    if (businessStakeholder?.owner_user_id) return profileMap.get(businessStakeholder.owner_user_id) || null
     return null
-  }, [biz, businessStakeholder, profileMap])
-  const businessGeneratedMaterials = React.useMemo(() => {
-    if (!businessStakeholder) return []
-    return allGeneratedMaterials
-      .filter(gm => gm.stakeholder_id === businessStakeholder.id && gm.generation_status === 'generated')
-      .map(gm => ({
-        generated: gm,
-        material: materials.find(m => m.id === gm.material_id) || null,
-      }))
-      .filter(item => item.material)
-  }, [allGeneratedMaterials, businessStakeholder, materials])
+  }, [biz, profileMap])
   const helperAssignments = React.useMemo(() => assignments
     .filter(assignment => assignment.entity_type === 'business' && assignment.entity_id === localEntityId && assignment.status === 'active')
     .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
@@ -509,7 +468,7 @@ export default function BusinessDetailPage() {
             </Button>
             <div className="ml-auto">
               <LogInAsButton
-                userId={owner?.id || businessStakeholder?.profile_id || businessStakeholder?.owner_user_id || null}
+                userId={owner?.id || null}
                 userName={owner?.full_name || biz.name}
                 stakeholderType="Business"
               />
@@ -607,46 +566,6 @@ export default function BusinessDetailPage() {
               <p className="text-xs text-surface-400">{campaign?.status || 'Click to link this business into a launch campaign.'}</p>
             </CardContent>
           </button>
-        </Card>
-        {/* Referral codes card */}
-        <Card className="group transition-colors hover:border-brand-200 cursor-pointer" onClick={() => setActiveTab('overview')}>
-          <CardContent className="space-y-2 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500 flex items-center gap-1">
-                <Key className="h-3 w-3" /> Referral Code
-              </p>
-              {businessStakeholderCodes?.referral_code && (
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(businessStakeholderCodes.referral_code!) }}
-                  className="text-surface-300 hover:text-brand-600 transition-colors"
-                  title="Copy referral code"
-                >
-                  <Copy className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-            {businessStakeholderCodes?.referral_code ? (
-              <p className="font-mono text-sm font-semibold text-surface-900 truncate">{businessStakeholderCodes.referral_code}</p>
-            ) : (
-              <p className="text-sm text-surface-500">Not set</p>
-            )}
-            {businessJoinUrl ? (
-              <div className="flex items-center gap-1">
-                <p className="text-xs text-brand-600 truncate">{businessJoinUrl.replace('https://', '')}</p>
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(businessJoinUrl) }}
-                  className="shrink-0 text-surface-300 hover:text-brand-600 transition-colors"
-                  title="Copy join URL"
-                >
-                  <Copy className="h-2.5 w-2.5" />
-                </button>
-              </div>
-            ) : (
-              <p className="text-xs text-surface-400">Go to Overview → Materials to set codes</p>
-            )}
-          </CardContent>
         </Card>
       </div>
 
@@ -809,39 +728,9 @@ export default function BusinessDetailPage() {
               <Button variant="outline" size="sm"><FileText className="h-3.5 w-3.5" /> Browse Library</Button>
             </Link>
           </div>
-          {/* Generated materials from the material engine */}
-          {businessGeneratedMaterials.length > 0 && (
-            <div className="space-y-3">
-              <h4 className="text-xs font-medium text-surface-500 uppercase tracking-wide">Generated Materials</h4>
-              {businessGeneratedMaterials.map(({ generated, material }) => (
-                <Card key={generated.id}>
-                  <CardContent className="space-y-3 py-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-surface-900">{material!.title}</p>
-                        <p className="mt-1 text-xs text-surface-500">{generated.generated_file_name || material!.type}</p>
-                      </div>
-                      <Badge variant="success" dot>generated</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {generated.generated_file_url && (
-                        <a href={generated.generated_file_url} target="_blank" rel="noopener noreferrer">
-                          <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open</Button>
-                        </a>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
           {/* Linked material (legacy single-material field) */}
           {linkedMaterial && (
             <div className="space-y-3">
-              {businessGeneratedMaterials.length > 0 && (
-                <h4 className="text-xs font-medium text-surface-500 uppercase tracking-wide">Linked Material</h4>
-              )}
               <Card>
                 <CardContent className="space-y-3 py-5">
                   <div className="flex items-center justify-between gap-3">
@@ -869,7 +758,7 @@ export default function BusinessDetailPage() {
           )}
 
           {/* Empty state — only if nothing at all */}
-          {businessGeneratedMaterials.length === 0 && !linkedMaterial && (
+          {!linkedMaterial && (
             <Card>
               <CardContent className="flex flex-col items-center py-8 text-center">
                 <FileText className="mb-3 h-10 w-10 text-surface-300" />
