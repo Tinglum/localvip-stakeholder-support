@@ -52,6 +52,8 @@ export interface QaDashboardAccountDetail extends QaDashboardAccountSummary {
   hasStripeOnboarding?: boolean | null
   referralCode?: string | null
   branchReferralUrl?: string | null
+  /** Numeric backend user id of the business/cause owner (earliest AccountUser). */
+  ownerUserId?: number | null
 }
 
 export type QaBusinessListItem = QaDashboardAccountSummary

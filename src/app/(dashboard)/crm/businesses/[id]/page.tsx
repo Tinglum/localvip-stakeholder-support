@@ -468,7 +468,7 @@ export default function BusinessDetailPage() {
             </Button>
             <div className="ml-auto">
               <LogInAsButton
-                userId={owner?.id || null}
+                userId={biz.owner_user_id || owner?.id || null}
                 userName={owner?.full_name || biz.name}
                 stakeholderType="Business"
               />

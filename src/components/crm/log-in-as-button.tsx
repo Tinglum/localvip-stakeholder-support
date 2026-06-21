@@ -32,6 +32,27 @@ export function LogInAsButton({
     setBusy(true)
     setError(null)
     try {
+      // QA users have a numeric backend id and use the View-As cookie flow.
+      // Demo/Supabase users have a UUID and use magic-link impersonation.
+      const isNumericId = /^\d+$/.test(String(userId).trim())
+
+      if (isNumericId) {
+        const response = await fetch('/api/admin/view-as', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: Number(userId) }),
+        })
+        const payload = await response.json().catch(() => ({ error: 'Request failed.' }))
+        if (!response.ok) {
+          setError(payload.error || 'Could not start View As.')
+          return
+        }
+        // The view-as cookie is set server-side; reload so the dashboard swaps
+        // the active profile and the ViewAsBanner appears.
+        window.location.href = '/dashboard'
+        return
+      }
+
       const response = await fetch('/api/admin/impersonate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -59,7 +80,7 @@ export function LogInAsButton({
         window.location.href = payload.link
       }
     } catch {
-      setError('Failed to impersonate.')
+      setError('Failed to log in as user.')
     } finally {
       setBusy(false)
     }
