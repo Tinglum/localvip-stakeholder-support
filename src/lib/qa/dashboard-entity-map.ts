@@ -659,6 +659,11 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     if (typeof row.name === 'string' && !row.title) row.title = row.name
     if (typeof row.file_type === 'string' && !row.type) row.type = row.file_type
     if (row.status == null) row.status = 'active'
+    // Backend stores these as CSV strings (or null); the frontend treats them
+    // as arrays and calls array methods on them (e.g. target_roles.forEach).
+    row.target_roles = csvToArray(row.target_roles)
+    row.target_subtypes = csvToArray(row.target_subtypes)
+    row.tags = csvToArray(row.tags)
   },
   admin_tasks: (row) => {
     // Backend stores payload as a JSON string; frontend expects an object.

@@ -89,7 +89,7 @@ export function getMaterialVisibilityRoleLabels(material: Material) {
   const seen = new Set<string>()
   const labels: string[] = []
 
-  material.target_roles.forEach((role) => {
+  ;(material.target_roles || []).forEach((role) => {
     const canonical = normalizeMaterialRole(role)
     if (seen.has(canonical)) return
     seen.add(canonical)
