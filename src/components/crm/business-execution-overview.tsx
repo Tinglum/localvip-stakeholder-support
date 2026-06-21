@@ -566,6 +566,55 @@ export function BusinessExecutionOverview({
         <StatusCard label="Cashback" value={`${cashbackPercent}%`} ready={cashbackPercent >= 5 && cashbackPercent <= 25} />
       </div>
 
+      {/* Main dashboard: the LocalVIP network referral — distinct from the
+          100-list customer link (which lives in the Offers / 100-list view). */}
+      <Card className="order-2">
+        <CardHeader>
+          <CardTitle>Grow the LocalVIP network</CardTitle>
+          <p className="text-sm text-surface-500">
+            Share this to invite friends, causes, and other businesses to join LocalVIP under this
+            business as a node. This is <span className="font-medium">not</span> the customer 100-list link —
+            that lives in the 100-list offer view.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Referral code</p>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="rounded border border-surface-200 bg-surface-50 px-2 py-1 text-sm font-semibold text-surface-900">
+                {referralCode || '—'}
+              </code>
+              {referralCode ? (
+                <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(referralCode, 'Referral code copied')}>
+                  <Copy className="h-3.5 w-3.5" /> Copy
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Join LocalVIP link</p>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="flex-1 truncate rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs text-surface-700">
+                {qaBranchReferralUrl || '—'}
+              </code>
+              {qaBranchReferralUrl ? (
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(qaBranchReferralUrl, 'LocalVIP join link copied')}>
+                    <Copy className="h-3.5 w-3.5" /> Copy
+                  </Button>
+                  <Button size="sm" variant="ghost" asChild>
+                    <Link href={qaBranchReferralUrl} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
+                  </Button>
+                </>
+              ) : null}
+            </div>
+            {!qaBranchReferralUrl ? (
+              <p className="mt-1 text-[11px] text-surface-400">No LocalVIP referral link yet — assigned by the backend.</p>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="order-3 grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
         <Card>
           <CardHeader>
@@ -712,62 +761,6 @@ export function BusinessExecutionOverview({
                     <MiniStatus label="Generated files" value={`${generatedCount}`} />
                     <MiniStatus label="QR linked" value={qrCodes.length > 0 ? 'Yes' : 'No'} />
                   </div>
-
-                  {/* Shareable codes — so the business can invite friends, causes
-                      and customers to their 100-list. */}
-                  <div className="space-y-2 rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Referral code</p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <code className="rounded bg-white px-2 py-1 text-sm font-semibold text-surface-900 border border-surface-200">
-                          {referralCode || '—'}
-                        </code>
-                        {referralCode ? (
-                          <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(referralCode, 'Referral code copied')}>
-                            <Copy className="h-3.5 w-3.5" /> Copy
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">100-list join link</p>
-                      <p className="text-[11px] text-surface-400">Customers join this business&apos;s list and claim the offer.</p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <code className="flex-1 truncate rounded bg-white px-2 py-1 text-xs text-surface-700 border border-surface-200">
-                          {joinUrl || '—'}
-                        </code>
-                        {joinUrl ? (
-                          <>
-                            <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(joinUrl, '100-list join link copied')}>
-                              <Copy className="h-3.5 w-3.5" /> Copy
-                            </Button>
-                            <Button size="sm" variant="ghost" asChild>
-                              <Link href={joinUrl} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
-                            </Button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Join LocalVIP link</p>
-                      <p className="text-[11px] text-surface-400">Invite friends, causes &amp; businesses to join LocalVIP as a node.</p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <code className="flex-1 truncate rounded bg-white px-2 py-1 text-xs text-surface-700 border border-surface-200">
-                          {qaBranchReferralUrl || '—'}
-                        </code>
-                        {qaBranchReferralUrl ? (
-                          <>
-                            <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(qaBranchReferralUrl, 'LocalVIP join link copied')}>
-                              <Copy className="h-3.5 w-3.5" /> Copy
-                            </Button>
-                            <Button size="sm" variant="ghost" asChild>
-                              <Link href={qaBranchReferralUrl} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
-                            </Button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
                   {engineError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{engineError}</div> : null}
                   {engineMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{engineMessage}</div> : null}
                   <div className="flex flex-wrap gap-2">
@@ -779,14 +772,6 @@ export function BusinessExecutionOverview({
                       {regenBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                       Regenerate all
                     </Button>
-                    {joinUrl ? (
-                      <Button variant="outline" asChild>
-                        <Link href={joinUrl} target="_blank">
-                          <ExternalLink className="h-4 w-4" />
-                          Open join page
-                        </Link>
-                      </Button>
-                    ) : null}
                   </div>
                   {regenMessage ? (
                     <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">{regenMessage}</div>
@@ -881,6 +866,27 @@ export function BusinessExecutionOverview({
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-surface-700">Value label</label>
                     <Input value={captureValue} onChange={(event) => setCaptureValue(event.target.value)} />
+                  </div>
+                  {/* The 100-list customer join link lives here in the 100-list
+                      view — separate from the LocalVIP network link on the dashboard. */}
+                  <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-surface-500">100-list join link</p>
+                    <p className="text-[11px] text-surface-400">Customers scan/visit this to join the list and claim the offer above.</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <code className="flex-1 truncate rounded border border-surface-200 bg-white px-2 py-1 text-xs text-surface-700">
+                        {joinUrl || '—'}
+                      </code>
+                      {joinUrl ? (
+                        <>
+                          <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(joinUrl, '100-list join link copied')}>
+                            <Copy className="h-3.5 w-3.5" /> Copy
+                          </Button>
+                          <Button size="sm" variant="ghost" asChild>
+                            <Link href={joinUrl} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
