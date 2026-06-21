@@ -350,6 +350,9 @@ export async function buildQaBusinessJoinResource(businessId: string): Promise<B
     offerDescription: offer.description,
     offerValue: offer.value,
     supportLabel: 'Used to get your first 100 customers',
+    // The LocalVIP network (node) referral link — for inviting people onto the
+    // platform. Separate from joinUrl (the 100-list customer page).
+    appReferralUrl: (qaBusiness.branchReferralUrl || '').trim() || null,
   }
 }
 

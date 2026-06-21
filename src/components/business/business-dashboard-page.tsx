@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { BusinessJoinQrCard } from '@/components/business/business-join-qr-card'
+import { BusinessNetworkLinkCard } from '@/components/business/business-network-link-card'
 import { useAuth } from '@/lib/auth/context'
 import { getBusinessJoinCaptureData } from '@/lib/business-join'
 import { formatCashbackLabel, resolveBusinessOffer } from '@/lib/offers'
@@ -152,7 +152,6 @@ export function BusinessDashboardPage() {
   const milestone = getNetworkMilestone(contacts.length)
   const invitedCount = contacts.filter((contact) => getContactListStatus(contact) !== 'added').length
   const joinedCount = contacts.filter((contact) => getContactListStatus(contact) === 'joined').length
-  const todayAdds = contacts.filter((contact) => isCreatedToday(contact.created_at)).length
   const progressPercent = Math.min(100, Math.round((contacts.length / 100) * 100))
   const activityFeed = buildActivityFeed(contacts)
   // Beginner "do this now" signals (#22): added-but-not-invited, invited-but-not-joined.
@@ -381,21 +380,10 @@ export function BusinessDashboardPage() {
         </div>
       </Card>
 
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-xl font-semibold text-surface-900">Your #1 growth tool: share your join QR</h2>
-          <p className="mt-1 text-sm leading-6 text-surface-500">
-            This is the fastest way to grow. Show it, let people scan, and they join your list on the spot.
-          </p>
-        </div>
-        <BusinessJoinQrCard
-          business={business}
-          totalClients={contacts.length}
-          todayAdds={todayAdds}
-          progressPercent={progressPercent}
-          compact
-        />
-      </div>
+      {/* The customer 100-list join QR lives in "My 100 list". Here on the main
+          dashboard we surface the LocalVIP network (node) referral instead, so the
+          two links stay separate and the business isn't confused. */}
+      <BusinessNetworkLinkCard business={business} />
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
         <Card>

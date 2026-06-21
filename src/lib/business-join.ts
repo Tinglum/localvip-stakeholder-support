@@ -37,6 +37,9 @@ export interface BusinessJoinResource {
   offerDescription: string
   offerValue: string | null
   supportLabel: string
+  /** The LocalVIP network (node) referral link — branch.io deep link. Distinct
+   * from joinUrl (the 100-list customer page). Optional; QA businesses have it. */
+  appReferralUrl?: string | null
 }
 
 export type BusinessJoinQrGradientType = 'none' | 'linear' | 'radial'
