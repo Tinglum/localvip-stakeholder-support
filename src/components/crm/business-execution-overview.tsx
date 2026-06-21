@@ -730,18 +730,38 @@ export function BusinessExecutionOverview({
                       </div>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Join link</p>
+                      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">100-list join link</p>
+                      <p className="text-[11px] text-surface-400">Customers join this business&apos;s list and claim the offer.</p>
                       <div className="mt-1 flex items-center gap-2">
                         <code className="flex-1 truncate rounded bg-white px-2 py-1 text-xs text-surface-700 border border-surface-200">
                           {joinUrl || '—'}
                         </code>
                         {joinUrl ? (
                           <>
-                            <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(joinUrl, 'Join link copied')}>
+                            <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(joinUrl, '100-list join link copied')}>
                               <Copy className="h-3.5 w-3.5" /> Copy
                             </Button>
                             <Button size="sm" variant="ghost" asChild>
                               <Link href={joinUrl} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Join LocalVIP link</p>
+                      <p className="text-[11px] text-surface-400">Invite friends, causes &amp; businesses to join LocalVIP as a node.</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <code className="flex-1 truncate rounded bg-white px-2 py-1 text-xs text-surface-700 border border-surface-200">
+                          {qaBranchReferralUrl || '—'}
+                        </code>
+                        {qaBranchReferralUrl ? (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(qaBranchReferralUrl, 'LocalVIP join link copied')}>
+                              <Copy className="h-3.5 w-3.5" /> Copy
+                            </Button>
+                            <Button size="sm" variant="ghost" asChild>
+                              <Link href={qaBranchReferralUrl} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
                             </Button>
                           </>
                         ) : null}
