@@ -556,6 +556,11 @@ export default function QRGeneratorPage() {
 
       // Save to the QA dashboard QR API.
       const redirectUrl = `https://localvip.com/q/${code}`
+      const selectedBusiness = business || null
+      const selectedCause = cause || null
+      const entityType = selectedBusiness ? 'business' : selectedCause ? 'cause' : null
+      const entityId = selectedBusiness || selectedCause
+
       const savedQr = await insertQrCode({
         name: name.trim(),
         short_code: code,
@@ -567,8 +572,10 @@ export default function QRGeneratorPage() {
         frame_text: frameText || null,
         campaign_id: campaign || null,
         city_id: city || null,
-        business_id: business || null,
-        cause_id: cause || null,
+        business_id: selectedBusiness,
+        cause_id: selectedCause,
+        entity_type: entityType,
+        entity_id: entityId,
         scan_count: 0,
         version: 1,
         status: 'active',

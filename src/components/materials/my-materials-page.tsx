@@ -229,6 +229,10 @@ function UploadMaterialDialog({
       reset()
       onSuccess()
       onClose()
+    } else if (error) {
+      setUploadError(`Save failed: ${error}`)
+    } else {
+      setUploadError('Failed to save material. Please try again.')
     }
   }
 
