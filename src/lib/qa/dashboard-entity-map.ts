@@ -518,10 +518,17 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
   contacts: (row) => {
     if (typeof row.brand === 'string') row.brand = row.brand.toLowerCase()
   },
+  outreach_activities: (row) => {
+    // The UI calls type.replace() in many activity lists; backend can send null.
+    if (row.type == null) row.type = ''
+  },
   material_templates: (row) => {
     row.stakeholder_types = csvToArray(row.stakeholder_types)
     row.audience_tags = csvToArray(row.audience_tags)
     row.tiers = csvToArray(row.tiers)
+    // The UI calls .replace()/.toUpperCase() on these; backend can send null.
+    if (row.library_folder == null) row.library_folder = ''
+    if (row.output_format == null) row.output_format = ''
     if (row.qr_position_json && typeof row.qr_position_json === 'string') {
       try {
         row.qr_position = JSON.parse(row.qr_position_json as string)
@@ -532,6 +539,8 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
   },
   generated_materials: (row) => {
     row.tags = csvToArray(row.tags)
+    // The UI calls library_folder.replace(); backend can send null.
+    if (row.library_folder == null) row.library_folder = ''
     // Backend GeneratedMaterialController emits completed/error/pending; the
     // dashboard's GeneratedMaterialStatus union is generated/failed/pending.
     const status = typeof row.generation_status === 'string' ? row.generation_status.toLowerCase() : ''

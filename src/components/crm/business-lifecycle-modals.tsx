@@ -369,7 +369,7 @@ export function OwnerConversationModal({
                 <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">{item.type.replace(/_/g, ' ')}</Badge>
+                      <Badge variant="outline">{(item.type || '').replace(/_/g, ' ')}</Badge>
                       <p className="text-sm font-semibold text-surface-900">{item.subject || 'Outreach'}</p>
                     </div>
                     <p className="text-xs text-surface-500">{formatDateTime(item.created_at)}</p>
