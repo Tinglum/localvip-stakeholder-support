@@ -193,10 +193,19 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
 
     const profile = buildQaSessionProfile(qaSession, qaProfile)
 
+    // The QA `sub` claim is the numeric backend user id (the backend does
+    // `sub.ToLong()` for _currentUser.UserId, which is what it stamps on
+    // created_by columns). profile.id is a derived UUID, so it can't be used
+    // to match ownership — expose the numeric id as localProfileId instead.
+    const qaLocalProfileId =
+      typeof qaSession.claims.sub === 'string' && /^\d+$/.test(qaSession.claims.sub.trim())
+        ? qaSession.claims.sub.trim()
+        : null
+
     const baseSession: ResolvedAuthSession = {
       profile,
       userId: profile.id,
-      localProfileId: null,
+      localProfileId: qaLocalProfileId,
       source: 'qa',
       qaClaims: qaSession.claims,
       qaSession,

@@ -19,8 +19,12 @@ import { formatDate } from '@/lib/utils'
 import { generateQRDataURL } from '@/lib/qr/generate'
 
 export default function MyQrCodesPage() {
-  const { profile } = useAuth()
-  const { data: qrCodes, loading, error, refetch } = useQrCodes({ created_by: profile.id })
+  const { localProfileId } = useAuth()
+  // created_by is stamped with the numeric backend user id (localProfileId),
+  // not the derived profile UUID.
+  const { data: qrCodes, loading, error, refetch } = useQrCodes(
+    localProfileId ? { created_by: localProfileId } : undefined,
+  )
   const { remove } = useQrCodeDelete()
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [qrPreviews, setQrPreviews] = React.useState<Record<string, string>>({})

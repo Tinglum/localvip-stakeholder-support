@@ -682,9 +682,13 @@ export function toFrontendShape(
 ): unknown {
   const aliases = FIELD_ALIASES[entityKey] || {}
   // reverse alias map (backend → frontend)
-  const reverseAliases: Record<string, string> = {}
+  // The backend serializes JSON as camelCase (ASP.NET default) while the alias
+  // values are PascalCase (e.g. `CreatedByUserId`). Key the reverse map by
+  // lowercase so `createdByUserId` resolves to `created_by` instead of falling
+  // through to `created_by_user_id` via toSnakeCase.
+  const reverseAliasesLower: Record<string, string> = {}
   for (const [frontKey, backendKey] of Object.entries(aliases)) {
-    reverseAliases[backendKey] = frontKey
+    reverseAliasesLower[backendKey.toLowerCase()] = frontKey
   }
 
   const normalizer = VALUE_NORMALIZERS[entityKey]
@@ -696,8 +700,19 @@ export function toFrontendShape(
     if (input !== null && typeof input === 'object' && (input as object).constructor === Object) {
       const out: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(input)) {
-        const frontKey = reverseAliases[k] || toSnakeCase(k)
-        out[frontKey] = transform(v, depth + 1)
+        const frontKey = reverseAliasesLower[k.toLowerCase()] || toSnakeCase(k)
+        let value = transform(v, depth + 1)
+        // The frontend treats every id as a string (business.id = String(b.id),
+        // localProfileId is a string, etc.). Stringify numeric ids coming back
+        // from the backend so ownership/equality checks line up.
+        const keyLower = k.toLowerCase()
+        if (
+          typeof value === 'number'
+          && (keyLower === 'id' || ID_FIELDS_REQUIRING_LONG_LOWER.has(keyLower))
+        ) {
+          value = String(value)
+        }
+        out[frontKey] = value
       }
       // Apply per-entity value normalizer at top level only
       if (depth <= 1 && normalizer) normalizer(out)
