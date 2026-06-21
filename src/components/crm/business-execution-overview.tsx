@@ -756,7 +756,7 @@ export function BusinessExecutionOverview({
                           <div>
                             <p className="text-sm font-semibold text-surface-900">{item.generated_file_name || 'Generated asset'}</p>
                             <div className="mt-1 flex items-center gap-2">
-                              <p className="text-xs text-surface-500">{item.library_folder.replace(/_/g, ' ')}</p>
+                              <p className="text-xs text-surface-500">{(item.library_folder || '').replace(/_/g, ' ')}</p>
                               {item.version_number > 1 ? (
                                 <Badge variant="outline">v{item.version_number}</Badge>
                               ) : null}
@@ -1000,7 +1000,7 @@ export function BusinessExecutionOverview({
                     outreach.slice(0, 8).map((item) => (
                       <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-surface-900">{item.subject || item.type.replace(/_/g, ' ')}</p>
+                          <p className="text-sm font-semibold text-surface-900">{item.subject || (item.type || '').replace(/_/g, ' ')}</p>
                           <p className="text-xs text-surface-500">{formatDateTime(item.created_at)}</p>
                         </div>
                         <p className="mt-2 text-sm text-surface-600">{item.body}</p>
