@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
 import { useAuth } from '@/lib/auth/context'
-import { useBusinesses, useCauses, useContacts, useQrCodes, useStakeholders } from '@/lib/supabase/hooks'
+import { useBusinesses, useCauses, useContacts, useQrCodes } from '@/lib/supabase/hooks'
 import { formatDate } from '@/lib/utils'
 
 export default function CommunityActivityPage() {

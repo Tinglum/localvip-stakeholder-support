@@ -45,8 +45,6 @@ import {
   useCityAccessRequestUpdate,
   useCityInsert,
   useProfiles,
-  useStakeholderAssignmentInsert,
-  useStakeholderAssignments,
 } from '@/lib/supabase/hooks'
 import {
   CANONICAL_STAKEHOLDER_ROLES,
@@ -102,9 +100,7 @@ export default function AdminUsersPage() {
   const { data: users, loading } = useProfiles()
   const { data: cities, refetch: refetchCities } = useCities()
   const { data: requests, refetch: refetchRequests } = useCityAccessRequests()
-  const { data: assignments, refetch: refetchAssignments } = useStakeholderAssignments()
   const { update: updateRequest } = useCityAccessRequestUpdate()
-  const { insert: insertAssignment } = useStakeholderAssignmentInsert()
   const { insert: insertCity } = useCityInsert()
   const { insert: insertAudit } = useAuditLogInsert()
   const [inviteOpen, setInviteOpen] = React.useState(false)
@@ -180,26 +176,6 @@ export default function AdminUsersPage() {
       },
     })
 
-    if (reviewedRequest && nextStatus === 'approved' && resolvedCityId) {
-      const hasAssignment = assignments.some((assignment) =>
-        assignment.stakeholder_id === request.requester_id
-        && assignment.entity_type === 'city'
-        && assignment.entity_id === resolvedCityId
-        && assignment.status === 'active'
-      )
-
-      if (!hasAssignment) {
-        await insertAssignment({
-          stakeholder_id: request.requester_id,
-          entity_type: 'city',
-          entity_id: resolvedCityId,
-          role: 'launch_partner',
-          assigned_by: profile.id,
-          status: 'active',
-        })
-      }
-    }
-
     if (reviewedRequest) {
       await insertAudit({
         user_id: profile.id,
@@ -221,7 +197,6 @@ export default function AdminUsersPage() {
           : `Declined the request for ${request.requested_city_name}.`
       )
       refetchRequests({ silent: true })
-      refetchAssignments({ silent: true })
       refetchCities({ silent: true })
     } else {
       setRequestFeedback(`Could not update ${request.requested_city_name}. Please try again.`)
