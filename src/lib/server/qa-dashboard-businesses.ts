@@ -73,7 +73,12 @@ export function mergeBusinessRecord(
     brand: localBusiness?.brand || 'localvip',
     stage: localBusiness?.stage || 'lead',
     owner_id: localBusiness?.owner_id || null,
-    owner_user_id: localBusiness?.owner_user_id || null,
+    // Prefer the QA owner user id (numeric backend user, exposed on the detail
+    // response) so admins can View-As / Log in as the business owner.
+    owner_user_id: localBusiness?.owner_user_id
+      || (qaBusiness && 'ownerUserId' in qaBusiness && (qaBusiness as { ownerUserId?: number | null }).ownerUserId
+        ? String((qaBusiness as { ownerUserId?: number | null }).ownerUserId)
+        : null),
     source: localBusiness?.source || null,
     source_detail: localBusiness?.source_detail || null,
     campaign_id: localBusiness?.campaign_id || null,
