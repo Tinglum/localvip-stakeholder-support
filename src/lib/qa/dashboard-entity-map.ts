@@ -673,6 +673,19 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     row.target_roles = csvToArray(row.target_roles)
     row.target_subtypes = csvToArray(row.target_subtypes)
     row.tags = csvToArray(row.tags)
+    // Backend stores metadata as a JSON string; the UI reads it as an object
+    // (qr_placements, automation_template, etc.). Without this, saved QR zones
+    // look "unsaved" because metadata.qr_placements is unreachable on a string.
+    if (typeof row.metadata === 'string' && row.metadata.trim()) {
+      try { row.metadata = JSON.parse(row.metadata as string) } catch { /* leave as-is */ }
+    }
+    // The list endpoint omits the (large data-URL) file/thumbnail and sends
+    // has_file/has_thumbnail booleans instead. Point the UI at an asset proxy
+    // so thumbnails + previews render without bloating the list payload.
+    if (row.id != null) {
+      if (!row.file_url && row.has_file) row.file_url = `/api/qa/material-asset?id=${row.id}&kind=file`
+      if (!row.thumbnail_url && row.has_thumbnail) row.thumbnail_url = `/api/qa/material-asset?id=${row.id}&kind=thumbnail`
+    }
   },
   admin_tasks: (row) => {
     // Backend stores payload as a JSON string; frontend expects an object.
