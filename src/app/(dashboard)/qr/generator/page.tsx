@@ -364,6 +364,7 @@ export default function QRGeneratorPage() {
   const [previewUrl, setPreviewUrl] = React.useState<string>('')
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [generated, setGenerated] = React.useState(false)
+  const [formError, setFormError] = React.useState<string | null>(null)
 
   // File input ref
   const logoInputRef = React.useRef<HTMLInputElement>(null)
@@ -529,6 +530,18 @@ export default function QRGeneratorPage() {
   // Generate final QR code and save to Supabase
   async function handleGenerate() {
     if (!name.trim()) return
+    setFormError(null)
+
+    // The QA backend requires every QR code to be attached to an entity
+    // (EntityType + EntityId). Resolve it from the selected business/cause or
+    // the source entity passed in via URL params before doing any work.
+    const resolvedBusinessId = business || sourceBusiness?.id || null
+    const resolvedCauseId = cause || sourceCause?.id || null
+    if (!resolvedBusinessId && !resolvedCauseId) {
+      setFormError('Select a business or cause to attach this QR code to before generating.')
+      return
+    }
+
     setGenerated(false)
     setIsGenerating(true)
 
@@ -556,8 +569,8 @@ export default function QRGeneratorPage() {
 
       // Save to the QA dashboard QR API.
       const redirectUrl = `https://localvip.com/q/${code}`
-      const selectedBusiness = business || null
-      const selectedCause = cause || null
+      const selectedBusiness = resolvedBusinessId
+      const selectedCause = resolvedCauseId
       const entityType = selectedBusiness ? 'business' : selectedCause ? 'cause' : null
       const entityId = selectedBusiness || selectedCause
 
@@ -1450,9 +1463,9 @@ export default function QRGeneratorPage() {
               </>
             )}
           </Button>
-          {saveError && (
+          {(formError || saveError) && (
             <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
-              {saveError}
+              {formError || saveError}
             </div>
           )}
         </div>

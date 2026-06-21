@@ -314,10 +314,33 @@ const ID_FIELDS_REQUIRING_LONG = new Set([
   'requestedCityId',
 ])
 
+/**
+ * Lowercased copy for case-insensitive matching. Field aliases produce
+ * PascalCase backend keys (e.g. `EntityId`, `CreatedByUserId`) which would
+ * otherwise never match the camelCase entries above.
+ */
+const ID_FIELDS_REQUIRING_LONG_LOWER = new Set(
+  [...ID_FIELDS_REQUIRING_LONG].map((f) => f.toLowerCase()),
+)
+
 function isValidLongId(v: unknown): boolean {
   if (typeof v === 'number') return Number.isInteger(v) && v > 0
   if (typeof v === 'string' && /^\d+$/.test(v.trim())) return Number(v) > 0
   return false
+}
+
+/** Coerce a valid long id to a JS number so it serializes as a JSON number. */
+function toLongIdNumber(v: unknown): number {
+  return typeof v === 'number' ? v : Number(String(v).trim())
+}
+
+/**
+ * Per-entity fields the backend stores as a CSV string but the frontend models
+ * as an array. We join arrays back to a comma-separated string on write.
+ * Keyed by backend (PascalCase) field name.
+ */
+const CSV_STRING_FIELDS: Partial<Record<QaEntityKey, Set<string>>> = {
+  materials: new Set(['TargetRoles', 'TargetSubtypes']),
 }
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -431,11 +454,21 @@ export function toBackendShape(
     }
 
     const backendKey = aliases[k] || toCamelCase(k)
-    if (ID_FIELDS_REQUIRING_LONG.has(backendKey) && !isValidLongId(v)) {
-      // skip — backend would 400 on this
+    const backendKeyLower = backendKey.toLowerCase()
+    if (ID_FIELDS_REQUIRING_LONG_LOWER.has(backendKeyLower)) {
+      // Backend column is a `long`. .NET's default System.Text.Json rejects a
+      // JSON string for a numeric field, so a valid id must be sent as a
+      // number; an invalid one (e.g. a stale UUID) is dropped so the rest of
+      // the payload still binds.
+      if (!isValidLongId(v)) continue
+      out[backendKey] = toLongIdNumber(v)
       continue
     }
-    const backendKeyLower = backendKey.toLowerCase()
+    const csvFields = CSV_STRING_FIELDS[entityKey]
+    if (csvFields && csvFields.has(backendKey) && Array.isArray(v)) {
+      out[backendKey] = v.join(',')
+      continue
+    }
     if ((backendKeyLower === 'metadata' || backendKeyLower === 'paylodjson') && v && typeof v === 'object' && !Array.isArray(v)) {
       out[backendKey] = JSON.stringify(v)
       continue
