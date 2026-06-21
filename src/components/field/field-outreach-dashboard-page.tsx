@@ -43,8 +43,8 @@ export function FieldOutreachDashboardPage() {
   const { data: scripts, loading: scriptsLoading } = useOutreachScripts({ created_by: profile.id })
 
   const accessibleCityIds = React.useMemo(
-    () => getAccessibleCityIds(profile, cityAssignments),
-    [cityAssignments, profile]
+    () => getAccessibleCityIds(),
+    []
   )
   const cityMap = React.useMemo(() => new Map(cities.map((city) => [city.id, `${city.name}, ${city.state}`])), [cities])
 
@@ -144,9 +144,9 @@ export function FieldOutreachDashboardPage() {
     ]
 
     return items
-      .sort((left, right) => {
-        const urgencyWeight = { blocked: 0, overdue: 1, today: 2, upcoming: 3, on_track: 4 }
-        const urgencyGap = urgencyWeight[left.queue.urgency] - urgencyWeight[right.queue.urgency]
+      .sort((left: any, right: any) => {
+        const urgencyWeight = { blocked: 0, overdue: 1, today: 2, upcoming: 3, on_track: 4 } as Record<string, number>
+        const urgencyGap = (urgencyWeight[left.queue.urgency as string] || 0) - (urgencyWeight[right.queue.urgency as string] || 0)
         if (urgencyGap !== 0) return urgencyGap
         return (left.queue.nextActionDueDate || '').localeCompare(right.queue.nextActionDueDate || '')
       })

@@ -176,9 +176,9 @@ export function OperationalBusinessesPage({ mode }: OperationalBusinessesPagePro
         }
       })
       .filter((item) => matchBusinessFilter(item.queue.workflowStage, filter, item.queue.blockedReason))
-      .sort((left, right) => {
+      .sort((left: any, right: any) => {
         const urgencyWeight = { blocked: 0, overdue: 1, today: 2, upcoming: 3, on_track: 4 }
-        const urgencyGap = urgencyWeight[left.queue.urgency] - urgencyWeight[right.queue.urgency]
+        const urgencyGap = (urgencyWeight as any)[left.queue.urgency] - (urgencyWeight as any)[right.queue.urgency]
         if (urgencyGap !== 0) return urgencyGap
         return (left.queue.nextActionDueDate || '').localeCompare(right.queue.nextActionDueDate || '')
       })
@@ -475,7 +475,7 @@ export function OperationalBusinessesPage({ mode }: OperationalBusinessesPagePro
                           nextActionDueDate: toDateInput(queue.nextActionDueDate),
                           blockedReason: queue.blockedReason || '',
                           waitingOn: queue.waitingOn || '',
-                          claimContext: typeof metadata.claim_context === 'string' ? metadata.claim_context : '',
+                          claimContext: '',
                         }}
                         onClaim={async () => {}}
                         onSave={(values) => upsertWorkflow(business, values, assignment)}

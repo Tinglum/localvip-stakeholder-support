@@ -689,7 +689,6 @@ export default function BusinessDetailPage() {
               owner={owner}
               linkedCause={linkedCause}
               campaign={campaign}
-              helperAssignments={helperAssignments}
               updateBusiness={updateBusiness}
               updateLoading={updateLoading}
               refetchBusiness={refetchBusinessDetail}
@@ -1189,7 +1188,6 @@ function OverviewTab({
       owner={owner}
       linkedCause={linkedCause}
       campaign={campaign}
-      helperAssignments={helperAssignments}
       updateBusiness={updateBusiness}
       updateLoading={updateLoading}
       refetchBusiness={refetchBusiness}

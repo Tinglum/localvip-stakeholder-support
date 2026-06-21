@@ -501,79 +501,12 @@ export async function ensureStakeholderCodesRow(
   stakeholderId: string,
   initialCodes?: { referral_code?: string | null; connection_code?: string | null; join_url?: string | null },
 ) {
-  const sanitizedInitialCodes = initialCodes ? sanitizeStakeholderCodeFields(initialCodes) : undefined
-  const { data: existingRaw } = await supabase
-    .from('stakeholder_codes')
-    .select('*')
-    .eq('stakeholder_id', stakeholderId)
-    .maybeSingle()
-
-  const existing = existingRaw as { referral_code: string | null; connection_code: string | null; join_url: string | null } | null
-
-  if (existing) {
-    const sanitizedExisting = sanitizeStakeholderCodeFields(existing)
-    const patch: Record<string, string | null> = {}
-
-    if (existing.referral_code !== sanitizedExisting.referral_code) patch.referral_code = sanitizedExisting.referral_code
-    if (existing.connection_code !== sanitizedExisting.connection_code) patch.connection_code = sanitizedExisting.connection_code
-    if (existing.join_url !== sanitizedExisting.join_url) patch.join_url = sanitizedExisting.join_url
-
-    // Back-fill codes if the row exists but codes are still null and we now have real values
-    if (sanitizedInitialCodes) {
-      if (!sanitizedExisting.referral_code && sanitizedInitialCodes.referral_code) patch.referral_code = sanitizedInitialCodes.referral_code
-      if (!sanitizedExisting.connection_code && sanitizedInitialCodes.connection_code) patch.connection_code = sanitizedInitialCodes.connection_code
-      if (!sanitizedExisting.join_url && sanitizedInitialCodes.join_url) patch.join_url = sanitizedInitialCodes.join_url
-    }
-
-    if (Object.keys(patch).length > 0) {
-      try {
-        await (supabase.from('stakeholder_codes') as any).update(patch).eq('stakeholder_id', stakeholderId)
-      } catch (updateErr) {
-        // Unique constraint: another stakeholder already has this code — leave this row as-is
-        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr)
-        if (!msg.includes('23505') && !msg.includes('unique') && !msg.includes('duplicate')) throw updateErr
-      }
-    }
-
-    return {
-      ...existing,
-      ...sanitizedExisting,
-      ...patch,
-    }
-  }
-
-  // Try inserting a placeholder row — if the table has NOT NULL constraints on code columns,
-  // skip gracefully since the codes will be set later by upsertStakeholderCodesAndGenerate.
-  try {
-    const { data, error } = await (supabase.from('stakeholder_codes') as any)
-      .insert({
-        stakeholder_id: stakeholderId,
-        referral_code: sanitizedInitialCodes?.referral_code ?? null,
-        connection_code: sanitizedInitialCodes?.connection_code ?? null,
-        join_url: sanitizedInitialCodes?.join_url ?? null,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      const msg = String(error.message || error.code || '')
-      // NOT NULL violation — the codes row will be created properly when codes are set
-      if (msg.includes('not-null') || msg.includes('null value') || msg.includes('23502')) return null
-      // Unique constraint — another stakeholder already has this code; leave null for now
-      if (msg.includes('23505') || msg.includes('unique') || msg.includes('duplicate')) return null
-      throw error
-    }
-    return data
-  } catch (insertError) {
-    // Tolerate insert failures — the codes row will be created by the material engine
-    const msg = insertError instanceof Error ? insertError.message : String(insertError)
-    if (
-      msg.includes('not-null') || msg.includes('null value') || msg.includes('23502') ||
-      msg.includes('23505') || msg.includes('unique') || msg.includes('duplicate')
-    ) {
-      return null
-    }
-    throw insertError
+  // STUB: Stakeholder codes have been removed from the QA backend
+  return {
+    stakeholder_id: stakeholderId,
+    referral_code: null,
+    connection_code: null,
+    join_url: null,
   }
 }
 

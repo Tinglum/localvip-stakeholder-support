@@ -11,18 +11,14 @@ import {
   ArrowRight,
   Camera,
   CheckCircle2,
-  Copy,
-  Download,
   ExternalLink,
   FileText,
   History,
   Image,
-  Link2,
   Loader2,
   MessageSquare,
   QrCode,
   RefreshCw,
-  Sparkles,
   Upload,
   Users,
   Wallet,
@@ -36,8 +32,6 @@ import {
 import { useAuth } from '@/lib/auth/context'
 import type { CrmBusinessLocalStateResponse } from '@/lib/crm-api'
 import { resolveBusinessOffer } from '@/lib/offers'
-import { buildStakeholderJoinUrl } from '@/lib/material-engine'
-import { sanitizeStakeholderCodeFields } from '@/lib/stakeholder-codes'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { computeBusinessExecutionSteps, getBusinessNextActions, getTabForBusinessStepKey, type BusinessExecutionStepSummary } from '@/lib/business-execution'
 import {
@@ -53,9 +47,7 @@ import {
   useOutreachInsert,
   useProfiles,
   useQrCodes,
-  useStakeholders,
   useCities,
-  useStakeholderCodes,
 } from '@/lib/supabase/hooks'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -72,7 +64,6 @@ import type {
   Offer,
   OutreachActivity,
   Profile,
-  StakeholderAssignment,
 } from '@/lib/types/database'
 
 interface BusinessExecutionOverviewProps {
@@ -84,7 +75,6 @@ interface BusinessExecutionOverviewProps {
   owner: Profile | null
   linkedCause: Cause | null
   campaign: Campaign | null
-  helperAssignments: Array<{ assignment: StakeholderAssignment; profile: Profile }>
   updateBusiness: (id: string, changes: Partial<Business>) => Promise<Business | null>
   updateLoading: boolean
   refetchBusiness?: () => void
@@ -121,7 +111,6 @@ export function BusinessExecutionOverview({
   owner,
   linkedCause,
   campaign,
-  helperAssignments,
   updateBusiness,
   updateLoading,
   refetchBusiness,
@@ -133,19 +122,11 @@ export function BusinessExecutionOverview({
   const queryBusinessId = qaBusinessId !== null ? String(qaBusinessId) : (localBusinessId || biz.id)
   const localStateEnabled = !localState
   const { data: hookProfiles } = useProfiles({ enabled: localStateEnabled })
-  const { data: hookStakeholders, refetch: refetchStakeholders } = useStakeholders({ business_id: queryBusinessId }, { enabled: localStateEnabled })
-  const stakeholders = localState?.stakeholders ?? hookStakeholders
-  const stakeholder = stakeholders[0] || null
-  const { data: hookStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes({ stakeholder_id: stakeholder?.id || EMPTY_UUID }, { enabled: localStateEnabled })
-  const stakeholderCodes = localState?.stakeholderCodes ?? hookStakeholderCodes
-  const codes = React.useMemo(() => {
-    const first = stakeholderCodes[0]
-    return first ? sanitizeStakeholderCodeFields(first) : null
-  }, [stakeholderCodes])
-  const { data: hookGeneratedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: stakeholder?.id || EMPTY_UUID }, { enabled: localStateEnabled })
+  const { data: hookGeneratedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: EMPTY_UUID }, { enabled: localStateEnabled })
   const generatedMaterials = localState?.generatedMaterials ?? hookGeneratedMaterials
-  const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: stakeholder?.id || EMPTY_UUID }, { enabled: localStateEnabled })
+  const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: EMPTY_UUID }, { enabled: localStateEnabled })
   const adminTasks = localState?.adminTasks ?? hookAdminTasks
+  const codes = null
   const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: queryBusinessId }, { enabled: localStateEnabled })
   const flows = localState?.flows ?? hookFlows
   const flow = flows[0] || null
@@ -193,8 +174,6 @@ export function BusinessExecutionOverview({
     openTaskCount: 0,
   })
 
-  const [referralCode, setReferralCode] = React.useState('')
-  const [connectionCode, setConnectionCode] = React.useState('')
   const [importPasteValue, setImportPasteValue] = React.useState('')
   const [importError, setImportError] = React.useState<string | null>(null)
   const [engineMessage, setEngineMessage] = React.useState<string | null>(null)
@@ -228,16 +207,7 @@ export function BusinessExecutionOverview({
   const coverInputRef = React.useRef<HTMLInputElement>(null)
   const writeBusinessId = localBusinessId || queryBusinessId
 
-  const qaReferralCode = (workspaceBusiness as { referral_code?: string | null }).referral_code || ''
   const qaBranchReferralUrl = (workspaceBusiness as { branch_referral_url?: string | null }).branch_referral_url || ''
-
-  React.useEffect(() => {
-    // Auto-populate from the business's own QA referral code/link when no
-    // per-stakeholder code has been saved yet, so the dashboard shows the
-    // RIGHT link for THIS business instead of "referral codes needed".
-    setReferralCode(codes?.referral_code || qaReferralCode || '')
-    setConnectionCode(codes?.connection_code || '')
-  }, [codes?.connection_code, codes?.referral_code, qaReferralCode])
 
   React.useEffect(() => {
     setCaptureHeadline(captureOffer.headline || '')
@@ -252,59 +222,15 @@ export function BusinessExecutionOverview({
   }, [workspaceBusiness.cover_photo_url, workspaceBusiness.logo_url])
 
   const joinUrl = React.useMemo(() => {
-    if (codes?.join_url) return codes.join_url
     // Use the business's own Branch.io referral link from QA — every business
     // has one, so there is no stakeholder code to set up.
     if (qaBranchReferralUrl) return qaBranchReferralUrl
-    if (qaReferralCode) return `https://localvip.com/?ref=${encodeURIComponent(qaReferralCode)}`
-    if (!connectionCode.trim()) return ''
-    return buildStakeholderJoinUrl('business', connectionCode)
-  }, [codes?.join_url, connectionCode, qaBranchReferralUrl, qaReferralCode])
+    return ''
+  }, [qaBranchReferralUrl])
 
-  /** Parse a QA referral link and save codes in one click.
-   *  Accepts any of these formats:
-   *    https://localvip.com/?ref=B242431&f5bzaapPF2b
-   *    https://1up7r.test-app.link/f5bzaapPF2b
-   *    B242431                               (just the referral code)
-   */
+  /** Stub: no longer imports from stakeholder codes */
   async function handleImportFromLink() {
-    setImportError(null)
-    const raw = importPasteValue.trim()
-    if (!raw) { setImportError('Paste a referral link or code first.'); return }
-
-    let parsedRef: string | null = null
-    let parsedConn: string | null = null
-    let parsedJoin: string | null = null
-
-    try {
-      const url = new URL(raw)
-      // https://localvip.com/?ref=B242431&f5bzaapPF2b
-      const ref = url.searchParams.get('ref')
-      if (ref) {
-        parsedRef = ref.toLowerCase()
-        // The connection code is the remaining query param key (no value)
-        const keys = Array.from(url.searchParams.keys()).filter(k => k !== 'ref')
-        parsedConn = keys[0]?.toLowerCase() || parsedRef
-        parsedJoin = raw
-      } else {
-        // https://1up7r.test-app.link/f5bzaapPF2b — connection code is last path segment
-        const seg = url.pathname.split('/').filter(Boolean).pop() || ''
-        parsedConn = seg.toLowerCase() || null
-        parsedRef = parsedConn
-      }
-    } catch {
-      // Plain code like "B242431"
-      parsedRef = raw.toLowerCase().replace(/[^a-z0-9]/g, '')
-      parsedConn = parsedRef
-    }
-
-    if (!parsedRef || !parsedConn) { setImportError('Could not extract codes from that input.'); return }
-
-    setReferralCode(parsedRef)
-    setConnectionCode(parsedConn)
-    if (parsedJoin) setImportPasteValue('')
-    // Auto-save immediately
-    await handleSaveCodes(parsedRef, parsedConn)
+    // Stakeholder references removed for QA backend compliance
   }
 
   async function refetchExecution(options?: { includeBusiness?: boolean }) {
@@ -313,8 +239,6 @@ export function BusinessExecutionOverview({
       refetchBusiness?.()
     }
     if (!localState) {
-      refetchStakeholders({ silent: true })
-      refetchCodes({ silent: true })
       refetchGenerated({ silent: true })
       refetchAdminTasks({ silent: true })
       refetchFlows({ silent: true })
@@ -370,17 +294,6 @@ export function BusinessExecutionOverview({
     return body.templates as GenerationTemplateSummary[]
   }
 
-  // ── Auto-refresh generated materials list (polls every 5s) ──
-  // Was a Supabase Realtime subscription; replaced with a lightweight poll
-  // against the QA backend so generation progress still shows up live.
-  React.useEffect(() => {
-    if (!stakeholder?.id) return
-    const interval = window.setInterval(() => {
-      refetchGenerated({ silent: true })
-    }, 5000)
-    return () => window.clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stakeholder?.id])
 
   /**
    * Fire all materials generation as a single background request.
@@ -433,24 +346,8 @@ export function BusinessExecutionOverview({
     })
   }
 
-  async function handleSaveCodes(overrideRef?: string, overrideConn?: string) {
-    setEngineBusy('codes')
-    setEngineMessage(null)
-    setEngineError(null)
-    try {
-      await callMaterialsAction({
-        action: 'save_codes',
-        referralCode: overrideRef ?? referralCode,
-        connectionCode: overrideConn ?? connectionCode,
-      })
-      await refetchExecution()
-      setEngineMessage('Codes saved. Starting generation…')
-      await fireGenerationBackground(setEngineMessage, setEngineError)
-    } catch (error) {
-      setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
-    } finally {
-      setEngineBusy(null)
-    }
+  async function handleSaveCodes() {
+    // Stakeholder codes removed for QA backend compliance
   }
 
   async function handleGenerateMaterials() {
@@ -590,10 +487,6 @@ export function BusinessExecutionOverview({
       refetchWorkspace?.()
       const label = mediaType === 'logo' ? 'Logo' : 'Cover photo'
       setUploadMessage(`${label} uploaded.`)
-
-      if (body.needsRegeneration && codes?.connection_code) {
-        await fireGenerationBackground(setUploadMessage, setUploadError)
-      }
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'Upload failed.')
     } finally {
@@ -718,7 +611,6 @@ export function BusinessExecutionOverview({
               <p><span className="font-semibold text-surface-900">City:</span> {city ? `${city.name}, ${city.state}` : 'No city linked'}</p>
               <p><span className="font-semibold text-surface-900">Cause:</span> {linkedCause?.name || 'No cause linked'}</p>
               <p><span className="font-semibold text-surface-900">Campaign:</span> {campaign?.name || 'No campaign linked'}</p>
-              <p><span className="font-semibold text-surface-900">Helpers:</span> {helperAssignments.length}</p>
             </div>
             {nextActions.length > 0 ? nextActions.map((action) => (
               <button
@@ -738,7 +630,6 @@ export function BusinessExecutionOverview({
                 }}
                 className="flex w-full items-start gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50 transition-colors cursor-pointer group"
               >
-                <Sparkles className="mt-0.5 h-4 w-4 text-brand-500" />
                 <span className="text-sm text-surface-700 group-hover:text-brand-700 flex-1">{action.text}</span>
                 <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-surface-300 group-hover:text-brand-500 transition-colors" />
               </button>
@@ -801,88 +692,6 @@ export function BusinessExecutionOverview({
                   <CardTitle>Codes and material engine</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* ── Import overlay: only when the business genuinely has no
-                       referral code anywhere (QA businesses always have one, so
-                       this effectively never shows). ── */}
-                  {!codes?.referral_code && !codes?.connection_code && !qaReferralCode && (
-                    <div className="relative">
-                      {/* Blurred preview of the fields behind */}
-                      <div className="select-none rounded-xl blur-sm pointer-events-none" aria-hidden>
-                        <div className="grid gap-4 md:grid-cols-2 mb-4">
-                          <div>
-                            <label className="mb-1.5 block text-sm font-medium text-surface-700">Referral code</label>
-                            <Input placeholder="main-street-bakery" readOnly />
-                          </div>
-                          <div>
-                            <label className="mb-1.5 block text-sm font-medium text-surface-700">Connection code</label>
-                            <Input placeholder="main-street-bakery" readOnly />
-                          </div>
-                        </div>
-                        <div className="mb-4">
-                          <label className="mb-1.5 block text-sm font-medium text-surface-700">Join URL</label>
-                          <Input placeholder="https://localvip.com/join/..." readOnly />
-                        </div>
-                      </div>
-                      {/* Overlay panel */}
-                      <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-surface-0/80 backdrop-blur-sm">
-                        <div className="w-full max-w-md rounded-2xl border border-surface-200 bg-white p-6 shadow-lg">
-                          <div className="mb-3 flex items-center gap-2 text-surface-800">
-                            <Link2 className="h-5 w-5 text-brand-500 shrink-0" />
-                            <p className="font-semibold">Referral codes needed</p>
-                          </div>
-                          <p className="mb-1 text-sm text-surface-700">
-                            This business doesn&apos;t have referral codes set up yet.
-                          </p>
-                          <p className="mb-4 text-sm text-surface-500">
-                            <span className="font-medium text-surface-600">If the owner has completed onboarding</span> in the QA portal, their codes will appear here automatically next time this page loads.
-                          </p>
-                          <p className="mb-3 text-sm text-surface-500">
-                            <span className="font-medium text-surface-600">To set up now</span>, paste the business&apos;s referral link from QA — codes are extracted automatically and material generation starts immediately.
-                          </p>
-                          <div className="flex gap-2">
-                            <Input
-                              value={importPasteValue}
-                              onChange={(e) => { setImportPasteValue(e.target.value); setImportError(null) }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') void handleImportFromLink() }}
-                              placeholder="https://localvip.com/?ref=B242431&f5bzaapPF2b"
-                              className="flex-1"
-                            />
-                            <Button onClick={() => void handleImportFromLink()} disabled={engineBusy === 'codes'}>
-                              {engineBusy === 'codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                              Import
-                            </Button>
-                          </div>
-                          {importError && (
-                            <p className="mt-2 text-xs text-danger-600">{importError}</p>
-                          )}
-                          <p className="mt-3 text-xs text-surface-400">
-                            Find the referral link in QA admin → open the business → copy the referral link. Or paste just the code (e.g. <span className="font-mono">B242431</span>).
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-surface-700">Referral code</label>
-                      <Input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} placeholder="main-street-bakery" />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-surface-700">Connection code</label>
-                      <Input value={connectionCode} onChange={(event) => setConnectionCode(event.target.value)} placeholder="main-street-bakery" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Join URL</label>
-                    <div className="flex gap-2">
-                      <Input value={joinUrl} readOnly />
-                      {joinUrl ? (
-                        <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(joinUrl)}>
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <MiniStatus label="Generation" value={generationState} />
                     <MiniStatus label="Generated files" value={`${generatedCount}`} />
@@ -891,15 +700,11 @@ export function BusinessExecutionOverview({
                   {engineError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{engineError}</div> : null}
                   {engineMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{engineMessage}</div> : null}
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => void handleSaveCodes()} disabled={engineBusy !== null || !referralCode.trim() || !connectionCode.trim()}>
-                      {engineBusy === 'codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                      Save codes + generate
-                    </Button>
-                    <Button variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
+                    <Button variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null}>
                       {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                       Generate materials
                     </Button>
-                    <Button variant="outline" onClick={() => void handleRegenerateAll()} disabled={regenBusy || engineBusy !== null || !codes?.connection_code}>
+                    <Button variant="outline" onClick={() => void handleRegenerateAll()} disabled={regenBusy || engineBusy !== null}>
                       {regenBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                       Regenerate all
                     </Button>
@@ -1220,7 +1025,7 @@ export function BusinessExecutionOverview({
         biz={biz}
         city={city}
         linkedCause={linkedCause}
-        helperCount={helperAssignments.length}
+        helperCount={0}
         cities={allCities}
         saving={updateLoading}
         blocker={executionSteps.find((s) => s.key === 'initial_connection')?.blocker ?? null}
@@ -1279,10 +1084,8 @@ export function BusinessExecutionOverview({
         saving={stepBusyId !== null}
         blocker={executionSteps.find((s) => s.key === 'materials_qr')?.blocker ?? null}
         readyToComplete={executionSteps.find((s) => s.key === 'materials_qr')?.readyToComplete ?? false}
-        onSaveCodes={async (ref, conn) => {
-          setReferralCode(ref)
-          setConnectionCode(conn)
-          await handleSaveCodes()
+        onSaveCodes={async () => {
+          // Stakeholder codes removed for QA backend compliance
         }}
         onGenerateMaterials={handleGenerateMaterials}
         onRegenerateAll={handleRegenerateAll}

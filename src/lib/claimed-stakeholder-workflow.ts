@@ -8,46 +8,46 @@ export function getWorkflowStatus() {
   return null
 }
 
-export function parseWorkflowAssignmentMetadata() {
+export function parseWorkflowAssignmentMetadata(...args: any[]) {
   return null
 }
 
-export function toAssignmentPatch() {
+export function toAssignmentPatch(...args: any[]): any {
   return {}
 }
 
-export function getAccessibleEntitySummary() {
+export function getAccessibleEntitySummary(...args: any[]) {
   return ''
 }
 
-export function getUrgencyVariant() {
+export function getUrgencyVariant(...args: any[]) {
   return 'default' as const
 }
 
-export function formatDueLabel() {
+export function formatDueLabel(...args: any[]) {
   return ''
 }
 
-export function getWorkflowStageOptions(): WorkflowStageOption[] {
+export function getWorkflowStageOptions(...args: any[]): WorkflowStageOption[] {
   return []
 }
 
-export function buildCauseQueueState() {
-  return { items: [] }
+export function buildCauseQueueState(...args: any[]): any {
+  return { items: [], urgency: 'on_track' as any, nextActionDueDate: '', blockedReason: null, waitingOn: null, workflowLabel: '', nextAction: '', urgencyLabel: '' }
 }
 
-export function buildBusinessQueueState() {
-  return { items: [] }
+export function buildBusinessQueueState(...args: any[]): any {
+  return { items: [], urgency: 'on_track' as any, nextActionDueDate: '', blockedReason: null, waitingOn: null, workflowLabel: '', nextAction: '', urgencyLabel: '' }
 }
 
-export function getLaunchPhaseLabel() {
+export function getLaunchPhaseLabel(...args: any[]) {
   return ''
 }
 
-export function getAccessibleCityIds() {
+export function getAccessibleCityIds(...args: any[]) {
   return [] as string[]
 }
 
-export function isEntityVisibleInCityScope() {
+export function isEntityVisibleInCityScope(...args: any[]) {
   return false
 }

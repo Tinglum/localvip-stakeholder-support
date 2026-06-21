@@ -60,8 +60,7 @@ import {
   ActivationDecisionModal,
 } from '@/components/crm/cause-lifecycle-modals'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
-import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
-import { sanitizeStakeholderCodeFields } from '@/lib/stakeholder-codes'
+import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
@@ -197,32 +196,16 @@ export default function CauseDetailPage() {
   const isSchool = cause?.type === 'school'
   const entityLabel = isSchool ? 'School' : 'Cause'
 
-  // ── Stakeholder + codes ──
-  const causeStakeholder = React.useMemo(() =>
-    allStakeholders.find(s => s.cause_id === causeId) || null,
-    [allStakeholders, causeId],
-  )
-  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: causeStakeholder?.id || EMPTY_UUID })
-
-  // ── Owner resolution (fallback chain: cause.owner_id → stakeholder.profile_id → stakeholder.owner_user_id → assignment) ──
+  // ── Owner resolution (fallback chain: cause.owner_id → assignment) ──
   const owner = React.useMemo(() => {
     if (!cause) return null
     if (cause.owner_id) return profileMap.get(cause.owner_id) || null
-    if (causeStakeholder?.profile_id) return profileMap.get(causeStakeholder.profile_id) || null
-    if (causeStakeholder?.owner_user_id) return profileMap.get(causeStakeholder.owner_user_id) || null
     if (assignments.length > 0) return profileMap.get(assignments[0].stakeholder_id) || null
     return null
-  }, [cause, causeStakeholder, assignments, profileMap])
-  const codes = React.useMemo(() => {
-    const existing = causeStakeholder ? allStakeholderCodes.find(c => c.stakeholder_id === causeStakeholder.id) || null : null
-    return existing ? sanitizeStakeholderCodeFields(existing) : null
-  }, [allStakeholderCodes, causeStakeholder])
-  const generatedMaterials = React.useMemo(() =>
-    causeStakeholder
-      ? allGeneratedMaterials.filter(gm => gm.stakeholder_id === causeStakeholder.id)
-      : [],
-    [allGeneratedMaterials, causeStakeholder],
-  )
+  }, [cause, assignments, profileMap])
+  const codes = null
+  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: EMPTY_UUID })
+  const generatedMaterials: any[] = []
   const causeMaterialMap = React.useMemo(() => new Map(allMaterialRecords.map(m => [m.id, m])), [allMaterialRecords])
   const generatedMaterialPairs = React.useMemo(() =>
     generatedMaterials
@@ -234,7 +217,7 @@ export default function CauseDetailPage() {
   const setupTask = adminTasks[0] || null
   const generationState = generatedCount > 0
     ? 'generated'
-    : setupTask?.status || (codes?.referral_code ? 'ready' : 'needs codes')
+    : setupTask?.status || 'idle'
   const qaLinkedCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
   const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
     if (!cause || !qaLinkedCauseId) return []
@@ -263,26 +246,13 @@ export default function CauseDetailPage() {
     ]
   }, [cause, qaLinkedCauseId])
 
-  // â”€â”€ Codes + Material Engine â”€â”€
-
-  const [referralCode, setReferralCode] = React.useState('')
-  const [connectionCode, setConnectionCode] = React.useState('')
+  // ── Codes + Material Engine ──
   const [engineMessage, setEngineMessage] = React.useState<string | null>(null)
   const [engineError, setEngineError] = React.useState<string | null>(null)
   const [engineBusy, setEngineBusy] = React.useState<'codes' | 'generate' | null>(null)
   const [stepBusyId, setStepBusyId] = React.useState<string | null>(null)
 
-  React.useEffect(() => {
-    setReferralCode(codes?.referral_code || '')
-    setConnectionCode(codes?.connection_code || '')
-      // No per-cause codes saved yet — pre-fill from operator's QA profile as a starting suggestion
-  }, [codes?.connection_code, codes?.referral_code])
-
-  const joinUrl = React.useMemo(() => {
-    if (codes?.join_url) return codes.join_url
-    if (!connectionCode.trim()) return ''
-    return buildStakeholderJoinUrl(isSchool ? 'school' : 'cause', connectionCode)
-  }, [codes?.join_url, connectionCode, isSchool])
+  const joinUrl = ''
 
   const writebackRows = React.useMemo<QaWritebackRow[]>(() => {
     if (!cause) return []
@@ -297,9 +267,6 @@ export default function CauseDetailPage() {
     pushRow('Cause type', cause.type, 'cause_type / nonprofit_type')
     pushRow('Campaign link', campaign?.name, 'campaign_id or account_campaign relation')
     pushRow('Linked businesses', linkedBusinesses.length > 0 ? `${linkedBusinesses.length} linked business${linkedBusinesses.length === 1 ? '' : 'es'}` : null, 'business-to-cause relation table + APIs')
-    pushRow('Referral code', codes?.referral_code, 'referral_code field or stakeholder code domain')
-    pushRow('Connection code', codes?.connection_code, 'connection_code field or stakeholder code domain')
-    pushRow('Join URL', joinUrl, 'join_url field')
     pushRow('Generated materials', generatedCount > 0 ? `${generatedCount} generated asset${generatedCount === 1 ? '' : 's'}` : null, 'materials domain + assignment APIs', 'Needs QA workflow domain')
     pushRow('QR codes', causeQrCodes.length > 0 ? `${causeQrCodes.length} linked QR code${causeQrCodes.length === 1 ? '' : 's'}` : null, 'qr code domain + relation APIs', 'Needs QA workflow domain')
     pushRow('Outreach activity', outreach.length > 0 ? `${outreach.length} logged ${outreach.length === 1 ? 'activity' : 'activities'}` : null, 'outreach activity table + read/write APIs', 'Needs QA workflow domain')
@@ -307,7 +274,7 @@ export default function CauseDetailPage() {
     pushRow('Notes', notes.length > 0 ? `${notes.length} saved note${notes.length === 1 ? '' : 's'}` : null, 'notes table + read/write APIs', 'Needs QA workflow domain')
 
     return rows
-  }, [campaign?.name, cause, causeQrCodes.length, codes?.connection_code, codes?.referral_code, generatedCount, joinUrl, linkedBusinesses.length, notes.length, outreach.length, tasks.length])
+  }, [campaign?.name, cause, causeQrCodes.length, generatedCount, linkedBusinesses.length, notes.length, outreach.length, tasks.length])
 
   // ── Execution engine ──
   const executionSteps = React.useMemo(() => {
@@ -383,8 +350,6 @@ export default function CauseDetailPage() {
   }, [cause, localCauseId, pendingCampaignId, readOnly, updateCause])
 
   async function refetchExecution() {
-    refetchStakeholders({ silent: true })
-    refetchCodes({ silent: true })
     refetchGeneratedMaterials({ silent: true })
     refetchMaterialRecords({ silent: true })
     refetchAdminTasks({ silent: true })
@@ -465,26 +430,7 @@ export default function CauseDetailPage() {
   }
 
   async function handleSaveCodes() {
-    setEngineBusy('codes')
-    setEngineMessage(null)
-    setEngineError(null)
-    try {
-      await callExecutionAction({ action: 'save_codes', referralCode, connectionCode })
-      await refetchExecution()
-      setEngineMessage('Codes saved.')
-      const templates = await listGenerationTemplates()
-      await runMaterialGenerationBatch(templates, {
-        progressPrefix: 'Generating materials',
-        setProgress: setEngineMessage,
-        setError: setEngineError,
-        emptyMessage: 'Codes saved. No active auto-generation templates were found.',
-        successMessage: 'Codes saved and materials generated.',
-      })
-    } catch (error) {
-      setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
-    } finally {
-      setEngineBusy(null)
-    }
+    // Stakeholder codes removed for QA backend compliance
   }
 
   async function handleGenerateMaterials() {
@@ -614,29 +560,8 @@ export default function CauseDetailPage() {
     return executionSteps.find(s => s.key === key) || null
   }
 
-  async function handleSaveCodesWithValues(ref: string, conn: string) {
-    setReferralCode(ref)
-    setConnectionCode(conn)
-    setEngineBusy('codes')
-    setEngineMessage(null)
-    setEngineError(null)
-    try {
-      await callExecutionAction({ action: 'save_codes', referralCode: ref, connectionCode: conn })
-      await refetchExecution()
-      setEngineMessage('Codes saved.')
-      const templates = await listGenerationTemplates()
-      await runMaterialGenerationBatch(templates, {
-        progressPrefix: 'Generating materials',
-        setProgress: setEngineMessage,
-        setError: setEngineError,
-        emptyMessage: 'Codes saved. No active auto-generation templates were found.',
-        successMessage: 'Codes saved and materials generated.',
-      })
-    } catch (error) {
-      setEngineError(error instanceof Error ? error.message : 'Codes could not be saved.')
-    } finally {
-      setEngineBusy(null)
-    }
+  async function handleSaveCodesWithValues() {
+    // Stakeholder codes removed for QA backend compliance
   }
 
   async function handleLogOutreachFromModal(data: { type: string; subject: string; body: string; outcome: string; nextStep: string; nextStepDate: string }) {
@@ -791,7 +716,7 @@ export default function CauseDetailPage() {
               <Plus className="h-3.5 w-3.5" /> Add Task
             </Button>
             <LogInAsButton
-              userId={owner?.id || causeStakeholder?.profile_id || causeStakeholder?.owner_user_id || null}
+              userId={owner?.id || null}
               userName={owner?.full_name || cause.name}
               stakeholderType={isSchool ? 'School Leader' : 'Cause Leader'}
             />
@@ -840,28 +765,6 @@ export default function CauseDetailPage() {
               </div>
               <span className="text-sm font-bold text-surface-900">{readiness.percent}%</span>
             </div>
-          </CardContent>
-        </Card>
-        {/* Codes card */}
-        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('materials_qr')}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Referral Code</p>
-              {codes?.referral_code
-                ? <button type="button" onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(codes.referral_code!) }} className="text-surface-300 hover:text-brand-500 transition-colors" title="Copy referral code"><Copy className="h-3 w-3" /></button>
-                : <Pencil className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />}
-            </div>
-            {codes?.referral_code ? (
-              <p className="mt-1 font-mono text-sm font-semibold text-surface-900 truncate">{codes.referral_code}</p>
-            ) : (
-              <p className="mt-1 text-sm text-surface-400">Not set</p>
-            )}
-            {joinUrl ? (
-              <div className="mt-1 flex items-center gap-1">
-                <p className="text-xs text-brand-600 truncate">{joinUrl.replace('https://', '')}</p>
-                <button type="button" onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(joinUrl) }} className="shrink-0 text-surface-300 hover:text-brand-500 transition-colors" title="Copy join URL"><Copy className="h-2.5 w-2.5" /></button>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
       </div>
@@ -1055,7 +958,6 @@ export default function CauseDetailPage() {
                   icon: <Target className="h-5 w-5 text-brand-600" />,
                   items: [
                     { label: 'Profile complete (city + contact)', done: !!(cause.city_id && (cause.owner_email || cause.email || cause.owner_phone || cause.phone)), modal: 'initial_connection' as const },
-                    { label: 'Referral & connection codes saved', done: !!(codes?.referral_code && codes?.connection_code), modal: 'materials_qr' as const },
                     { label: 'Materials generated', done: generatedCount > 0, tab: 'materials' as DashboardTab },
                     { label: 'QR code created', done: causeQrCodes.length > 0, modal: 'materials_qr' as const },
                   ],
@@ -1447,7 +1349,7 @@ export default function CauseDetailPage() {
                                 {material?.description && (
                                   <span className="text-xs text-surface-500 truncate max-w-[200px]">{material.description}</span>
                                 )}
-                                {generated.tags?.map(tag => <Badge key={tag} variant="default">{tag}</Badge>)}
+                                {generated.tags?.map((tag: string) => <Badge key={tag} variant="default">{tag}</Badge>)}
                               </div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
@@ -1509,27 +1411,6 @@ export default function CauseDetailPage() {
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Referral code</label>
-                    <Input value={referralCode} onChange={e => setReferralCode(e.target.value)} placeholder={`${cause.name.toLowerCase().replace(/\s+/g, '-')}`} />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Connection code</label>
-                    <Input value={connectionCode} onChange={e => setConnectionCode(e.target.value)} placeholder={`${cause.name.toLowerCase().replace(/\s+/g, '-')}`} />
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Join URL</label>
-                  <div className="flex gap-2">
-                    <Input value={joinUrl} readOnly className="bg-surface-50" />
-                    {joinUrl && (
-                      <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(joinUrl)}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <MiniStatus label="Generation" value={generationState} />
                   <MiniStatus label="Generated files" value={`${generatedCount}`} />
@@ -1538,22 +1419,13 @@ export default function CauseDetailPage() {
                 {engineError && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{engineError}</div>}
                 {engineMessage && <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{engineMessage}</div>}
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void handleSaveCodes()} disabled={engineBusy !== null || !referralCode.trim() || !connectionCode.trim()}>
-                    {engineBusy === 'codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    Save codes + generate
-                  </Button>
-                  <Button variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
+                  <Button variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null}>
                     {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                     Generate materials
                   </Button>
                   <Link href={qrGeneratorHref}>
                     <Button variant="outline"><QrCode className="h-4 w-4" /> Create QR Code</Button>
                   </Link>
-                  {joinUrl && (
-                    <Button variant="outline" asChild>
-                      <Link href={joinUrl} target="_blank"><ExternalLink className="h-4 w-4" /> Open join page</Link>
-                    </Button>
-                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1876,7 +1748,7 @@ export default function CauseDetailPage() {
             generatedMaterials={generatedMaterials}
             qrCodes={causeQrCodes}
             joinUrl={joinUrl || null}
-            onSaveCodes={handleSaveCodesWithValues}
+            onSaveCodes={async () => {}}
             onGenerateMaterials={handleGenerateMaterials}
             onRegenerateAll={handleGenerateMaterials}
             onCompleteStep={(() => {
@@ -1899,8 +1771,8 @@ export default function CauseDetailPage() {
             linkedBusinessCount={linkedBusinesses.length}
             generatedCount={generatedCount}
             qrCount={causeQrCodes.length}
-            codesReady={!!(codes?.referral_code && codes?.connection_code)}
-            stakeholderReady={!!causeStakeholder}
+            codesReady={false}
+            stakeholderReady={false}
             onCompleteStep={(() => {
               const step = getExecutionStep('activation_decision')
               return step?.step.id && step.state === 'active' && step.readyToComplete
