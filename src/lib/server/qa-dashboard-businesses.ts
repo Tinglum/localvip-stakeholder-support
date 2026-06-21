@@ -134,6 +134,9 @@ function toListItem(localBusiness: Business | null, qaBusiness: QaBusinessListIt
     state: qaBusiness?.state || null,
     country: qaBusiness?.country || null,
     active: qaBusiness?.active ?? null,
+    stripe_onboarding_complete: qaBusiness && 'hasStripeOnboarding' in qaBusiness
+      ? (qaBusiness.hasStripeOnboarding ?? null)
+      : null,
     stage: localBusiness?.stage || null,
     status: localBusiness?.status || (qaBusiness ? (qaBusiness.active ? 'active' : 'inactive') : null),
     category: localBusiness?.category || null,

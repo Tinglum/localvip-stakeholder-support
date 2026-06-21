@@ -33,6 +33,7 @@ export interface QaDashboardAccountSummary {
   country: string | null
   createdDate: string
   active: boolean
+  hasStripeOnboarding?: boolean | null
 }
 
 export interface QaDashboardAccountDetail extends QaDashboardAccountSummary {
@@ -126,6 +127,7 @@ export interface CrmBusinessListItem {
   state: string | null
   country: string | null
   active: boolean | null
+  stripe_onboarding_complete: boolean | null
   stage: OnboardingStage | null
   status: EntityStatus | null
   category: string | null

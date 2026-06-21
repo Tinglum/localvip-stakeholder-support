@@ -25,17 +25,6 @@ import { formatDate } from '@/lib/utils'
 import type { CrmBusinessListItem } from '@/lib/crm-api'
 import type { Business, OnboardingStage } from '@/lib/types/database'
 
-const STAGE_BADGE_VARIANT: Record<OnboardingStage, 'default' | 'info' | 'warning' | 'success' | 'danger'> = {
-  lead: 'default',
-  contacted: 'info',
-  interested: 'info',
-  in_progress: 'warning',
-  onboarded: 'success',
-  live: 'success',
-  paused: 'warning',
-  declined: 'danger',
-}
-
 const SOURCE_OPTIONS = [
   { value: 'Walk-in', label: 'Walk-in' },
   { value: 'Referral', label: 'Referral' },
@@ -51,14 +40,22 @@ const STAGE_OPTIONS = Object.entries(ONBOARDING_STAGES).map(([value, def]) => ({
   label: def.label,
 }))
 
-const ORIGIN_OPTIONS = [
-  { value: 'hybrid', label: 'Hybrid' },
-  { value: 'qa', label: 'QA only' },
-  { value: 'local', label: 'Local only' },
+const STRIPE_OPTIONS = [
+  { value: 'complete', label: 'Stripe onboarded' },
+  { value: 'incomplete', label: 'Stripe not onboarded' },
+  { value: 'unknown', label: 'Stripe unknown' },
+]
+
+const QA_LIVE_OPTIONS = [
+  { value: 'live', label: 'Live on QA' },
+  { value: 'not_live', label: 'Not live on QA' },
+  { value: 'unknown', label: 'QA live unknown' },
 ]
 
 interface BusinessRow extends CrmBusinessListItem {
   locationLabel: string
+  qaLiveState: 'live' | 'not_live' | 'unknown'
+  stripeState: 'complete' | 'incomplete' | 'unknown'
 }
 
 function relativeTime(dateStr: string): string {
@@ -148,16 +145,23 @@ export default function BusinessesPage() {
     businesses.map(item => ({
       ...item,
       locationLabel: [item.city_name || item.city, item.state].filter(Boolean).join(', ') || 'N/A',
+      qaLiveState: item.active === null ? 'unknown' : item.active ? 'live' : 'not_live',
+      stripeState:
+        item.stripe_onboarding_complete === null || item.stripe_onboarding_complete === undefined
+          ? 'unknown'
+          : item.stripe_onboarding_complete
+            ? 'complete'
+            : 'incomplete',
     })),
     [businesses],
   )
 
   const filtered = React.useMemo(() => {
     let result = rows
-    if (filters.stage) result = result.filter(item => item.stage === filters.stage)
-    if (filters.origin) result = result.filter(item => item.origin === filters.origin)
+    if (filters.stripeState) result = result.filter(item => item.stripeState === filters.stripeState)
+    if (filters.qaLiveState) result = result.filter(item => item.qaLiveState === filters.qaLiveState)
     return result
-  }, [filters.origin, filters.stage, rows])
+  }, [filters.qaLiveState, filters.stripeState, rows])
 
   const resetForm = React.useCallback(() => {
     setFormName('')
@@ -291,39 +295,29 @@ export default function BusinessesPage() {
       ),
     },
     {
-      key: 'stage',
-      header: 'Dashboard Stage',
+      key: 'stripeState',
+      header: 'Stripe Onboarded',
       sortable: true,
       render: item => (
-        item.stage ? (
-          <Badge variant={STAGE_BADGE_VARIANT[item.stage]} dot>
-            {ONBOARDING_STAGES[item.stage].label}
-          </Badge>
+        item.stripe_onboarding_complete === null || item.stripe_onboarding_complete === undefined ? (
+          <Badge variant="default">Unknown</Badge>
         ) : (
-          <Badge variant="default">Not imported</Badge>
+          <Badge variant={item.stripe_onboarding_complete ? 'success' : 'warning'}>
+            {item.stripe_onboarding_complete ? 'Complete' : 'Not complete'}
+          </Badge>
         )
       ),
     },
     {
-      key: 'origin',
-      header: 'Source of Record',
-      sortable: true,
-      render: item => (
-        <Badge variant={item.origin === 'hybrid' ? 'success' : item.origin === 'qa' ? 'info' : 'warning'}>
-          {item.origin === 'hybrid' ? 'Hybrid' : item.origin === 'qa' ? 'QA only' : 'Local only'}
-        </Badge>
-      ),
-    },
-    {
-      key: 'active',
-      header: 'API Status',
+      key: 'qaLiveState',
+      header: 'Live on QA',
       sortable: true,
       render: item => (
         item.active === null ? (
-          <Badge variant="default">No QA record</Badge>
+          <Badge variant="default">Unknown</Badge>
         ) : (
           <Badge variant={item.active ? 'success' : 'warning'}>
-            {item.active ? 'Active' : 'Inactive'}
+            {item.active ? 'Live' : 'Not live'}
           </Badge>
         )
       ),
@@ -338,26 +332,13 @@ export default function BusinessesPage() {
         </span>
       ),
     },
-    {
-      key: 'status',
-      header: 'Dashboard Status',
-      render: item => (
-        item.status ? (
-          <Badge variant={item.status === 'active' ? 'success' : item.status === 'pending' ? 'warning' : 'default'}>
-            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-          </Badge>
-        ) : (
-          <Badge variant="default">Read only</Badge>
-        )
-      ),
-    },
   ]
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Businesses"
-        description="Render live QA business records on demand while keeping dashboard-only records local."
+        description="See which QA businesses have finished Stripe onboarding and which ones are actually live for customers in the webapp."
         actions={(
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" /> Add Business
@@ -374,8 +355,8 @@ export default function BusinessesPage() {
         loading={loading}
         onRowClick={item => router.push(item.detailHref)}
         filters={[
-          { key: 'stage', label: 'All Dashboard Stages', options: STAGE_OPTIONS },
-          { key: 'origin', label: 'All Record Sources', options: ORIGIN_OPTIONS },
+          { key: 'stripeState', label: 'All Stripe states', options: STRIPE_OPTIONS },
+          { key: 'qaLiveState', label: 'All QA live states', options: QA_LIVE_OPTIONS },
         ]}
         activeFilters={filters}
         onFilterChange={(key, value) => setFilters(current => ({ ...current, [key]: value }))}
@@ -383,7 +364,7 @@ export default function BusinessesPage() {
           <EmptyState
             icon={<Store className="h-8 w-8" />}
             title="No businesses yet"
-            description="No live QA businesses or local dashboard businesses were found."
+            description="No QA businesses were found."
             action={{ label: 'Add Business', onClick: () => setAddOpen(true) }}
           />
         )}
