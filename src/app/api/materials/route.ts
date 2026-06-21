@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { toBackendShape, toFrontendShape } from '@/lib/qa/dashboard-entity-map'
 import type { Material } from '@/lib/types/database'
 
 function resolveQaActorUserId(session: Awaited<ReturnType<typeof getAuthenticatedSession>>) {
@@ -77,25 +78,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Title, type, and brand are required.' }, { status: 400 })
   }
 
-  const qaPayload: Record<string, unknown> = { ...body }
-  if (
-    qaPayload.metadata &&
-    typeof qaPayload.metadata === 'object' &&
-    !Array.isArray(qaPayload.metadata)
-  ) {
-    qaPayload.metadata = JSON.stringify(qaPayload.metadata)
-  }
-
   if (session.source === 'qa') {
     try {
       const createdByUserId = resolveQaActorUserId(session)
+      // Convert the snake_case body to the backend's PascalCase shape. Sending
+      // raw snake_case (is_template, file_url, ...) does NOT bind on the .NET
+      // side — System.Text.Json matches case-insensitively but not across
+      // underscores — so IsTemplate/FileUrl/etc. would silently stay default.
+      const backendPayload = toBackendShape('materials', body as Record<string, unknown>)
+      if (createdByUserId != null) backendPayload.CreatedByUserId = createdByUserId
       const res = await fetchQaApi('/api/dashboard/v1/Material', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...qaPayload, createdByUserId }),
+        body: JSON.stringify(backendPayload),
       })
       const json = await parseQaResponse<unknown>(res, 'Failed to create material.')
-      return NextResponse.json(json as Material)
+      return NextResponse.json(toFrontendShape('materials', json) as Material)
     } catch (err) {
       return NextResponse.json(
         { error: err instanceof Error ? err.message : 'Failed to create material.' },
