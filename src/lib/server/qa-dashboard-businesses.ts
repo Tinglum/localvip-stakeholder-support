@@ -90,6 +90,14 @@ export function mergeBusinessRecord(
     linked_qr_collection_id: localBusiness?.linked_qr_collection_id || null,
     duplicate_of: localBusiness?.duplicate_of || null,
     external_id: qaBusiness ? String(qaBusiness.id) : localBusiness?.external_id || null,
+    // Surface the business's own referral code + Branch link from the QA detail
+    // so the CRM workspace can show "Referral code" + "Join link" for sharing.
+    referral_code: (localBusiness as { referral_code?: string | null } | null)?.referral_code
+      || (qaBusiness && 'referralCode' in qaBusiness ? (qaBusiness as { referralCode?: string | null }).referralCode : null)
+      || null,
+    branch_referral_url: (localBusiness as { branch_referral_url?: string | null } | null)?.branch_referral_url
+      || (qaBusiness && 'branchReferralUrl' in qaBusiness ? (qaBusiness as { branchReferralUrl?: string | null }).branchReferralUrl : null)
+      || null,
     public_description: qaFields.description || localBusiness?.public_description || null,
     avg_ticket: localBusiness?.avg_ticket || null,
     products_services: localBusiness?.products_services || null,

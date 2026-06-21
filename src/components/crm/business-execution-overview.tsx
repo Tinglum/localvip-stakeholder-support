@@ -11,6 +11,7 @@ import {
   ArrowRight,
   Camera,
   CheckCircle2,
+  Copy,
   ExternalLink,
   FileText,
   History,
@@ -49,7 +50,8 @@ import {
   useQrCodes,
   useCities,
 } from '@/lib/supabase/hooks'
-import { formatDate, formatDateTime } from '@/lib/utils'
+import { formatDate, formatDateTime, slugify } from '@/lib/utils'
+import { getBusinessJoinUrl } from '@/lib/business-join'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -221,12 +223,25 @@ export function BusinessExecutionOverview({
     setBrandingCoverPhotoUrl(workspaceBusiness.cover_photo_url || '')
   }, [workspaceBusiness.cover_photo_url, workspaceBusiness.logo_url])
 
+  const referralCode = (workspaceBusiness as { referral_code?: string | null }).referral_code || ''
+
+  async function copyToClipboard(value: string, message: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success(message)
+    } catch {
+      toast.error('Could not copy to clipboard.')
+    }
+  }
+
   const joinUrl = React.useMemo(() => {
-    // Use the business's own Branch.io referral link from QA — every business
-    // has one, so there is no stakeholder code to set up.
-    if (qaBranchReferralUrl) return qaBranchReferralUrl
-    return ''
-  }, [qaBranchReferralUrl])
+    // The shareable join link is our own "100-list" page (shows the offer + join
+    // form), keyed by the business id in the slug. Fall back to the Branch link.
+    const id = String(workspaceBusiness.external_id || queryBusinessId || '').trim()
+    const name = workspaceBusiness.name || 'business'
+    if (id) return getBusinessJoinUrl(slugify(`${name}-${id}`))
+    return qaBranchReferralUrl || ''
+  }, [workspaceBusiness.external_id, workspaceBusiness.name, queryBusinessId, qaBranchReferralUrl])
 
   /** Stub: no longer imports from stakeholder codes */
   async function handleImportFromLink() {
@@ -696,6 +711,42 @@ export function BusinessExecutionOverview({
                     <MiniStatus label="Generation" value={generationState} />
                     <MiniStatus label="Generated files" value={`${generatedCount}`} />
                     <MiniStatus label="QR linked" value={qrCodes.length > 0 ? 'Yes' : 'No'} />
+                  </div>
+
+                  {/* Shareable codes — so the business can invite friends, causes
+                      and customers to their 100-list. */}
+                  <div className="space-y-2 rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Referral code</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <code className="rounded bg-white px-2 py-1 text-sm font-semibold text-surface-900 border border-surface-200">
+                          {referralCode || '—'}
+                        </code>
+                        {referralCode ? (
+                          <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(referralCode, 'Referral code copied')}>
+                            <Copy className="h-3.5 w-3.5" /> Copy
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Join link</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <code className="flex-1 truncate rounded bg-white px-2 py-1 text-xs text-surface-700 border border-surface-200">
+                          {joinUrl || '—'}
+                        </code>
+                        {joinUrl ? (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(joinUrl, 'Join link copied')}>
+                              <Copy className="h-3.5 w-3.5" /> Copy
+                            </Button>
+                            <Button size="sm" variant="ghost" asChild>
+                              <Link href={joinUrl} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                   {engineError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{engineError}</div> : null}
                   {engineMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{engineMessage}</div> : null}
