@@ -29,6 +29,37 @@ async function resolveQaBusinessName(slug: string): Promise<string | null> {
   }
 }
 
+interface QaJoinData {
+  name: string
+  offerTitle: string | null
+  offerValue: string | null
+  logoUrl: string | null
+}
+
+// Resolve a QA business's public join data (name + capture offer) so the
+// "100-list" page shows the real offer. Our generated join slugs are
+// `name-<businessId>`, so resolve the full offer straight from that id; fall
+// back to a name-only lookup for any other slug shape.
+async function resolveQaBusinessJoin(slug: string): Promise<QaJoinData | null> {
+  const idMatch = slug.match(/-(\d+)$/)
+  if (idMatch) {
+    try {
+      const { buildQaBusinessJoinResource } = await import('@/lib/server/qa-business-stakeholders')
+      const r = await buildQaBusinessJoinResource(idMatch[1])
+      return {
+        name: r.businessName,
+        offerTitle: r.offerTitle || null,
+        offerValue: r.offerValue || null,
+        logoUrl: r.logoUrl || null,
+      }
+    } catch {
+      // fall through to name-only resolution
+    }
+  }
+  const name = await resolveQaBusinessName(slug)
+  return name ? { name, offerTitle: null, offerValue: null, logoUrl: null } : null
+}
+
 export default async function BusinessJoinPage({
   params,
 }: {
@@ -38,10 +69,12 @@ export default async function BusinessJoinPage({
   const business = await resolveBusinessByJoinIdentifier(supabase, params.slug)
 
   if (!business) {
-    const qaBusinessName = await resolveQaBusinessName(params.slug)
-    if (!qaBusinessName) {
+    const qa = await resolveQaBusinessJoin(params.slug)
+    if (!qa) {
       notFound()
     }
+
+    const qaOfferTitle = qa.offerTitle || `Join the ${qa.name} list`
 
     return (
       <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_30%),linear-gradient(180deg,_#0f172a_0%,_#172554_45%,_#1e293b_100%)] px-4 py-8 sm:px-6">
@@ -56,18 +89,24 @@ export default async function BusinessJoinPage({
               <div className="rounded-[1.75rem] bg-gradient-to-br from-brand-600 via-brand-500 to-brand-700 p-5 text-white shadow-lg">
                 <div className="flex items-center gap-4">
                   <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-3xl border border-white/25 bg-white/95 shadow-sm">
-                    <Store className="h-7 w-7 text-brand-600" />
+                    {qa.logoUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={qa.logoUrl} alt={`${qa.name} logo`} className="h-full w-full object-contain p-2" />
+                    ) : (
+                      <Store className="h-7 w-7 text-brand-600" />
+                    )}
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">Customer Capture Offer</p>
-                    <h1 className="mt-2 text-3xl font-black tracking-tight text-white">{qaBusinessName}</h1>
+                    <h1 className="mt-2 text-3xl font-black tracking-tight text-white">{qa.name}</h1>
                     <p className="mt-2 text-sm text-white/80">Join the list and claim your local offer.</p>
                   </div>
                 </div>
 
                 <div className="mt-5 rounded-[1.5rem] border border-white/15 bg-white/10 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Open from QR</p>
-                  <p className="mt-2 text-2xl font-bold leading-tight text-white">Join the {qaBusinessName} list</p>
+                  <p className="mt-2 text-2xl font-bold leading-tight text-white">{qaOfferTitle}</p>
+                  {qa.offerValue && <p className="mt-2 text-base font-semibold text-emerald-100">{qa.offerValue}</p>}
                   <p className="mt-3 text-sm leading-6 text-white/85">
                     Enter your details below to register instantly and claim this pre-launch offer in-store.
                   </p>
@@ -77,9 +116,9 @@ export default async function BusinessJoinPage({
               <div className="mt-5">
                 <PublicBusinessJoinForm
                   slug={params.slug}
-                  businessName={qaBusinessName}
-                  offerTitle={`Join the ${qaBusinessName} list`}
-                  offerValue={null}
+                  businessName={qa.name}
+                  offerTitle={qaOfferTitle}
+                  offerValue={qa.offerValue}
                   supportLabel="Support local businesses near you."
                 />
               </div>

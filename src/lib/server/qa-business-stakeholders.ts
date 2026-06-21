@@ -3,6 +3,7 @@ import type { Business, Stakeholder } from '@/lib/types/database'
 import {
   BusinessJoinResource,
   getBusinessJoinDisplayUrl,
+  getBusinessJoinUrl,
   getDefaultBusinessJoinQrAppearance,
   type BusinessJoinQrAppearance,
 } from '@/lib/business-join'
@@ -327,9 +328,10 @@ export async function buildQaBusinessJoinResource(businessId: string): Promise<B
   // Branch.io link from QA. Every QA business is created with these, so there is
   // no stakeholder / StakeholderCode indirection to set up.
   const referralCode = sanitizeStakeholderCodeValue(qaBusiness.referralCode) || `biz-${qaBusiness.id}`
-  const joinUrl = (qaBusiness.branchReferralUrl || '').trim()
-    || `https://localvip.com/?ref=${encodeURIComponent(referralCode)}`
   const joinSlug = buildJoinSlug(qaBusiness)
+  // The QR + offer link must point at our own "100-list" join page (which shows
+  // the capture offer and the join form), NOT the branch.io app deep link.
+  const joinUrl = getBusinessJoinUrl(joinSlug)
 
   return {
     businessId: String(qaBusiness.id),
