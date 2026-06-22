@@ -19,7 +19,10 @@ export async function GET() {
   }
 
   try {
-    const res = await fetchQaApi('/api/mobile/v1/Payment/CustomerStripeOnBoarding')
+    // Use the dashboard StripeConnect endpoint (business Connect flow for the
+    // current user) — NOT the mobile CustomerStripeOnBoarding, which branches on
+    // the Consumer role and falsely reports business owners as "complete".
+    const res = await fetchQaApi('/api/dashboard/v1/StripeConnect')
     const contentType = res.headers.get('content-type') || ''
     if (!res.ok) {
       // Surface the upstream status + a short detail so the cause is visible
