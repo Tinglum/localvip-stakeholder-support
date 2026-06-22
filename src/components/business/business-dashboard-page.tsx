@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { BusinessNetworkLinkCard } from '@/components/business/business-network-link-card'
+import { StripeSetupCard } from '@/components/business/stripe-setup-card'
 import { useAuth } from '@/lib/auth/context'
 import { getBusinessJoinCaptureData } from '@/lib/business-join'
 import { formatCashbackLabel, resolveBusinessOffer } from '@/lib/offers'
@@ -252,6 +253,10 @@ export function BusinessDashboardPage() {
           </Badge>
         }
       />
+
+      {/* First step: connect Stripe so the business can actually get paid.
+          Hidden automatically once onboarding is complete. */}
+      <StripeSetupCard />
 
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-surface-200 bg-surface-50 p-1">
         {([
