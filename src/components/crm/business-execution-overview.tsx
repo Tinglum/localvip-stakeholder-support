@@ -185,6 +185,10 @@ export function BusinessExecutionOverview({
   const [captureHeadline, setCaptureHeadline] = React.useState(captureOffer.headline || '')
   const [captureDescription, setCaptureDescription] = React.useState(captureOffer.description || '')
   const [captureValue, setCaptureValue] = React.useState(captureOffer.value_label || '')
+  // Offer timeline (date-only YYYY-MM-DD for the <input type="date">). Maps to the
+  // backend StartDate/EndDate via toBackendShape (starts_at/ends_at).
+  const [captureStartsAt, setCaptureStartsAt] = React.useState((captureOffer.starts_at || '').slice(0, 10))
+  const [captureEndsAt, setCaptureEndsAt] = React.useState((captureOffer.ends_at || '').slice(0, 10))
   const [cashbackPercent, setCashbackPercent] = React.useState(cashbackOffer.cashback_percent || 10)
   const [offerMessage, setOfferMessage] = React.useState<string | null>(null)
   const [offerError, setOfferError] = React.useState<string | null>(null)
@@ -215,8 +219,10 @@ export function BusinessExecutionOverview({
     setCaptureHeadline(captureOffer.headline || '')
     setCaptureDescription(captureOffer.description || '')
     setCaptureValue(captureOffer.value_label || '')
+    setCaptureStartsAt((captureOffer.starts_at || '').slice(0, 10))
+    setCaptureEndsAt((captureOffer.ends_at || '').slice(0, 10))
     setCashbackPercent(cashbackOffer.cashback_percent || 10)
-  }, [captureOffer.description, captureOffer.headline, captureOffer.value_label, cashbackOffer.cashback_percent])
+  }, [captureOffer.description, captureOffer.headline, captureOffer.value_label, captureOffer.starts_at, captureOffer.ends_at, cashbackOffer.cashback_percent])
 
   React.useEffect(() => {
     setBrandingLogoUrl(workspaceBusiness.logo_url || '')
@@ -402,8 +408,8 @@ export function BusinessExecutionOverview({
         value_type: 'label',
         value_label: captureValue.trim() || null,
         cashback_percent: null,
-        starts_at: null,
-        ends_at: null,
+        starts_at: captureStartsAt ? new Date(`${captureStartsAt}T00:00:00Z`).toISOString() : null,
+        ends_at: captureEndsAt ? new Date(`${captureEndsAt}T23:59:59Z`).toISOString() : null,
         metadata: { source: 'crm_business_execution' },
       }
 
@@ -867,6 +873,19 @@ export function BusinessExecutionOverview({
                     <label className="mb-1.5 block text-sm font-medium text-surface-700">Value label</label>
                     <Input value={captureValue} onChange={(event) => setCaptureValue(event.target.value)} />
                   </div>
+                  {/* Offer timeline — when the offer runs. Persists to the backend
+                      StartDate/EndDate, same as the backend offer editor. */}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-surface-700">Starts</label>
+                      <Input type="date" value={captureStartsAt} onChange={(event) => setCaptureStartsAt(event.target.value)} />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-surface-700">Ends</label>
+                      <Input type="date" value={captureEndsAt} max={undefined} min={captureStartsAt || undefined} onChange={(event) => setCaptureEndsAt(event.target.value)} />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-surface-400">Optional — leave both blank for an always-on offer.</p>
                   {/* The 100-list customer join link lives here in the 100-list
                       view — separate from the LocalVIP network link on the dashboard. */}
                   <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
