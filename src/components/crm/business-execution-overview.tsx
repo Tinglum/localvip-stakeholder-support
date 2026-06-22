@@ -52,6 +52,7 @@ import {
 } from '@/lib/supabase/hooks'
 import { formatDate, formatDateTime, slugify } from '@/lib/utils'
 import { getBusinessJoinUrl } from '@/lib/business-join'
+import { DealManager } from '@/components/crm/deal-manager'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -196,7 +197,7 @@ export function BusinessExecutionOverview({
   const [outreachSubject, setOutreachSubject] = React.useState('')
   const [outreachBody, setOutreachBody] = React.useState('')
   const [outreachOutcome, setOutreachOutcome] = React.useState('')
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'outreach' | 'branding'>('materials')
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'deal' | 'outreach' | 'branding'>('materials')
   const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision' | null>(null)
   const { data: hookCities } = useCities({ enabled: localStateEnabled })
   const allCities = localState?.cities ?? hookCities
@@ -517,14 +518,14 @@ export function BusinessExecutionOverview({
 
   /** Map any lifecycle / next-action tab key to the right scroll target. */
   function navigateToArea(tab: string) {
-    const workspaceTabs = ['materials', 'offers', 'outreach', 'branding']
+    const workspaceTabs = ['materials', 'offers', 'deal', 'outreach', 'branding']
     const parentTabs = ['activity', 'tasks', 'notes', 'qr']
 
     // 'codes' maps to the materials workspace tab
     const resolved = tab === 'codes' ? 'materials' : tab
 
     if (workspaceTabs.includes(resolved)) {
-      setActiveWorkspaceTab(resolved as 'materials' | 'offers' | 'outreach' | 'branding')
+      setActiveWorkspaceTab(resolved as 'materials' | 'offers' | 'deal' | 'outreach' | 'branding')
       if (typeof window !== 'undefined') {
         requestAnimationFrame(() => {
           document.getElementById('business-workspace-tabs')?.scrollIntoView({
@@ -559,7 +560,7 @@ export function BusinessExecutionOverview({
   }
 
   /** Convenience: open a workspace tab (backwards compat for internal callers). */
-  function openWorkspaceTab(tab: 'materials' | 'offers' | 'outreach' | 'branding') {
+  function openWorkspaceTab(tab: 'materials' | 'offers' | 'deal' | 'outreach' | 'branding') {
     navigateToArea(tab)
   }
 
@@ -736,9 +737,15 @@ export function BusinessExecutionOverview({
             />
             <WorkspaceTabButton
               active={activeWorkspaceTab === 'offers'}
-              label="Offers + Cashback"
-              meta={`${cashbackPercent}% cashback`}
+              label="Offer"
+              meta="100-list capture"
               onClick={() => setActiveWorkspaceTab('offers')}
+            />
+            <WorkspaceTabButton
+              active={activeWorkspaceTab === 'deal'}
+              label="Deal"
+              meta="LocalVIP cashback"
+              onClick={() => setActiveWorkspaceTab('deal')}
             />
             <WorkspaceTabButton
               active={activeWorkspaceTab === 'outreach'}
@@ -855,10 +862,14 @@ export function BusinessExecutionOverview({
           ) : null}
 
           {activeWorkspaceTab === 'offers' ? (
-            <div id="offers" className="grid gap-6 xl:grid-cols-[1fr,0.9fr]">
+            <div id="offers">
               <Card>
                 <CardHeader>
-                  <CardTitle>100-list offer</CardTitle>
+                  <CardTitle>Offer</CardTitle>
+                  <p className="text-sm text-surface-500">
+                    The 100-list capture offer — used to get customers registered on this business&apos;s list.
+                    This is <span className="font-medium">not</span> the LocalVIP deal (cashback) — that&apos;s on the <span className="font-medium">Deal</span> tab.
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
@@ -907,31 +918,20 @@ export function BusinessExecutionOverview({
                       ) : null}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Cashback and launch readiness</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-surface-700">Cashback percent</label>
-                    <Input type="number" min={5} max={25} value={cashbackPercent} onChange={(event) => setCashbackPercent(Number(event.target.value || 10))} />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <MiniStatus label="Capture ready" value={captureHeadline.trim() ? 'Yes' : 'No'} />
-                    <MiniStatus label="Cashback ready" value={cashbackPercent >= 5 && cashbackPercent <= 25 ? 'Yes' : 'No'} />
-                    <MiniStatus label="Live phase" value={biz.launch_phase || 'setup'} />
-                  </div>
                   {offerError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{offerError}</div> : null}
                   {offerMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{offerMessage}</div> : null}
                   <Button onClick={() => void handleSaveOffers()} disabled={offerSaving || updateLoading}>
                     {offerSaving || updateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-                    Save offer settings
+                    Save offer
                   </Button>
                 </CardContent>
               </Card>
+            </div>
+          ) : null}
+
+          {activeWorkspaceTab === 'deal' ? (
+            <div id="deal">
+              <DealManager businessAccountId={String(queryBusinessId)} />
             </div>
           ) : null}
 

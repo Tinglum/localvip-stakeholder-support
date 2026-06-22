@@ -617,6 +617,28 @@ export function useOffers(filters?: Record<string, string>, options?: UseQueryOp
 export function useOfferInsert() { return useQaInsert<Offer>('offers') }
 export function useOfferUpdate() { return useQaUpdate<Offer>('offers') }
 
+// LocalVIP Deal (the consumer-app cashback deal) — distinct from the 100-list Offer.
+export interface QaDealRow {
+  id: string
+  business_account_id: string | null
+  cash_back: number
+  description: string | null
+  active: boolean
+  is_recurring: boolean
+  days_of_week_mask: number | null
+  daily_start_minutes: number | null
+  daily_end_minutes: number | null
+  start_date: string | null
+  end_date: string | null
+  updated_date?: string | null
+}
+export function useDeals(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useQaQuery<QaDealRow>('deals', { filters, enabled: options?.enabled })
+}
+export function useDealInsert() { return useQaInsert<QaDealRow>('deals') }
+export function useDealUpdate() { return useQaUpdate<QaDealRow>('deals') }
+export function useDealDelete() { return useQaDelete('deals') }
+
 export function useTasks(filters?: Record<string, string>, options?: UseQueryOptions) {
   return useQaQuery<Task>('tasks', { filters, enabled: options?.enabled })
 }

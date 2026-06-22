@@ -31,6 +31,7 @@ export type QaEntityKey =
   | 'business_referrals'
   | 'city_access_requests'
   | 'template_rules'
+  | 'deals'
 
 export interface QaEntityConfig {
   /** Backend endpoint path under /api/dashboard/v1 */
@@ -59,6 +60,7 @@ export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
   onboarding_flows: { endpoint: '/api/dashboard/v1/Onboarding' },
   onboarding_steps: { endpoint: '/api/dashboard/v1/Onboarding' }, // accessed via flow
   offers: { endpoint: '/api/dashboard/v1/Offer' },
+  deals: { endpoint: '/api/dashboard/v1/Deal', listWrapperKey: 'items' },
   audit_logs: { endpoint: '/api/dashboard/v1/AuditLog', listWrapperKey: 'items' },
   notifications: { endpoint: '/api/dashboard/v1/Notification' },
   profiles: { endpoint: '/api/dashboard/v1/User/list', listWrapperKey: 'items' },
