@@ -1,8 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, MapPin, Plus, Store } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CreditCard, MapPin, Plus, Store } from 'lucide-react'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -259,7 +260,13 @@ export default function BusinessesPage() {
       render: item => (
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-surface-900">{item.name}</span>
+            <Link
+              href={item.detailHref}
+              onClick={(event) => event.stopPropagation()}
+              className="font-medium text-surface-900 transition-colors hover:text-brand-700"
+            >
+              {item.name}
+            </Link>
             {item.duplicateOf && (
               <span title="Potential duplicate detected">
                 <AlertTriangle className="h-3.5 w-3.5 text-warning-500" />
@@ -279,7 +286,23 @@ export default function BusinessesPage() {
       render: item => (
         <div className="space-y-1">
           <p className="text-sm text-surface-800">{item.owner_name || item.ownerName || 'N/A'}</p>
-          <p className="text-xs text-surface-500">{item.owner_email || item.ownerEmail || 'No owner email from QA'}</p>
+          {item.owner_email || item.ownerEmail ? (
+            <a
+              href={`mailto:${item.owner_email || item.ownerEmail}`}
+              onClick={(event) => event.stopPropagation()}
+              className="text-xs text-brand-700 transition-colors hover:text-brand-800"
+            >
+              {item.owner_email || item.ownerEmail}
+            </a>
+          ) : (
+            <Link
+              href={item.detailHref}
+              onClick={(event) => event.stopPropagation()}
+              className="text-xs text-amber-700 transition-colors hover:text-amber-800"
+            >
+              Add owner email
+            </Link>
+          )}
         </div>
       ),
     },
@@ -288,10 +311,17 @@ export default function BusinessesPage() {
       header: 'Location',
       sortable: true,
       render: item => (
-        <span className="flex items-center gap-1 text-surface-600">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            router.push(item.detailHref)
+          }}
+          className="flex items-center gap-1 text-left text-surface-600 transition-colors hover:text-brand-700"
+        >
           <MapPin className="h-3.5 w-3.5 text-surface-400" />
           {item.locationLabel}
-        </span>
+        </button>
       ),
     },
     {
@@ -299,13 +329,23 @@ export default function BusinessesPage() {
       header: 'Stripe Onboarded',
       sortable: true,
       render: item => (
-        item.stripe_onboarding_complete === null || item.stripe_onboarding_complete === undefined ? (
-          <Badge variant="default">Unknown</Badge>
-        ) : (
-          <Badge variant={item.stripe_onboarding_complete ? 'success' : 'warning'}>
-            {item.stripe_onboarding_complete ? 'Complete' : 'Not complete'}
-          </Badge>
-        )
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            setFilters(current => ({ ...current, stripeState: item.stripeState }))
+          }}
+          className="inline-flex"
+          title="Filter businesses by this Stripe state"
+        >
+          {item.stripe_onboarding_complete === null || item.stripe_onboarding_complete === undefined ? (
+            <Badge variant="default">Unknown</Badge>
+          ) : (
+            <Badge variant={item.stripe_onboarding_complete ? 'success' : 'warning'}>
+              {item.stripe_onboarding_complete ? 'Complete' : 'Not complete'}
+            </Badge>
+          )}
+        </button>
       ),
     },
     {
@@ -313,13 +353,23 @@ export default function BusinessesPage() {
       header: 'Live on QA',
       sortable: true,
       render: item => (
-        item.active === null ? (
-          <Badge variant="default">Unknown</Badge>
-        ) : (
-          <Badge variant={item.active ? 'success' : 'warning'}>
-            {item.active ? 'Live' : 'Not live'}
-          </Badge>
-        )
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            setFilters(current => ({ ...current, qaLiveState: item.qaLiveState }))
+          }}
+          className="inline-flex"
+          title="Filter businesses by this QA live state"
+        >
+          {item.active === null ? (
+            <Badge variant="default">Unknown</Badge>
+          ) : (
+            <Badge variant={item.active ? 'success' : 'warning'}>
+              {item.active ? 'Live' : 'Not live'}
+            </Badge>
+          )}
+        </button>
       ),
     },
     {
@@ -330,6 +380,26 @@ export default function BusinessesPage() {
         <span className="text-xs text-surface-500">
           {item.updatedAt ? relativeTime(item.updatedAt) : (item.createdAt ? relativeTime(item.createdAt) : 'N/A')}
         </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: item => (
+        <div className="flex flex-wrap gap-2">
+          <Link href={item.detailHref} onClick={(event) => event.stopPropagation()}>
+            <Button variant="outline" size="sm">
+              Open <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+          {item.stripe_onboarding_complete === false ? (
+            <Link href={`${item.detailHref}#stripe`} onClick={(event) => event.stopPropagation()}>
+              <Button variant="outline" size="sm">
+                <CreditCard className="h-3.5 w-3.5" /> Stripe
+              </Button>
+            </Link>
+          ) : null}
+        </div>
       ),
     },
   ]

@@ -5,12 +5,20 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Mail, Phone, MapPin, Calendar, CreditCard, Wallet, Heart, Users,
-  Smartphone, Loader2, CheckCircle, AlertCircle, TrendingUp, ArrowRight,
+  Smartphone, Loader2, CheckCircle, AlertCircle, TrendingUp, ArrowRight, Copy, RefreshCw,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 const TYPE_VARIANT: Record<string, 'default' | 'info' | 'warning' | 'success' | 'danger'> = {
   Normal: 'default',
@@ -148,6 +156,8 @@ export default function ConsumerDetailPage() {
   const [devices, setDevices] = React.useState<DeviceRow[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [reloadKey, setReloadKey] = React.useState(0)
+  const [supportOpen, setSupportOpen] = React.useState(false)
 
   React.useEffect(() => {
     let cancelled = false
@@ -200,7 +210,7 @@ export default function ConsumerDetailPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [consumerId])
+  }, [consumerId, reloadKey])
 
   if (loading) {
     return (
@@ -225,6 +235,9 @@ export default function ConsumerDetailPage() {
 
   const c = summary.consumer
   const fullName = `${c.firstName} ${c.lastName}`.trim() || c.email
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <div className="space-y-6">
@@ -257,6 +270,9 @@ export default function ConsumerDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setReloadKey((key) => key + 1)}>
+            <RefreshCw className="h-4 w-4" /> Refresh QA
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -274,12 +290,12 @@ export default function ConsumerDetailPage() {
           >
             View as user
           </Button>
-          <Button size="sm">Edit profile</Button>
+          <Button size="sm" onClick={() => setSupportOpen(true)}>Edit/support profile</Button>
         </div>
       </div>
 
       {/* Admin tag & access panel */}
-      <Card>
+      <Card id="transactions" className="scroll-mt-24">
         <CardHeader>
           <CardTitle>Admin: tag & access</CardTitle>
         </CardHeader>
@@ -349,47 +365,17 @@ export default function ConsumerDetailPage() {
 
       {/* Top metric tiles */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wider text-surface-500">Wallet balance</div>
-            <div className="mt-1 text-2xl font-semibold text-surface-900">{formatMoney(summary.wallet.availableAmount)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wider text-surface-500">Lifetime cashback</div>
-            <div className="mt-1 text-2xl font-semibold text-surface-900">{formatMoney(summary.lifetimeCashback)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wider text-surface-500">Bonus cash</div>
-            <div className="mt-1 text-2xl font-semibold text-surface-900">{formatMoney(summary.lifetimeBonusCash)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wider text-surface-500">Transactions</div>
-            <div className="mt-1 text-2xl font-semibold text-surface-900">{summary.counts.transactions}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wider text-surface-500">5 friends</div>
-            <div className="mt-1 text-2xl font-semibold text-surface-900">{summary.counts.friends}/5</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wider text-surface-500">10 causes</div>
-            <div className="mt-1 text-2xl font-semibold text-surface-900">{summary.counts.causes}/10</div>
-          </CardContent>
-        </Card>
+        <MetricActionCard label="Wallet balance" value={formatMoney(summary.wallet.availableAmount)} onClick={() => scrollToSection('wallet-referral')} />
+        <MetricActionCard label="Lifetime cashback" value={formatMoney(summary.lifetimeCashback)} onClick={() => scrollToSection('cashback-history')} />
+        <MetricActionCard label="Bonus cash" value={formatMoney(summary.lifetimeBonusCash)} onClick={() => scrollToSection('bonus-history')} />
+        <MetricActionCard label="Transactions" value={String(summary.counts.transactions)} onClick={() => scrollToSection('transactions')} />
+        <MetricActionCard label="5 friends" value={`${summary.counts.friends}/5`} onClick={() => scrollToSection('network')} />
+        <MetricActionCard label="10 causes" value={`${summary.counts.causes}/10`} onClick={() => scrollToSection('network')} />
       </div>
 
       {/* Wallet + Referral */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
+      <div id="wallet-referral" className="grid scroll-mt-24 grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card id="cashback-history" className="scroll-mt-24">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Wallet className="h-4 w-4" />Wallet</CardTitle>
           </CardHeader>
@@ -437,14 +423,25 @@ export default function ConsumerDetailPage() {
       </div>
 
       {/* Network — 5 Friends + 10 Causes */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div id="network" className="grid scroll-mt-24 grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" />5 Friends Network ({friends.length}/5)</CardTitle>
           </CardHeader>
           <CardContent>
             {friends.length === 0 ? (
-              <p className="py-4 text-center text-sm text-surface-400">No friends linked yet.</p>
+              <div className="py-4 text-center">
+                <p className="text-sm text-surface-400">No friends linked yet.</p>
+                {c.sharedURL ? (
+                  <a href={c.sharedURL} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800">
+                    Open referral link <ArrowRight className="h-4 w-4" />
+                  </a>
+                ) : (
+                  <button type="button" onClick={() => setSupportOpen(true)} className="mt-3 text-sm font-semibold text-brand-700 hover:text-brand-800">
+                    Review referral setup
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="space-y-2">
                 {friends.map(f => (
@@ -469,7 +466,12 @@ export default function ConsumerDetailPage() {
           </CardHeader>
           <CardContent>
             {causes.length === 0 ? (
-              <p className="py-4 text-center text-sm text-surface-400">No causes linked yet.</p>
+              <div className="py-4 text-center">
+                <p className="text-sm text-surface-400">No causes linked yet.</p>
+                <Link href="/crm/causes" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800">
+                  Browse causes <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
             ) : (
               <div className="space-y-2">
                 {causes.map(cz => (
@@ -490,13 +492,18 @@ export default function ConsumerDetailPage() {
       </div>
 
       {/* Transactions */}
-      <Card>
+      <Card id="devices" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><TrendingUp className="h-4 w-4" />Recent Transactions ({transactions.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {transactions.length === 0 ? (
-            <p className="py-4 text-center text-sm text-surface-400">No transactions yet.</p>
+            <div className="py-4 text-center">
+              <p className="text-sm text-surface-400">No transactions yet.</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => setReloadKey((key) => key + 1)}>
+                <RefreshCw className="h-3.5 w-3.5" /> Refresh transactions
+              </Button>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -542,7 +549,12 @@ export default function ConsumerDetailPage() {
           </CardHeader>
           <CardContent>
             {(cashback?.recent.length ?? 0) === 0 ? (
-              <p className="py-4 text-center text-sm text-surface-400">No cashback yet.</p>
+              <div className="py-4 text-center">
+                <p className="text-sm text-surface-400">No cashback yet.</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setReloadKey((key) => key + 1)}>
+                  <RefreshCw className="h-3.5 w-3.5" /> Refresh cashback
+                </Button>
+              </div>
             ) : (
               <div className="space-y-1 text-sm">
                 {cashback!.recent.slice(0, 10).map(r => (
@@ -556,13 +568,18 @@ export default function ConsumerDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="bonus-history" className="scroll-mt-24">
           <CardHeader>
             <CardTitle>Bonus cash (lifetime {formatMoney(bonusCash?.lifetimeTotal)})</CardTitle>
           </CardHeader>
           <CardContent>
             {(bonusCash?.recent.length ?? 0) === 0 ? (
-              <p className="py-4 text-center text-sm text-surface-400">No bonus cash yet.</p>
+              <div className="py-4 text-center">
+                <p className="text-sm text-surface-400">No bonus cash yet.</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setReloadKey((key) => key + 1)}>
+                  <RefreshCw className="h-3.5 w-3.5" /> Refresh bonus cash
+                </Button>
+              </div>
             ) : (
               <div className="space-y-1 text-sm">
                 {bonusCash!.recent.slice(0, 10).map(r => (
@@ -584,7 +601,12 @@ export default function ConsumerDetailPage() {
         </CardHeader>
         <CardContent>
           {devices.length === 0 ? (
-            <p className="py-4 text-center text-sm text-surface-400">No devices registered.</p>
+            <div className="py-4 text-center">
+              <p className="text-sm text-surface-400">No devices registered.</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => setReloadKey((key) => key + 1)}>
+                <RefreshCw className="h-3.5 w-3.5" /> Refresh devices
+              </Button>
+            </div>
           ) : (
             <div className="space-y-2 text-sm">
               {devices.map(d => (
@@ -599,6 +621,103 @@ export default function ConsumerDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={supportOpen} onOpenChange={setSupportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Customer support actions</DialogTitle>
+            <DialogDescription>
+              QA currently exposes customer type updates and read-only profile details here. Use these actions to support the customer without leaving the CRM.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <SupportRow label="Name" value={fullName} />
+            <SupportRow label="Email" value={c.email || 'Missing'} copyValue={c.email || undefined} href={c.email ? `mailto:${c.email}` : undefined} />
+            <SupportRow label="Phone" value={c.phoneNumber || 'Missing'} copyValue={c.phoneNumber || undefined} href={c.phoneNumber ? `tel:${c.phoneNumber}` : undefined} />
+            <SupportRow label="Referral code" value={c.referralCode || 'Missing'} copyValue={c.referralCode || undefined} />
+            <SupportRow label="Shared URL" value={c.sharedURL || 'Missing'} copyValue={c.sharedURL || undefined} href={c.sharedURL || undefined} external />
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Direct name/email/phone editing needs a QA customer update endpoint. Until that exists, this modal gives support staff the live data, copy actions, contact links, type updates, refresh, and view-as access.
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setReloadKey((key) => key + 1)}>
+              <RefreshCw className="h-4 w-4" /> Refresh QA
+            </Button>
+            <Button onClick={() => setSupportOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function MetricActionCard({
+  label,
+  value,
+  onClick,
+}: {
+  label: string
+  value: string
+  onClick: () => void
+}) {
+  return (
+    <button type="button" onClick={onClick} className="rounded-xl border border-surface-200 bg-white text-left transition-colors hover:border-brand-200 hover:bg-brand-50">
+      <div className="p-4">
+        <div className="text-xs uppercase tracking-wider text-surface-500">{label}</div>
+        <div className="mt-1 text-2xl font-semibold text-surface-900">{value}</div>
+        <div className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-700">
+          Open <ArrowRight className="h-3.5 w-3.5" />
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function SupportRow({
+  label,
+  value,
+  copyValue,
+  href,
+  external,
+}: {
+  label: string
+  value: string
+  copyValue?: string
+  href?: string
+  external?: boolean
+}) {
+  const content = (
+    <>
+      <span className="truncate">{value}</span>
+      <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+    </>
+  )
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2">
+      <div className="min-w-0">
+        <p className="text-xs uppercase tracking-[0.14em] text-surface-500">{label}</p>
+        <p className="truncate font-medium text-surface-900">{value}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {copyValue ? (
+          <Button variant="outline" size="sm" onClick={() => navigator.clipboard?.writeText(copyValue)}>
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+        {href ? (
+          external ? (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800">
+              {content}
+            </a>
+          ) : (
+            <a href={href} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800">
+              {content}
+            </a>
+          )
+        ) : null}
+      </div>
     </div>
   )
 }

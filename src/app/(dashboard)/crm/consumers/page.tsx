@@ -1,11 +1,13 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Users, Mail, Phone, MapPin, Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2, Mail, MapPin, Phone, RefreshCw, Users } from 'lucide-react'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -18,6 +20,10 @@ const TYPE_VARIANT: Record<string, 'default' | 'info' | 'warning' | 'success' | 
   Volunteer: 'warning',
   LaunchTeamPartner: 'success',
   Influencer: 'danger',
+}
+
+function formatConsumerType(type: string) {
+  return type === 'LaunchTeamPartner' ? 'Launch Team Partner' : type
 }
 
 export default function ConsumersPage() {
@@ -51,64 +57,140 @@ export default function ConsumersPage() {
 
   const filtered = React.useMemo(() => {
     if (!typeFilter) return consumers
-    return consumers.filter((c) => c.consumerType === typeFilter)
+    return consumers.filter((consumer) => consumer.consumerType === typeFilter)
   }, [consumers, typeFilter])
 
   const uniqueTypes = React.useMemo(() => {
-    const types = new Set(consumers.map((c) => c.consumerType))
+    const types = new Set(consumers.map((consumer) => consumer.consumerType))
     return Array.from(types).sort()
   }, [consumers])
 
   const columns: Column<QaConsumerListItem>[] = [
     {
-      key: 'name', header: 'Name', sortable: true,
-      render: (c) => (
-        <span className="font-medium text-surface-900">
-          {c.firstName} {c.lastName}
-        </span>
+      key: 'name',
+      header: 'Name',
+      sortable: true,
+      render: (consumer) => (
+        <Link
+          href={`/crm/consumers/${consumer.id}`}
+          onClick={(event) => event.stopPropagation()}
+          className="font-medium text-surface-900 transition-colors hover:text-brand-700"
+        >
+          {consumer.firstName} {consumer.lastName}
+        </Link>
       ),
     },
     {
-      key: 'email', header: 'Email', sortable: true,
-      render: (c) => c.email ? (
-        <span className="flex items-center gap-1 text-surface-600">
-          <Mail className="h-3.5 w-3.5 text-surface-400" />{c.email}
-        </span>
-      ) : <span className="text-surface-300">—</span>,
+      key: 'email',
+      header: 'Email',
+      sortable: true,
+      render: (consumer) => consumer.email ? (
+        <a
+          href={`mailto:${consumer.email}`}
+          onClick={(event) => event.stopPropagation()}
+          className="flex items-center gap-1 text-surface-600 transition-colors hover:text-brand-700"
+        >
+          <Mail className="h-3.5 w-3.5 text-surface-400" />
+          {consumer.email}
+        </a>
+      ) : (
+        <Link
+          href={`/crm/consumers/${consumer.id}`}
+          onClick={(event) => event.stopPropagation()}
+          className="text-xs font-semibold text-amber-700 hover:text-amber-800"
+        >
+          Add email/support
+        </Link>
+      ),
     },
     {
-      key: 'phone', header: 'Phone',
-      render: (c) => c.phoneNumber ? (
-        <span className="flex items-center gap-1 text-surface-600">
-          <Phone className="h-3.5 w-3.5 text-surface-400" />{c.phoneNumber}
-        </span>
-      ) : <span className="text-surface-300">—</span>,
+      key: 'phone',
+      header: 'Phone',
+      render: (consumer) => consumer.phoneNumber ? (
+        <a
+          href={`tel:${consumer.phoneNumber}`}
+          onClick={(event) => event.stopPropagation()}
+          className="flex items-center gap-1 text-surface-600 transition-colors hover:text-brand-700"
+        >
+          <Phone className="h-3.5 w-3.5 text-surface-400" />
+          {consumer.phoneNumber}
+        </a>
+      ) : (
+        <Link
+          href={`/crm/consumers/${consumer.id}`}
+          onClick={(event) => event.stopPropagation()}
+          className="text-xs font-semibold text-amber-700 hover:text-amber-800"
+        >
+          Add phone/support
+        </Link>
+      ),
     },
     {
-      key: 'location', header: 'Location',
-      render: (c) => {
-        const parts = [c.city, c.state, c.country].filter(Boolean)
+      key: 'location',
+      header: 'Location',
+      render: (consumer) => {
+        const parts = [consumer.city, consumer.state, consumer.country].filter(Boolean)
         return parts.length ? (
-          <span className="flex items-center gap-1 text-surface-600">
-            <MapPin className="h-3.5 w-3.5 text-surface-400" />{parts.join(', ')}
-          </span>
-        ) : <span className="text-surface-300">—</span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              router.push(`/crm/consumers/${consumer.id}`)
+            }}
+            className="flex items-center gap-1 text-left text-surface-600 transition-colors hover:text-brand-700"
+          >
+            <MapPin className="h-3.5 w-3.5 text-surface-400" />
+            {parts.join(', ')}
+          </button>
+        ) : (
+          <Link
+            href={`/crm/consumers/${consumer.id}`}
+            onClick={(event) => event.stopPropagation()}
+            className="text-xs font-semibold text-amber-700 hover:text-amber-800"
+          >
+            Add location/support
+          </Link>
+        )
       },
     },
     {
-      key: 'consumerType', header: 'Type', sortable: true,
-      render: (c) => (
-        <Badge variant={TYPE_VARIANT[c.consumerType] || 'default'} dot>
-          {c.consumerType === 'LaunchTeamPartner' ? 'Launch Team' : c.consumerType}
-        </Badge>
+      key: 'consumerType',
+      header: 'Type',
+      sortable: true,
+      render: (consumer) => (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            setTypeFilter(consumer.consumerType)
+          }}
+          title="Filter consumers by this type"
+        >
+          <Badge variant={TYPE_VARIANT[consumer.consumerType] || 'default'} dot>
+            {consumer.consumerType === 'LaunchTeamPartner' ? 'Launch Team' : consumer.consumerType}
+          </Badge>
+        </button>
       ),
     },
     {
-      key: 'createdDate', header: 'Joined', sortable: true,
-      render: (c) => (
-        <span className="text-surface-600 text-sm">
-          {new Date(c.createdDate).toLocaleDateString()}
+      key: 'createdDate',
+      header: 'Joined',
+      sortable: true,
+      render: (consumer) => (
+        <span className="text-sm text-surface-600">
+          {new Date(consumer.createdDate).toLocaleDateString()}
         </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (consumer) => (
+        <Link href={`/crm/consumers/${consumer.id}`} onClick={(event) => event.stopPropagation()}>
+          <Button variant="outline" size="sm">
+            Open <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </Link>
       ),
     },
   ]
@@ -117,31 +199,40 @@ export default function ConsumersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Consumers"
-        description="All consumer accounts from the QA backend. Click a row to see details and update their type."
+        description="All consumer accounts from the QA backend. Every row, badge, and missing field opens a useful action."
+        actions={(
+          <Button variant="outline" onClick={() => void fetchConsumers()}>
+            <RefreshCw className="h-4 w-4" /> Refresh QA
+          </Button>
+        )}
       />
 
-      {/* Filters */}
-      <div className="flex items-center gap-3">
-        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-[180px]">
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={typeFilter || 'all'} onValueChange={(value) => setTypeFilter(value === 'all' ? '' : value)}>
+          <SelectTrigger className="w-[220px]">
             <SelectValue placeholder="All types" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
-            {uniqueTypes.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t === 'LaunchTeamPartner' ? 'Launch Team Partner' : t}
+            {uniqueTypes.map((type) => (
+              <SelectItem key={type} value={type}>
+                {formatConsumerType(type)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {typeFilter ? (
+          <Button variant="ghost" size="sm" onClick={() => setTypeFilter('')}>
+            Clear type filter
+          </Button>
+        ) : null}
       </div>
 
-      {error && (
+      {error ? (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
-      )}
+      ) : null}
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
@@ -155,14 +246,15 @@ export default function ConsumersPage() {
           keyField="id"
           loading={false}
           searchPlaceholder="Search by name, email, or location..."
-          onRowClick={(c) => router.push(`/crm/consumers/${c.id}`)}
-          emptyState={
+          onRowClick={(consumer) => router.push(`/crm/consumers/${consumer.id}`)}
+          emptyState={(
             <EmptyState
               icon={<Users className="h-8 w-8" />}
               title="No consumers found"
               description={typeFilter ? 'No consumers match the selected filter.' : 'No consumer accounts exist yet.'}
+              action={typeFilter ? { label: 'Clear filter', onClick: () => setTypeFilter('') } : { label: 'Refresh QA', onClick: () => void fetchConsumers() }}
             />
-          }
+          )}
         />
       )}
     </div>

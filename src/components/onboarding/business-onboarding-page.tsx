@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
+  AlertTriangle,
   Lock,
   ArrowRight,
   CheckCircle2,
@@ -11,6 +12,8 @@ import {
   Circle,
   ClipboardList,
   Clock3,
+  CreditCard,
+  Eye,
   FileText,
   Heart,
   LayoutGrid,
@@ -60,14 +63,18 @@ import {
   useOnboardingFlows,
   useOnboardingSteps,
   useOffers,
+  useOfferInsert,
+  useOfferUpdate,
   useOutreach,
   useProfiles,
   useQrCodes,
   useStakeholders,
   useStakeholderCodes,
   useOutreachInsert,
+  useAuditLogInsert,
   useStakeholderAssignments,
   useTasks,
+  useContacts,
 } from '@/lib/supabase/hooks'
 import type {
   Business,
@@ -76,12 +83,21 @@ import type {
   OnboardingStage,
   OnboardingStep,
   OutreachActivity,
+  Offer,
   Profile,
   Stakeholder,
   Task,
 } from '@/lib/types/database'
 
 const STAGE_ORDER: OnboardingStage[] = ['lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live']
+type QuickFilter = 'all' | 'active_build' | 'live_review' | 'live' | 'follow_ups'
+type BusinessLifecycleModalKey = 'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision'
+type QaBusinessReadiness = {
+  stripeOnboarded: boolean | null
+  liveOnQa: boolean | null
+  loading: boolean
+  error: string | null
+}
 
 const businessTheme = getEntityTheme('business')
 const causeTheme = getEntityTheme('cause')
@@ -110,6 +126,11 @@ function getProgressColor(percent: number) {
   if (percent >= 40) return { bar: 'bg-brand-500', text: 'text-brand-700', ring: 'ring-brand-500/30' }
   if (percent >= 20) return { bar: 'bg-amber-500', text: 'text-amber-700', ring: 'ring-amber-500/30' }
   return { bar: 'bg-red-500', text: 'text-red-700', ring: 'ring-red-500/30' }
+}
+
+function getExternalHref(value: string | null | undefined) {
+  if (!value) return undefined
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`
 }
 
 function StageChanger({
@@ -192,7 +213,9 @@ export default function BusinessOnboardingPage() {
   const [cityFilter, setCityFilter] = React.useState('all')
   const [campaignFilter, setCampaignFilter] = React.useState('all')
   const [searchQuery, setSearchQuery] = React.useState('')
+  const [quickFilter, setQuickFilter] = React.useState<QuickFilter>('all')
   const [selectedBusinessId, setSelectedBusinessId] = React.useState<string | null>(null)
+  const [selectedInitialModal, setSelectedInitialModal] = React.useState<BusinessLifecycleModalKey | null>(null)
 
   // ── Lookup maps ───────────────────────────────────────────────
   const cityMap = React.useMemo(() => new Map(cities.map(city => [city.id, city])), [cities])
@@ -313,7 +336,7 @@ export default function BusinessOnboardingPage() {
   }, [outreach])
 
   // ── Filtered businesses (role + filter bar) ───────────────────
-  const filteredBusinesses = React.useMemo(() => {
+  const baseFilteredBusinesses = React.useMemo(() => {
     let items = businesses
     if (isFieldUser) {
       const myIds = new Set<string>()
@@ -334,6 +357,40 @@ export default function BusinessOnboardingPage() {
     return items
   }, [businesses, isFieldUser, assignments, profile.id, cityFilter, campaignFilter, searchQuery])
 
+  const filteredBusinesses = React.useMemo(() => {
+    let items = baseFilteredBusinesses
+    if (quickFilter === 'active_build') {
+      items = items.filter(b => b.stage === 'in_progress' || b.stage === 'onboarded')
+    }
+    if (quickFilter === 'live_review') {
+      items = items.filter((business) => isBusinessPendingLiveReview(business))
+    }
+    if (quickFilter === 'live') {
+      items = items.filter(b => b.stage === 'live')
+    }
+    if (quickFilter === 'follow_ups') {
+      const dueBusinessIds = new Set<string>()
+      outreach
+        .filter(activity =>
+          activity.entity_type === 'business'
+          && !!activity.next_step_date
+          && new Date(activity.next_step_date).getTime() <= Date.now() + (1000 * 60 * 60 * 24 * 7)
+        )
+        .forEach(activity => dueBusinessIds.add(activity.entity_id))
+      tasks
+        .filter(task =>
+          task.entity_type === 'business'
+          && task.entity_id
+          && task.status !== 'completed'
+          && !!task.due_date
+          && new Date(task.due_date).getTime() <= Date.now() + (1000 * 60 * 60 * 24 * 7)
+        )
+        .forEach(task => dueBusinessIds.add(task.entity_id as string))
+      items = items.filter(b => dueBusinessIds.has(b.id))
+    }
+    return items
+  }, [baseFilteredBusinesses, quickFilter, outreach, tasks])
+
   // ── Group filtered businesses by stage ────────────────────────
   const groupedBusinesses = React.useMemo(() => {
     return STAGE_ORDER.map(stage => ({
@@ -344,24 +401,37 @@ export default function BusinessOnboardingPage() {
 
   // ── Summary stats ─────────────────────────────────────────────
   const summary = React.useMemo(() => {
-    const live = filteredBusinesses.filter(business => business.stage === 'live').length
-    const onboarding = filteredBusinesses.filter(business => business.stage === 'in_progress' || business.stage === 'onboarded').length
-    const readyForReview = filteredBusinesses.filter((business) => isBusinessPendingLiveReview(business)).length
-    const followUps = outreach.filter(activity =>
-      activity.entity_type === 'business'
-      && !!activity.next_step_date
-      && new Date(activity.next_step_date).getTime() <= Date.now() + (1000 * 60 * 60 * 24 * 7)
-    ).length
-    const assigned = filteredBusinesses.filter(business => assignmentsByBusiness.has(business.id)).length
+    const live = baseFilteredBusinesses.filter(business => business.stage === 'live').length
+    const onboarding = baseFilteredBusinesses.filter(business => business.stage === 'in_progress' || business.stage === 'onboarded').length
+    const readyForReview = baseFilteredBusinesses.filter((business) => isBusinessPendingLiveReview(business)).length
+    const followUpBusinessIds = new Set<string>()
+    outreach
+      .filter(activity =>
+        activity.entity_type === 'business'
+        && !!activity.next_step_date
+        && new Date(activity.next_step_date).getTime() <= Date.now() + (1000 * 60 * 60 * 24 * 7)
+      )
+      .forEach(activity => followUpBusinessIds.add(activity.entity_id))
+    tasks
+      .filter(task =>
+        task.entity_type === 'business'
+        && task.entity_id
+        && task.status !== 'completed'
+        && !!task.due_date
+        && new Date(task.due_date).getTime() <= Date.now() + (1000 * 60 * 60 * 24 * 7)
+      )
+      .forEach(task => followUpBusinessIds.add(task.entity_id as string))
+    const followUps = baseFilteredBusinesses.filter(business => followUpBusinessIds.has(business.id)).length
+    const assigned = baseFilteredBusinesses.filter(business => assignmentsByBusiness.has(business.id)).length
 
-    return { total: filteredBusinesses.length, live, onboarding, readyForReview, followUps, assigned }
-  }, [assignmentsByBusiness, filteredBusinesses, outreach])
+    return { total: baseFilteredBusinesses.length, live, onboarding, readyForReview, followUps, assigned }
+  }, [assignmentsByBusiness, baseFilteredBusinesses, outreach, tasks])
 
   const nextReadyForReviewBusiness = React.useMemo(
-    () => filteredBusinesses.find((business) => isBusinessPendingLiveReview(business))
+    () => baseFilteredBusinesses.find((business) => isBusinessPendingLiveReview(business))
       || businesses.find((business) => isBusinessPendingLiveReview(business))
       || null,
-    [businesses, filteredBusinesses]
+    [baseFilteredBusinesses, businesses]
   )
 
   // ── Unique city/campaign options for filter dropdowns ─────────
@@ -500,6 +570,7 @@ export default function BusinessOnboardingPage() {
       stakeholder,
       codes,
       generated: generatedReady,
+      generatedAll: generated,
       businessSteps,
       checklist,
       owner,
@@ -520,6 +591,7 @@ export default function BusinessOnboardingPage() {
       captureOffer,
       cashbackOffer,
       qrGeneratorHref,
+      qrCodes: businessQrCodes,
       logoUrl,
       coverPhotoUrl,
       activationReview,
@@ -597,9 +669,9 @@ export default function BusinessOnboardingPage() {
                 <Store className="h-5 w-5" />
               </div>
               <div className="space-y-1">
-                <p className={`text-sm font-semibold ${businessTheme.text}`}>Business onboarding should feel obvious at a glance</p>
+                <p className={`text-sm font-semibold ${businessTheme.text}`}>Business setup queue</p>
                 <p className="max-w-2xl text-sm leading-6 text-surface-600">
-                  Open any business to run the full workspace, clear blockers, finish setup steps, and move it from lead to live.
+                  Track setup, materials, outreach, offers, live review, and launch status.
                 </p>
               </div>
             </div>
@@ -608,17 +680,25 @@ export default function BusinessOnboardingPage() {
                 {filteredBusinesses.length} visible
               </span>
               <span className="rounded-full border border-white/70 bg-white/70 px-3 py-1">
-                Click a card to open the workspace
+                Open a business to work the next action
               </span>
             </div>
           </CardContent>
         </Card>
         <div className="grid grid-cols-2 gap-3 xl:col-span-5 xl:grid-cols-5">
-          <CompactBusinessMetricCard label="Pipeline" value={summary.total} />
-          <CompactBusinessMetricCard label="Active Build" value={summary.onboarding} />
-          <CompactBusinessMetricCard label="Live Review" value={summary.readyForReview} />
-          <CompactBusinessMetricCard label="Live" value={summary.live} />
-          <CompactBusinessMetricCard label="Follow-ups" value={summary.followUps} />
+          <CompactBusinessMetricCard label="Pipeline" value={summary.total} active={quickFilter === 'all'} onClick={() => setQuickFilter('all')} />
+          <CompactBusinessMetricCard label="Active Build" value={summary.onboarding} active={quickFilter === 'active_build'} onClick={() => setQuickFilter('active_build')} />
+          <CompactBusinessMetricCard
+            label="Live Review"
+            value={summary.readyForReview}
+            active={quickFilter === 'live_review'}
+            onClick={() => {
+              setQuickFilter('live_review')
+              if (nextReadyForReviewBusiness) setSelectedBusinessId(nextReadyForReviewBusiness.id)
+            }}
+          />
+          <CompactBusinessMetricCard label="Live" value={summary.live} active={quickFilter === 'live'} onClick={() => setQuickFilter('live')} />
+          <CompactBusinessMetricCard label="Follow-ups" value={summary.followUps} active={quickFilter === 'follow_ups'} onClick={() => setQuickFilter('follow_ups')} />
         </div>
       </div>
 
@@ -717,7 +797,7 @@ export default function BusinessOnboardingPage() {
             <Store className="h-8 w-8 text-surface-300" />
             <p className="text-sm font-medium text-surface-600">No businesses match your filters</p>
             <button
-              onClick={() => { setCityFilter('all'); setCampaignFilter('all'); setSearchQuery('') }}
+              onClick={() => { setCityFilter('all'); setCampaignFilter('all'); setSearchQuery(''); setQuickFilter('all') }}
               className="text-sm font-medium text-brand-600 hover:text-brand-700"
             >
               Clear all filters
@@ -738,7 +818,7 @@ export default function BusinessOnboardingPage() {
                 <span className="text-sm text-surface-500">{group.items.length} businesses</span>
               </div>
               <span className="hidden text-xs uppercase tracking-[0.16em] text-surface-400 md:block">
-                Click a card to open the workspace
+                Open a business to work the next action
               </span>
             </div>
 
@@ -751,7 +831,14 @@ export default function BusinessOnboardingPage() {
                     key={business.id}
                     business={business}
                     detail={detail}
-                    onOpen={() => setSelectedBusinessId(business.id)}
+                    onOpen={() => {
+                      setSelectedInitialModal(null)
+                      setSelectedBusinessId(business.id)
+                    }}
+                    onOpenAction={(modal) => {
+                      setSelectedInitialModal(modal)
+                      setSelectedBusinessId(business.id)
+                    }}
                   />
                 )
               })}
@@ -761,7 +848,7 @@ export default function BusinessOnboardingPage() {
       </div>
 
       {/* ── Fullscreen detail modal ────────────────────────────── */}
-      <Dialog open={!!selectedBusiness} onOpenChange={(open) => { if (!open) setSelectedBusinessId(null) }}>
+      <Dialog open={!!selectedBusiness} onOpenChange={(open) => { if (!open) { setSelectedBusinessId(null); setSelectedInitialModal(null) } }}>
         <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto p-0">
           {selectedBusiness && (
             <BusinessDetailModal
@@ -770,7 +857,8 @@ export default function BusinessOnboardingPage() {
               profileMap={profileMap}
               busyStepId={busyStepId}
               onCompleteStep={handleCompleteStep}
-              onStageChanged={refetch}
+              onStageChanged={refreshExecutionBoards}
+              initialModal={selectedInitialModal}
             />
           )}
         </DialogContent>
@@ -786,18 +874,30 @@ export default function BusinessOnboardingPage() {
 function CompactBusinessMetricCard({
   label,
   value,
+  active,
+  onClick,
 }: {
   label: string
   value: number
+  active: boolean
+  onClick: () => void
 }) {
   return (
-    <div className={`rounded-2xl border bg-white px-4 py-4 shadow-sm ${businessTheme.border}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        `rounded-2xl border bg-white px-4 py-4 text-left shadow-sm transition-all ${businessTheme.border}`,
+        active && 'ring-2 ring-brand-300 ring-offset-2 ring-offset-surface-0',
+        'hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400'
+      )}
+    >
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-2 text-3xl font-semibold text-surface-900">{value}</p>
       <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#eef5a5]/60">
         <div className="h-full w-12 rounded-full bg-[#d7e200]" />
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -805,25 +905,29 @@ function BusinessOnboardingSummaryCard({
   business,
   detail,
   onOpen,
+  onOpenAction,
 }: {
   business: Business
   detail: any
   onOpen: () => void
+  onOpenAction: (modal: BusinessLifecycleModalKey) => void
 }) {
   const { checklist, owner, city, linkedCause, businessTasks, businessOutreach, coverPhotoUrl, pendingLiveReview } = detail
   const progressColors = getProgressColor(checklist.percent)
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <article
       className={cn(
-        'group relative w-full cursor-pointer overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200',
-        'hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
+        'group relative w-full overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg',
         businessTheme.border,
       )}
     >
-      <div className={`relative overflow-hidden border-b border-surface-100 bg-gradient-to-r ${businessTheme.gradient} px-4 py-4`}>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+      >
+        <div className={`relative overflow-hidden border-b border-surface-100 bg-gradient-to-r ${businessTheme.gradient} px-4 py-4`}>
         {coverPhotoUrl ? (
           <div
             className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-cover bg-center opacity-[0.08]"
@@ -871,9 +975,9 @@ function BusinessOnboardingSummaryCard({
             </p>
           </div>
         </div>
-      </div>
+        </div>
 
-      <div className="space-y-3 p-4">
+        <div className="space-y-3 p-4">
         <div className="flex items-center gap-3">
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-100">
             <div
@@ -913,12 +1017,50 @@ function BusinessOnboardingSummaryCard({
             </span>
           </div>
         ) : null}
+        </div>
+      </button>
+
+      <div className="flex flex-wrap gap-2 border-t border-surface-100 px-4 py-3">
+        <SummaryAction label="Profile" onClick={() => onOpenAction('initial_connection')} />
+        <SummaryAction label="Outreach" onClick={() => onOpenAction('owner_conversation')} />
+        <SummaryAction label="Materials" onClick={() => onOpenAction('materials_qr')} />
+        <SummaryAction label="Offers" onClick={() => onOpenAction('launch_decision')} />
+        {pendingLiveReview ? (
+          <SummaryAction label="Review live" tone="warning" onClick={() => onOpenAction('launch_decision')} />
+        ) : null}
       </div>
+    </article>
+  )
+}
+
+function SummaryAction({
+  label,
+  tone = 'default',
+  onClick,
+}: {
+  label: string
+  tone?: 'default' | 'warning'
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
+        tone === 'warning'
+          ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+          : 'border-surface-200 bg-surface-50 text-surface-600 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700'
+      )}
+    >
+      {label}
+      <ArrowRight className="h-3 w-3" />
     </button>
   )
 }
 
 type BusinessModalSection =
+  | 'readiness'
   | 'steps'
   | 'profile'
   | 'relationships'
@@ -991,6 +1133,63 @@ function ChecklistJumpButton({
   )
 }
 
+function ReadinessTile({
+  icon,
+  label,
+  value,
+  tone,
+  actionLabel,
+  href,
+  onClick,
+  external,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  tone: 'success' | 'warning'
+  actionLabel: string
+  href?: string
+  onClick?: () => void
+  external?: boolean
+}) {
+  const content = (
+    <>
+      <span>{actionLabel}</span>
+      <ArrowRight className="h-3.5 w-3.5" />
+    </>
+  )
+
+  return (
+    <div className={cn(
+      'rounded-xl border px-3 py-3',
+      tone === 'success' ? 'border-success-200 bg-success-50' : 'border-amber-200 bg-amber-50'
+    )}>
+      <div className="flex items-center gap-2">
+        <span className={tone === 'success' ? 'text-success-700' : 'text-amber-700'}>{icon}</span>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">{label}</p>
+      </div>
+      <p className={cn('mt-2 text-sm font-semibold', tone === 'success' ? 'text-success-800' : 'text-amber-900')}>
+        {value}
+      </p>
+      {href ? (
+        external ? (
+          <a href={href} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800">
+            {content}
+          </a>
+        ) : (
+          <Link href={href} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800">
+            {content}
+          </Link>
+        )
+      ) : onClick ? (
+        <button type="button" onClick={onClick} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800">
+          {content}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 function BusinessDetailModal({
   business,
   detail,
@@ -998,6 +1197,7 @@ function BusinessDetailModal({
   busyStepId,
   onCompleteStep,
   onStageChanged,
+  initialModal,
 }: {
   business: Business
   detail: ReturnType<any>
@@ -1005,6 +1205,7 @@ function BusinessDetailModal({
   busyStepId: string | null
   onCompleteStep: (businessId: string, stepId: string) => void
   onStageChanged: () => void
+  initialModal: BusinessLifecycleModalKey | null
 }) {
   const {
     checklist,
@@ -1018,6 +1219,7 @@ function BusinessDetailModal({
     businessOutreach,
     logoUrl,
     coverPhotoUrl,
+    generatedAll,
     generated,
     generatedCount,
     qrCount,
@@ -1030,6 +1232,7 @@ function BusinessDetailModal({
     captureOffer,
     cashbackOffer,
     qrGeneratorHref,
+    qrCodes: businessQrCodes,
     codes,
     activationReview,
     pendingLiveReview,
@@ -1037,18 +1240,33 @@ function BusinessDetailModal({
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
   const { data: allCities } = useCities()
+  const { data: contacts } = useContacts({ business_id: business.id })
   const { update: updateBusiness, loading: updateLoading } = useBusinessUpdate()
+  const { insert: insertOffer, loading: insertingOffer } = useOfferInsert()
+  const { update: updateOffer, loading: updatingOffer } = useOfferUpdate()
   const { insert: insertOutreach, loading: savingOutreach } = useOutreachInsert()
+  const { insert: insertAuditLog } = useAuditLogInsert()
   const { data: freshOutreach, refetch: refetchOutreach } = useOutreach({ entity_type: 'business', entity_id: business.id })
   const outreachList = freshOutreach.length > 0 ? freshOutreach : businessOutreach
+  const joinedCount = contacts.filter((contact) => contact.list_status === 'joined' || contact.joined_at).length
 
-  const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision' | null>(null)
+  const [lifecycleModal, setLifecycleModal] = React.useState<BusinessLifecycleModalKey | null>(initialModal)
+  const [qaReadiness, setQaReadiness] = React.useState<QaBusinessReadiness>({
+    stripeOnboarded: null,
+    liveOnQa: null,
+    loading: true,
+    error: null,
+  })
 
   const progressColors = getProgressColor(checklist.percent)
   const [showChecklist, setShowChecklist] = React.useState(false)
   const [activeSection, setActiveSection] = React.useState<BusinessModalSection | null>(null)
   const [liveActionMessage, setLiveActionMessage] = React.useState<string | null>(null)
   const [liveActionTone, setLiveActionTone] = React.useState<'success' | 'danger'>('success')
+  const [engineBusy, setEngineBusy] = React.useState<'codes' | 'generate' | null>(null)
+  const [regenBusy, setRegenBusy] = React.useState(false)
+  const [modalActionMessage, setModalActionMessage] = React.useState<string | null>(null)
+  const [modalActionError, setModalActionError] = React.useState<string | null>(null)
   const sectionRefs = React.useRef<Partial<Record<BusinessModalSection, HTMLDivElement | null>>>({})
   const clearHighlightRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1077,9 +1295,289 @@ function BusinessDetailModal({
     }
   }, [])
 
+  React.useEffect(() => {
+    setLifecycleModal(initialModal)
+  }, [business.id, initialModal])
+
+  React.useEffect(() => {
+    let cancelled = false
+    setQaReadiness({ stripeOnboarded: null, liveOnQa: null, loading: true, error: null })
+
+    async function loadQaReadiness() {
+      try {
+        const response = await fetch(`/api/crm/businesses/${business.id}`, { cache: 'no-store' })
+        if (!response.ok) throw new Error(`QA readiness failed with ${response.status}`)
+        const payload = await response.json()
+        const businessPayload = payload?.business || {}
+        const qaBusiness = payload?.qaBusiness || null
+        if (cancelled) return
+        setQaReadiness({
+          stripeOnboarded:
+            typeof businessPayload.stripe_onboarding_complete === 'boolean'
+              ? businessPayload.stripe_onboarding_complete
+              : typeof qaBusiness?.hasStripeOnboarding === 'boolean'
+                ? qaBusiness.hasStripeOnboarding
+                : null,
+          liveOnQa:
+            typeof businessPayload.active === 'boolean'
+              ? businessPayload.active
+              : typeof qaBusiness?.active === 'boolean'
+                ? qaBusiness.active
+                : null,
+          loading: false,
+          error: null,
+        })
+      } catch (error) {
+        if (!cancelled) {
+          setQaReadiness({
+            stripeOnboarded: null,
+            liveOnQa: null,
+            loading: false,
+            error: error instanceof Error ? error.message : 'Could not load QA status.',
+          })
+        }
+      }
+    }
+
+    void loadQaReadiness()
+    return () => {
+      cancelled = true
+    }
+  }, [business.id])
+
+  async function callExecutionAction(action: Record<string, unknown>) {
+    const response = await fetch(`/api/crm/businesses/${business.id}/execution`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(action),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(typeof payload.error === 'string' ? payload.error : 'The action could not be completed.')
+    }
+    return payload
+  }
+
+  async function handleSaveCodes(referralCode: string, connectionCode: string) {
+    setEngineBusy('codes')
+    setModalActionMessage(null)
+    setModalActionError(null)
+    try {
+      await callExecutionAction({ action: 'save_codes', referralCode, connectionCode })
+      setModalActionMessage('Codes saved.')
+      onStageChanged()
+    } catch (error) {
+      setModalActionError(error instanceof Error ? error.message : 'Codes could not be saved.')
+    } finally {
+      setEngineBusy(null)
+    }
+  }
+
+  async function handleGenerateMaterials() {
+    setEngineBusy('generate')
+    setModalActionMessage(null)
+    setModalActionError(null)
+    try {
+      await callExecutionAction({ action: 'generate_materials' })
+      setModalActionMessage('Materials generation started.')
+      onStageChanged()
+    } catch (error) {
+      setModalActionError(error instanceof Error ? error.message : 'Materials could not be generated.')
+    } finally {
+      setEngineBusy(null)
+    }
+  }
+
+  async function handleRegenerateAll() {
+    setRegenBusy(true)
+    setModalActionMessage(null)
+    setModalActionError(null)
+    try {
+      await callExecutionAction({ action: 'regenerate_all' })
+      setModalActionMessage('Materials regeneration started.')
+      onStageChanged()
+    } catch (error) {
+      setModalActionError(error instanceof Error ? error.message : 'Materials could not be regenerated.')
+    } finally {
+      setRegenBusy(false)
+    }
+  }
+
+  async function handleSaveOffers(data: { headline: string; description: string; valueLabel: string; cashbackPercent: number }) {
+    setModalActionMessage(null)
+    setModalActionError(null)
+    try {
+      const capturePayload: Partial<Offer> = {
+        business_id: business.id,
+        offer_type: 'capture',
+        status: data.headline.trim() ? 'active' : 'draft',
+        headline: data.headline.trim() || 'Join our list and get access to exclusive offers',
+        description: data.description.trim() || 'This offer is only used to collect your first 100 customers before you go live.',
+        value_type: 'label',
+        value_label: data.valueLabel.trim() || null,
+        cashback_percent: null,
+        starts_at: null,
+        ends_at: null,
+        metadata: { source: 'business_onboarding' },
+      }
+      const cashbackPayload: Partial<Offer> = {
+        business_id: business.id,
+        offer_type: 'cashback',
+        status: 'active',
+        headline: 'Standard LocalVIP Cashback',
+        description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
+        value_type: 'cashback_percent',
+        value_label: `${data.cashbackPercent}% cashback`,
+        cashback_percent: data.cashbackPercent,
+        starts_at: null,
+        ends_at: null,
+        metadata: { source: 'business_onboarding' },
+      }
+
+      if (captureOffer?.id) await updateOffer(captureOffer.id, capturePayload)
+      else await insertOffer(capturePayload)
+      if (cashbackOffer?.id) await updateOffer(cashbackOffer.id, cashbackPayload)
+      else await insertOffer(cashbackPayload)
+
+      setModalActionMessage('Offer settings saved.')
+      onStageChanged()
+    } catch (error) {
+      setModalActionError(error instanceof Error ? error.message : 'Offer settings could not be saved.')
+      throw error
+    }
+  }
+
+  function openChecklistTarget(itemId: string) {
+    const section = getBusinessChecklistSection(itemId)
+    if (section === 'profile') {
+      setLifecycleModal('initial_connection')
+      return
+    }
+    if (section === 'outreach') {
+      setLifecycleModal('owner_conversation')
+      return
+    }
+    if (section === 'brand' || section === 'codes') {
+      setLifecycleModal('materials_qr')
+      return
+    }
+    if (section === 'offers') {
+      setLifecycleModal('launch_decision')
+      return
+    }
+    jumpToSection(section)
+  }
+
+  const goLiveBlockers = React.useMemo(() => {
+    const blockers: Array<{ id: string; label: string; detail: string; onClick: () => void }> = checklist.items
+      .filter((item: any) => !item.met)
+      .map((item: any) => ({
+        id: String(item.id),
+        label: item.label,
+        detail: 'Required setup item is not complete.',
+        onClick: () => openChecklistTarget(String(item.id)),
+      }))
+
+    if (qaReadiness.stripeOnboarded !== true) {
+      blockers.push({
+        id: 'stripe',
+        label: qaReadiness.stripeOnboarded === false ? 'Stripe onboarding incomplete' : 'Stripe onboarding unknown',
+        detail: qaReadiness.error || 'Confirm payouts are connected before approving the business live.',
+        onClick: () => jumpToSection('readiness'),
+      })
+    }
+
+    if (!joinUrl) {
+      blockers.push({
+        id: 'customer_preview',
+        label: 'Customer preview not ready',
+        detail: 'Referral/connection codes are needed before the public join page can be previewed.',
+        onClick: () => setLifecycleModal('materials_qr'),
+      })
+    }
+
+    return blockers
+  }, [checklist.items, joinUrl, qaReadiness.error, qaReadiness.stripeOnboarded, jumpToSection])
+
+  const activityTimeline = React.useMemo(() => {
+    const items: Array<{ id: string; label: string; detail: string; at: string | null; tone: 'success' | 'warning' | 'default' }> = []
+
+    businessSteps
+      .filter((step: any) => step.step.completed_at)
+      .forEach((step: any) => {
+        items.push({
+          id: `step-${step.step.id}`,
+          label: `${step.label} completed`,
+          detail: step.step.completed_by ? `Completed by ${profileMap.get(step.step.completed_by)?.full_name || 'a team member'}` : 'Setup checkpoint completed.',
+          at: step.step.completed_at,
+          tone: 'success',
+        })
+      })
+
+    outreachList.slice(0, 4).forEach((activity: OutreachActivity) => {
+      items.push({
+        id: `outreach-${activity.id}`,
+        label: `${activity.type.replace('_', ' ')} logged`,
+        detail: activity.outcome || activity.next_step || activity.subject || 'Outreach activity recorded.',
+        at: activity.created_at,
+        tone: activity.next_step_date ? 'warning' : 'default',
+      })
+    })
+
+    generated.slice(0, 4).forEach((item: GeneratedMaterial) => {
+      items.push({
+        id: `material-${item.id}`,
+        label: `${item.library_folder.replaceAll('_', ' ')} generated`,
+        detail: item.generated_file_name || 'Material generated for this business.',
+        at: item.generated_at || item.updated_at,
+        tone: item.generated_file_url ? 'success' : 'warning',
+      })
+    })
+
+    if (activationReview.requestedAt) {
+      items.push({
+        id: 'activation-requested',
+        label: 'Business submitted for live review',
+        detail: 'Portal setup was submitted and is waiting for sysadmin approval.',
+        at: activationReview.requestedAt,
+        tone: activationReview.state === 'approved' ? 'success' : 'warning',
+      })
+    }
+
+    if (activationReview.reviewedAt) {
+      items.push({
+        id: 'activation-approved',
+        label: 'Business approved live',
+        detail: 'Sysadmin approved this business for live customer visibility.',
+        at: activationReview.reviewedAt,
+        tone: 'success',
+      })
+    }
+
+    items.push({
+      id: 'business-updated',
+      label: 'Business record updated',
+      detail: 'Latest business profile update.',
+      at: business.updated_at,
+      tone: 'default',
+    })
+
+    return items
+      .filter((item) => !!item.at)
+      .sort((a, b) => new Date(b.at || '').getTime() - new Date(a.at || '').getTime())
+      .slice(0, 8)
+  }, [activationReview.requestedAt, activationReview.reviewedAt, activationReview.state, business.updated_at, businessSteps, generated, outreachList, profileMap])
+
   async function handleMakeBusinessLive() {
     setLiveActionMessage(null)
     setLiveActionTone('success')
+
+    if (goLiveBlockers.length > 0) {
+      setLiveActionTone('danger')
+      setLiveActionMessage('This business still has required blockers. Clear the readiness checklist before making it live.')
+      jumpToSection('readiness')
+      return
+    }
 
     const metadata = {
       ...((business.metadata as Record<string, unknown> | null) || {}),
@@ -1100,6 +1598,28 @@ function BusinessDetailModal({
       setLiveActionMessage('The business could not be marked live right now.')
       return
     }
+
+    await insertAuditLog({
+      user_id: profile.id || null,
+      action: 'business_go_live_approved',
+      entity_type: 'business',
+      entity_id: business.id,
+      old_values: {
+        stage: business.stage,
+        launch_phase: business.launch_phase,
+        activation_status: business.activation_status,
+      },
+      new_values: {
+        stage: 'live',
+        launch_phase: 'live',
+        activation_status: 'active',
+      },
+      ip_address: null,
+      metadata: {
+        source: 'business_onboarding_page',
+        reviewed_at: metadata.portal_activation_reviewed_at,
+      },
+    })
 
     setLiveActionTone('success')
     setLiveActionMessage('Business marked live.')
@@ -1220,7 +1740,7 @@ function BusinessDetailModal({
                 key={item.id}
                 met={item.met}
                 label={item.label}
-                onClick={() => jumpToSection(getBusinessChecklistSection(item.id))}
+                onClick={() => openChecklistTarget(item.id)}
               />
             ))}
           </div>
@@ -1259,6 +1779,123 @@ function BusinessDetailModal({
           </div>
         ) : null}
 
+        {modalActionMessage ? (
+          <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
+            {modalActionMessage}
+          </div>
+        ) : null}
+
+        {modalActionError ? (
+          <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+            {modalActionError}
+          </div>
+        ) : null}
+
+        <div
+          ref={setSectionRef('readiness')}
+          className={cn('grid gap-4 transition-shadow lg:grid-cols-[1.1fr,0.9fr]', getSectionHighlight(activeSection, 'readiness'))}
+        >
+          <div className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Go-Live Readiness</p>
+                <h3 className="mt-1 text-lg font-semibold text-surface-950">
+                  {goLiveBlockers.length === 0 ? 'Ready for sysadmin approval' : `${goLiveBlockers.length} blocker${goLiveBlockers.length === 1 ? '' : 's'} before live`}
+                </h3>
+                <p className="mt-1 text-sm text-surface-500">
+                  Review Stripe, QA visibility, required setup, and the customer-facing preview before approval.
+                </p>
+              </div>
+              <Button onClick={() => void handleMakeBusinessLive()} disabled={updateLoading || goLiveBlockers.length > 0}>
+                {updateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Make live
+              </Button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <ReadinessTile
+                icon={<CreditCard className="h-4 w-4" />}
+                label="Stripe onboarded"
+                value={qaReadiness.loading ? 'Checking...' : qaReadiness.stripeOnboarded === true ? 'Complete' : qaReadiness.stripeOnboarded === false ? 'Not complete' : 'Unknown'}
+                tone={qaReadiness.stripeOnboarded === true ? 'success' : 'warning'}
+                actionLabel="Open Stripe setup"
+                href="/portal"
+              />
+              <ReadinessTile
+                icon={<Store className="h-4 w-4" />}
+                label="Live on QA"
+                value={qaReadiness.loading ? 'Checking...' : qaReadiness.liveOnQa === true ? 'Live' : qaReadiness.liveOnQa === false ? 'Not live' : 'Unknown'}
+                tone={qaReadiness.liveOnQa === true ? 'success' : 'warning'}
+                actionLabel="Open CRM record"
+                href={`/crm/businesses/${business.id}`}
+              />
+              <ReadinessTile
+                icon={<Eye className="h-4 w-4" />}
+                label="Customer preview"
+                value={joinUrl ? 'Ready' : 'Needs codes'}
+                tone={joinUrl ? 'success' : 'warning'}
+                actionLabel={joinUrl ? 'Preview page' : 'Create codes'}
+                href={joinUrl || undefined}
+                onClick={!joinUrl ? () => setLifecycleModal('materials_qr') : undefined}
+                external={!!joinUrl}
+              />
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {goLiveBlockers.length > 0 ? goLiveBlockers.map((blocker) => (
+                <button
+                  key={blocker.id}
+                  type="button"
+                  onClick={blocker.onClick}
+                  className="flex w-full items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left transition-colors hover:bg-amber-100"
+                >
+                  <span>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                      <AlertTriangle className="h-4 w-4" />
+                      {blocker.label}
+                    </span>
+                    <span className="mt-1 block text-xs text-amber-800">{blocker.detail}</span>
+                  </span>
+                  <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                </button>
+              )) : (
+                <div className="rounded-xl border border-success-200 bg-success-50 px-3 py-2 text-sm text-success-700">
+                  No setup blockers found. Final approval can move this business live.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Activity Timeline</p>
+                <p className="mt-1 text-sm text-surface-500">Recent setup, outreach, material, and approval events.</p>
+              </div>
+              <Link href="/admin/audit" className="text-xs font-semibold text-brand-700 hover:text-brand-800">
+                Full audit
+              </Link>
+            </div>
+            <div className="mt-4 space-y-3">
+              {activityTimeline.length > 0 ? activityTimeline.map((item) => (
+                <div key={item.id} className="flex gap-3">
+                  <span className={cn(
+                    'mt-1 h-2.5 w-2.5 shrink-0 rounded-full',
+                    item.tone === 'success' ? 'bg-success-500' : item.tone === 'warning' ? 'bg-amber-500' : 'bg-surface-300'
+                  )} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold capitalize text-surface-900">{item.label}</p>
+                    <p className="text-xs text-surface-500">{item.detail}</p>
+                    {item.at ? <p className="mt-0.5 text-[11px] text-surface-400">{formatDateTime(item.at)}</p> : null}
+                  </div>
+                </div>
+              )) : (
+                <p className="text-sm text-surface-400">No activity has been recorded yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <div
             ref={setSectionRef('profile')}
@@ -1271,12 +1908,12 @@ function BusinessDetailModal({
               </Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <InlineDetail label="Business name" value={business.name || 'Missing'} />
-              <InlineDetail label="Category" value={business.category || 'Missing'} />
-              <InlineDetail label="City" value={city ? `${city.name}, ${city.state}` : 'Missing'} />
-              <InlineDetail label="Contact" value={business.email || business.phone || 'Missing'} />
-              <InlineDetail label="Website" value={business.website || 'Missing'} />
-              <InlineDetail label="Source" value={business.source || 'Not set'} />
+              <InlineDetail label="Business name" value={business.name || 'Missing'} onClick={() => setLifecycleModal('initial_connection')} />
+              <InlineDetail label="Category" value={business.category || 'Missing'} onClick={() => setLifecycleModal('initial_connection')} />
+              <InlineDetail label="City" value={city ? `${city.name}, ${city.state}` : 'Missing'} onClick={() => setLifecycleModal('initial_connection')} />
+              <InlineDetail label="Contact" value={business.email || business.phone || 'Missing'} onClick={() => setLifecycleModal('initial_connection')} />
+              <InlineDetail label="Website" value={business.website || 'Missing'} href={getExternalHref(business.website)} onClick={() => setLifecycleModal('initial_connection')} />
+              <InlineDetail label="Source" value={business.source || 'Not set'} href={`/crm/businesses/${business.id}`} />
             </div>
           </div>
 
@@ -1285,14 +1922,14 @@ function BusinessDetailModal({
             className={cn('space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4 transition-shadow', getSectionHighlight(activeSection, 'brand'))}
           >
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Brand Assets</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Logo, Cover, QR & Materials</p>
               <Button variant="outline" size="sm" onClick={() => setLifecycleModal('materials_qr')}>
                 Review assets <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <InlineDetail label="Logo" value={logoUrl ? 'Uploaded' : 'Missing'} />
-              <InlineDetail label="Cover photo" value={coverPhotoUrl ? 'Uploaded' : 'Missing'} />
+              <InlineDetail label="Logo" value={logoUrl ? 'Uploaded' : 'Missing'} onClick={() => setLifecycleModal('materials_qr')} />
+              <InlineDetail label="Cover photo" value={coverPhotoUrl ? 'Uploaded' : 'Missing'} onClick={() => setLifecycleModal('materials_qr')} />
             </div>
             <div className="flex flex-wrap gap-2">
               {logoUrl ? (
@@ -1305,6 +1942,9 @@ function BusinessDetailModal({
                   View cover
                 </a>
               ) : null}
+              <Link href={qrGeneratorHref} className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100">
+                Open QR generator
+              </Link>
             </div>
           </div>
         </div>
@@ -1389,7 +2029,9 @@ function BusinessDetailModal({
                   {owner.full_name} - Primary owner
                 </Link>
               ) : (
-                <p className="mt-2 text-sm font-semibold text-surface-900">Unassigned owner</p>
+                <Link href={`/crm/businesses/${business.id}`} className="mt-2 inline-flex text-sm font-semibold text-brand-700 transition-colors hover:text-brand-800">
+                  Assign owner in CRM
+                </Link>
               )}
             </div>
 
@@ -1406,14 +2048,16 @@ function BusinessDetailModal({
                     {assignment.role ? ` - ${assignment.role}` : ''}
                   </Link>
                 )) : (
-                  <span className="text-xs text-surface-400">None</span>
+                  <Link href={`/crm/businesses/${business.id}`} className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100">
+                    Add helpers
+                  </Link>
                 )}
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <InlineDetail label="Campaign" value={campaign?.name || 'Not linked'} />
-              <InlineDetail label="Cause / school" value={linkedCause?.name || 'Not linked'} />
+              <InlineDetail label="Campaign" value={campaign?.name || 'Not linked'} href={campaign ? `/crm/campaigns/${campaign.id}` : `/crm/businesses/${business.id}`} />
+              <InlineDetail label="Cause / school" value={linkedCause?.name || 'Not linked'} href={linkedCause ? `/crm/causes/${linkedCause.id}` : `/crm/businesses/${business.id}`} />
             </div>
           </div>
         </div>
@@ -1425,20 +2069,20 @@ function BusinessDetailModal({
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Tasks</p>
               <p className="mt-1 text-xl font-semibold text-surface-900">{businessTasks.length}</p>
               <div className="mt-2 space-y-1">
-                <ActionableDetailButton label={dueTask?.due_date ? `Due ${formatDate(dueTask.due_date)}` : 'No due task yet'} onClick={() => jumpToSection('tasks')} />
-                <ActionableDetailButton label={`Outreach: ${businessOutreach.length}`} onClick={() => jumpToSection('outreach')} />
+                <ActionableDetailButton label={dueTask?.due_date ? `Due ${formatDate(dueTask.due_date)}` : 'Open task board'} href="/crm/tasks" />
+                <ActionableDetailButton label={`Outreach: ${businessOutreach.length}`} onClick={() => setLifecycleModal('owner_conversation')} />
               </div>
             </div>
           </div>
           <div ref={setSectionRef('codes')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getSectionHighlight(activeSection, 'codes'))}>
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Codes + Materials</p>
             <div className="mt-2 space-y-1">
-              <ActionableDetailButton label={`Referral: ${codes?.referral_code || 'Missing'}`} onClick={() => jumpToSection('codes')} />
-              <ActionableDetailButton label={`Connection: ${codes?.connection_code || 'Missing'}`} onClick={() => jumpToSection('codes')} />
-              <ActionableDetailButton label={`Join page: ${joinUrl ? 'Ready' : 'Waiting on codes'}`} onClick={() => jumpToSection('codes')} />
-              <ActionableDetailButton label={`QR: ${qrCount > 0 ? `${qrCount} ready` : 'Missing'}`} onClick={() => jumpToSection('codes')} />
-              <ActionableDetailButton label={`Materials: ${generatedCount > 0 ? `${generatedCount} ready` : 'Waiting'}`} onClick={() => jumpToSection('codes')} />
-              <ActionableDetailButton label={`Task: ${taskStatus || 'Not started'}`} onClick={() => jumpToSection('codes')} />
+              <ActionableDetailButton label={`Referral: ${codes?.referral_code || 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`Connection: ${codes?.connection_code || 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`Join page: ${joinUrl ? 'Ready' : 'Waiting on codes'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`QR: ${qrCount > 0 ? `${qrCount} ready` : 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`Materials: ${generatedCount > 0 ? `${generatedCount} ready` : 'Waiting'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`Task: ${taskStatus || 'Not started'}`} onClick={() => setLifecycleModal('materials_qr')} />
             </div>
           </div>
           <div ref={setSectionRef('outreach')} className={cn('transition-shadow', getSectionHighlight(activeSection, 'outreach'))}>
@@ -1448,22 +2092,22 @@ function BusinessDetailModal({
               <div className="mt-2 space-y-1">
                 <ActionableDetailButton
                   label={latestOutreach ? `${latestOutreach.type.replace('_', ' ')} / ${formatDate(latestOutreach.created_at)}` : 'No outreach logged yet'}
-                  onClick={() => jumpToSection('outreach')}
+                  onClick={() => setLifecycleModal('owner_conversation')}
                 />
                 <ActionableDetailButton
                   label={nextFollowUp?.next_step ? `${nextFollowUp.next_step}${nextFollowUp.next_step_date ? ` by ${formatDate(nextFollowUp.next_step_date)}` : ''}` : 'No follow-up scheduled yet'}
-                  onClick={() => jumpToSection('outreach')}
+                  onClick={() => setLifecycleModal('owner_conversation')}
                 />
               </div>
             </div>
           </div>
           <div ref={setSectionRef('offers')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getSectionHighlight(activeSection, 'offers'))}>
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Offers + Launch Readiness</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">100-List Offer & Cashback</p>
             <div className="mt-2 space-y-1">
-              <ActionableDetailButton label={`100-list offer: ${captureOffer?.headline || 'Missing'}`} onClick={() => jumpToSection('offers')} />
-              <ActionableDetailButton label={`Cashback: ${cashbackOffer?.cashback_percent ? `${cashbackOffer.cashback_percent}% ready` : 'Missing'}`} onClick={() => jumpToSection('offers')} />
-              <ActionableDetailButton label={`Cause: ${linkedCause?.name || 'Not linked'}`} onClick={() => jumpToSection('relationships')} />
-              <ActionableDetailButton label={`Status: ${codesReady ? 'Capture ready' : 'Needs codes'}`} onClick={() => jumpToSection('codes')} />
+              <ActionableDetailButton label={`100-list offer: ${captureOffer?.headline || 'Missing'}`} onClick={() => setLifecycleModal('launch_decision')} />
+              <ActionableDetailButton label={`Cashback: ${cashbackOffer?.cashback_percent ? `${cashbackOffer.cashback_percent}% ready` : 'Missing'}`} onClick={() => setLifecycleModal('launch_decision')} />
+              <ActionableDetailButton label={`Cause: ${linkedCause?.name || 'Not linked'}`} href={linkedCause ? `/crm/causes/${linkedCause.id}` : `/crm/businesses/${business.id}`} />
+              <ActionableDetailButton label={`Status: ${codesReady ? 'Capture ready' : 'Needs codes'}`} onClick={() => setLifecycleModal('materials_qr')} />
             </div>
           </div>
         </div>
@@ -1475,18 +2119,39 @@ function BusinessDetailModal({
           </div>
           <div className="flex flex-wrap gap-2">
             {generated.length > 0 ? generated.slice(0, 6).map((item: GeneratedMaterial) => (
-              <a
-                key={item.id}
-                href={item.generated_file_url || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900"
-              >
-                {item.generated_file_name || item.library_folder.replaceAll('_', ' ')}
-              </a>
+              item.generated_file_url ? (
+                <a
+                  key={item.id}
+                  href={item.generated_file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900"
+                >
+                  {item.generated_file_name || item.library_folder.replaceAll('_', ' ')}
+                </a>
+              ) : (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => void handleRegenerateAll()}
+                  disabled={regenBusy}
+                  className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {regenBusy ? 'Regenerating...' : `Regenerate ${item.library_folder.replaceAll('_', ' ')}`}
+                </button>
+              )
             )) : (
-              <span className="text-xs text-surface-400">Materials will appear here after generation runs.</span>
+              <Button size="sm" variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null}>
+                {engineBusy === 'generate' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                Generate materials
+              </Button>
             )}
+            {generated.length > 0 ? (
+              <Button size="sm" variant="outline" onClick={() => void handleRegenerateAll()} disabled={regenBusy}>
+                {regenBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                Regenerate all
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -1575,17 +2240,17 @@ function BusinessDetailModal({
         open={lifecycleModal === 'materials_qr'}
         onOpenChange={(v) => !v && setLifecycleModal(null)}
         codes={codes}
-        generatedMaterials={generated}
-        qrCodes={[]}
+        generatedMaterials={generatedAll || generated}
+        qrCodes={businessQrCodes || []}
         joinUrl={joinUrl}
-        engineBusy={null}
-        regenBusy={false}
-        saving={false}
+        engineBusy={engineBusy}
+        regenBusy={regenBusy}
+        saving={engineBusy !== null || regenBusy}
         blocker={businessSteps.find((s: any) => s.key === 'materials_qr')?.blocker ?? null}
         readyToComplete={businessSteps.find((s: any) => s.key === 'materials_qr')?.readyToComplete ?? false}
-        onSaveCodes={async () => {}}
-        onGenerateMaterials={async () => {}}
-        onRegenerateAll={async () => {}}
+        onSaveCodes={handleSaveCodes}
+        onGenerateMaterials={handleGenerateMaterials}
+        onRegenerateAll={handleRegenerateAll}
         onCompleteStep={() => {
           const step = businessSteps.find((s: any) => s.key === 'materials_qr')
           if (step) onCompleteStep(business.id, step.step.id)
@@ -1599,13 +2264,13 @@ function BusinessDetailModal({
         biz={business}
         captureOffer={captureOffer || { headline: '', description: null, value_label: null, cashback_percent: null }}
         cashbackOffer={cashbackOffer || { headline: '', description: null, value_label: null, cashback_percent: null }}
-        joinedCount={0}
+        joinedCount={joinedCount}
         generatedCount={generatedCount}
         qrCount={qrCount}
-        saving={false}
+        saving={insertingOffer || updatingOffer}
         blocker={businessSteps.find((s: any) => s.key === 'launch_decision')?.blocker ?? null}
         readyToComplete={businessSteps.find((s: any) => s.key === 'launch_decision')?.readyToComplete ?? false}
-        onSaveOffers={async () => {}}
+        onSaveOffers={handleSaveOffers}
         onCompleteStep={() => {
           const step = businessSteps.find((s: any) => s.key === 'launch_decision')
           if (step) onCompleteStep(business.id, step.step.id)
@@ -1619,14 +2284,43 @@ function BusinessDetailModal({
 function InlineDetail({
   label,
   value,
+  href,
+  onClick,
 }: {
   label: string
   value: string
+  href?: string
+  onClick?: () => void
 }) {
-  return (
-    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2.5">
+  const content = (
+    <>
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-1 text-sm font-medium text-surface-900">{value}</p>
+    </>
+  )
+  const className = cn(
+    'rounded-xl border border-surface-200 bg-white px-3 py-2.5 text-left transition-colors',
+    (href || onClick) && 'hover:border-brand-200 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400'
+  )
+
+  if (href) {
+    if (href.startsWith('/')) {
+      return <Link href={href} className={className}>{content}</Link>
+    }
+    return <a href={href} target="_blank" rel="noopener noreferrer" className={className}>{content}</a>
+  }
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <div className={className}>
+      {content}
     </div>
   )
 }
@@ -1634,39 +2328,35 @@ function InlineDetail({
 function ActionableDetailButton({
   label,
   onClick,
+  href,
 }: {
   label: string
-  onClick: () => void
+  onClick?: () => void
+  href?: string
 }) {
+  const className = 'flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-xs text-surface-500 transition-colors hover:bg-white hover:text-surface-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400'
+  const content = (
+    <>
+      <span>{label}</span>
+      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />
+    </>
+  )
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {content}
+      </Link>
+    )
+  }
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-xs text-surface-500 transition-colors hover:bg-white hover:text-surface-800"
+      className={className}
     >
-      <span>{label}</span>
-      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />
+      {content}
     </button>
-  )
-}
-
-function MetricBlock({
-  label,
-  value,
-  detail,
-  secondary,
-}: {
-  label: string
-  value: number
-  detail: string
-  secondary?: string
-}) {
-  return (
-    <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-surface-900">{value}</p>
-      <p className="mt-1 text-xs text-surface-500">{detail}</p>
-      {secondary ? <p className="mt-1 text-xs text-surface-500">{secondary}</p> : null}
-    </div>
   )
 }

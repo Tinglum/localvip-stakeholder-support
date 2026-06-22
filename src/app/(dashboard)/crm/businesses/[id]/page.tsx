@@ -340,6 +340,8 @@ export default function BusinessDetailPage() {
   const qrGeneratorHref = localStateBusinessId
     ? `/qr/generator?businessId=${localStateBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
     : '/qr/generator'
+  const portalSetupHref = `/portal/setup?businessId=${encodeURIComponent(String(localBusinessId || businessResponse?.qaBusinessId || id))}`
+  const customerPreviewHref = biz.branch_referral_url || qaBusiness?.branchReferralUrl || null
 
   return (
     <div className="space-y-6">
@@ -455,6 +457,24 @@ export default function BusinessDetailPage() {
       <div className="flex flex-wrap items-center gap-2">
         {!readOnly ? (
           <>
+            <Link href={portalSetupHref}>
+              <Button variant="outline" size="sm">
+                <ExternalLink className="h-3.5 w-3.5" /> Portal Setup
+              </Button>
+            </Link>
+            {customerPreviewHref ? (
+              <a href={customerPreviewHref} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" size="sm">
+                  <ExternalLink className="h-3.5 w-3.5" /> Customer Preview
+                </Button>
+              </a>
+            ) : (
+              <Link href={qrGeneratorHref}>
+                <Button variant="outline" size="sm" title="Create referral/QR links before previewing the customer page">
+                  <QrCodeIcon className="h-3.5 w-3.5" /> Create Preview Link
+                </Button>
+              </Link>
+            )}
             <Button size="sm" onClick={() => setActiveTab('activity')}>
               <Send className="h-3.5 w-3.5" /> Log Activity
             </Button>
@@ -466,6 +486,9 @@ export default function BusinessDetailPage() {
             </Button>
             <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}>
               <QrCodeIcon className="h-3.5 w-3.5" /> Generate QR Code
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setActiveTab('materials')}>
+              <FileText className="h-3.5 w-3.5" /> Materials
             </Button>
             <div className="ml-auto flex items-center gap-2">
               <LogInAsButton
@@ -504,7 +527,9 @@ export default function BusinessDetailPage() {
                 <p className="text-xs text-surface-400">{biz.owner_email || 'QA owner email not provided'}</p>
               </div>
             ) : (
-              <p className="text-sm text-surface-500">No owner assigned yet.</p>
+              <Link href={portalSetupHref} className="text-sm font-semibold text-amber-700 transition-colors hover:text-amber-800">
+                Assign owner in setup
+              </Link>
             )}
             <p className="text-xs text-surface-400">{helperAssignments.length} active helpers</p>
           </CardContent>
@@ -521,7 +546,9 @@ export default function BusinessDetailPage() {
                 {[biz.city_name, biz.state].filter(Boolean).join(', ')}
               </p>
             ) : (
-              <p className="text-sm text-surface-500">No city linked yet.</p>
+              <Link href={portalSetupHref} className="text-sm font-semibold text-amber-700 transition-colors hover:text-amber-800">
+                Add city in setup
+              </Link>
             )}
             <p className="text-xs text-surface-400">{biz.full_address || biz.address || 'No address on file'}</p>
           </CardContent>
@@ -773,6 +800,9 @@ export default function BusinessDetailPage() {
                 <FileText className="mb-3 h-10 w-10 text-surface-300" />
                 <p className="text-sm font-medium text-surface-700">No materials assigned</p>
                 <p className="mt-1 text-xs text-surface-400">Attach flyers, scripts, or documents to this business record.</p>
+                <Link href="/materials/library" className="mt-4">
+                  <Button size="sm"><FileText className="h-3.5 w-3.5" /> Browse Material Library</Button>
+                </Link>
               </CardContent>
             </Card>
           )}
