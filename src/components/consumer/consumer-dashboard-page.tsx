@@ -4,22 +4,32 @@ import * as React from 'react'
 import Link from 'next/link'
 import {
   ArrowRight,
+  Bell,
   Calendar,
   CheckCircle2,
   Copy,
   CreditCard,
+  Download,
+  Eye,
   ExternalLink,
+  Gift,
   Heart,
   Loader2,
   Mail,
   MapPin,
   Phone,
+  Printer,
   QrCode,
+  RefreshCw,
+  Search,
   Share2,
   Smartphone,
   Sparkles,
+  Target,
+  Trophy,
   Users,
   Wallet,
+  X,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth/context'
 import { PageHeader } from '@/components/ui/page-header'
@@ -126,41 +136,72 @@ export function ConsumerDashboardPage() {
   const { profile } = useAuth()
   const [data, setData] = React.useState<ConsumerDashboardPayload | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [refreshing, setRefreshing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'error'>('idle')
+  const [actionMessage, setActionMessage] = React.useState<string | null>(null)
+  const [activeSection, setActiveSection] = React.useState<'overview' | 'share' | 'money' | 'network' | 'activity'>('overview')
+  const [transactionStatusFilter, setTransactionStatusFilter] = React.useState<'all' | 'completed' | 'pending'>('all')
+  const [rewardFilter, setRewardFilter] = React.useState<'all' | 'cashback' | 'bonus'>('all')
+  const [networkSearch, setNetworkSearch] = React.useState('')
+  const [simulatedSpend, setSimulatedSpend] = React.useState(50)
+  const [simulatedCashbackPercent, setSimulatedCashbackPercent] = React.useState(10)
+  const [simulatedFriends, setSimulatedFriends] = React.useState(1)
+  const [showTips, setShowTips] = React.useState(true)
+
+  const loadDashboard = React.useCallback(async (silent = false) => {
+    if (silent) setRefreshing(true)
+    else setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/qa/me/consumer-dashboard', { cache: 'no-store' })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error((payload as { error?: string } | null)?.error || 'Failed to load your dashboard.')
+      }
+
+      setData(payload as ConsumerDashboardPayload)
+      if (silent) {
+        setActionMessage('Dashboard refreshed from QA.')
+        window.setTimeout(() => setActionMessage(null), 2500)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load your dashboard.')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
 
   React.useEffect(() => {
-    let cancelled = false
+    void loadDashboard()
+  }, [loadDashboard])
 
-    async function load() {
-      setLoading(true)
-      setError(null)
+  React.useEffect(() => {
+    const stored = window.localStorage.getItem('localvip-consumer-dashboard-tips')
+    if (stored === 'hidden') setShowTips(false)
+  }, [])
 
-      try {
-        const response = await fetch('/api/qa/me/consumer-dashboard', { cache: 'no-store' })
-        const payload = await response.json().catch(() => null)
+  React.useEffect(() => {
+    const hash = window.location.hash.replace('#', '')
+    if (hash === 'share' || hash === 'money' || hash === 'network' || hash === 'activity') {
+      setActiveSection(hash)
+      window.setTimeout(() => document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    }
+  }, [])
 
-        if (!response.ok) {
-          throw new Error((payload as { error?: string } | null)?.error || 'Failed to load your dashboard.')
-        }
-
-        if (!cancelled) {
-          setData(payload as ConsumerDashboardPayload)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load your dashboard.')
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+  React.useEffect(() => {
+    const handle = (event: HashChangeEvent) => {
+      const hash = new URL(event.newURL).hash.replace('#', '')
+      if (hash === 'overview' || hash === 'share' || hash === 'money' || hash === 'network' || hash === 'activity') {
+        setActiveSection(hash)
       }
     }
-
-    void load()
+    window.addEventListener('hashchange', handle)
     return () => {
-      cancelled = true
+      window.removeEventListener('hashchange', handle)
     }
   }, [])
 
@@ -188,7 +229,57 @@ export function ConsumerDashboardPage() {
   const fullName = `${consumer.firstName} ${consumer.lastName}`.trim() || profile.full_name || consumer.email
   const shareUrl = consumer.sharedURL
   const walletReady = data.summary.stripeOnboarded
-  const transactionPreview = data.transactions.slice(0, 6)
+  const normalizedNetworkSearch = networkSearch.trim().toLowerCase()
+  const filteredFriends = data.friends.filter((friend) =>
+    `${friend.firstName} ${friend.lastName} ${friend.email}`.toLowerCase().includes(normalizedNetworkSearch)
+  )
+  const filteredCauses = data.causes.filter((cause) =>
+    `${cause.name} ${cause.ownerEmail || ''}`.toLowerCase().includes(normalizedNetworkSearch)
+  )
+  const filteredTransactions = data.transactions.filter((transaction) => {
+    if (transactionStatusFilter === 'all') return true
+    const status = (transaction.transactionStatus || 'pending').toLowerCase()
+    return transactionStatusFilter === 'completed' ? status === 'completed' : status !== 'completed'
+  })
+  const transactionPreview = filteredTransactions.slice(0, 6)
+  const totalFilteredCashback = filteredTransactions.reduce((sum, transaction) => sum + (transaction.cashback || 0), 0)
+  const rewardRows = [
+    ...(rewardFilter === 'all' || rewardFilter === 'cashback'
+      ? (data.cashback?.recent || []).map((row) => ({ ...row, kind: 'Cashback' as const }))
+      : []),
+    ...(rewardFilter === 'all' || rewardFilter === 'bonus'
+      ? (data.bonusCash?.recent || []).map((row) => ({ ...row, kind: 'Bonus cash' as const }))
+      : []),
+  ].sort((a, b) => new Date(b.createdDate || '').getTime() - new Date(a.createdDate || '').getTime())
+  const timeline = [
+    ...data.transactions.slice(0, 6).map((transaction) => ({
+      id: `tx-${transaction.id}`,
+      title: `${formatMoney(transaction.cashback)} cashback`,
+      detail: `${formatMoney(transaction.amount)} purchase${transaction.transactionStatus ? ` / ${transaction.transactionStatus}` : ''}`,
+      at: transaction.createdDate,
+      href: '/portal/me/transactions',
+      tone: 'success' as const,
+    })),
+    ...data.friends.slice(0, 4).map((friend) => ({
+      id: `friend-${friend.id}`,
+      title: `${friend.firstName} ${friend.lastName}`.trim() || 'Friend connected',
+      detail: friend.isActive ? 'Active friend in your network' : 'Friend pending activation',
+      at: null,
+      href: '/portal/me/network',
+      tone: friend.isActive ? 'success' as const : 'warning' as const,
+    })),
+    ...data.causes.slice(0, 4).map((cause) => ({
+      id: `cause-${cause.id}`,
+      title: cause.name,
+      detail: cause.isActive ? 'Active selected cause' : 'Cause pending activation',
+      at: null,
+      href: '/portal/me/causes',
+      tone: cause.isActive ? 'success' as const : 'warning' as const,
+    })),
+  ].slice(0, 10)
+  const simulatedCashback = simulatedSpend * (simulatedCashbackPercent / 100)
+  const simulatedNetworkLift = simulatedCashback * Math.max(1, simulatedFriends)
+  const milestonePercent = Math.round(((Number(walletReady) + Math.min(5, data.friends.length) / 5 + Math.min(10, data.causes.length) / 10) / 3) * 100)
   const nextRewardStep = !walletReady
     ? 'Finish wallet setup so your money is ready when rewards arrive.'
     : data.summary.counts.friends < 5
@@ -233,6 +324,65 @@ export function ConsumerDashboardPage() {
     }
   }
 
+  async function handleCopyCode() {
+    if (!consumer.referralCode) return
+    try {
+      await navigator.clipboard.writeText(consumer.referralCode)
+      setActionMessage('Referral code copied.')
+      window.setTimeout(() => setActionMessage(null), 2000)
+    } catch {
+      setActionMessage('Could not copy the referral code.')
+      window.setTimeout(() => setActionMessage(null), 2000)
+    }
+  }
+
+  async function handleNativeShare() {
+    if (!shareUrl) return
+    if (navigator.share) {
+      await navigator.share({
+        title: 'Join me on LocalVIP',
+        text: 'Here is my LocalVIP link.',
+        url: shareUrl,
+      }).catch(() => null)
+      return
+    }
+    await handleCopyLink()
+  }
+
+  function handleSectionJump(section: typeof activeSection) {
+    setActiveSection(section)
+    window.history.replaceState(null, '', `#${section}`)
+    document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function handleExportTransactions() {
+    const headers = ['Date', 'Amount', 'Tip', 'Cashback', 'Fee', 'Final', 'Status']
+    const rows = filteredTransactions.map((transaction) => [
+      formatDate(transaction.createdDate),
+      transaction.amount,
+      transaction.tip,
+      transaction.cashback,
+      transaction.txFee,
+      transaction.finalAmount,
+      transaction.transactionStatus || 'pending',
+    ])
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'localvip-transactions.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleDismissTips() {
+    setShowTips(false)
+    window.localStorage.setItem('localvip-consumer-dashboard-tips', 'hidden')
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -246,11 +396,63 @@ export function ConsumerDashboardPage() {
             <Badge variant={walletReady ? 'success' : 'warning'}>
               {walletReady ? 'Wallet ready' : 'Wallet setup needed'}
             </Badge>
+            <Button variant="outline" size="sm" onClick={() => void loadDashboard(true)} disabled={refreshing}>
+              {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh QA
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <Printer className="h-4 w-4" />
+              Print
+            </Button>
           </div>
         }
       />
 
-      <Card className="overflow-hidden border-surface-200">
+      {actionMessage ? (
+        <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-medium text-brand-800">
+          {actionMessage}
+        </div>
+      ) : null}
+
+      <div className="sticky top-0 z-20 -mx-2 flex gap-2 overflow-x-auto bg-surface-0/90 px-2 py-2 backdrop-blur">
+        {[
+          { key: 'overview' as const, label: 'Overview', icon: <Eye className="h-4 w-4" /> },
+          { key: 'share' as const, label: 'Share', icon: <Share2 className="h-4 w-4" /> },
+          { key: 'money' as const, label: 'Money', icon: <Wallet className="h-4 w-4" /> },
+          { key: 'network' as const, label: 'Network', icon: <Users className="h-4 w-4" /> },
+          { key: 'activity' as const, label: 'Activity', icon: <Bell className="h-4 w-4" /> },
+        ].map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => handleSectionJump(item.key)}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition-colors ${
+              activeSection === item.key
+                ? 'border-brand-300 bg-brand-50 text-brand-700'
+                : 'border-surface-200 bg-white text-surface-600 hover:border-brand-200 hover:text-brand-700'
+            }`}
+          >
+            {item.icon}
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {showTips ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-3">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Tip: this dashboard is live against QA. Use Refresh QA after you change wallet, causes, network, or purchase data.
+            </p>
+          </div>
+          <button type="button" onClick={handleDismissTips} className="inline-flex items-center gap-1 font-semibold text-sky-800 hover:text-sky-950">
+            Hide <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
+
+      <Card id="overview" className="scroll-mt-24 overflow-hidden border-surface-200">
         <div className="bg-[linear-gradient(135deg,_rgba(59,130,246,0.12),_rgba(255,255,255,0.98)_42%,_rgba(16,185,129,0.12)_100%)] px-6 py-6">
           <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
             <div className="space-y-5">
@@ -402,7 +604,7 @@ export function ConsumerDashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
+      <div id="money" className="grid scroll-mt-24 gap-6 xl:grid-cols-[1.05fr,0.95fr]">
         <Card>
           <CardHeader>
             <CardTitle>Money and payout</CardTitle>
@@ -452,7 +654,7 @@ export function ConsumerDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="share" className="scroll-mt-24">
           <CardHeader>
             <CardTitle>Share your link</CardTitle>
           </CardHeader>
@@ -470,6 +672,14 @@ export function ConsumerDashboardPage() {
               <Button onClick={() => { void handleCopyLink() }} disabled={!shareUrl}>
                 <Copy className="h-4 w-4" />
                 {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Copy failed' : 'Copy link'}
+              </Button>
+              <Button variant="outline" onClick={() => { void handleCopyCode() }} disabled={!consumer.referralCode}>
+                <QrCode className="h-4 w-4" />
+                Copy code
+              </Button>
+              <Button variant="outline" onClick={() => { void handleNativeShare() }} disabled={!shareUrl}>
+                <Share2 className="h-4 w-4" />
+                Share
               </Button>
               {shareUrl ? (
                 <Button variant="outline" asChild>
@@ -513,7 +723,70 @@ export function ConsumerDashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-[0.95fr,1.05fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Gift className="h-4 w-4" /> Reward simulator</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm leading-6 text-surface-500">
+              Estimate what a purchase or a few friends could mean. This does not change QA data; it helps customers understand the system.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <NumberControl label="Purchase amount" value={simulatedSpend} min={1} max={500} step={5} prefix="$" onChange={setSimulatedSpend} />
+              <NumberControl label="Cashback %" value={simulatedCashbackPercent} min={1} max={30} step={1} suffix="%" onChange={setSimulatedCashbackPercent} />
+              <NumberControl label="Friends sharing" value={simulatedFriends} min={1} max={25} step={1} onChange={setSimulatedFriends} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ResultTile label="Estimated cashback" value={formatMoney(simulatedCashback)} />
+              <ResultTile label="Network example" value={formatMoney(simulatedNetworkLift)} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4" /> Progress snapshot</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-surface-900">Overall customer setup</span>
+                <span className="font-bold text-brand-700">{milestonePercent}%</span>
+              </div>
+              <div className="mt-2 h-3 overflow-hidden rounded-full bg-surface-100">
+                <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-emerald-500" style={{ width: `${milestonePercent}%` }} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MiniMilestone label="Wallet" complete={walletReady} href="/portal/me/wallet" />
+              <MiniMilestone label="5 friends" complete={data.friends.length >= 5} href="/portal/me/network" />
+              <MiniMilestone label="10 causes" complete={data.causes.length >= 10} href="/portal/me/causes" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div id="network" className="grid scroll-mt-24 gap-6 xl:grid-cols-2">
+        <div className="xl:col-span-2">
+          <Card>
+            <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-surface-900">Find people or causes</p>
+                <p className="mt-1 text-sm text-surface-500">Search your connected friends and selected causes from the QA dashboard payload.</p>
+              </div>
+              <div className="relative w-full sm:max-w-sm">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <input
+                  value={networkSearch}
+                  onChange={(event) => setNetworkSearch(event.target.value)}
+                  placeholder="Search network..."
+                  className="h-10 w-full rounded-xl border border-surface-200 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
         <AchievementCard
           icon={<Users className="h-4 w-4" />}
           title="Your 5-friends goal"
@@ -521,16 +794,16 @@ export function ConsumerDashboardPage() {
           goal={5}
           nextStep={data.friends.length < 5 ? 'Invite one more friend to keep this moving.' : 'You reached your 5-friends goal.'}
         >
-          {data.friends.length === 0 ? (
+          {filteredFriends.length === 0 ? (
             <div className="space-y-3">
-              <p className="text-sm text-surface-500">No friends linked yet.</p>
+              <p className="text-sm text-surface-500">{networkSearch ? 'No friends match your search.' : 'No friends linked yet.'}</p>
               <Button variant="outline" size="sm" asChild>
                 <Link href="/portal/me/network">Open my network</Link>
               </Button>
             </div>
           ) : (
             <div className="space-y-2">
-              {data.friends.map((friend) => (
+              {filteredFriends.map((friend) => (
                 <div key={friend.id} className="flex items-center justify-between rounded-xl border border-surface-200 p-3">
                   <div>
                     <div className="font-medium text-surface-900">{friend.firstName} {friend.lastName}</div>
@@ -552,16 +825,16 @@ export function ConsumerDashboardPage() {
           goal={10}
           nextStep={data.causes.length < 10 ? 'Pick another cause when you are ready to grow your impact.' : 'You reached your 10-causes goal.'}
         >
-          {data.causes.length === 0 ? (
+          {filteredCauses.length === 0 ? (
             <div className="space-y-3">
-              <p className="text-sm text-surface-500">No causes linked yet.</p>
+              <p className="text-sm text-surface-500">{networkSearch ? 'No causes match your search.' : 'No causes linked yet.'}</p>
               <Button variant="outline" size="sm" asChild>
                 <Link href="/portal/me/causes">Choose causes</Link>
               </Button>
             </div>
           ) : (
             <div className="space-y-2">
-              {data.causes.map((cause) => (
+              {filteredCauses.map((cause) => (
                 <div key={cause.id} className="flex items-center justify-between rounded-xl border border-surface-200 p-3">
                   <div>
                     <div className="font-medium text-surface-900">{cause.name}</div>
@@ -577,13 +850,32 @@ export function ConsumerDashboardPage() {
         </AchievementCard>
       </div>
 
-      <Card>
+      <Card id="activity" className="scroll-mt-24">
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
-            <CardTitle>Recent activity and rewards</CardTitle>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/portal/me/transactions">Open full history</Link>
-            </Button>
+            <div>
+              <CardTitle>Recent activity and rewards</CardTitle>
+              <p className="mt-1 text-sm text-surface-500">
+                Showing {filteredTransactions.length} transactions and {formatMoney(totalFilteredCashback)} filtered cashback.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={transactionStatusFilter}
+                onChange={(event) => setTransactionStatusFilter(event.target.value as typeof transactionStatusFilter)}
+                className="h-9 rounded-lg border border-surface-200 bg-white px-3 text-sm text-surface-700"
+              >
+                <option value="all">All statuses</option>
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+              </select>
+              <Button variant="outline" size="sm" onClick={handleExportTransactions} disabled={filteredTransactions.length === 0}>
+                <Download className="h-3.5 w-3.5" /> Export
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/portal/me/transactions">Open full history</Link>
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -621,19 +913,21 @@ export function ConsumerDashboardPage() {
       <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Reward history</CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Reward history</CardTitle>
+              <select
+                value={rewardFilter}
+                onChange={(event) => setRewardFilter(event.target.value as typeof rewardFilter)}
+                className="h-9 rounded-lg border border-surface-200 bg-white px-3 text-sm text-surface-700"
+              >
+                <option value="all">All rewards</option>
+                <option value="cashback">Cashback only</option>
+                <option value="bonus">Bonus only</option>
+              </select>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <RewardHistory
-              title="Cashback"
-              rows={data.cashback?.recent || []}
-              emptyText="No cashback yet. It will show here after your first qualifying purchases."
-            />
-            <RewardHistory
-              title="Bonus cash"
-              rows={data.bonusCash?.recent || []}
-              emptyText="No bonus cash yet. This grows through sharing and network activity."
-            />
+            <MergedRewardHistory rows={rewardRows} />
           </CardContent>
         </Card>
 
@@ -642,14 +936,27 @@ export function ConsumerDashboardPage() {
             <CardTitle>Your account</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <AccountRow icon={<QrCode className="h-4 w-4" />} label="Your share code" value={consumer.referralCode || '—'} mono />
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-surface-900">Need help?</p>
+                  <p className="mt-1 text-sm text-surface-500">Open a pre-filled email to LocalVIP support.</p>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <a href={`mailto:support@localvip.com?subject=${encodeURIComponent('Help with my LocalVIP customer dashboard')}&body=${encodeURIComponent(`Hi LocalVIP,\n\nI need help with my customer dashboard.\n\nAccount: ${consumer.email}\nReferral code: ${consumer.referralCode || 'not available'}\n`)}`}>
+                    Contact support
+                  </a>
+                </Button>
+              </div>
+            </div>
+            <AccountRow icon={<QrCode className="h-4 w-4" />} label="Your share code" value={consumer.referralCode || '-'} mono />
             <AccountRow icon={<CreditCard className="h-4 w-4" />} label="Purchases tracked" value={`${data.summary.counts.transactions}`} />
             <AccountRow icon={<Smartphone className="h-4 w-4" />} label="Phones signed in" value={`${data.summary.counts.devices}`} />
             <details className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
               <summary className="cursor-pointer font-medium text-surface-700">What is my share code?</summary>
               <p className="mt-3 leading-6">
                 This is your personal code for inviting friends. When someone joins with it, the people you invite are
-                linked to you — that is how your network and bonus cash grow.
+                linked to you - that is how your network and bonus cash grow.
               </p>
             </details>
             <details className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
@@ -670,6 +977,115 @@ export function ConsumerDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Bell className="h-4 w-4" /> What changed recently</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {timeline.length === 0 ? (
+            <p className="text-sm text-surface-500">Nothing has happened yet. Once you shop, share, or choose causes, your timeline will show it here.</p>
+          ) : (
+            timeline.map((item) => (
+              <Link key={item.id} href={item.href} className="flex gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors hover:border-brand-200 hover:bg-brand-50">
+                <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.tone === 'success' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-surface-900">{item.title}</span>
+                  <span className="block text-sm text-surface-500">{item.detail}</span>
+                  {item.at ? <span className="mt-1 block text-xs text-surface-400">{formatDate(item.at)}</span> : null}
+                </span>
+                <ArrowRight className="ml-auto mt-1 h-4 w-4 shrink-0 text-surface-400" />
+              </Link>
+            ))
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function NumberControl({
+  label,
+  value,
+  min,
+  max,
+  step,
+  prefix = '',
+  suffix = '',
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  prefix?: string
+  suffix?: string
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="block rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+      <span className="text-xs uppercase tracking-[0.14em] text-surface-500">{label}</span>
+      <span className="mt-2 flex items-center gap-2">
+        <span className="text-sm font-semibold text-surface-500">{prefix}</span>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(event) => onChange(Math.min(max, Math.max(min, Number(event.target.value) || min)))}
+          className="h-10 min-w-0 flex-1 rounded-xl border border-surface-200 bg-white px-3 text-sm font-semibold text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300"
+        />
+        <span className="text-sm font-semibold text-surface-500">{suffix}</span>
+      </span>
+    </label>
+  )
+}
+
+function ResultTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+      <p className="text-xs uppercase tracking-[0.14em] text-emerald-700">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-emerald-900">{value}</p>
+    </div>
+  )
+}
+
+function MiniMilestone({ label, complete, href }: { label: string; complete: boolean; href: string }) {
+  return (
+    <Link href={href} className={`rounded-2xl border px-4 py-3 transition-colors ${complete ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50 hover:bg-amber-100'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className={`text-sm font-semibold ${complete ? 'text-emerald-800' : 'text-amber-900'}`}>{label}</span>
+        {complete ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Target className="h-4 w-4 text-amber-700" />}
+      </div>
+      <p className={`mt-1 text-xs ${complete ? 'text-emerald-700' : 'text-amber-800'}`}>{complete ? 'Complete' : 'Open next step'}</p>
+    </Link>
+  )
+}
+
+function MergedRewardHistory({
+  rows,
+}: {
+  rows: Array<{ id: number; amount: number; accountId: number; createdDate: string | null; kind: 'Cashback' | 'Bonus cash' }>
+}) {
+  return (
+    <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+      {rows.length === 0 ? (
+        <p className="text-sm text-surface-500">No matching rewards yet. Cashback and bonus cash will show here after qualifying activity.</p>
+      ) : (
+        <div className="space-y-2 text-sm">
+          {rows.slice(0, 10).map((row) => (
+            <div key={`${row.kind}-${row.id}`} className="flex items-center justify-between rounded-xl border border-white bg-white px-3 py-2">
+              <div>
+                <p className="font-medium text-surface-900">{row.kind}</p>
+                <p className="text-xs text-surface-500">{formatDate(row.createdDate)} / Account {row.accountId}</p>
+              </div>
+              <span className="font-medium text-emerald-600">+{formatMoney(row.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -815,34 +1231,6 @@ function AchievementCard({
         {children}
       </CardContent>
     </Card>
-  )
-}
-
-function RewardHistory({
-  title,
-  rows,
-  emptyText,
-}: {
-  title: string
-  rows: { id: number; amount: number; accountId: number; createdDate: string | null }[]
-  emptyText: string
-}) {
-  return (
-    <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-      <p className="text-sm font-semibold text-surface-900">{title}</p>
-      {rows.length === 0 ? (
-        <p className="mt-2 text-sm text-surface-500">{emptyText}</p>
-      ) : (
-        <div className="mt-3 space-y-2 text-sm">
-          {rows.slice(0, 6).map((row) => (
-            <div key={row.id} className="flex items-center justify-between rounded-xl border border-white bg-white px-3 py-2">
-              <span className="text-surface-600">{formatDate(row.createdDate)}</span>
-              <span className="font-medium text-emerald-600">+{formatMoney(row.amount)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
 

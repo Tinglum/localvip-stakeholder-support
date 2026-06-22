@@ -4,6 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import {
   ArrowRight,
+  Copy,
   Download,
   Eye,
   File,
@@ -35,19 +36,19 @@ import { MaterialPreviewDialog } from '@/components/materials/material-preview-d
 import { MaterialEditDialog } from '@/components/materials/material-edit-dialog'
 import { useAuth } from '@/lib/auth/context'
 import { deleteMaterial } from '@/lib/materials/delete-material'
+import { generateStyledQR, downloadDataURL } from '@/lib/qr/generate'
 import {
   getMaterialCustomTags,
   getMaterialVisibilityRoleLabels,
   getMaterialVisibilitySubtypeLabels,
-  materialMatchesTargeting,
 } from '@/lib/materials/material-targeting'
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
-import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { EMPTY_UUID } from '@/lib/uuid'
 import { formatDate } from '@/lib/utils'
-import { useMaterialAssignments, useMaterialInsert, useMaterials } from '@/lib/supabase/hooks'
+import { useGeneratedMaterials, useMaterialAssignments, useMaterialInsert, useMaterialTemplates, useMaterials, useStakeholders } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
-import type { Material } from '@/lib/types/database'
+import type { BusinessJoinResource } from '@/lib/business-join'
+import type { GeneratedMaterial, Material, MaterialTemplate, Stakeholder } from '@/lib/types/database'
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   one_pager: <File className="h-5 w-5" />,
@@ -78,6 +79,175 @@ function formatFileSize(bytes?: number | null) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function isReadyGeneratedMaterial(row: GeneratedMaterial) {
+  return row.generation_status === 'generated' && row.is_active !== false && !row.is_outdated
+}
+
+function resolveCurrentStakeholder(stakeholders: Stakeholder[], profile: ReturnType<typeof useAuth>['profile']) {
+  if (stakeholders.length === 0) return null
+
+  return stakeholders.find((stakeholder) => {
+    if (stakeholder.profile_id === profile.id || stakeholder.owner_user_id === profile.id) return true
+    if (profile.business_id && stakeholder.business_id === profile.business_id) return true
+    if (profile.organization_id && stakeholder.organization_id === profile.organization_id) return true
+    return false
+  }) || null
+}
+
+function generatedToMaterial(row: GeneratedMaterial, template?: MaterialTemplate): Material {
+  const metadata = (row.metadata || template?.metadata || {}) as Record<string, unknown>
+  const title = template?.name || row.generated_file_name?.replace(/\.[^/.]+$/, '') || 'Generated material'
+  const description = typeof metadata.description === 'string'
+    ? metadata.description
+    : 'Generated from a selected template with this account details and QR code.'
+  const generatedAt = row.generated_at || row.updated_at || new Date().toISOString()
+
+  return {
+    id: `gen-${row.id}`,
+    title,
+    description,
+    type: template?.output_format === 'png' ? 'print_asset' : 'pdf',
+    brand: 'localvip',
+    file_url: row.generated_file_url,
+    file_name: row.generated_file_name,
+    file_size: null,
+    mime_type: template?.output_format === 'png' ? 'image/png' : 'application/pdf',
+    thumbnail_url: row.generated_file_url,
+    category: row.library_folder || template?.library_folder || 'generated',
+    use_case: 'generated_template',
+    target_roles: [],
+    target_subtypes: [],
+    campaign_id: null,
+    city_id: null,
+    is_template: false,
+    version: row.version_number || row.template_version || 1,
+    status: 'active',
+    created_by: `generated:${row.stakeholder_id}`,
+    metadata: {
+      ...metadata,
+      generated_material_id: row.id,
+      template_id: row.template_id,
+      generated_status: row.generation_status,
+      generated_from_template: true,
+      tags: row.tags,
+    },
+    created_at: generatedAt,
+    updated_at: row.updated_at || generatedAt,
+  }
+}
+
+function BusinessQrMaterialCard({ businessId }: { businessId: string }) {
+  const [resource, setResource] = React.useState<BusinessJoinResource | null>(null)
+  const [qrPreviewUrl, setQrPreviewUrl] = React.useState('')
+  const [loading, setLoading] = React.useState(true)
+  const [message, setMessage] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      try {
+        const response = await fetch(`/api/business-portal/collect?businessId=${encodeURIComponent(businessId)}`, { cache: 'no-store' })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(payload?.error || 'Could not load QR code.')
+        if (!cancelled) setResource(payload as BusinessJoinResource)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [businessId])
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    async function buildQr() {
+      if (!resource) {
+        setQrPreviewUrl('')
+        return
+      }
+      const next = await generateStyledQR({
+        data: resource.redirectUrl || resource.joinUrl,
+        size: 260,
+        foregroundColor: resource.qrAppearance.foregroundColor,
+        backgroundColor: resource.qrAppearance.backgroundColor,
+        frameText: resource.qrAppearance.frameText,
+        logoUrl: resource.qrAppearance.logoUrl || undefined,
+        dotStyle: resource.qrAppearance.dotStyle,
+        cornerStyle: resource.qrAppearance.cornerStyle,
+        gradientType: resource.qrAppearance.gradientType,
+        gradientColors: resource.qrAppearance.gradientColors,
+      })
+      if (!cancelled) setQrPreviewUrl(next)
+    }
+
+    void buildQr()
+    return () => {
+      cancelled = true
+    }
+  }, [resource])
+
+  async function copyJoinLink() {
+    if (!resource) return
+    await navigator.clipboard.writeText(resource.joinUrl)
+    setMessage('QR join link copied.')
+    window.setTimeout(() => setMessage(null), 1600)
+  }
+
+  if (loading || !resource) return null
+
+  return (
+    <Card className="overflow-hidden border-brand-200 bg-brand-50/40">
+      <CardContent className="grid gap-5 p-5 md:grid-cols-[180px,1fr] md:items-center">
+        <div className="flex justify-center rounded-2xl border border-white bg-white p-3 shadow-sm">
+          {qrPreviewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={qrPreviewUrl} alt="Business customer QR code" className="h-40 w-40 object-contain" />
+          ) : (
+            <div className="flex h-40 w-40 items-center justify-center text-surface-400">
+              <QrCode className="h-10 w-10" />
+            </div>
+          )}
+        </div>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="info">Business QR</Badge>
+            <Badge variant="success">Always available</Badge>
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-surface-900">Customer capture QR code</h3>
+            <p className="mt-1 text-sm leading-6 text-surface-600">
+              This QR sends customers to your 100-list join page. Generated template materials should use this same QR.
+            </p>
+            <p className="mt-2 break-all font-mono text-xs text-surface-500">{resource.joinUrl}</p>
+          </div>
+          {message && <p className="text-sm font-medium text-success-700">{message}</p>}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={copyJoinLink}>
+              <Copy className="h-3.5 w-3.5" /> Copy link
+            </Button>
+            {qrPreviewUrl && (
+              <Button size="sm" variant="outline" onClick={() => downloadDataURL(qrPreviewUrl, `${resource.joinSlug}-customer-qr.png`)}>
+                <Download className="h-3.5 w-3.5" /> Download QR
+              </Button>
+            )}
+            <Button size="sm" variant="outline" asChild>
+              <a href={resource.joinUrl} target="_blank" rel="noreferrer">
+                Open join page <ArrowRight className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 function UploadMaterialDialog({
@@ -364,7 +534,16 @@ export default function MyMaterialsPage() {
 function StandardMaterialsPage() {
   const { profile, isAdmin, localProfileId } = useAuth()
   const { data: allMaterials, loading: materialsLoading, error, refetch } = useMaterials()
-  const { data: assignments, loading: assignmentsLoading } = useMaterialAssignments({ stakeholder_id: localProfileId || EMPTY_UUID })
+  const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
+  const stakeholder = React.useMemo(() => resolveCurrentStakeholder(stakeholders, profile), [profile, stakeholders])
+  const stakeholderId = stakeholder?.id || EMPTY_UUID
+  const businessId = profile.business_id || stakeholder?.business_id || null
+  const { data: assignments, loading: assignmentsLoading } = useMaterialAssignments({ stakeholder_id: stakeholderId })
+  const { data: generatedMaterials, loading: generatedLoading, refetch: refetchGenerated } = useGeneratedMaterials(
+    { stakeholder_id: stakeholderId },
+    { enabled: !!stakeholder?.id },
+  )
+  const { data: templates, loading: templatesLoading } = useMaterialTemplates({ is_active: 'true' })
   const [uploadOpen, setUploadOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
@@ -376,34 +555,18 @@ function StandardMaterialsPage() {
 
   const materials = React.useMemo(() => {
     const assignedIds = new Set(assignments.map(assignment => assignment.material_id))
-    const shell = getStakeholderShell(profile)
-
-    return allMaterials.filter(material => {
-      if ((localProfileId && material.created_by === localProfileId) || assignedIds.has(material.id)) return true
-      if (isAdmin) return true
-
-      if (shell === 'field') {
-        return materialMatchesTargeting(material, profile)
-          || ['field_outreach', 'partner_outreach'].includes(material.category || '')
-      }
-
-      if (shell === 'launch_partner') {
-        return materialMatchesTargeting(material, profile)
-          || ['launch_partner', 'business_onboarding', 'partner_outreach'].includes(material.category || '')
-      }
-
-      if (shell === 'community') {
-        return materialMatchesTargeting(material, profile)
-          || material.category === 'community_mobilization'
-      }
-
-      if (shell === 'influencer') {
-        return materialMatchesTargeting(material, profile) || material.category === 'influencer_referral'
-      }
-
-      return false
+    const templateMap = new Map(templates.map(template => [String(template.id), template]))
+    const ownedOrAssignedUploads = allMaterials.filter(material => {
+      if (material.is_template) return false
+      if (localProfileId && material.created_by === localProfileId) return true
+      return assignedIds.has(material.id)
     })
-  }, [allMaterials, assignments, isAdmin, localProfileId, profile])
+    const chosenGenerated = generatedMaterials
+      .filter(isReadyGeneratedMaterial)
+      .map(row => generatedToMaterial(row, templateMap.get(String(row.template_id))))
+
+    return [...chosenGenerated, ...ownedOrAssignedUploads]
+  }, [allMaterials, assignments, generatedMaterials, localProfileId, templates])
 
   const filtered = React.useMemo(() => {
     return materials.filter(material => {
@@ -416,7 +579,7 @@ function StandardMaterialsPage() {
     })
   }, [materials, search])
 
-  const loading = materialsLoading || assignmentsLoading
+  const loading = materialsLoading || assignmentsLoading || generatedLoading || stakeholdersLoading || templatesLoading
   const uploadedCount = localProfileId
     ? materials.filter(material => material.created_by === localProfileId).length
     : 0
@@ -428,7 +591,8 @@ function StandardMaterialsPage() {
   ).length
 
   async function handleDelete(material: Material) {
-    if (!(isAdmin || (!!localProfileId && material.created_by === localProfileId))) return
+    const generated = material.id.startsWith('gen-')
+    if (!(generated || isAdmin || (!!localProfileId && material.created_by === localProfileId))) return
     if (!confirm('Delete this material? Any linked business or outreach references will be cleared when possible.')) return
 
     setDeletingId(material.id)
@@ -446,6 +610,7 @@ function StandardMaterialsPage() {
 
     setActionMessage('Material deleted.')
     refetch()
+    refetchGenerated({ silent: true })
   }
 
   return (
@@ -458,9 +623,9 @@ function StandardMaterialsPage() {
             <Button onClick={() => setUploadOpen(true)}>
               <Upload className="h-4 w-4" /> Upload
             </Button>
-            <Link href="/materials/library">
+            <Link href="/portal/templates">
               <Button variant="outline">
-                Browse Library <ArrowRight className="h-4 w-4" />
+                Template Library <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
           </div>
@@ -570,6 +735,8 @@ function StandardMaterialsPage() {
         </div>
       )}
 
+      {businessId ? <BusinessQrMaterialCard businessId={businessId} /> : null}
+
       {loading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
@@ -593,10 +760,11 @@ function StandardMaterialsPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map(material => {
-            const assigned = !localProfileId || material.created_by !== localProfileId
+            const generated = material.id.startsWith('gen-')
+            const assigned = !generated && (!localProfileId || material.created_by !== localProfileId)
             const previewSource = material.file_url || material.thumbnail_url
-            const canDelete = isAdmin || (!!localProfileId && material.created_by === localProfileId)
-            const canEdit = isAdmin || (!!localProfileId && material.created_by === localProfileId)
+            const canDelete = generated || isAdmin || (!!localProfileId && material.created_by === localProfileId)
+            const canEdit = !generated && (isAdmin || (!!localProfileId && material.created_by === localProfileId))
             const visibilityLabels = getMaterialVisibilityRoleLabels(material)
             const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
             const customTags = getMaterialCustomTags(material)
@@ -622,8 +790,8 @@ function StandardMaterialsPage() {
                     <Badge variant="default">
                       {MATERIAL_TYPES.find(item => item.value === material.type)?.label ?? material.type}
                     </Badge>
-                    <Badge variant={assigned ? 'warning' : 'success'}>
-                      {assigned ? 'Assigned' : 'Uploaded by you'}
+                    <Badge variant={generated ? 'info' : assigned ? 'warning' : 'success'}>
+                      {generated ? 'Generated from template' : assigned ? 'Assigned' : 'Uploaded by you'}
                     </Badge>
                   </div>
                   {(visibilityLabels.length > 0 || subtypeLabels.length > 0 || customTags.length > 0) && (
@@ -700,10 +868,11 @@ function StandardMaterialsPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map(material => {
-            const assigned = !localProfileId || material.created_by !== localProfileId
+            const generated = material.id.startsWith('gen-')
+            const assigned = !generated && (!localProfileId || material.created_by !== localProfileId)
             const previewSource = material.file_url || material.thumbnail_url
-            const canDelete = isAdmin || (!!localProfileId && material.created_by === localProfileId)
-            const canEdit = isAdmin || (!!localProfileId && material.created_by === localProfileId)
+            const canDelete = generated || isAdmin || (!!localProfileId && material.created_by === localProfileId)
+            const canEdit = !generated && (isAdmin || (!!localProfileId && material.created_by === localProfileId))
             const visibilityLabels = getMaterialVisibilityRoleLabels(material)
             const subtypeLabels = getMaterialVisibilitySubtypeLabels(material)
             const customTags = getMaterialCustomTags(material)
@@ -727,8 +896,8 @@ function StandardMaterialsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="truncate text-sm font-semibold text-surface-900">{material.title}</h3>
                       <span className="text-surface-300">{TYPE_ICONS[material.type] || <FileText className="h-4 w-4" />}</span>
-                      <Badge variant={assigned ? 'warning' : 'success'}>
-                        {assigned ? 'Assigned' : 'Uploaded'}
+                      <Badge variant={generated ? 'info' : assigned ? 'warning' : 'success'}>
+                        {generated ? 'Generated' : assigned ? 'Assigned' : 'Uploaded'}
                       </Badge>
                     </div>
                     <p className="mt-1 truncate text-xs text-surface-500">

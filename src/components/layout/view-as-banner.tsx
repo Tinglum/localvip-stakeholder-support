@@ -56,9 +56,9 @@ export function ViewAsBanner() {
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3 px-4 py-2 text-sm">
           <div className="flex items-center gap-2 text-rose-900">
             <Eye className="h-4 w-4" />
-            <span className="font-medium">Real session as another user</span>
+            <span className="font-medium">Admin previewing this business portal</span>
             <span className="rounded-full bg-rose-200 px-2 py-0.5 text-xs font-medium text-rose-900">
-              impersonating
+              live account view
             </span>
           </div>
           <button
@@ -68,7 +68,7 @@ export function ViewAsBanner() {
             className="inline-flex items-center gap-1 rounded-md bg-rose-900 px-3 py-1 text-xs font-medium text-rose-50 hover:bg-rose-800 disabled:opacity-50"
           >
             <X className="h-3 w-3" />
-            {returning ? 'Returning…' : 'Return to admin'}
+            {returning ? 'Returning...' : 'Return to admin'}
           </button>
         </div>
       </div>
@@ -93,7 +93,7 @@ export function ViewAsBanner() {
       <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3 px-4 py-2 text-sm">
         <div className="flex items-center gap-2 text-amber-900">
           <Eye className="h-4 w-4" />
-          <span className="font-medium">Viewing as {viewingAs.name}</span>
+          <span className="font-medium">Admin previewing {viewingAs.name}</span>
           <span className="text-amber-700">({viewingAs.email})</span>
           {viewingAs.consumerType && (
             <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-900">
@@ -108,7 +108,7 @@ export function ViewAsBanner() {
           className="inline-flex items-center gap-1 rounded-md bg-amber-900 px-3 py-1 text-xs font-medium text-amber-50 hover:bg-amber-800 disabled:opacity-50"
         >
           <X className="h-3 w-3" />
-          {returning ? 'Returning…' : 'Return to admin'}
+          {returning ? 'Returning...' : 'Return to admin'}
         </button>
       </div>
     </div>
