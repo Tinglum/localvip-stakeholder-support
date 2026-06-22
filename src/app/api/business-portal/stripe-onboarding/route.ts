@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
+import { fetchQaApi } from '@/lib/auth/qa-api'
 
 // Per-owner Stripe Connect onboarding status + link for the logged-in business.
 // Proxies the QA backend's CustomerStripeOnBoarding endpoint, which returns the
@@ -20,15 +20,29 @@ export async function GET() {
 
   try {
     const res = await fetchQaApi('/api/mobile/v1/Payment/CustomerStripeOnBoarding')
-    const json = await parseQaResponse<{ onboardingUrl?: string | null; isOnboardingComplete?: boolean }>(
-      res,
-      'Failed to load Stripe onboarding status.',
-    )
+    const contentType = res.headers.get('content-type') || ''
+    if (!res.ok) {
+      // Surface the upstream status + a short detail so the cause is visible
+      // (auth vs Stripe-config vs other) instead of a generic failure.
+      const detail = contentType.includes('json')
+        ? JSON.stringify(await res.json().catch(() => ({}))).slice(0, 400)
+        : (await res.text().catch(() => '')).slice(0, 400)
+      return NextResponse.json(
+        { error: 'Stripe onboarding is unavailable right now.', upstreamStatus: res.status, detail },
+        { status: 502 },
+      )
+    }
+    const json = contentType.includes('json')
+      ? (await res.json().catch(() => ({}))) as { onboardingUrl?: string | null; isOnboardingComplete?: boolean }
+      : {}
     return NextResponse.json({
       isOnboardingComplete: !!json?.isOnboardingComplete,
       onboardingUrl: json?.onboardingUrl ?? null,
     })
-  } catch {
-    return NextResponse.json({ error: 'Stripe onboarding is unavailable right now.' }, { status: 502 })
+  } catch (e) {
+    return NextResponse.json(
+      { error: 'Stripe onboarding is unavailable right now.', detail: e instanceof Error ? e.message : String(e) },
+      { status: 502 },
+    )
   }
 }
