@@ -469,6 +469,8 @@ export interface QaLoginAsResult {
   accessToken: string
   tokenType: string
   expiresIn: number
+  /** Space-delimited scopes stamped on the minted impersonation token. */
+  scope?: string
   user: {
     id: number | string
     email: string

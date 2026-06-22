@@ -21,9 +21,13 @@ function readCookie(name: string): string | null {
 export function ViewAsBanner() {
   const router = useRouter()
   const [viewingAs, setViewingAs] = React.useState<ViewAsPayload | null>(null)
+  // Real impersonation = a genuine session as the target (lvip_real_impersonation
+  // flag set by /api/dashboard/real-login-as). This is NOT the read-only overlay.
+  const [realImpersonation, setRealImpersonation] = React.useState(false)
   const [returning, setReturning] = React.useState(false)
 
   React.useEffect(() => {
+    setRealImpersonation(readCookie('lvip_real_impersonation') === '1')
     const raw = readCookie('lvip_view_as')
     if (!raw) return
     try {
@@ -32,6 +36,44 @@ export function ViewAsBanner() {
       setViewingAs(null)
     }
   }, [])
+
+  // ── Real impersonation banner (genuine session) ──
+  if (realImpersonation) {
+    const handleRealReturn = async () => {
+      setReturning(true)
+      try {
+        await fetch('/api/dashboard/real-login-as', { method: 'DELETE' })
+        setRealImpersonation(false)
+        // Hard navigate so the restored admin session is picked up cleanly.
+        window.location.href = '/dashboard'
+      } finally {
+        setReturning(false)
+      }
+    }
+
+    return (
+      <div className="sticky top-0 z-40 border-b border-rose-300 bg-rose-50/95 backdrop-blur supports-[backdrop-filter]:bg-rose-50/80">
+        <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3 px-4 py-2 text-sm">
+          <div className="flex items-center gap-2 text-rose-900">
+            <Eye className="h-4 w-4" />
+            <span className="font-medium">Real session as another user</span>
+            <span className="rounded-full bg-rose-200 px-2 py-0.5 text-xs font-medium text-rose-900">
+              impersonating
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRealReturn}
+            disabled={returning}
+            className="inline-flex items-center gap-1 rounded-md bg-rose-900 px-3 py-1 text-xs font-medium text-rose-50 hover:bg-rose-800 disabled:opacity-50"
+          >
+            <X className="h-3 w-3" />
+            {returning ? 'Returning…' : 'Return to admin'}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!viewingAs) return null
 

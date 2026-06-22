@@ -24,6 +24,7 @@ import {
 import { ProgressSteps } from '@/components/ui/progress-steps'
 import { BusinessExecutionOverview } from '@/components/crm/business-execution-overview'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
+import { RealLogInAsButton } from '@/components/crm/real-log-in-as-button'
 import { QaImportedFieldsPanel, QaUniversalBacklogTable, type QaImportedFact } from '@/components/crm/qa-linking-panels'
 import {
   Select,
@@ -466,10 +467,18 @@ export default function BusinessDetailPage() {
             <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}>
               <QrCodeIcon className="h-3.5 w-3.5" /> Generate QR Code
             </Button>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
               <LogInAsButton
                 userId={biz.owner_user_id || owner?.id || null}
                 userName={owner?.full_name || biz.name}
+                stakeholderType="Business"
+              />
+              {/* Genuine session as the business owner. Requires the numeric QA
+                  backend user id (the token-minting path) — owner?.id is a derived
+                  UUID, so only the QA owner id is passed. */}
+              <RealLogInAsButton
+                userId={biz.owner_user_id || null}
+                userName={owner?.full_name || biz.owner_name || biz.name}
                 stakeholderType="Business"
               />
             </div>
