@@ -45,7 +45,8 @@ import {
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
 import { EMPTY_UUID } from '@/lib/uuid'
 import { formatDate } from '@/lib/utils'
-import { useGeneratedMaterials, useMaterialAssignments, useMaterialInsert, useMaterialTemplates, useMaterials, useStakeholders } from '@/lib/supabase/hooks'
+import { useBusinesses, useGeneratedMaterials, useMaterialAssignments, useMaterialInsert, useMaterialTemplates, useMaterials, useStakeholders } from '@/lib/supabase/hooks'
+import { resolveScopedBusiness } from '@/lib/business-portal'
 import { createClient } from '@/lib/supabase/client'
 import type { BusinessJoinResource } from '@/lib/business-join'
 import type { GeneratedMaterial, Material, MaterialTemplate, Stakeholder } from '@/lib/types/database'
@@ -124,7 +125,7 @@ function generatedToMaterial(row: GeneratedMaterial, template?: MaterialTemplate
     is_template: false,
     version: row.version_number || row.template_version || 1,
     status: 'active',
-    created_by: `generated:${row.stakeholder_id}`,
+    created_by: `generated:${(row as { business_account_id?: string | null; cause_account_id?: string | null }).business_account_id || (row as { cause_account_id?: string | null }).cause_account_id || row.stakeholder_id || ''}`,
     metadata: {
       ...metadata,
       generated_material_id: row.id,
@@ -537,11 +538,16 @@ function StandardMaterialsPage() {
   const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
   const stakeholder = React.useMemo(() => resolveCurrentStakeholder(stakeholders, profile), [profile, stakeholders])
   const stakeholderId = stakeholder?.id || EMPTY_UUID
-  const businessId = profile.business_id || stakeholder?.business_id || null
+  // Stakeholders were removed from the backend — generated materials are keyed by
+  // the business (or cause) account. Resolve the current business account id.
+  const { data: scopedBusinesses } = useBusinesses(profile.business_id ? { id: profile.business_id } : undefined)
+  const scopedBusiness = React.useMemo(() => resolveScopedBusiness(profile, scopedBusinesses), [profile, scopedBusinesses])
+  const businessAccountId = scopedBusiness?.id ? String(scopedBusiness.id) : (profile.business_id || stakeholder?.business_id || null)
+  const businessId = businessAccountId
   const { data: assignments, loading: assignmentsLoading } = useMaterialAssignments({ stakeholder_id: stakeholderId })
   const { data: generatedMaterials, loading: generatedLoading, refetch: refetchGenerated } = useGeneratedMaterials(
-    { stakeholder_id: stakeholderId },
-    { enabled: !!stakeholder?.id },
+    { business_account_id: businessAccountId ?? EMPTY_UUID },
+    { enabled: !!businessAccountId },
   )
   const { data: templates, loading: templatesLoading } = useMaterialTemplates({ is_active: 'true' })
   const [uploadOpen, setUploadOpen] = React.useState(false)

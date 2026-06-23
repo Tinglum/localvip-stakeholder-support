@@ -3,7 +3,6 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { generateMaterialsForStakeholder } from '@/lib/server/material-engine'
-import { ensureQaBusinessStakeholderContext } from '@/lib/server/qa-business-stakeholders'
 import type { Stakeholder } from '@/lib/types/database'
 
 export async function POST(request: NextRequest) {
@@ -23,18 +22,21 @@ export async function POST(request: NextRequest) {
   }
 
   if (session.source === 'qa') {
+    // Stakeholders were removed from the backend — generate one template directly
+    // against the business (or cause) account. The GeneratedMaterial endpoint
+    // embeds the business QR and renders the file.
+    const causeId = (body as { causeId?: string }).causeId
+    if (!businessId && !causeId) {
+      return NextResponse.json({ error: 'businessId (or causeId) is required.' }, { status: 400 })
+    }
     try {
-      if (!stakeholderId && businessId) {
-        const context = await ensureQaBusinessStakeholderContext(businessId)
-        stakeholderId = String(context.stakeholder.id)
-      }
-      if (!stakeholderId) {
-        return NextResponse.json({ error: 'A stakeholder could not be prepared for this business.' }, { status: 400 })
-      }
+      const payload: Record<string, unknown> = { templateId: Number(templateId) }
+      if (businessId) payload.businessAccountId = Number(businessId)
+      if (causeId) payload.causeAccountId = Number(causeId)
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ stakeholderId, templateId }),
+        body: JSON.stringify(payload),
       })
       const result = await parseQaResponse<unknown>(res, 'Could not generate material.')
       return NextResponse.json({ success: true, result })
