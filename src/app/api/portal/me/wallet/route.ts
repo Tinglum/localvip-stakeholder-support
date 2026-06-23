@@ -30,8 +30,9 @@ export async function GET() {
     readOptionalQaJson('/api/mobile/v1/Payment/CauseImpactSummary').catch(() => null),
   ])
 
-  // Available balance reflects cashback (already in the wallet) PLUS lifetime
-  // network earnings, which aren't separately walleted in this data set.
+  // Available balance should stay cashback-only. Network/bonus earnings are
+  // displayed separately on the wallet/network pages so the same money is not
+  // double-counted in the customer-facing earnings card.
   const pickNumber = (payload: unknown, keys: string[]): number => {
     if (typeof payload === 'number') return Number.isFinite(payload) ? payload : 0
     if (payload && typeof payload === 'object') {
@@ -44,10 +45,9 @@ export async function GET() {
     return 0
   }
   const availableBase = pickNumber(available, ['availableAmount', 'amount', 'Amount'])
-  const networkLifetime = pickNumber(bonusCash, ['Amount', 'amount'])
 
   return NextResponse.json({
-    available: availableBase + networkLifetime,
+    available: availableBase,
     cashback,
     bonusCash,
     causeImpact,

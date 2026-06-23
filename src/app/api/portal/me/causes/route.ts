@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
+import { fetchQaApi, parseQaJsonResponse, parseQaResponse } from '@/lib/auth/qa-api'
 import { parseJsonRequest, qaRouteErrorResponse, requireQaRouteAccess } from '@/lib/server/qa-route'
 
 // Mobile QA endpoints backing the consumer "My Causes" portal page.
 const CAUSES_CATALOG_PATH = '/api/mobile/v1/Causes/Catalog'
 const CAUSES_SELECTION_PATH = '/api/mobile/v1/Causes/Selection'
+const CAUSE_IMPACT_SUMMARY_PATH = '/api/mobile/v1/Payment/CauseImpactSummary'
 
 // The .NET catalog/selection responses are sometimes wrapped in { items } or a
 // { $values } envelope. Normalize either shape into a flat array.
@@ -51,6 +52,15 @@ function toNullableString(value: unknown): string | null {
   return null
 }
 
+async function readOptionalQaJson<T = Record<string, unknown>>(path: string): Promise<T | null> {
+  try {
+    const res = await fetchQaApi(path)
+    return await parseQaJsonResponse<T>(res, `Failed to load ${path}.`)
+  } catch {
+    return null
+  }
+}
+
 function mapCatalogItem(entry: unknown): CauseCatalogItem | null {
   if (!entry || typeof entry !== 'object') return null
   const record = entry as Record<string, unknown>
@@ -87,9 +97,10 @@ export async function GET(request: NextRequest) {
   catalogQuery.set('pageSize', '500')
 
   try {
-    const [catalogRes, selectionRes] = await Promise.all([
+    const [catalogRes, selectionRes, causeImpact] = await Promise.all([
       fetchQaApi(`${CAUSES_CATALOG_PATH}?${catalogQuery.toString()}`),
       fetchQaApi(CAUSES_SELECTION_PATH),
+      readOptionalQaJson(CAUSE_IMPACT_SUMMARY_PATH),
     ])
 
     const [catalogPayload, selectionPayload] = await Promise.all([
@@ -105,7 +116,7 @@ export async function GET(request: NextRequest) {
       .map(mapSelectionItem)
       .filter((item): item is CauseSelectionItem => Boolean(item))
 
-    return NextResponse.json({ catalog, selection })
+    return NextResponse.json({ catalog, selection, causeImpact })
   } catch (error) {
     return qaRouteErrorResponse(error, 'Your causes could not be loaded.')
   }

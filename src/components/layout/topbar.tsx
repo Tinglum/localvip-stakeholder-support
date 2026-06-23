@@ -111,7 +111,7 @@ function getPageContext(pathname: string) {
 function getProfileHref(profile: Profile, shell: string) {
   if (isAdminProfile(profile)) return '/admin/users'
   if (shell === 'business') return '/portal/business'
-  if (shell === 'consumer') return '/portal/me'
+  if (shell === 'consumer') return '/portal/me/profile'
   if (shell === 'community') return '/community/share'
   if (shell === 'influencer') return '/influencer/share'
   return '/dashboard'
@@ -128,6 +128,7 @@ function getQuickLinks(shell: string): { label: string; href: string }[] {
   }
   if (shell === 'consumer') {
     return [
+      { label: 'Edit profile', href: '/portal/me/profile' },
       { label: 'My wallet', href: '/portal/me/wallet' },
       { label: 'My network', href: '/portal/me/network' },
       { label: 'My causes', href: '/portal/me/causes' },

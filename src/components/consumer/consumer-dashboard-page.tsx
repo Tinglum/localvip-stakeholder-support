@@ -148,6 +148,7 @@ export function ConsumerDashboardPage() {
   const [simulatedCashbackPercent, setSimulatedCashbackPercent] = React.useState(10)
   const [simulatedFriends, setSimulatedFriends] = React.useState(1)
   const [showTips, setShowTips] = React.useState(true)
+  const [savedPayoutMethod, setSavedPayoutMethod] = React.useState<string | null>(null)
 
   const loadDashboard = React.useCallback(async (silent = false) => {
     if (silent) setRefreshing(true)
@@ -182,6 +183,18 @@ export function ConsumerDashboardPage() {
   React.useEffect(() => {
     const stored = window.localStorage.getItem('localvip-consumer-dashboard-tips')
     if (stored === 'hidden') setShowTips(false)
+  }, [])
+
+  React.useEffect(() => {
+    const raw = window.localStorage.getItem('localvip-consumer-payout-preference')
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw) as { method?: string }
+      if (parsed.method === 'paypal') setSavedPayoutMethod('PayPal')
+      if (parsed.method === 'check') setSavedPayoutMethod('Check')
+    } catch {
+      setSavedPayoutMethod(null)
+    }
   }, [])
 
   React.useEffect(() => {
@@ -225,10 +238,10 @@ export function ConsumerDashboardPage() {
 
   const consumer = data.summary.consumer
   const wallet = data.wallet || data.summary.wallet
-  const payoutMethod = data.wallet?.bank || 'Not set up yet'
+  const payoutMethod = savedPayoutMethod || data.wallet?.bank || 'Not selected yet'
   const fullName = `${consumer.firstName} ${consumer.lastName}`.trim() || profile.full_name || consumer.email
   const shareUrl = consumer.sharedURL
-  const walletReady = data.summary.stripeOnboarded
+  const payoutConfigured = Boolean(savedPayoutMethod || data.wallet?.bank)
   const normalizedNetworkSearch = networkSearch.trim().toLowerCase()
   const filteredFriends = data.friends.filter((friend) =>
     `${friend.firstName} ${friend.lastName} ${friend.email}`.toLowerCase().includes(normalizedNetworkSearch)
@@ -279,9 +292,9 @@ export function ConsumerDashboardPage() {
   ].slice(0, 10)
   const simulatedCashback = simulatedSpend * (simulatedCashbackPercent / 100)
   const simulatedNetworkLift = simulatedCashback * Math.max(1, simulatedFriends)
-  const milestonePercent = Math.round(((Number(walletReady) + Math.min(5, data.friends.length) / 5 + Math.min(10, data.causes.length) / 10) / 3) * 100)
-  const nextRewardStep = !walletReady
-    ? 'Finish wallet setup so your money is ready when rewards arrive.'
+  const milestonePercent = Math.round(((Number(payoutConfigured) + Math.min(5, data.friends.length) / 5 + Math.min(10, data.causes.length) / 10) / 3) * 100)
+  const nextRewardStep = !payoutConfigured
+    ? 'Choose PayPal or check as your payout method.'
     : data.summary.counts.friends < 5
       ? 'Invite one more friend to keep growing your network.'
       : data.summary.counts.causes < 10
@@ -290,10 +303,10 @@ export function ConsumerDashboardPage() {
   const beginnerChecklist = [
     {
       title: 'Set up my wallet',
-      description: 'This lets your available money pay out smoothly when rewards are ready.',
-      complete: walletReady,
+      description: 'Choose PayPal or check, then request a payout when money is available.',
+      complete: payoutConfigured,
       href: '/portal/me/wallet',
-      actionLabel: walletReady ? 'Wallet ready' : 'Open wallet',
+      actionLabel: payoutConfigured ? 'Payout ready' : 'Choose payout',
     },
     {
       title: 'Invite my first 5 friends',
@@ -393,8 +406,8 @@ export function ConsumerDashboardPage() {
             <Badge variant={consumer.isEnabled ? 'success' : 'default'} dot>
               {consumer.isEnabled ? 'Account active' : 'Account inactive'}
             </Badge>
-            <Badge variant={walletReady ? 'success' : 'warning'}>
-              {walletReady ? 'Wallet ready' : 'Wallet setup needed'}
+            <Badge variant={payoutConfigured ? 'success' : 'warning'}>
+              {payoutConfigured ? 'Payout method ready' : 'Choose payout method'}
             </Badge>
             <Button variant="outline" size="sm" onClick={() => void loadDashboard(true)} disabled={refreshing}>
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -474,18 +487,22 @@ export function ConsumerDashboardPage() {
                   title="Money ready now"
                   value={formatMoney(wallet?.availableAmount)}
                   detail="This is the amount available for payout."
+                  href="/portal/me/wallet"
                 />
                 <PriorityCard
                   icon={<CheckCircle2 className="h-4 w-4" />}
                   title="Next easy step"
-                  value={walletReady ? 'Share and grow' : 'Finish setup'}
+                  value={payoutConfigured ? 'Share and grow' : 'Choose payout'}
                   detail={nextRewardStep}
+                  href={payoutConfigured ? '/portal/me/network' : '/portal/me/wallet'}
                 />
                 <PriorityCard
                   icon={<Share2 className="h-4 w-4" />}
                   title="Your share tool"
                   value={shareUrl ? 'Link ready' : 'Link coming soon'}
-                  detail={shareUrl ? 'Your personal share link is ready to copy.' : 'Your share link is not available yet.'}
+                  detail={shareUrl ? 'Your personal share link is ready to copy.' : 'Open your network tools while the link is prepared.'}
+                  href={shareUrl || '/portal/me/network'}
+                  external={!!shareUrl}
                 />
               </div>
             </div>
@@ -516,15 +533,15 @@ export function ConsumerDashboardPage() {
                 </div>
               </div>
 
-              {!walletReady ? (
+              {!payoutConfigured ? (
                 <div className="mt-5 rounded-2xl border border-warning-200 bg-warning-50 px-4 py-4">
-                  <p className="text-sm font-semibold text-warning-800">Finish wallet setup</p>
+                  <p className="text-sm font-semibold text-warning-800">Choose payout method</p>
                   <p className="mt-1 text-sm leading-6 text-warning-800/90">
-                    This is the last step needed before payouts can move smoothly when money becomes available.
+                    Select PayPal or check so admins know how to send your payout.
                   </p>
                   <Button className="mt-3" asChild>
                     <Link href="/portal/me/wallet">
-                      Finish wallet setup
+                      Choose payout method
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
@@ -759,7 +776,7 @@ export function ConsumerDashboardPage() {
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <MiniMilestone label="Wallet" complete={walletReady} href="/portal/me/wallet" />
+              <MiniMilestone label="Payout" complete={payoutConfigured} href="/portal/me/wallet" />
               <MiniMilestone label="5 friends" complete={data.friends.length >= 5} href="/portal/me/network" />
               <MiniMilestone label="10 causes" complete={data.causes.length >= 10} href="/portal/me/causes" />
             </div>
@@ -933,7 +950,12 @@ export function ConsumerDashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Your account</CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Your account</CardTitle>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/portal/me/profile">Edit profile</Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
@@ -1133,18 +1155,49 @@ function PriorityCard({
   title,
   value,
   detail,
+  href,
+  external = false,
 }: {
   icon: React.ReactNode
   title: string
   value: string
   detail: string
+  href?: string
+  external?: boolean
 }) {
-  return (
-    <div className="rounded-2xl border border-white/90 bg-white/90 px-4 py-4 shadow-sm">
+  const content = (
+    <>
       <div className="inline-flex rounded-xl bg-brand-50 p-2 text-brand-700">{icon}</div>
       <p className="mt-3 text-sm font-semibold text-surface-900">{title}</p>
       <p className="mt-1 text-base font-semibold text-surface-900">{value}</p>
       <p className="mt-1 text-sm leading-6 text-surface-500">{detail}</p>
+      {href ? (
+        <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand-700">
+          Open <ArrowRight className="h-3.5 w-3.5" />
+        </span>
+      ) : null}
+    </>
+  )
+
+  if (href && external) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="rounded-2xl border border-white/90 bg-white/90 px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-card-hover">
+        {content}
+      </a>
+    )
+  }
+
+  if (href) {
+    return (
+      <Link href={href} className="rounded-2xl border border-white/90 bg-white/90 px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-card-hover">
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/90 bg-white/90 px-4 py-4 shadow-sm">
+      {content}
     </div>
   )
 }
