@@ -38,7 +38,7 @@ import { QA_DASHBOARD_BACKLOG_ROWS } from '@/lib/qa-dashboard-backlog'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
-import { useCrmBusiness, useCrmBusinessLocalState } from '@/lib/hooks/crm-businesses'
+import { useCrmBusiness, useCrmBusinessLocalState, useCrmCauses } from '@/lib/hooks/crm-businesses'
 import {
   useGeneratedMaterials,
   useMaterials,
@@ -46,6 +46,7 @@ import {
   useTasks, useTaskInsert, useTaskUpdate,
   useNotes, useNoteInsert,
   useBusinessUpdate,
+  useCampaigns,
 } from '@/lib/supabase/hooks'
 import type { CrmBusiness, QaBusinessDetail } from '@/lib/crm-api'
 import type {
@@ -136,15 +137,37 @@ export default function BusinessDetailPage() {
   const fallbackEntityId = resolvedBusinessId || EMPTY_UUID
   const localEntityId = localBusinessId || EMPTY_UUID
   const localStateBusinessId = asUuid(localBusinessId)
-  const supportsLegacyWorkflow = !!localStateBusinessId
+  // CRM annotations now persist on the QA Account (preferred) — fall back to a
+  // legacy local record only if there's no QA id. Editable whenever either id
+  // exists (readOnly is true only when neither does).
+  const crmWriteId = (businessResponse?.qaBusinessId != null ? String(businessResponse.qaBusinessId) : null) || localStateBusinessId
+  const canEditCrm = !readOnly && !!crmWriteId
   const preferQaWorkspace = businessResponse?.qaBusinessId !== null && businessResponse?.qaBusinessId !== undefined
   const { data: localState, loading: localStateLoading, error: localStateError, refetch: refetchLocalState } = useCrmBusinessLocalState(localStateBusinessId)
   const qaFallbackStateEnabled = !!resolvedBusinessId && (!localState || preferQaWorkspace)
   const { data: qaMaterials } = useMaterials(undefined, { enabled: qaFallbackStateEnabled })
   const profiles = React.useMemo(() => localState?.profiles ?? [], [localState?.profiles])
   const cities = localState?.cities || []
-  const causes = localState?.causes || []
-  const campaigns = localState?.campaigns || []
+  // Cause + campaign pickers are sourced from QA (nonprofits + Campaign domain),
+  // not the legacy Supabase workspace, so they work on any QA business.
+  const { data: crmCausesResponse } = useCrmCauses()
+  const { data: qaCampaigns } = useCampaigns()
+  const causes = React.useMemo(
+    () => (crmCausesResponse?.items ?? []).map(c => ({
+      id: c.qaCauseId != null ? String(c.qaCauseId) : c.rowId,
+      name: c.name,
+      type: c.type,
+    })),
+    [crmCausesResponse],
+  )
+  const campaigns = React.useMemo(
+    () => (qaCampaigns ?? []).map(c => ({
+      id: String(c.id),
+      name: c.name,
+      status: (c as { status?: string | null }).status ?? null,
+    })),
+    [qaCampaigns],
+  )
   const qrCodes = localState?.qrCodes || []
   const materials = preferQaWorkspace ? qaMaterials : (localState?.materials || qaMaterials)
   const assignments = React.useMemo(() => localState?.assignments ?? [], [localState?.assignments])
@@ -228,11 +251,11 @@ export default function BusinessDetailPage() {
   const [pendingCampaignId, setPendingCampaignId] = React.useState(biz?.campaign_id || '__none')
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
-    if (!biz || !localStateBusinessId || readOnly) return
-    await updateBusiness(localStateBusinessId, { stage: newStage })
+    if (!biz || !crmWriteId || readOnly) return
+    await updateBusiness(crmWriteId, { stage: newStage })
     setStageDropdownOpen(false)
     refetchBusinessDetail()
-  }, [biz, localStateBusinessId, readOnly, refetchBusinessDetail, updateBusiness])
+  }, [biz, crmWriteId, readOnly, refetchBusinessDetail, updateBusiness])
 
   React.useEffect(() => {
     setPendingCauseId(biz?.linked_cause_id || '__none')
@@ -253,10 +276,10 @@ export default function BusinessDetailPage() {
   }, [businessResponse?.qaBusinessId, id, localBusinessId, qaBusinessId, router])
 
   const handleNotDuplicate = async () => {
-    if (!biz || !localStateBusinessId || readOnly) return
+    if (!biz || !crmWriteId || readOnly) return
     setReviewDupLoading(true)
     try {
-      await updateBusiness(localStateBusinessId, { duplicate_of: null })
+      await updateBusiness(crmWriteId, { duplicate_of: null })
       setReviewDupOpen(false)
       refetchBusinessDetail()
     } finally {
@@ -265,10 +288,10 @@ export default function BusinessDetailPage() {
   }
 
   const handleArchiveAsDuplicate = async () => {
-    if (!biz || !localStateBusinessId || readOnly) return
+    if (!biz || !crmWriteId || readOnly) return
     setReviewDupLoading(true)
     try {
-      await updateBusiness(localStateBusinessId, { status: 'archived' })
+      await updateBusiness(crmWriteId, { status: 'archived' })
       setReviewDupOpen(false)
       refetchBusinessDetail()
     } finally {
@@ -277,22 +300,22 @@ export default function BusinessDetailPage() {
   }
 
   const handleCauseLinkSave = React.useCallback(async () => {
-    if (!biz || !localStateBusinessId || readOnly) return
-    await updateBusiness(localStateBusinessId, {
+    if (!biz || !crmWriteId || readOnly) return
+    await updateBusiness(crmWriteId, {
       linked_cause_id: pendingCauseId === '__none' ? null : pendingCauseId,
     })
     setLinkCauseOpen(false)
     refetchBusinessDetail()
-  }, [biz, localStateBusinessId, pendingCauseId, readOnly, refetchBusinessDetail, updateBusiness])
+  }, [biz, crmWriteId, pendingCauseId, readOnly, refetchBusinessDetail, updateBusiness])
 
   const handleCampaignLinkSave = React.useCallback(async () => {
-    if (!biz || !localStateBusinessId || readOnly) return
-    await updateBusiness(localStateBusinessId, {
+    if (!biz || !crmWriteId || readOnly) return
+    await updateBusiness(crmWriteId, {
       campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId,
     })
     setLinkCampaignOpen(false)
     refetchBusinessDetail()
-  }, [biz, localStateBusinessId, pendingCampaignId, readOnly, refetchBusinessDetail, updateBusiness])
+  }, [biz, crmWriteId, pendingCampaignId, readOnly, refetchBusinessDetail, updateBusiness])
 
   // ── Loading state ──
   if (bizLoading) {
@@ -390,10 +413,8 @@ export default function BusinessDetailPage() {
       <PageHeader
         title={biz.name}
         description={readOnly
-          ? 'Viewing the live QA business payload without a writable dashboard path yet.'
-          : supportsLegacyWorkflow
-            ? 'Owner, city, campaign, linked cause, materials, QR, tasks, and outreach all in one place.'
-            : 'QA-backed workspace is active. Legacy local-only workflow fields stay disabled until matching QA APIs exist.'}
+          ? 'Viewing the live QA business payload.'
+          : 'Owner, city, campaign, linked cause, materials, QR, tasks, and outreach all in one place.'}
         breadcrumb={[
           { label: 'CRM', href: '/crm/businesses' },
           { label: 'Businesses', href: '/crm/businesses' },
@@ -406,16 +427,14 @@ export default function BusinessDetailPage() {
               <button
                 onClick={() => setStageDropdownOpen(!stageDropdownOpen)}
                 className="flex items-center gap-1.5"
-                disabled={updateLoading || readOnly || !supportsLegacyWorkflow}
+                disabled={updateLoading || !canEditCrm}
               >
                 <Badge variant={STAGE_VARIANT[biz.stage]} dot className="text-sm">
                   {readOnly
                     ? 'Read only'
-                    : !supportsLegacyWorkflow
-                      ? `${ONBOARDING_STAGES[biz.stage].label} (local-only)`
-                      : updateLoading
-                        ? 'Updating...'
-                        : ONBOARDING_STAGES[biz.stage].label}
+                    : updateLoading
+                      ? 'Updating...'
+                      : ONBOARDING_STAGES[biz.stage].label}
                 </Badge>
                 <ChevronDown className="h-3.5 w-3.5 text-surface-400" />
               </button>
@@ -508,7 +527,7 @@ export default function BusinessDetailPage() {
           </>
         ) : (
           <p className="text-sm text-surface-500">
-            Dashboard actions will unlock when this business has a writable QA or workflow backing path.
+            Dashboard actions will unlock once this business has a QA account record.
           </p>
         )}
       </div>
@@ -556,15 +575,15 @@ export default function BusinessDetailPage() {
         <Card className="transition-colors hover:border-brand-200">
           <button
             type="button"
-            onClick={() => !readOnly && supportsLegacyWorkflow && setLinkCauseOpen(true)}
+            onClick={() => canEditCrm && setLinkCauseOpen(true)}
             className="block w-full text-left"
-            disabled={readOnly || !supportsLegacyWorkflow}
+            disabled={!canEditCrm}
           >
             <CardContent className="space-y-2 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Linked Cause</p>
                 <span className="text-xs font-medium text-brand-700">
-                  {readOnly ? 'Read only' : !supportsLegacyWorkflow ? 'QA API pending' : linkedCause ? 'Change' : 'Link now'}
+                  {readOnly ? 'Read only' : linkedCause ? 'Change' : 'Link now'}
                 </span>
               </div>
               {linkedCause ? (
@@ -581,15 +600,15 @@ export default function BusinessDetailPage() {
         <Card className="transition-colors hover:border-brand-200">
           <button
             type="button"
-            onClick={() => !readOnly && supportsLegacyWorkflow && setLinkCampaignOpen(true)}
+            onClick={() => canEditCrm && setLinkCampaignOpen(true)}
             className="block w-full text-left"
-            disabled={readOnly || !supportsLegacyWorkflow}
+            disabled={!canEditCrm}
           >
             <CardContent className="space-y-2 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
                 <span className="text-xs font-medium text-brand-700">
-                  {readOnly ? 'Read only' : !supportsLegacyWorkflow ? 'QA API pending' : campaign ? 'Change' : 'Link now'}
+                  {readOnly ? 'Read only' : campaign ? 'Change' : 'Link now'}
                 </span>
               </div>
               {campaign ? (
@@ -642,8 +661,8 @@ export default function BusinessDetailPage() {
               localState={preferQaWorkspace ? null : localState}
               city={city}
               owner={owner}
-              linkedCause={linkedCause}
-              campaign={campaign}
+              linkedCause={linkedCause as unknown as Cause | null}
+              campaign={campaign as unknown as Campaign | null}
               updateBusiness={updateBusiness}
               updateLoading={updateLoading}
               refetchBusiness={refetchBusinessDetail}

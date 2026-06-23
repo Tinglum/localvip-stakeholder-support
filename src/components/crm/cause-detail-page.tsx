@@ -99,6 +99,7 @@ import {
 } from '@/lib/supabase/hooks'
 import type {
   Business,
+  Cause,
   GeneratedMaterial,
   OnboardingStage,
   OutreachType,
@@ -335,19 +336,36 @@ export default function CauseDetailPage() {
     router.replace(nextHref)
   }, [causeResponse?.qaCauseId, localCauseId, qaCauseId, routeId, router])
 
+  // CRM annotations persist on the QA Account (preferred) via the nonprofit /crm
+  // route; fall back to a legacy local record only when there's no QA id.
+  const canEditCrm = !readOnly && (causeResponse?.qaCauseId != null || !!localCauseId)
+  const saveCauseCrm = React.useCallback(async (changes: Record<string, unknown>) => {
+    const qaId = causeResponse?.qaCauseId
+    if (qaId != null) {
+      const res = await fetch(`/api/qa/nonprofits/${qaId}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(changes),
+      })
+      if (!res.ok) throw new Error('Failed to update cause CRM fields.')
+    } else if (localCauseId) {
+      await updateCause(localCauseId, changes as Partial<Cause>)
+    }
+  }, [causeResponse?.qaCauseId, localCauseId, updateCause])
+
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
-    if (!cause || !localCauseId || readOnly) return
-    await updateCause(localCauseId, { stage: newStage })
+    if (!cause || !canEditCrm) return
+    await saveCauseCrm({ stage: newStage })
     setStageDropdownOpen(false)
     window.location.reload()
-  }, [cause, localCauseId, readOnly, updateCause])
+  }, [cause, canEditCrm, saveCauseCrm])
 
   const handleCampaignLinkSave = React.useCallback(async () => {
-    if (!cause || !localCauseId || readOnly) return
-    await updateCause(localCauseId, { campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId })
+    if (!cause || !canEditCrm) return
+    await saveCauseCrm({ campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId })
     setLinkCampaignOpen(false)
     window.location.reload()
-  }, [cause, localCauseId, pendingCampaignId, readOnly, updateCause])
+  }, [cause, canEditCrm, pendingCampaignId, saveCauseCrm])
 
   async function refetchExecution() {
     refetchGeneratedMaterials({ silent: true })
@@ -538,17 +556,17 @@ export default function CauseDetailPage() {
 
   // ── Duplicate review ──
   async function handleNotDuplicate() {
-    if (!localCauseId || readOnly) return
+    if (!canEditCrm) return
     setReviewDupLoading(true)
-    await updateCause(localCauseId, { duplicate_of: null })
+    await saveCauseCrm({ duplicate_of: null })
     setReviewDupOpen(false)
     window.location.reload()
   }
 
   async function handleArchiveAsDuplicate() {
-    if (!localCauseId || readOnly) return
+    if (!canEditCrm) return
     setReviewDupLoading(true)
-    await updateCause(localCauseId, { status: 'archived' })
+    await saveCauseCrm({ status: 'archived' })
     setReviewDupOpen(false)
     window.location.reload()
   }

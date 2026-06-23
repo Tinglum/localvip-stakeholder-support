@@ -70,12 +70,6 @@ const BRAND_OPTIONS = Object.entries(BRANDS).map(([value, def]) => ({
   label: def.label,
 }))
 
-const ORIGIN_OPTIONS = [
-  { value: 'hybrid', label: 'Hybrid' },
-  { value: 'qa', label: 'QA only' },
-  { value: 'local', label: 'Local only' },
-]
-
 interface CauseForm {
   name: string
   type: Cause['type']
@@ -135,9 +129,8 @@ export default function CausesPage() {
     if (filters.stage) result = result.filter(item => item.stage === filters.stage)
     if (filters.type) result = result.filter(item => item.type === filters.type)
     if (filters.brand) result = result.filter(item => item.brand === filters.brand)
-    if (filters.origin) result = result.filter(item => item.origin === filters.origin)
     return result
-  }, [filters.brand, filters.origin, filters.stage, filters.type, rows])
+  }, [filters.brand, filters.stage, filters.type, rows])
 
   const handleFormChange = React.useCallback((field: keyof CauseForm, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -262,22 +255,12 @@ export default function CausesPage() {
       ),
     },
     {
-      key: 'origin',
-      header: 'Source of Record',
-      sortable: true,
-      render: item => (
-        <Badge variant={item.origin === 'hybrid' ? 'success' : item.origin === 'qa' ? 'info' : 'warning'}>
-          {item.origin === 'hybrid' ? 'Hybrid' : item.origin === 'qa' ? 'QA only' : 'Local only'}
-        </Badge>
-      ),
-    },
-    {
       key: 'active',
-      header: 'API Status',
+      header: 'Live Status',
       sortable: true,
       render: item => (
         item.active === null ? (
-          <Badge variant="default">No QA record</Badge>
+          <Badge variant="default">—</Badge>
         ) : (
           <Badge variant={item.active ? 'success' : 'warning'}>
             {item.active ? 'Active' : 'Inactive'}
@@ -313,7 +296,7 @@ export default function CausesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Causes"
-        description="Render live QA nonprofit records on demand while keeping dashboard-only CRM workflow local."
+        description="Manage nonprofit records and dashboard CRM workflow."
         actions={(
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" /> Add Cause
@@ -332,7 +315,6 @@ export default function CausesPage() {
           { key: 'stage', label: 'All Dashboard Stages', options: STAGE_OPTIONS },
           { key: 'type', label: 'All Types', options: TYPE_OPTIONS },
           { key: 'brand', label: 'All Brands', options: BRAND_OPTIONS },
-          { key: 'origin', label: 'All Record Sources', options: ORIGIN_OPTIONS },
         ]}
         activeFilters={filters}
         onFilterChange={(key, value) => setFilters(current => ({ ...current, [key]: value }))}

@@ -274,7 +274,7 @@ export function BusinessExecutionOverview({
 
   async function callExecutionAction(payload: Record<string, unknown>) {
     if (!writeBusinessId) {
-      throw new Error('This business is not linked to a local dashboard record yet.')
+      throw new Error('Could not resolve this business record.')
     }
 
     const response = await fetch(`/api/crm/businesses/${writeBusinessId}/execution`, {
@@ -292,7 +292,7 @@ export function BusinessExecutionOverview({
 
   async function callMaterialsAction(payload: Record<string, unknown>) {
     if (!writeBusinessId) {
-      throw new Error('This business is not linked to a local dashboard record yet.')
+      throw new Error('Could not resolve this business record.')
     }
 
     const response = await fetch(`/api/crm/businesses/${writeBusinessId}/materials`, {
@@ -329,7 +329,7 @@ export function BusinessExecutionOverview({
     setError: (msg: string | null) => void,
   ) {
     if (!writeBusinessId) {
-      setError('Business is not linked to a local dashboard record yet.')
+      setError('Could not resolve this business record.')
       return
     }
 
@@ -486,7 +486,7 @@ export function BusinessExecutionOverview({
     setUploadError(null)
     try {
       if (!writeBusinessId) {
-        throw new Error('This business is not linked to a local dashboard record yet.')
+        throw new Error('Could not resolve this business record.')
       }
       const formData = new FormData()
       formData.append('file', file)

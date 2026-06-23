@@ -120,7 +120,38 @@ export async function PUT(
     }
 
     const body = await request.json().catch(() => ({})) as Record<string, unknown>
-    const normalizedBody: Record<string, unknown> = { ...body }
+
+    // CRM pipeline annotations (stage, status, linked cause, campaign, duplicate)
+    // are persisted via the dedicated /crm endpoint on the QA Account, not the
+    // business profile setup. Split them out and forward only what's present.
+    const crmKeyMap: Record<string, string> = {
+      stage: 'stage',
+      status: 'status',
+      linked_cause_id: 'linkedCauseAccountId',
+      campaign_id: 'campaignId',
+      duplicate_of: 'duplicateOfAccountId',
+    }
+    const crmPayload: Record<string, unknown> = {}
+    const normalizedBody: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(body)) {
+      if (key in crmKeyMap) crmPayload[crmKeyMap[key]] = value
+      else normalizedBody[key] = value
+    }
+
+    let crmResult: unknown = null
+    if (Object.keys(crmPayload).length > 0) {
+      const crmRes = await fetchQaApi(`/api/dashboard/v1/Business/${qaBusinessId}/crm`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(crmPayload),
+      })
+      crmResult = await parseQaResponse<unknown>(crmRes, 'Failed to update CRM fields.')
+    }
+
+    // If the request was purely CRM annotations, we're done.
+    if (Object.keys(normalizedBody).length === 0) {
+      return NextResponse.json(crmResult ?? { id: qaBusinessId })
+    }
 
     if (typeof normalizedBody.city_id === 'string' && /^\d+$/.test(normalizedBody.city_id)) {
       try {

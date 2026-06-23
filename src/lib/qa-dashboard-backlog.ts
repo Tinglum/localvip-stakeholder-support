@@ -6,20 +6,18 @@ export interface QaBacklogRow {
   status: string
 }
 
+// What still needs QA work before the dashboard runs fully server-side.
+// Shipped + live on QA (removed from this list): outreach log, tasks, notes,
+// branding uploads, offers, deals, materials library, generated materials,
+// referral codes, campaign linking, business↔cause linking, and CRM pipeline
+// fields (stage, status, duplicate clear/archive) via the Account /crm endpoint.
 export const QA_DASHBOARD_BACKLOG_ROWS: QaBacklogRow[] = [
   {
     area: 'CRM workflow',
-    feature: 'Business lifecycle, cause lifecycle, readiness scoring, blockers, and next-action planning.',
-    qaNeed: 'Lifecycle fields plus a workflow domain for steps, completion state, blockers, and readiness.',
-    neededApis: 'GET/PUT lifecycle state, GET checklist, COMPLETE step, LIST blockers, LIST next actions.',
+    feature: 'Readiness scoring, blockers, and next-action planning (pipeline stage + status already live on QA).',
+    qaNeed: 'A workflow domain for checklist steps, completion state, blockers, and readiness scoring.',
+    neededApis: 'GET checklist, COMPLETE step, LIST blockers, LIST next actions.',
     status: 'Needs QA workflow domain',
-  },
-  {
-    area: 'CRM activity',
-    feature: 'Outreach log timeline for calls, emails, texts, visits, referrals, and follow-up outcomes.',
-    qaNeed: 'Outreach activity table tied to business, cause, or stakeholder records.',
-    neededApis: 'LIST outreach, CREATE outreach, UPDATE outreach, DELETE outreach.',
-    status: 'Needs QA fields + APIs',
   },
   {
     area: 'CRM activity',
@@ -27,20 +25,6 @@ export const QA_DASHBOARD_BACKLOG_ROWS: QaBacklogRow[] = [
     qaNeed: 'Stored script drafts, outcomes, script metadata, and CRM linkage.',
     neededApis: 'LIST scripts, CREATE script log, UPDATE script outcome, LINK script to entity.',
     status: 'Needs QA workflow domain',
-  },
-  {
-    area: 'CRM execution',
-    feature: 'Tasks for businesses, causes, and team members with priority, due date, assignee, and completion.',
-    qaNeed: 'Task table and assignment model in QA.',
-    neededApis: 'LIST tasks, CREATE task, UPDATE task, COMPLETE task, ARCHIVE task.',
-    status: 'Needs QA fields + APIs',
-  },
-  {
-    area: 'CRM execution',
-    feature: 'Notes attached to businesses, causes, and other dashboard records.',
-    qaNeed: 'Notes table with author, timestamps, entity references, and internal/public flags.',
-    neededApis: 'LIST notes, CREATE note, UPDATE note, DELETE note.',
-    status: 'Needs QA fields + APIs',
   },
   {
     area: 'CRM contacts',
@@ -51,59 +35,17 @@ export const QA_DASHBOARD_BACKLOG_ROWS: QaBacklogRow[] = [
   },
   {
     area: 'CRM ownership',
-    feature: 'Owner assignment, helper assignment, stakeholder roles, and local access relationships.',
+    feature: 'Owner assignment, helper assignment, stakeholder roles, and access relationships.',
     qaNeed: 'Assignment/relationship tables between accounts, users, and dashboard roles.',
     neededApis: 'LIST assignments, ASSIGN owner, ADD helper, REMOVE helper, LIST stakeholders.',
     status: 'Needs QA relationship model',
   },
   {
-    area: 'Codes + links',
-    feature: 'Referral codes, connection codes, and join URLs used by the material engine and capture flows.',
-    qaNeed: 'Stakeholder code domain or equivalent QA fields tied to account records.',
-    neededApis: 'GET codes, UPSERT codes, RESOLVE join URL, VALIDATE code uniqueness.',
-    status: 'Needs QA fields + APIs',
-  },
-  {
-    area: 'Branding',
-    feature: 'Logo and cover-photo uploads used in listing previews, QR-linked assets, and generated materials.',
-    qaNeed: 'Brand asset storage fields plus file upload endpoints in QA.',
-    neededApis: 'UPLOAD logo, UPLOAD cover photo, GET brand assets, DELETE/REPLACE brand assets.',
-    status: 'Needs QA file workflow',
-  },
-  {
-    area: 'Offers',
-    feature: 'Capture offer setup, cashback setup, launch-ready offer copy, and business-facing value props.',
-    qaNeed: 'Offer configuration model for capture offers and dashboard-side launch offers.',
-    neededApis: 'LIST offers, CREATE offer, UPDATE offer, ARCHIVE offer.',
-    status: 'Needs QA offer domain',
-  },
-  {
     area: 'QR codes',
-    feature: 'QR code generation, linking, collections, redirects, and QR analytics inside the dashboard.',
-    qaNeed: 'QR code, collection, redirect, and scan-event domain in QA.',
-    neededApis: 'LIST qr codes, CREATE qr code, UPDATE redirect, LIST collections, LIST scan analytics.',
+    feature: 'QR collections, redirects, and scan analytics (single-QR generation already live).',
+    qaNeed: 'QR collection, redirect, and scan-event domain in QA.',
+    neededApis: 'LIST collections, UPDATE redirect, LIST scan analytics.',
     status: 'Needs QA workflow domain',
-  },
-  {
-    area: 'Materials',
-    feature: 'Materials library, template assignment, library folders, and stakeholder material mapping.',
-    qaNeed: 'Material library domain, template metadata, and entity assignment model in QA.',
-    neededApis: 'LIST materials, CREATE material, UPDATE material, ASSIGN material, LIST templates.',
-    status: 'Needs QA workflow domain',
-  },
-  {
-    area: 'Materials',
-    feature: 'Generated materials, regeneration, version history, archive/restore, and generated file tracking.',
-    qaNeed: 'Generated material records with versioning, storage pointers, generation status, and restore actions.',
-    neededApis: 'GENERATE material, LIST generated versions, RESTORE version, ARCHIVE generated file.',
-    status: 'Needs QA workflow domain',
-  },
-  {
-    area: 'Campaigns',
-    feature: 'Campaign creation, campaign linking, and campaign-driven launch management.',
-    qaNeed: 'Campaign table and campaign-to-account relationship model in QA.',
-    neededApis: 'LIST campaigns, CREATE campaign, UPDATE campaign, LINK account to campaign.',
-    status: 'Needs QA fields + APIs',
   },
   {
     area: 'Cities',
@@ -113,17 +55,10 @@ export const QA_DASHBOARD_BACKLOG_ROWS: QaBacklogRow[] = [
     status: 'Needs QA workflow domain',
   },
   {
-    area: 'Relations',
-    feature: 'Business-to-cause linking and other dashboard-level relationship tracking.',
-    qaNeed: 'Explicit account relationship model in QA beyond current account basics.',
-    neededApis: 'LINK business to cause, UNLINK business from cause, LIST linked accounts.',
-    status: 'Needs QA relationship model',
-  },
-  {
     area: 'Data quality',
-    feature: 'Duplicate detection, duplicate review, archive-as-duplicate, and later merge workflows.',
-    qaNeed: 'Duplicate flagging and merge-resolution domain in QA.',
-    neededApis: 'LIST possible duplicates, FLAG duplicate, CLEAR duplicate, MERGE records, ARCHIVE duplicate.',
+    feature: 'Duplicate detection + merge workflows (flag / clear / archive-as-duplicate already live).',
+    qaNeed: 'Duplicate-detection scoring and a record-merge resolution domain in QA.',
+    neededApis: 'LIST possible duplicates, MERGE records.',
     status: 'Needs QA workflow domain',
   },
   {

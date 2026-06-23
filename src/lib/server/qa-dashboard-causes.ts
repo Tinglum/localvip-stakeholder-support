@@ -48,6 +48,11 @@ export function mergeCauseRecord(
   const baseMetadata = isRecord(localCause?.metadata) ? localCause.metadata : {}
   const qaApi = buildQaAccountMetadata(qaCause)
   const qaFields = buildQaAccountFields(qaCause)
+
+  // CRM pipeline annotations now live on the QA Account (detail response).
+  const qaCrm = (qaCause && 'crmStage' in qaCause ? qaCause : null) as QaCauseDetail | null
+  const crmIdToString = (value: number | null | undefined) =>
+    value === null || value === undefined ? null : String(value)
   const metadata = qaApi
     ? { ...baseMetadata, qaApi, qaAccountId: qaCause?.id ?? null, qaCauseId: qaCause?.id ?? null }
     : baseMetadata
@@ -71,16 +76,16 @@ export function mergeCauseRecord(
     ]) || localCause?.address || null,
     city_id: localCause?.city_id || null,
     brand: localCause?.brand || 'localvip',
-    stage: localCause?.stage || 'lead',
+    stage: (qaCrm?.crmStage as Cause['stage']) || localCause?.stage || 'lead',
     owner_id: localCause?.owner_id || null,
     source: localCause?.source || null,
     source_detail: localCause?.source_detail || null,
-    campaign_id: localCause?.campaign_id || null,
+    campaign_id: crmIdToString(qaCrm?.crmCampaignId) || localCause?.campaign_id || null,
     logo_url: buildQaCauseLogoUrl(qaCause) || resolveImageUrl(qaFields.image_url) || localCause?.logo_url || null,
     cover_photo_url: localCause?.cover_photo_url || null,
-    duplicate_of: localCause?.duplicate_of || null,
+    duplicate_of: crmIdToString(qaCrm?.duplicateOfAccountId) || localCause?.duplicate_of || null,
     external_id: qaCause ? String(qaCause.id) : localCause?.external_id || null,
-    status: localCause?.status || (qaCause?.active ? 'active' : 'inactive'),
+    status: (qaCrm?.crmStatus as Cause['status']) || localCause?.status || (qaCause?.active ? 'active' : 'inactive'),
     metadata,
     created_at: localCause?.created_at || qaCause?.createdDate || new Date(0).toISOString(),
     updated_at: localCause?.updated_at || qaCause?.createdDate || new Date(0).toISOString(),

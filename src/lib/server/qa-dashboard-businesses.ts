@@ -49,6 +49,12 @@ export function mergeBusinessRecord(
   const baseMetadata = isRecord(localBusiness?.metadata) ? localBusiness.metadata : {}
   const qaApi = buildQaAccountMetadata(qaBusiness)
   const qaFields = buildQaAccountFields(qaBusiness)
+
+  // CRM pipeline annotations now live on the QA Account (detail response). Prefer
+  // the QA value; fall back to any legacy Supabase value during the transition.
+  const qaCrm = (qaBusiness && 'crmStage' in qaBusiness ? qaBusiness : null) as QaBusinessDetail | null
+  const idToString = (value: number | null | undefined) =>
+    value === null || value === undefined ? null : String(value)
   const metadata = qaApi
     ? { ...baseMetadata, qaApi, qaAccountId: qaBusiness?.id ?? null, qaBusinessId: qaBusiness?.id ?? null }
     : baseMetadata
@@ -71,7 +77,7 @@ export function mergeBusinessRecord(
     city_id: localBusiness?.city_id || null,
     category: localBusiness?.category || null,
     brand: localBusiness?.brand || 'localvip',
-    stage: localBusiness?.stage || 'lead',
+    stage: (qaCrm?.crmStage as Business['stage']) || localBusiness?.stage || 'lead',
     owner_id: localBusiness?.owner_id || null,
     // Prefer the QA owner user id (numeric backend user, exposed on the detail
     // response) so admins can View-As / Log in as the business owner.
@@ -81,14 +87,14 @@ export function mergeBusinessRecord(
         : null),
     source: localBusiness?.source || null,
     source_detail: localBusiness?.source_detail || null,
-    campaign_id: localBusiness?.campaign_id || null,
-    linked_cause_id: localBusiness?.linked_cause_id || null,
+    campaign_id: idToString(qaCrm?.crmCampaignId) || localBusiness?.campaign_id || null,
+    linked_cause_id: idToString(qaCrm?.linkedCauseAccountId) || localBusiness?.linked_cause_id || null,
     linked_material_id: localBusiness?.linked_material_id || null,
     linked_qr_code_id: localBusiness?.linked_qr_code_id || null,
     logo_url: buildQaBusinessLogoUrl(qaBusiness) || resolveImageUrl(qaFields.image_url) || localBusiness?.logo_url || null,
     cover_photo_url: buildQaBusinessCoverUrl(qaBusiness) || localBusiness?.cover_photo_url || null,
     linked_qr_collection_id: localBusiness?.linked_qr_collection_id || null,
-    duplicate_of: localBusiness?.duplicate_of || null,
+    duplicate_of: idToString(qaCrm?.duplicateOfAccountId) || localBusiness?.duplicate_of || null,
     external_id: qaBusiness ? String(qaBusiness.id) : localBusiness?.external_id || null,
     // Surface the business's own referral code + Branch link from the QA detail
     // so the CRM workspace can show "Referral code" + "Join link" for sharing.
@@ -103,7 +109,7 @@ export function mergeBusinessRecord(
     products_services: localBusiness?.products_services || null,
     activation_status: localBusiness?.activation_status || null,
     launch_phase: localBusiness?.launch_phase || null,
-    status: localBusiness?.status || (qaBusiness?.active ? 'active' : 'inactive'),
+    status: (qaCrm?.crmStatus as Business['status']) || localBusiness?.status || (qaBusiness?.active ? 'active' : 'inactive'),
     metadata,
     created_at: localBusiness?.created_at || qaBusiness?.createdDate || new Date(0).toISOString(),
     updated_at: localBusiness?.updated_at || qaBusiness?.createdDate || new Date(0).toISOString(),
