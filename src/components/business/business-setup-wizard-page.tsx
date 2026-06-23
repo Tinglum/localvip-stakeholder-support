@@ -90,6 +90,10 @@ export function BusinessSetupWizardPage() {
   const [activating, setActivating] = React.useState(false)
   const [captureOfferId, setCaptureOfferId] = React.useState<string | null>(null)
   const [cashbackOfferId, setCashbackOfferId] = React.useState<string | null>(null)
+  // The cause this business supports. Auto-attached as the first cause to every
+  // customer who joins through this business's referral link.
+  const [supportedCauseId, setSupportedCauseId] = React.useState<string | null>(null)
+  const [causeOptions, setCauseOptions] = React.useState<Array<{ id: string; name: string }>>([])
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const snapshotRef = React.useRef('')
 
@@ -104,6 +108,24 @@ export function BusinessSetupWizardPage() {
   React.useEffect(() => {
     setStep(initialStep)
   }, [initialStep])
+
+  // Load the cause list so the business can pick the cause it supports.
+  React.useEffect(() => {
+    let cancelled = false
+    fetch('/api/qa/nonprofits')
+      .then(res => (res.ok ? res.json() : []))
+      .then((items: Array<{ id: number; name: string }>) => {
+        if (cancelled || !Array.isArray(items)) return
+        setCauseOptions(
+          items
+            .filter(c => c && c.id != null && c.name)
+            .map(c => ({ id: String(c.id), name: c.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        )
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   React.useEffect(() => {
     if (!business) return
@@ -121,6 +143,7 @@ export function BusinessSetupWizardPage() {
     setCashbackPercent(cashbackOffer?.cashback_percent || 10)
     setCaptureOfferId(captureOffer?.id || null)
     setCashbackOfferId(cashbackOffer?.id || null)
+    setSupportedCauseId(business.linked_cause_id || null)
     snapshotRef.current = JSON.stringify({
       name: business.name || '',
       category: business.category || '',
@@ -199,6 +222,7 @@ export function BusinessSetupWizardPage() {
         launch_phase: launchPhase === 'setup' ? 'setup' : business.launch_phase || null,
         logo_url: nextLogoUrl || null,
         cover_photo_url: nextCoverUrl || null,
+        linked_cause_id: supportedCauseId,
         metadata: nextMetadata as Record<string, unknown>,
         ...(options?.businessPatch || {}),
       })
@@ -305,6 +329,7 @@ export function BusinessSetupWizardPage() {
     portal,
     products,
     refetchOffers,
+    supportedCauseId,
     updateBusiness,
     updateOffer,
   ])
@@ -376,7 +401,7 @@ export function BusinessSetupWizardPage() {
   // The 10% default is only a suggestion — the step isn't "done" until the
   // business has explicitly set a rate this session or saved one before.
   const completeCashback =
-    cashbackPercent >= 5 && cashbackPercent <= 25 && (cashbackTouched || !!cashbackOfferId)
+    cashbackPercent >= 5 && cashbackPercent <= 25 && (cashbackTouched || !!cashbackOfferId) && !!supportedCauseId
   const readyToActivate = completeProfile && completeBranding && completeCapture && completeCashback
   // The activate step counts as complete once everything needed to launch is in
   // place. It can't depend on launch_phase because QA doesn't persist it, which
@@ -833,6 +858,25 @@ export function BusinessSetupWizardPage() {
                     <span>25%</span>
                   </div>
                 </div>
+
+                <div>
+                  <FieldLabel required>The cause you support</FieldLabel>
+                  <p className="mb-2 text-sm text-surface-500">
+                    Every customer who joins LocalVIP through your link automatically supports this cause first. You&apos;re picking the one cause you want to champion above all others.
+                  </p>
+                  <select
+                    value={supportedCauseId ?? ''}
+                    onChange={(event) => setSupportedCauseId(event.target.value || null)}
+                    className={`h-12 w-full rounded-xl border bg-surface-0 px-3 text-sm text-surface-900 ${showCashbackValidation && !supportedCauseId ? 'border-red-400' : 'border-surface-200'}`}
+                  >
+                    <option value="">Select a cause…</option>
+                    {causeOptions.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  {showCashbackValidation && !supportedCauseId ? <RequiredFieldHint /> : null}
+                </div>
+
                 <div className="flex justify-end">
                   <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('cashback')}>
                     Save and next
