@@ -75,7 +75,7 @@ export function mergeBusinessRecord(
       qaFields.country,
     ]) || localBusiness?.address || null,
     city_id: localBusiness?.city_id || null,
-    category: localBusiness?.category || null,
+    category: qaCrm?.category || localBusiness?.category || null,
     brand: localBusiness?.brand || 'localvip',
     stage: (qaCrm?.crmStage as Business['stage']) || localBusiness?.stage || 'lead',
     owner_id: localBusiness?.owner_id || null,
@@ -105,8 +105,10 @@ export function mergeBusinessRecord(
       || (qaBusiness && 'branchReferralUrl' in qaBusiness ? (qaBusiness as { branchReferralUrl?: string | null }).branchReferralUrl : null)
       || null,
     public_description: qaFields.description || localBusiness?.public_description || null,
-    avg_ticket: localBusiness?.avg_ticket || null,
-    products_services: localBusiness?.products_services || null,
+    avg_ticket: qaCrm?.avgTicket || localBusiness?.avg_ticket || null,
+    products_services: qaCrm?.productsServices
+      ? qaCrm.productsServices.split(',').map(s => s.trim()).filter(Boolean)
+      : (localBusiness?.products_services || null),
     activation_status: localBusiness?.activation_status || null,
     launch_phase: localBusiness?.launch_phase || null,
     status: (qaCrm?.crmStatus as Business['status']) || localBusiness?.status || (qaBusiness?.active ? 'active' : 'inactive'),

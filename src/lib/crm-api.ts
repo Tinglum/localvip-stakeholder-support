@@ -68,6 +68,10 @@ export type QaBusinessListItem = QaDashboardAccountSummary
 
 export interface QaBusinessDetail extends QaDashboardAccountDetail {
   hasStripeOnboarding: boolean
+  // Business profile fields now persisted on the QA Account.
+  category?: string | null
+  avgTicket?: string | null
+  productsServices?: string | null
 }
 
 export type QaCauseListItem = QaDashboardAccountSummary

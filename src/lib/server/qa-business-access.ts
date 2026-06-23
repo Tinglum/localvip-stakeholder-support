@@ -99,6 +99,17 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'primary_user_id':
         assign('primaryUserId', value)
         break
+      case 'category':
+        assign('category', value)
+        break
+      case 'avgTicket':
+      case 'avg_ticket':
+        assign('avgTicket', value)
+        break
+      case 'productsServices':
+      case 'products_services':
+        assign('productsServices', Array.isArray(value) ? value.join(', ') : value)
+        break
       case 'metadata':
       case 'stage':
       case 'launch_phase':
@@ -119,7 +130,6 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'external_id':
       case 'website':
       case 'address':
-      case 'category':
       case 'marketing':
       case 'txFee':
       case 'tx_fee':
@@ -133,10 +143,6 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'logo_url':
       case 'coverPhotoUrl':
       case 'cover_photo_url':
-      case 'avgTicket':
-      case 'avg_ticket':
-      case 'productsServices':
-      case 'products_services':
         unsupportedFields.push(key)
         break
       default:

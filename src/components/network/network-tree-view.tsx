@@ -416,21 +416,26 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
           <p className="mb-3 text-sm font-semibold text-slate-700">Network make-up</p>
           <div className="grid gap-3 sm:grid-cols-3">
             {([
-              { type: 'customer' as NodeType, label: 'Customers', icon: <UserCircle2 className="h-4 w-4" /> },
-              { type: 'business' as NodeType, label: 'Businesses', icon: <Network className="h-4 w-4" /> },
-              { type: 'cause' as NodeType, label: 'Causes & schools', icon: <Coins className="h-4 w-4" /> },
-            ]).map(({ type, label, icon }) => (
-              <div key={type} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
-                <div className="flex items-center gap-2 text-slate-600">
-                  {icon}
-                  <span className="text-sm font-medium">{label}</span>
+              { type: 'customer' as NodeType, label: 'Customers', helper: 'Tracked spend', icon: <UserCircle2 className="h-4 w-4" /> },
+              { type: 'business' as NodeType, label: 'Businesses', helper: 'Connected partners', icon: <Network className="h-4 w-4" /> },
+              { type: 'cause' as NodeType, label: 'Causes & schools', helper: 'Connected causes', icon: <Coins className="h-4 w-4" /> },
+            ]).map(({ type, label, helper, icon }) => {
+              const spend = typeBreakdown[type].spend
+              const secondary = type === 'customer' || spend > 0 ? formatCurrency(spend) : helper
+
+              return (
+                <div key={type} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                  <div className="flex items-center gap-2 text-slate-600">
+                    {icon}
+                    <span className="text-sm font-medium">{label}</span>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-base font-semibold text-slate-900">{formatNumber(typeBreakdown[type].count)}</div>
+                    <div className="text-xs text-slate-500">{secondary}</div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-base font-semibold text-slate-900">{formatNumber(typeBreakdown[type].count)}</div>
-                  <div className="text-xs text-slate-500">{formatCurrency(typeBreakdown[type].spend)}</div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       ) : null}
