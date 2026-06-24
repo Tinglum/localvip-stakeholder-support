@@ -15,8 +15,10 @@ interface PublicBusinessJoinFormProps {
 
 interface JoinSuccessPayload {
   businessName: string
-  offerTitle: string
-  offerDescription: string
+  // QA-only businesses have no Supabase offer row, so the capture endpoint can
+  // return these as null. Type them as nullable so the success view guards them.
+  offerTitle: string | null
+  offerDescription: string | null
   offerValue?: string | null
   claimedAt: string
 }
@@ -116,6 +118,9 @@ export function PublicBusinessJoinForm({
   }
 
   const claimedOffer = submitted?.offerValue || submitted?.offerTitle || offerValue || offerTitle
+  // QA-only businesses can return a null offerTitle, so fall back to the
+  // page-level title before lowercasing (null.toLowerCase() would crash render).
+  const claimedOfferLabel = (submitted?.offerTitle || offerTitle || 'offer').toLowerCase()
 
   if (submitted) {
     return (
@@ -142,7 +147,7 @@ export function PublicBusinessJoinForm({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Show this to claim</p>
           <p className="mt-3 text-2xl font-bold leading-tight text-surface-900">{claimedOffer}</p>
           <p className="mt-3 text-sm leading-6 text-surface-600">
-            Show this screen at checkout to claim your {submitted.offerTitle.toLowerCase()}.
+            Show this screen at checkout to claim your {claimedOfferLabel}.
           </p>
         </div>
 
