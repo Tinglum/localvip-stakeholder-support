@@ -32,6 +32,7 @@ async function resolveQaBusinessJoin(slug: string): Promise<QaJoinData | null> {
     const json = await parseQaResponse<{
       kind?: string
       entity?: { id?: number | string; name?: string; headline?: string | null; imageUrl?: string | null }
+      offer?: { headline?: string | null; description?: string | null; value?: string | null }
     }>(res, '')
     if (json?.kind !== 'business' || !json.entity?.name) return null
 
@@ -43,8 +44,10 @@ async function resolveQaBusinessJoin(slug: string): Promise<QaJoinData | null> {
 
     return {
       name: json.entity.name,
-      offerTitle: json.entity.headline?.trim() || null,
-      offerValue: null,
+      // Prefer the 100-list OFFER's own headline; fall back to the business
+      // headline, then (at render) to a generic line.
+      offerTitle: json.offer?.headline?.trim() || json.entity.headline?.trim() || null,
+      offerValue: json.offer?.value?.trim() || null,
       logoUrl,
     }
   } catch {
