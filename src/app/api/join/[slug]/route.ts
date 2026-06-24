@@ -80,13 +80,17 @@ export async function POST(
   }
 
   // 1) Try the QA backend public lookup first (works for QA-stakeholder slugs).
+  // These PublicJoin endpoints are unauthenticated, so use fetchQaPublicApi —
+  // fetchQaApi requires a logged-in QA session and would throw for public
+  // (unauthenticated) visitors, silently dropping the capture to the dead
+  // Supabase fallback below.
   try {
-    const { fetchQaApi, parseQaResponse } = await import('@/lib/auth/qa-api')
-    const resolveRes = await fetchQaApi(`/api/dashboard/v1/PublicJoin/resolve/${encodeURIComponent(params.slug)}`)
+    const { fetchQaPublicApi, parseQaResponse } = await import('@/lib/auth/qa-api')
+    const resolveRes = await fetchQaPublicApi(`/api/dashboard/v1/PublicJoin/resolve/${encodeURIComponent(params.slug)}`)
     if (resolveRes.ok) {
       const json = await parseQaResponse<{ kind?: string; entity?: { id: number | string; name: string } }>(resolveRes, '')
       if (json?.kind === 'business' && json.entity) {
-        const captureRes = await fetchQaApi(`/api/dashboard/v1/PublicJoin/capture/${encodeURIComponent(params.slug)}`, {
+        const captureRes = await fetchQaPublicApi(`/api/dashboard/v1/PublicJoin/capture/${encodeURIComponent(params.slug)}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({

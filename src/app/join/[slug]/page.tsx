@@ -13,22 +13,6 @@ import { PublicBusinessJoinForm } from '@/components/business/public-business-jo
 
 export const dynamic = 'force-dynamic'
 
-// QA-only businesses have no Supabase row, so resolve their public join page
-// straight from the QA PublicJoin endpoint. Capture stays decoupled from any
-// referral code.
-async function resolveQaBusinessName(slug: string): Promise<string | null> {
-  try {
-    const { fetchQaApi, parseQaResponse } = await import('@/lib/auth/qa-api')
-    const res = await fetchQaApi(`/api/dashboard/v1/PublicJoin/resolve/${encodeURIComponent(slug)}`)
-    if (!res.ok) return null
-    const json = await parseQaResponse<{ kind?: string; entity?: { name?: string } }>(res, '')
-    if (json?.kind === 'business' && json.entity?.name) return json.entity.name
-    return null
-  } catch {
-    return null
-  }
-}
-
 interface QaJoinData {
   name: string
   offerTitle: string | null
@@ -36,28 +20,36 @@ interface QaJoinData {
   logoUrl: string | null
 }
 
-// Resolve a QA business's public join data (name + capture offer) so the
-// "100-list" page shows the real offer. Our generated join slugs are
-// `name-<businessId>`, so resolve the full offer straight from that id; fall
-// back to a name-only lookup for any other slug shape.
+// QA-only businesses have no Supabase row, so resolve their public join page
+// straight from the QA PublicJoin endpoint. This is an UNAUTHENTICATED page, so
+// it must use fetchQaPublicApi — fetchQaApi requires a logged-in QA session and
+// would throw for public visitors, forcing the page to a false 404.
 async function resolveQaBusinessJoin(slug: string): Promise<QaJoinData | null> {
-  const idMatch = slug.match(/-(\d+)$/)
-  if (idMatch) {
-    try {
-      const { buildQaBusinessJoinResource } = await import('@/lib/server/qa-business-stakeholders')
-      const r = await buildQaBusinessJoinResource(idMatch[1])
-      return {
-        name: r.businessName,
-        offerTitle: r.offerTitle || null,
-        offerValue: r.offerValue || null,
-        logoUrl: r.logoUrl || null,
-      }
-    } catch {
-      // fall through to name-only resolution
+  try {
+    const { fetchQaPublicApi, parseQaResponse } = await import('@/lib/auth/qa-api')
+    const res = await fetchQaPublicApi(`/api/dashboard/v1/PublicJoin/resolve/${encodeURIComponent(slug)}`)
+    if (!res.ok) return null
+    const json = await parseQaResponse<{
+      kind?: string
+      entity?: { id?: number | string; name?: string; headline?: string | null; imageUrl?: string | null }
+    }>(res, '')
+    if (json?.kind !== 'business' || !json.entity?.name) return null
+
+    // Only use an absolute logo URL here. The QA logo proxy route is auth-gated,
+    // so on this PUBLIC page a bare storage filename can't be fetched — fall back
+    // to the Store icon (logoUrl null) instead of rendering a 403 image.
+    const { resolveImageUrl } = await import('@/lib/server/qa-dashboard-shared')
+    const logoUrl = resolveImageUrl(json.entity.imageUrl)
+
+    return {
+      name: json.entity.name,
+      offerTitle: json.entity.headline?.trim() || null,
+      offerValue: null,
+      logoUrl,
     }
+  } catch {
+    return null
   }
-  const name = await resolveQaBusinessName(slug)
-  return name ? { name, offerTitle: null, offerValue: null, logoUrl: null } : null
 }
 
 export default async function BusinessJoinPage({
