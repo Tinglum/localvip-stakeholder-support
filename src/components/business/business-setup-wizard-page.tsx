@@ -96,6 +96,9 @@ export function BusinessSetupWizardPage() {
   const [causeOptions, setCauseOptions] = React.useState<Array<{ id: string; name: string }>>([])
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const snapshotRef = React.useRef('')
+  // Identity of the record currently seeded into the inputs. We only re-seed when
+  // this changes — see the seeding effect below.
+  const seededKeyRef = React.useRef<string | null>(null)
 
   const portal = React.useMemo(
     () => (business ? getBusinessPortalData(business) : {}),
@@ -129,6 +132,15 @@ export function BusinessSetupWizardPage() {
 
   React.useEffect(() => {
     if (!business) return
+
+    // Only re-seed the inputs when the underlying record IDENTITY changes — a
+    // different business, or the capture/cashback offers finishing their load.
+    // Re-seeding on every `business` object update (e.g. the one returned by our
+    // own autosave) overwrites characters the user typed during the save
+    // round-trip, which made typing feel staccato / jump backwards.
+    const seedKey = `${business.id}|${captureOffer?.id || ''}|${cashbackOffer?.id || ''}`
+    if (seededKeyRef.current === seedKey) return
+    seededKeyRef.current = seedKey
 
     setName(business.name || '')
     setCategory(business.category || '')

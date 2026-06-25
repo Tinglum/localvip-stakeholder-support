@@ -52,9 +52,16 @@ export function BusinessProfilePage() {
   const [products, setProducts] = React.useState('')
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedSnapshotRef = React.useRef('')
+  const seededBizIdRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
     if (!business) return
+
+    // Only seed the inputs when a different business loads — not on every
+    // `business` update. Re-seeding after our own autosave overwrites characters
+    // typed during the save round-trip (staccato / cursor jumps back).
+    if (seededBizIdRef.current === business.id) return
+    seededBizIdRef.current = business.id
 
     const nextName = business.name || ''
     const nextCategory = business.category || ''
