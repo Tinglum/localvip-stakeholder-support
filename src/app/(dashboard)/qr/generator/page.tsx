@@ -43,6 +43,7 @@ import {
   type QrLogoEditSettings,
 } from '@/lib/qr/logo-processing'
 import { useAuth } from '@/lib/auth/context'
+import { useCrmBusiness } from '@/lib/hooks/crm-businesses'
 import {
   useQrCodeInsert,
   useCampaigns,
@@ -296,6 +297,17 @@ export default function QRGeneratorPage() {
     () => (sourceCauseId ? causesData.find((item) => item.id === sourceCauseId) || null : null),
     [causesData, sourceCauseId],
   )
+  // The business list lacks referral_code/logo_url, so fetch the detail to drive
+  // the QR's node-referral link + logo prefill.
+  const { data: sourceBusinessDetail } = useCrmBusiness(sourceBusinessId || null)
+  const sourceBizReferralCode =
+    (sourceBusinessDetail?.business as { referral_code?: string | null } | undefined)?.referral_code
+    || (sourceBusiness as { referral_code?: string | null } | null)?.referral_code
+    || ''
+  const sourceBizLogo =
+    (sourceBusinessDetail?.business as { logo_url?: string | null } | undefined)?.logo_url
+    || (sourceBusiness as { logo_url?: string | null } | null)?.logo_url
+    || ''
   const sourceEntityName = sourceBusiness?.name || sourceCause?.name || ''
   const sourceEntityType = sourceBusiness ? 'business' : sourceCause ? 'cause' : null
   const sourceReturnHref = React.useMemo(() => {
@@ -487,6 +499,21 @@ export default function QRGeneratorPage() {
     sourceEntityType,
     sourceExistingQr,
   ])
+
+  // Embed the business's node-referral link + logo + referral code once the
+  // source business detail loads (fresh QR only — never overrides a loaded
+  // existing QR or a value the user already entered).
+  React.useEffect(() => {
+    if (sourceExistingQr || !sourceBizReferralCode) return
+    const webappBase = (process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com').replace(/\/$/, '')
+    const referralUrl = `${webappBase}/auth/signup?ref=${encodeURIComponent(sourceBizReferralCode)}`
+    setDestType('url')
+    setDestination((current) => (current.type === 'url' && current.url ? current : { type: 'url', url: referralUrl }))
+    setFrameText((current) => current || `Referral: ${sourceBizReferralCode}`)
+    if (/^https?:\/\//i.test(sourceBizLogo)) {
+      setLogoPreviewUrl((current) => current || sourceBizLogo)
+    }
+  }, [sourceBizReferralCode, sourceBizLogo, sourceExistingQr])
 
   // Resolve encoded data
   const encodedData = React.useMemo(() => {
