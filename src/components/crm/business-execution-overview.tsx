@@ -67,6 +67,7 @@ import type {
   Offer,
   OutreachActivity,
   Profile,
+  StakeholderCode,
 } from '@/lib/types/database'
 
 interface BusinessExecutionOverviewProps {
@@ -129,7 +130,14 @@ export function BusinessExecutionOverview({
   const generatedMaterials = localState?.generatedMaterials ?? hookGeneratedMaterials
   const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: EMPTY_UUID }, { enabled: localStateEnabled })
   const adminTasks = localState?.adminTasks ?? hookAdminTasks
-  const codes = null
+  // The backend-assigned referral code IS the join code in the stakeholder-free
+  // QA model — it drives the join link + material generation. (Previously this was
+  // hardcoded to null, which blanked the Materials & QR modal and disabled
+  // "Generate materials".)
+  const codes = React.useMemo(() => {
+    const rc = (biz as { referral_code?: string | null } | null)?.referral_code || ''
+    return rc ? ({ referral_code: rc, connection_code: rc } as unknown as StakeholderCode) : null
+  }, [biz])
   const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: queryBusinessId }, { enabled: localStateEnabled })
   const flows = localState?.flows ?? hookFlows
   const flow = flows[0] || null
