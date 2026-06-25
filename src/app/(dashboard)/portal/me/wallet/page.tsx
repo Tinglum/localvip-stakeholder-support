@@ -116,6 +116,13 @@ function formatUsd(value: number | null): string {
   }).format(value)
 }
 
+function parseMoneyInput(value: string): number | null {
+  const normalized = value.replace(/[$,\s]/g, '')
+  if (!normalized) return null
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : null
+}
+
 interface WalletTileProps {
   label: string
   value: number | null
@@ -187,6 +194,7 @@ export default function MyWalletPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [payoutPreference, setPayoutPreference] = React.useState<PayoutPreference>(DEFAULT_PAYOUT_PREFERENCE)
   const [payoutRequests, setPayoutRequests] = React.useState<PayoutRequest[]>([])
+  const [payoutAmount, setPayoutAmount] = React.useState('')
   const [payoutMessage, setPayoutMessage] = React.useState<string | null>(null)
 
   const load = React.useCallback(async (silent = false) => {
@@ -250,11 +258,41 @@ export default function MyWalletPage() {
   const selectedCauses = data?.causeImpact?.selectedCauses ?? []
 
   const lifetimeCashback = cashback
+  const pendingPayoutTotal = payoutRequests
+    .filter((request) => request.status === 'pending_admin_review')
+    .reduce((sum, request) => sum + request.amount, 0)
+  const requestableAvailable = available === null
+    ? null
+    : Math.max(0, Math.round((available - pendingPayoutTotal) * 100) / 100)
+  const activePendingRequest = payoutRequests.find((request) => request.status === 'pending_admin_review') || null
+  const parsedPayoutAmount = parseMoneyInput(payoutAmount)
   const payoutConfigured = payoutPreference.method === 'paypal'
     ? payoutPreference.paypalEmail.trim().length > 0
     : payoutPreference.checkPayee.trim().length > 0 && payoutPreference.checkMailingAddress.trim().length > 0
   const payoutMethodLabel = payoutPreference.method === 'paypal' ? 'PayPal' : 'Check'
-  const canRequestPayout = payoutConfigured && available !== null && available > 0
+  const payoutAmountError = parsedPayoutAmount === null
+    ? 'Enter an amount to request.'
+    : requestableAvailable !== null && parsedPayoutAmount > requestableAvailable
+      ? `The most you can request right now is ${formatUsd(requestableAvailable)}.`
+      : parsedPayoutAmount <= 0
+        ? 'Amount must be greater than $0.'
+        : null
+  const canRequestPayout = payoutConfigured
+    && !activePendingRequest
+    && requestableAvailable !== null
+    && requestableAvailable > 0
+    && parsedPayoutAmount !== null
+    && parsedPayoutAmount > 0
+    && parsedPayoutAmount <= requestableAvailable
+
+  React.useEffect(() => {
+    if (requestableAvailable === null) return
+    setPayoutAmount((current) => {
+      const currentAmount = parseMoneyInput(current)
+      if (currentAmount !== null && currentAmount > 0 && currentAmount <= requestableAvailable) return current
+      return requestableAvailable > 0 ? requestableAvailable.toFixed(2) : ''
+    })
+  }, [requestableAvailable])
 
   function updatePayoutPreference(patch: Partial<PayoutPreference>) {
     setPayoutPreference((prev) => ({ ...prev, ...patch }))
@@ -269,10 +307,10 @@ export default function MyWalletPage() {
   }
 
   function requestPayout() {
-    if (!canRequestPayout || available === null) return
+    if (!canRequestPayout || parsedPayoutAmount === null) return
     const nextRequest: PayoutRequest = {
       id: `${Date.now()}`,
-      amount: available,
+      amount: parsedPayoutAmount,
       method: payoutPreference.method,
       status: 'pending_admin_review',
       createdAt: new Date().toISOString(),
@@ -280,7 +318,7 @@ export default function MyWalletPage() {
     const nextRequests = [nextRequest, ...payoutRequests]
     setPayoutRequests(nextRequests)
     window.localStorage.setItem(PAYOUT_REQUESTS_KEY, JSON.stringify(nextRequests))
-    setPayoutMessage(`Payout request for ${formatUsd(available)} was queued for admin processing.`)
+    setPayoutMessage(`Payout request for ${formatUsd(parsedPayoutAmount)} is pending. Admin processing still needs the QA payout queue.`)
     window.setTimeout(() => setPayoutMessage(null), 3000)
   }
 
@@ -341,10 +379,10 @@ export default function MyWalletPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <WalletTile
           label="Cashback Available"
-          value={available}
+          value={requestableAvailable}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption="Cashback ready to request"
+          caption={pendingPayoutTotal > 0 ? `${formatUsd(pendingPayoutTotal)} already pending payout` : 'Cashback ready to request'}
           loading={loading}
           emphasize
         />
@@ -505,10 +543,38 @@ export default function MyWalletPage() {
 
           <div className="flex flex-col gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-surface-900">Available to request: {formatUsd(available)}</p>
+              <p className="text-sm font-semibold text-surface-900">Available to request: {formatUsd(requestableAvailable)}</p>
               <p className="mt-1 text-sm text-surface-500">
-                Requests are queued for admin payout processing until the QA backend exposes a live payout endpoint.
+                Pending payout requests are subtracted from this amount so the same balance cannot be requested twice.
               </p>
+            </div>
+            <div className="w-full sm:w-56">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-surface-500">Request amount</span>
+                <div className="flex h-11 overflow-hidden rounded-xl border border-surface-200 bg-white focus-within:ring-2 focus-within:ring-brand-300">
+                  <span className="flex items-center border-r border-surface-200 px-3 text-sm font-semibold text-surface-500">$</span>
+                  <input
+                    inputMode="decimal"
+                    value={payoutAmount}
+                    onChange={(event) => setPayoutAmount(event.target.value)}
+                    placeholder={requestableAvailable !== null ? requestableAvailable.toFixed(2) : '0.00'}
+                    disabled={loading || Boolean(activePendingRequest) || requestableAvailable === null || requestableAvailable <= 0}
+                    className="min-w-0 flex-1 bg-transparent px-3 text-right text-sm font-semibold tabular-nums text-surface-900 outline-none disabled:text-surface-400"
+                  />
+                </div>
+              </label>
+              {!activePendingRequest && payoutAmountError ? (
+                <p className="mt-1 text-xs text-danger-600">{payoutAmountError}</p>
+              ) : null}
+              {requestableAvailable !== null && requestableAvailable > 0 && !activePendingRequest ? (
+                <button
+                  type="button"
+                  onClick={() => setPayoutAmount(requestableAvailable.toFixed(2))}
+                  className="mt-1 text-xs font-semibold text-brand-700 hover:text-brand-800"
+                >
+                  Use full available amount
+                </button>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={savePayoutPreference}>
@@ -520,6 +586,15 @@ export default function MyWalletPage() {
               </Button>
             </div>
           </div>
+
+          {activePendingRequest ? (
+            <div className="rounded-2xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+              <p className="font-semibold">Payout pending: {formatUsd(activePendingRequest.amount)}</p>
+              <p className="mt-1">
+                This amount has been removed from the requestable balance. Sysadmins still need a QA payout queue endpoint before requests are visible across admin accounts.
+              </p>
+            </div>
+          ) : null}
 
           {payoutRequests.length > 0 ? (
             <div className="space-y-2">

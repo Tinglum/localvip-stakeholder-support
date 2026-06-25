@@ -778,7 +778,8 @@ export default function MaterialsLibraryPage() {
       return {
         id: 'gen-' + gg.id,
         title: (gg.generated_file_name as string) || (gg.template_name as string) || 'Generated file',
-        description: 'For stakeholder #' + gg.stakeholder_id,
+        // The backend GET returns EntityName (business/cause display name).
+        description: (gg.entity_name as string) ? `For ${gg.entity_name as string}` : null,
         type: 'other',
         brand: 'localvip',
         use_case: (gg.library_folder as string) || 'general',

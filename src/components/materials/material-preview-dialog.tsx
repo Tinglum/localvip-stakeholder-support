@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
+import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
 import type { Material } from '@/lib/types/database'
 
@@ -50,7 +51,9 @@ async function loadPdfBytes(src: string) {
     return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
   }
 
-  const response = await fetch(src)
+  // Cross-origin PDFs (qa.localvip.com) are CORS-blocked from a direct fetch on
+  // the dashboard origin; route them through the same-origin proxy.
+  const response = await fetch(toProxiedMaterialUrl(src))
   if (!response.ok) {
     throw new Error('The PDF file could not be loaded.')
   }

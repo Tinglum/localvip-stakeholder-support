@@ -3,6 +3,7 @@
 import NextImage from 'next/image'
 import { FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 
 interface MaterialPreviewFrameProps {
   src: string | null
@@ -54,26 +55,29 @@ export function MaterialPreviewFrame({
     // <object> on the dashboard/webapp origin — the preview comes up blank. Route
     // remote PDFs through a same-origin proxy so the bytes are same-origin. Data
     // URLs are already same-origin and pass straight through.
-    const proxied = /^https?:\/\//i.test(src)
-      ? `/api/qa/material-proxy?url=${encodeURIComponent(src)}`
-      : src
+    // Cross-origin PDFs (served from qa.localvip.com) won't render inline in an
+    // <object>/<iframe> on the dashboard origin — the preview comes up blank.
+    // Route remote PDFs through a same-origin proxy so the bytes are same-origin.
+    // Data URLs are already same-origin and pass straight through. An <iframe>
+    // is more reliable than <object> for inline PDF rendering across browsers.
+    const proxied = toProxiedMaterialUrl(src)
     const previewUrl = proxied.includes('#')
       ? proxied
       : `${proxied}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH`
 
     return (
       <div className={cn('relative overflow-hidden bg-surface-50', className)}>
-        <object
-          data={previewUrl}
-          type="application/pdf"
-          aria-label={`${title} PDF preview`}
-          className={cn('h-full w-full pointer-events-none', pdfClassName)}
-        >
+        <iframe
+          src={previewUrl}
+          title={`${title} PDF preview`}
+          className={cn('h-full w-full border-0 pointer-events-none', pdfClassName)}
+        />
+        <noscript>
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-surface-400">
             <FileText className="h-10 w-10" />
             <span className="text-xs font-medium">PDF Preview</span>
           </div>
-        </object>
+        </noscript>
         {showPdfBadge && (
           <div className="pointer-events-none absolute left-2 top-2 rounded-full bg-surface-900/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
             PDF

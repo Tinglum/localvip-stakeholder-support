@@ -118,6 +118,11 @@ interface ConsumerDashboardPayload {
   devices: DeviceRow[]
 }
 
+interface LocalPayoutRequest {
+  amount: number
+  status: string
+}
+
 function formatMoney(value: number | undefined | null) {
   if (value == null) return '$0.00'
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -149,6 +154,7 @@ export function ConsumerDashboardPage() {
   const [simulatedFriends, setSimulatedFriends] = React.useState(1)
   const [showTips, setShowTips] = React.useState(true)
   const [savedPayoutMethod, setSavedPayoutMethod] = React.useState<string | null>(null)
+  const [pendingPayoutTotal, setPendingPayoutTotal] = React.useState(0)
 
   const loadDashboard = React.useCallback(async (silent = false) => {
     if (silent) setRefreshing(true)
@@ -198,6 +204,22 @@ export function ConsumerDashboardPage() {
   }, [])
 
   React.useEffect(() => {
+    const raw = window.localStorage.getItem('localvip-consumer-payout-requests')
+    if (!raw) return
+
+    try {
+      const parsed = JSON.parse(raw) as LocalPayoutRequest[]
+      if (!Array.isArray(parsed)) return
+      const pendingTotal = parsed
+        .filter((request) => request.status === 'pending_admin_review')
+        .reduce((sum, request) => sum + (Number.isFinite(request.amount) ? request.amount : 0), 0)
+      setPendingPayoutTotal(Math.max(0, Math.round(pendingTotal * 100) / 100))
+    } catch {
+      setPendingPayoutTotal(0)
+    }
+  }, [])
+
+  React.useEffect(() => {
     const hash = window.location.hash.replace('#', '')
     if (hash === 'share' || hash === 'money' || hash === 'network' || hash === 'activity') {
       setActiveSection(hash)
@@ -238,6 +260,7 @@ export function ConsumerDashboardPage() {
 
   const consumer = data.summary.consumer
   const wallet = data.wallet || data.summary.wallet
+  const availableAfterPending = Math.max(0, Math.round(((wallet?.availableAmount || 0) - pendingPayoutTotal) * 100) / 100)
   const payoutMethod = savedPayoutMethod || data.wallet?.bank || 'Not selected yet'
   const fullName = `${consumer.firstName} ${consumer.lastName}`.trim() || profile.full_name || consumer.email
   const shareUrl = consumer.sharedURL
@@ -485,8 +508,8 @@ export function ConsumerDashboardPage() {
                 <PriorityCard
                   icon={<Wallet className="h-4 w-4" />}
                   title="Money ready now"
-                  value={formatMoney(wallet?.availableAmount)}
-                  detail="This is the amount available for payout."
+                  value={formatMoney(availableAfterPending)}
+                  detail={pendingPayoutTotal > 0 ? `${formatMoney(pendingPayoutTotal)} is already pending payout.` : 'This is the amount available for payout.'}
                   href="/portal/me/wallet"
                 />
                 <PriorityCard
@@ -629,8 +652,8 @@ export function ConsumerDashboardPage() {
           <CardContent className="space-y-4">
             <MoneyRow
               label="Available now"
-              value={formatMoney(wallet?.availableAmount)}
-              explanation="This is money that is ready to be paid out."
+              value={formatMoney(availableAfterPending)}
+              explanation={pendingPayoutTotal > 0 ? `${formatMoney(pendingPayoutTotal)} is already pending payout.` : 'This is money that is ready to be paid out.'}
             />
             <MoneyRow
               label="Current balance"

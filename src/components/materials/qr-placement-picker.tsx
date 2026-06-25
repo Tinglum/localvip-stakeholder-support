@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createQrPlacementId, type QrPlacement } from '@/lib/materials/qr-placement'
+import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 
 let pdfModulePromise: Promise<any> | null = null
 
@@ -128,7 +129,7 @@ export function QrPlacementPicker({
     ;(async () => {
       try {
         const pdfjs = await loadPdfModule()
-        const loadingTask = pdfjs.getDocument(previewUrl)
+        const loadingTask = pdfjs.getDocument(toProxiedMaterialUrl(previewUrl))
         const document = await loadingTask.promise
         if (disposed) {
           await document.destroy()

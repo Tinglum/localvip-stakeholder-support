@@ -269,9 +269,8 @@ export default function MyCausesPage() {
 
   const searchResults = React.useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
-    if (!query) return []
-    return catalog
-      .filter((cause) => {
+    const source = query
+      ? catalog.filter((cause) => {
         return (
           cause.name.toLowerCase().includes(query) ||
           (cause.city || '').toLowerCase().includes(query) ||
@@ -279,10 +278,15 @@ export default function MyCausesPage() {
           (cause.headline || '').toLowerCase().includes(query)
         )
       })
+      : catalog
+
+    return source
+      .filter((cause) => !selectedIds.has(cause.causeId))
       .slice(0, 25)
-  }, [catalog, searchQuery])
+  }, [catalog, searchQuery, selectedIds])
 
   const selectedCount = selection.length
+  const catalogCount = catalog.length
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -337,17 +341,23 @@ export default function MyCausesPage() {
               <>
                 <p className="text-subheading text-surface-900">No causes selected yet</p>
                 <p className="text-body text-surface-500">
-                  Use the search below to choose where your support should go.
+                  {catalogCount > 0
+                    ? `${catalogCount} causes are available below. Add up to ${MAX_CAUSES} to choose where your support goes.`
+                    : 'Use the search below to choose where your support should go.'}
                 </p>
               </>
             )}
           </div>
-          {selectedCount > 0 && (
+          {selectedCount > 0 ? (
             <Badge variant={isHundred ? 'success' : 'warning'} className="shrink-0">
               <PieChart className="h-3 w-3" />
               {totalPercent}% allocated
             </Badge>
-          )}
+          ) : catalogCount > 0 ? (
+            <Badge variant="info" className="shrink-0">
+              {catalogCount} available
+            </Badge>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -421,7 +431,7 @@ export default function MyCausesPage() {
             <EmptyState
               icon={<Heart className="h-6 w-6" />}
               title="No causes selected yet"
-              description="Search for a cause below, add it to your list, and then set how much of your support it should receive."
+              description="Choose from the available causes below, add up to five, and then set how much of your support each should receive."
             />
           ) : (
             <ul className="space-y-2.5">
@@ -506,7 +516,9 @@ export default function MyCausesPage() {
         <CardHeader>
           <CardTitle>Find a cause</CardTitle>
           <CardDescription>
-            Search by name, city, or keyword to add an organization to your list.
+            {searchQuery.trim()
+              ? `Showing causes matching "${searchQuery.trim()}".`
+              : `Showing ${searchResults.length} available ${searchResults.length === 1 ? 'cause' : 'causes'}${catalogCount > searchResults.length ? ` of ${catalogCount}` : ''}. Search by name, city, or keyword to narrow the list.`}
           </CardDescription>
         </CardHeader>
         <CardContent id="cause-search">
@@ -522,19 +534,24 @@ export default function MyCausesPage() {
           </div>
 
           <div className="mt-4">
-            {!searchQuery.trim() ? (
-              <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50 px-4 py-6 text-center">
-                <p className="text-sm font-medium text-surface-700">
-                  Start typing to find a cause to support.
-                </p>
-                <p className="mt-1 text-sm text-surface-500">
-                  Try a cause name, a city, or a word from its mission.
-                </p>
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-6 text-sm text-surface-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading available causes...
               </div>
             ) : searchResults.length === 0 ? (
-              <p className="py-6 text-center text-sm text-surface-400">
-                No causes match &quot;{searchQuery.trim()}&quot;.
-              </p>
+              <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50 px-4 py-6 text-center">
+                <p className="text-sm font-medium text-surface-700">
+                  {searchQuery.trim()
+                    ? `No available causes match "${searchQuery.trim()}".`
+                    : selectedCount > 0
+                      ? 'All currently loaded causes are already selected.'
+                      : 'No causes are available from QA right now.'}
+                </p>
+                <p className="mt-1 text-sm text-surface-500">
+                  Try another search, refresh the page, or check that QA is returning the cause catalog for this account.
+                </p>
+              </div>
             ) : (
               <ul className="space-y-2">
                 {searchResults.map((cause) => {
