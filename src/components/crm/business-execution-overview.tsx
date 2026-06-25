@@ -240,6 +240,14 @@ export function BusinessExecutionOverview({
 
   const referralCode = (workspaceBusiness as { referral_code?: string | null }).referral_code || ''
 
+  // The "Join LocalVIP as a node" referral link. Prefer the backend-stored Branch
+  // link; otherwise build the consumer-app signup link from the referral code
+  // (the Branch link is often empty / not yet generated for a business).
+  const joinLocalVipLink = qaBranchReferralUrl
+    || (referralCode
+      ? `${(process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com').replace(/\/$/, '')}/auth/signup?ref=${encodeURIComponent(referralCode)}`
+      : '')
+
   async function copyToClipboard(value: string, message: string) {
     try {
       await navigator.clipboard.writeText(value)
@@ -610,21 +618,21 @@ export function BusinessExecutionOverview({
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Join LocalVIP link</p>
             <div className="mt-1 flex items-center gap-2">
               <code className="flex-1 truncate rounded border border-surface-200 bg-surface-50 px-2 py-1 text-xs text-surface-700">
-                {qaBranchReferralUrl || '—'}
+                {joinLocalVipLink || '—'}
               </code>
-              {qaBranchReferralUrl ? (
+              {joinLocalVipLink ? (
                 <>
-                  <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(qaBranchReferralUrl, 'LocalVIP join link copied')}>
+                  <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(joinLocalVipLink, 'LocalVIP join link copied')}>
                     <Copy className="h-3.5 w-3.5" /> Copy
                   </Button>
                   <Button size="sm" variant="ghost" asChild>
-                    <Link href={qaBranchReferralUrl} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
+                    <Link href={joinLocalVipLink} target="_blank"><ExternalLink className="h-3.5 w-3.5" /></Link>
                   </Button>
                 </>
               ) : null}
             </div>
-            {!qaBranchReferralUrl ? (
-              <p className="mt-1 text-[11px] text-surface-400">No LocalVIP referral link yet — assigned by the backend.</p>
+            {!joinLocalVipLink ? (
+              <p className="mt-1 text-[11px] text-surface-400">No referral code yet — assigned by the backend.</p>
             ) : null}
           </div>
         </CardContent>
