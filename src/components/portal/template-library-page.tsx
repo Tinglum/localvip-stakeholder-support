@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { FileText, FolderOpen, LayoutTemplate, Loader2, Search, Sparkles } from 'lucide-react'
+import { FileText, FolderOpen, Loader2, Search, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { useAuth } from '@/lib/auth/context'
 import { resolveScopedBusiness } from '@/lib/business-portal'
-import { useBusinesses, useMaterialTemplates, useStakeholders } from '@/lib/supabase/hooks'
+import { useBusinesses, useMaterialTemplates } from '@/lib/supabase/hooks'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import type { MaterialTemplate, MaterialLibraryFolder } from '@/lib/types/database'
 
@@ -63,58 +63,17 @@ export function TemplateLibraryPage() {
   const { data: businesses, loading: businessesLoading } = useBusinesses(businessFilters)
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
 
-  // Resolve stakeholder for the current user — match broadly like the materials page
-  const { data: stakeholders, loading: stakeholdersLoading, refetch: refetchStakeholders } = useStakeholders()
-  const [provisioningStakeholder, setProvisioningStakeholder] = React.useState(false)
-
-  const stakeholder = React.useMemo(() => {
-    if (stakeholders.length === 0) return null
-    // Find any stakeholder linked to the current user
-    const match = stakeholders.find((s) => {
-      if (s.profile_id === profile.id || s.owner_user_id === profile.id) return true
-      if (profile.business_id && s.business_id === profile.business_id) return true
-      if (profile.organization_id && s.organization_id === profile.organization_id) return true
-      return false
-    })
-    if (match) return match
-    // Fallback: prefer business type
-    return (
-      stakeholders.find((s) => s.type === 'business') ||
-      stakeholders.find((s) => ['cause', 'school'].includes(s.type)) ||
-      null
-    )
-  }, [stakeholders, profile])
-
-  React.useEffect(() => {
-    if (!business?.id || stakeholder || provisioningStakeholder) return
-
-    let cancelled = false
-    const currentBusinessId = business.id
-
-    async function ensureStakeholder() {
-      setProvisioningStakeholder(true)
-      try {
-        const response = await fetch(`/api/business-portal/collect?businessId=${encodeURIComponent(currentBusinessId)}`, { cache: 'no-store' })
-        if (response.ok && !cancelled) {
-          refetchStakeholders({ silent: true })
-        }
-      } finally {
-        if (!cancelled) setProvisioningStakeholder(false)
-      }
-    }
-
-    void ensureStakeholder()
-    return () => {
-      cancelled = true
-    }
-  }, [business?.id, provisioningStakeholder, refetchStakeholders, stakeholder])
+  // Stakeholders were removed from the backend; the page no longer provisions or
+  // gates on a stakeholder record. Previously the provisioning effect looped
+  // forever (stakeholder always null → re-provision), which spun the wheel of
+  // doom. Templates now render off the business + selfserve tier alone.
 
   // Fetch all active selfserve templates
   const { data: allTemplates, loading: templatesLoading } = useMaterialTemplates({
     is_active: 'true',
   } as Record<string, string>)
 
-  // Filter to selfserve only and by stakeholder type.
+  // Filter to selfserve only.
   // Coerce the array fields defensively — QA rows can come back with these
   // missing/null, and a bare `.includes`/`.map` on undefined crashes the page.
   const selfserveTemplates = React.useMemo(() => {
@@ -126,22 +85,8 @@ export function TemplateLibraryPage() {
         audience_tags: Array.isArray(t.audience_tags) ? t.audience_tags : [],
         scope_cities: Array.isArray(t.scope_cities) ? t.scope_cities : [],
       }))
-      .filter((t) => {
-        if (!t.tiers.includes('selfserve')) return false
-
-        // Filter by stakeholder type if we know it
-        if (stakeholder && t.stakeholder_types.length > 0) {
-          const st = stakeholder.type
-          if (!t.stakeholder_types.includes(st)) {
-            // Allow cause/school to see community templates
-            if ((st === 'cause' || st === 'school') && t.stakeholder_types.includes('community')) return true
-            return false
-          }
-        }
-
-        return true
-      })
-  }, [allTemplates, stakeholder])
+      .filter((t) => t.tiers.includes('selfserve'))
+  }, [allTemplates])
 
   // ─── Filters ─────────────────────────────────────
 
@@ -213,7 +158,7 @@ export function TemplateLibraryPage() {
   const [generating, setGenerating] = React.useState(false)
 
   async function handleGenerate() {
-    if (!selectedTemplate || (!stakeholder && !business?.id)) return
+    if (!selectedTemplate || !business?.id) return
 
     setGenerating(true)
     try {
@@ -221,7 +166,6 @@ export function TemplateLibraryPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          stakeholderId: stakeholder?.id,
           businessId: business?.id,
           templateId: selectedTemplate.id,
         }),
@@ -245,30 +189,12 @@ export function TemplateLibraryPage() {
 
   // ─── Loading / empty states ──────────────────────
 
-  const isLoading = templatesLoading || stakeholdersLoading || businessesLoading || provisioningStakeholder
+  const isLoading = templatesLoading || businessesLoading
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
-      </div>
-    )
-  }
-
-  if (!stakeholder) {
-    return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Template Library"
-          description="Browse and add templates to your materials library."
-        />
-        <EmptyState
-          icon={<LayoutTemplate className="h-10 w-10 text-surface-300" />}
-          title={business ? 'Preparing your materials workspace' : 'No stakeholder profile found'}
-          description={business
-            ? 'We are setting up the business stakeholder records this workspace needs. Refresh in a moment if this does not clear automatically.'
-            : 'Your account does not have a stakeholder profile linked yet.'}
-        />
       </div>
     )
   }
