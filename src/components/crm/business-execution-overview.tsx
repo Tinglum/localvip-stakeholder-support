@@ -135,9 +135,17 @@ export function BusinessExecutionOverview({
   // hardcoded to null, which blanked the Materials & QR modal and disabled
   // "Generate materials".)
   const codes = React.useMemo(() => {
-    const rc = (biz as { referral_code?: string | null } | null)?.referral_code || ''
+    // Resolve from the same source as the displayed referral code: the workspace
+    // business (local state) takes precedence over the lighter list row, which
+    // often lacks referral_code (that produced the "Not set" codes in the
+    // Materials & QR modal). The referral code IS the connection code in the
+    // stakeholder-free QA model.
+    const rc =
+      (localState?.business as { referral_code?: string | null } | null | undefined)?.referral_code
+      || (biz as { referral_code?: string | null } | null)?.referral_code
+      || ''
     return rc ? ({ referral_code: rc, connection_code: rc } as unknown as StakeholderCode) : null
-  }, [biz])
+  }, [biz, localState?.business])
   const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: queryBusinessId }, { enabled: localStateEnabled })
   const flows = localState?.flows ?? hookFlows
   const flow = flows[0] || null

@@ -465,12 +465,6 @@ export function MaterialsQrModal({
   const generated = generatedMaterials.filter((m) => m.generation_status === 'generated' && m.generated_file_url && m.is_active !== false && !m.is_outdated)
   const failed = generatedMaterials.filter((m) => m.generation_status === 'failed')
 
-  async function handleSave() {
-    setSaveMsg(null)
-    await onSaveCodes(referral.trim(), connection.trim())
-    setSaveMsg('Codes saved and materials generation triggered.')
-  }
-
   function copyUrl() {
     if (joinUrl) {
       void navigator.clipboard.writeText(joinUrl)
@@ -500,17 +494,20 @@ export function MaterialsQrModal({
           {blocker && <Blocker text={blocker} />}
           {saveMsg && <SuccessBanner text={saveMsg} />}
 
-          {/* Codes editor */}
+          {/* Codes */}
           <div className="space-y-3 rounded-xl border border-surface-200 bg-surface-50 p-4">
-            <p className="text-sm font-semibold text-surface-900">Stakeholder codes</p>
+            <p className="text-sm font-semibold text-surface-900">Referral &amp; connection codes</p>
+            <p className="text-xs text-surface-500">
+              The referral code is assigned by the backend and drives the join link and generated materials. It is read-only here.
+            </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-surface-600">Referral code</label>
-                <Input value={referral} onChange={(e) => setReferral(e.target.value)} placeholder="main-street-bakery" />
+                <Input value={referral} readOnly placeholder="e.g. 2201" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-surface-600">Connection code</label>
-                <Input value={connection} onChange={(e) => setConnection(e.target.value)} placeholder="main-street-bakery" />
+                <Input value={connection} readOnly placeholder="e.g. 2201" />
               </div>
             </div>
             {joinUrl && (
@@ -526,9 +523,9 @@ export function MaterialsQrModal({
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={handleSave} disabled={engineBusy !== null || !referral.trim() || !connection.trim()}>
-                {engineBusy === 'codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Save codes + generate
+              <Button onClick={() => void onGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
+                {engineBusy === 'codes' || engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Generate materials
               </Button>
               <Button variant="outline" onClick={() => void onGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
                 {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
