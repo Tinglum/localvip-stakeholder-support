@@ -785,6 +785,41 @@ export function BusinessExecutionOverview({
                   <CardTitle>Codes and material engine</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="grid gap-3 rounded-xl border border-surface-200 bg-surface-50/60 p-3 sm:grid-cols-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Referral code</p>
+                      <div className="mt-1 flex items-center gap-1">
+                        <code className="text-sm font-semibold text-surface-900">{referralCode || '—'}</code>
+                        {referralCode ? (
+                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(referralCode, 'Referral code copied')}>
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Connection code</p>
+                      <div className="mt-1 flex items-center gap-1">
+                        <code className="text-sm font-semibold text-surface-900">{codes?.connection_code || '—'}</code>
+                        {codes?.connection_code ? (
+                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(String(codes?.connection_code || ''), 'Connection code copied')}>
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Join link</p>
+                      <div className="mt-1 flex items-center gap-1">
+                        <code className="flex-1 truncate text-xs text-surface-700">{joinLocalVipLink || '—'}</code>
+                        {joinLocalVipLink ? (
+                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(joinLocalVipLink, 'Join link copied')}>
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <MiniStatus label="Generation" value={generationState} />
                     <MiniStatus label="Generated files" value={`${generatedCount}`} />
