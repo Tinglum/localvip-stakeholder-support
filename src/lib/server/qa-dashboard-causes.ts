@@ -86,6 +86,11 @@ export function mergeCauseRecord(
     duplicate_of: crmIdToString(qaCrm?.duplicateOfAccountId) || localCause?.duplicate_of || null,
     external_id: qaCause ? String(qaCause.id) : localCause?.external_id || null,
     status: (qaCrm?.crmStatus as Cause['status']) || localCause?.status || (qaCause?.active ? 'active' : 'inactive'),
+    // The cause's referral code (now returned by the Nonprofit detail) — used by
+    // the CRM Materials & QR modal as the join/connection code.
+    referral_code: (localCause as { referral_code?: string | null } | null)?.referral_code
+      || (qaCause && 'referralCode' in qaCause ? (qaCause as { referralCode?: string | null }).referralCode : null)
+      || null,
     metadata,
     created_at: localCause?.created_at || qaCause?.createdDate || new Date(0).toISOString(),
     updated_at: localCause?.updated_at || qaCause?.createdDate || new Date(0).toISOString(),

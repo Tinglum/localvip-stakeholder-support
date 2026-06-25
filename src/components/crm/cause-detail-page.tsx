@@ -103,6 +103,7 @@ import type {
   GeneratedMaterial,
   OnboardingStage,
   OutreachType,
+  StakeholderCode,
   TaskPriority,
 } from '@/lib/types/database'
 
@@ -204,7 +205,13 @@ export default function CauseDetailPage() {
     if (assignments.length > 0) return profileMap.get(assignments[0].stakeholder_id) || null
     return null
   }, [cause, assignments, profileMap])
-  const codes = null
+  // The cause's referral code (now returned by the Nonprofit detail) doubles as
+  // the join/connection code — it drives the Materials & QR modal + generation.
+  // (Previously hardcoded null, which blanked the modal and disabled generation.)
+  const codes = React.useMemo(() => {
+    const rc = (cause as { referral_code?: string | null } | null)?.referral_code || ''
+    return rc ? ({ referral_code: rc, connection_code: rc } as unknown as StakeholderCode) : null
+  }, [cause])
   const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: EMPTY_UUID })
   const generatedMaterials: any[] = []
   const causeMaterialMap = React.useMemo(() => new Map(allMaterialRecords.map(m => [m.id, m])), [allMaterialRecords])
