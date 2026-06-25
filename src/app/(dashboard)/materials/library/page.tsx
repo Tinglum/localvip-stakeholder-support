@@ -459,6 +459,39 @@ function UploadMaterialDialog({
         const body = await res.json().catch(() => ({}))
         setError(body.error || `Upload failed (${res.status})`)
       } else {
+        // "Save as Template": also persist a real MaterialTemplate row so it
+        // shows up in the Template Gallery (which reads material_templates).
+        // Previously only the Material was created with is_template=true, so the
+        // template gallery stayed empty. POST → /api/dashboard/v1/MaterialTemplate.
+        if (templateEnabled) {
+          try {
+            const tplRes = await fetch('/api/qa/dashboard/material_templates', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: title,
+                description: description || null,
+                template_type: type,
+                brand,
+                output_format: mimeType?.includes('pdf') ? 'pdf' : (mimeType?.startsWith('image/') ? 'image' : 'pdf'),
+                source_path: fileUrl,
+                library_folder: templateLibraryFolder,
+                stakeholder_types: templateStakeholderTypes,
+                audience_tags: parseTemplateTags(templateAudienceTags),
+                is_active: templateStatus === 'active',
+                qr_position_json: qrPlacements.length > 0 ? JSON.stringify(qrPlacementMetadata(qrPlacements)) : null,
+              }),
+            })
+            if (!tplRes.ok) {
+              const tplBody = await tplRes.json().catch(() => ({}))
+              setError(tplBody.error || `The template could not be saved (${tplRes.status}).`)
+              return
+            }
+          } catch (tplErr) {
+            setError(tplErr instanceof Error ? tplErr.message : 'The template could not be saved.')
+            return
+          }
+        }
         reset()
         onSuccess()
         onClose()

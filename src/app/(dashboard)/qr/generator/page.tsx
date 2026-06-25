@@ -32,6 +32,7 @@ import {
 import { BRANDS } from '@/lib/constants'
 import { exportPdfWithQrPlacements } from '@/lib/materials/pdf-export'
 import { getQrPlacements } from '@/lib/materials/qr-placement'
+import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { generateShortCode } from '@/lib/utils'
 import {
   generateStyledQR, generateQRSVG, downloadDataURL, downloadSVG,
@@ -43,7 +44,6 @@ import {
   type QrLogoEditSettings,
 } from '@/lib/qr/logo-processing'
 import { useAuth } from '@/lib/auth/context'
-import { useCrmBusiness } from '@/lib/hooks/crm-businesses'
 import {
   useQrCodeInsert,
   useCampaigns,
@@ -297,15 +297,34 @@ export default function QRGeneratorPage() {
     () => (sourceCauseId ? causesData.find((item) => item.id === sourceCauseId) || null : null),
     [causesData, sourceCauseId],
   )
-  // The business list lacks referral_code/logo_url, so fetch the detail to drive
-  // the QR's node-referral link + logo prefill.
-  const { data: sourceBusinessDetail } = useCrmBusiness(sourceBusinessId || null)
+  // The business list lacks referral_code/logo_url. Fetch the QA business detail
+  // directly (works for a bare QA account id like "1"); the Supabase-coupled CRM
+  // route doesn't reliably resolve a bare QA id, which left the referral prefill
+  // empty. /api/qa/businesses/{id} returns { referralCode, imageUrl } from
+  // GET /api/dashboard/v1/Business/{id}.
+  const [qaBizDetail, setQaBizDetail] = React.useState<Record<string, unknown> | null>(null)
+  React.useEffect(() => {
+    if (!sourceBusinessId) { setQaBizDetail(null); return }
+    let cancelled = false
+    fetch(`/api/qa/businesses/${encodeURIComponent(sourceBusinessId)}`, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => { if (!cancelled) setQaBizDetail(json) })
+      .catch(() => { if (!cancelled) setQaBizDetail(null) })
+    return () => { cancelled = true }
+  }, [sourceBusinessId])
   const sourceBizReferralCode =
-    (sourceBusinessDetail?.business as { referral_code?: string | null } | undefined)?.referral_code
+    (typeof qaBizDetail?.referralCode === 'string' ? (qaBizDetail.referralCode as string) : '')
+    || (typeof qaBizDetail?.referral_code === 'string' ? (qaBizDetail.referral_code as string) : '')
     || (sourceBusiness as { referral_code?: string | null } | null)?.referral_code
     || ''
   const sourceBizLogo =
-    (sourceBusinessDetail?.business as { logo_url?: string | null } | undefined)?.logo_url
+    (typeof qaBizDetail?.logo_url === 'string' ? (qaBizDetail.logo_url as string) : '')
+    || (typeof qaBizDetail?.imageUrl === 'string' && /^https?:\/\//i.test(qaBizDetail.imageUrl as string)
+        ? (qaBizDetail.imageUrl as string)
+        : '')
+    || (typeof qaBizDetail?.imageUrl === 'string' && (qaBizDetail.imageUrl as string).trim()
+        ? `/api/qa/businesses/${encodeURIComponent(sourceBusinessId || '')}/logo`
+        : '')
     || (sourceBusiness as { logo_url?: string | null } | null)?.logo_url
     || ''
   const sourceEntityName = sourceBusiness?.name || sourceCause?.name || ''
@@ -735,6 +754,9 @@ export default function QRGeneratorPage() {
   const [compositingMaterialId, setCompositingMaterialId] = React.useState<string | null>(null)
   const [materialExportMessage, setMaterialExportMessage] = React.useState<string | null>(null)
   const [materialExportError, setMaterialExportError] = React.useState<string | null>(null)
+  const [materialPickerOpen, setMaterialPickerOpen] = React.useState(false)
+  const [selectedMaterialIds, setSelectedMaterialIds] = React.useState<string[]>([])
+  const [batchExporting, setBatchExporting] = React.useState(false)
   const [templateGalleryOpen, setTemplateGalleryOpen] = React.useState(false)
   const [saveTemplateOpen, setSaveTemplateOpen] = React.useState(false)
   const [templateName, setTemplateName] = React.useState('')
@@ -753,6 +775,60 @@ export default function QRGeneratorPage() {
     [qrCollectionsData],
   )
 
+  // Stamp the QR onto a single material and trigger its download. Throws on
+  // failure so callers (single + batch) can surface a precise reason.
+  async function stampQrOntoMaterial(material: Material) {
+    const meta = material.metadata as Record<string, unknown>
+    const placements = getQrPlacements(meta)
+    if (!material.file_url) {
+      throw new Error(`${material.title} has no file attached.`)
+    }
+    if (!placements.length) {
+      throw new Error(`${material.title} has no saved QR zones. Add one in "Edit QR Zones" first.`)
+    }
+
+    // QA material files live on qa.localvip.com (cross-origin). A direct
+    // fetch/canvas draw is CORS-blocked/tainted, which surfaced as the generic
+    // "material export failed". Route through the same-origin proxy.
+    const fileSrc = toProxiedMaterialUrl(material.file_url)
+
+    if (isPdfMaterial(material)) {
+      await exportPdfWithQrPlacements({
+        pdfUrl: fileSrc,
+        qrDataUrl: previewUrl,
+        placements,
+        filename: `${material.title}-with-qr.pdf`,
+      })
+      return
+    }
+
+    const imagePlacements = placements.filter((placement) => placement.page === 1)
+    if (!imagePlacements.length) {
+      throw new Error(`${material.title} has no QR zones on page 1.`)
+    }
+
+    const flyerImg = await loadImage(fileSrc)
+    const qrImg = await loadImage(previewUrl)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = flyerImg.naturalWidth
+    canvas.height = flyerImg.naturalHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas is not available in this browser.')
+
+    ctx.drawImage(flyerImg, 0, 0)
+    imagePlacements.forEach((placement) => {
+      const qrW = (placement.size / 100) * canvas.width
+      const qrH = qrW
+      const qrX = (placement.x / 100) * canvas.width - qrW / 2
+      const qrY = (placement.y / 100) * canvas.height - qrH / 2
+      ctx.drawImage(qrImg, qrX, qrY, qrW, qrH)
+    })
+
+    const compositeUrl = canvas.toDataURL('image/png')
+    downloadDataURL(compositeUrl, `${material.title}-with-qr.png`)
+  }
+
   async function handlePlaceOnMaterial(material: Material) {
     if (!previewUrl) return
     setMaterialExportMessage(null)
@@ -760,54 +836,14 @@ export default function QRGeneratorPage() {
     setCompositingMaterialId(material.id)
 
     try {
-      const meta = material.metadata as Record<string, unknown>
-      const placements = getQrPlacements(meta)
-      if (!placements.length || !material.file_url) return
-
-      if (isPdfMaterial(material)) {
-        await exportPdfWithQrPlacements({
-          pdfUrl: material.file_url,
-          qrDataUrl: previewUrl,
-          placements,
-          filename: `${material.title}-with-qr.pdf`,
-        })
-        setMaterialExportMessage(`Stamped PDF download started for ${material.title}.`)
-        return
-      }
-
-      const imagePlacements = placements.filter((placement) => placement.page === 1)
-      if (!imagePlacements.length) return
-
-      // Load the flyer image
-      const flyerImg = await loadImage(material.file_url)
-      // Load the QR code image
-      const qrImg = await loadImage(previewUrl)
-
-      // Create canvas at flyer resolution
-      const canvas = document.createElement('canvas')
-      canvas.width = flyerImg.naturalWidth
-      canvas.height = flyerImg.naturalHeight
-      const ctx = canvas.getContext('2d')!
-
-      // Draw the flyer
-      ctx.drawImage(flyerImg, 0, 0)
-
-      // Draw every saved QR zone for this material.
-      imagePlacements.forEach((placement) => {
-        const qrW = (placement.size / 100) * canvas.width
-        const qrH = qrW
-        const qrX = (placement.x / 100) * canvas.width - qrW / 2
-        const qrY = (placement.y / 100) * canvas.height - qrH / 2
-        ctx.drawImage(qrImg, qrX, qrY, qrW, qrH)
-      })
-
-      // Download the composited image
-      const compositeUrl = canvas.toDataURL('image/png')
-      downloadDataURL(compositeUrl, `${material.title}-with-qr.png`)
-      setMaterialExportMessage(`Stamped PNG download started for ${material.title}.`)
+      await stampQrOntoMaterial(material)
+      setMaterialExportMessage(`Stamped ${isPdfMaterial(material) ? 'PDF' : 'PNG'} download started for ${material.title}.`)
     } catch (err) {
       console.error('Composite failed:', err)
-      setMaterialExportError('The material export failed. Please try again.')
+      const detail = err instanceof Error ? err.message : ''
+      setMaterialExportError(
+        `Could not stamp the QR onto ${material.title}.${detail ? ` ${detail}` : ''}`,
+      )
     } finally {
       setCompositingMaterialId(null)
     }
@@ -818,9 +854,53 @@ export default function QRGeneratorPage() {
       const img = new window.Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => resolve(img)
-      img.onerror = reject
+      img.onerror = () => reject(new Error('The material image could not be loaded.'))
       img.src = src
     })
+  }
+
+  function toggleSelectedMaterial(id: string) {
+    setSelectedMaterialIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    )
+  }
+
+  // Stamp the QR onto every selected material. One material download per
+  // success; a combined message reports how many succeeded/failed.
+  async function handleExportSelectedMaterials() {
+    if (!previewUrl || !selectedMaterialIds.length) return
+    setMaterialExportMessage(null)
+    setMaterialExportError(null)
+    setBatchExporting(true)
+
+    const chosen = materialsWithQrZone.filter((m) => selectedMaterialIds.includes(m.id))
+    const succeeded: string[] = []
+    const failures: string[] = []
+
+    for (const material of chosen) {
+      setCompositingMaterialId(material.id)
+      try {
+        await stampQrOntoMaterial(material)
+        succeeded.push(material.title)
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : 'unknown error'
+        failures.push(detail)
+      }
+    }
+
+    setCompositingMaterialId(null)
+    setBatchExporting(false)
+
+    if (failures.length) {
+      setMaterialExportError(`Could not stamp ${failures.length} of ${chosen.length}: ${failures.join('; ')}`)
+    }
+    if (succeeded.length) {
+      setMaterialPickerOpen(false)
+      setSelectedMaterialIds([])
+      setMaterialExportMessage(
+        `Stamped QR onto ${succeeded.length} material${succeeded.length === 1 ? '' : 's'}. Check your downloads.`,
+      )
+    }
   }
 
   function handleReset() {
@@ -1628,47 +1708,21 @@ export default function QRGeneratorPage() {
                         {materialExportMessage}
                       </div>
                     )}
-                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                      {materialsWithQrZone.map(m => (
-                        <button
-                          key={m.id}
-                          type="button"
-                          disabled={!!compositingMaterialId}
-                          onClick={() => handlePlaceOnMaterial(m)}
-                          className="flex w-full items-center gap-2.5 rounded-lg border border-surface-200 px-3 py-2 text-left text-xs hover:bg-surface-50 transition-colors disabled:opacity-50"
-                        >
-                          {m.file_url && m.mime_type?.startsWith('image/') ? (
-                            <NextImage
-                              src={m.file_url}
-                              alt=""
-                              width={32}
-                              height={32}
-                              unoptimized
-                              className="h-8 w-8 rounded object-cover shrink-0"
-                            />
-                          ) : isPdfMaterial(m) ? (
-                            <div className="h-8 w-8 rounded bg-surface-100 flex items-center justify-center shrink-0">
-                              <FileText className="h-4 w-4 text-surface-400" />
-                            </div>
-                          ) : (
-                            <div className="h-8 w-8 rounded bg-surface-100 flex items-center justify-center shrink-0">
-                              <Layers className="h-4 w-4 text-surface-400" />
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-surface-700 truncate">{m.title}</p>
-                            <p className="text-surface-400">
-                              {m.brand === 'hato' ? 'HATO' : 'LocalVIP'} • {isPdfMaterial(m) ? 'Downloads PDF' : 'Downloads PNG'}
-                            </p>
-                          </div>
-                          {compositingMaterialId === m.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-500 shrink-0" />
-                          ) : (
-                            <Download className="h-3.5 w-3.5 text-surface-400 shrink-0" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        setMaterialExportError(null)
+                        setMaterialExportMessage(null)
+                        setSelectedMaterialIds([])
+                        setMaterialPickerOpen(true)
+                      }}
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      Choose materials...
+                    </Button>
                   </div>
                 )}
 
@@ -1770,6 +1824,96 @@ export default function QRGeneratorPage() {
             <Button onClick={() => void handleSaveCurrentTemplate()} disabled={savingQrTemplate || !templateName.trim()}>
               {savingQrTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
               Save Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Material selector modal — pick which saved material(s) to stamp the QR onto */}
+      <Dialog open={materialPickerOpen} onOpenChange={setMaterialPickerOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Place QR on Materials</DialogTitle>
+            <DialogDescription>
+              Pick one or more saved materials with QR zones. PDFs export as stamped PDFs and images as stamped PNGs.
+            </DialogDescription>
+          </DialogHeader>
+
+          {materialsWithQrZone.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50 px-4 py-10 text-center text-sm text-surface-500">
+              No saved materials with QR zones yet. Open a material and use &quot;Edit QR Zones&quot; to add a zone first.
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {materialsWithQrZone.map((m) => {
+                const checked = selectedMaterialIds.includes(m.id)
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => toggleSelectedMaterial(m.id)}
+                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
+                      checked
+                        ? 'border-brand-400 bg-brand-50'
+                        : 'border-surface-200 hover:bg-surface-50'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                        checked ? 'border-brand-500 bg-brand-500 text-white' : 'border-surface-300'
+                      }`}
+                    >
+                      {checked && <Check className="h-3.5 w-3.5" />}
+                    </span>
+                    {m.file_url && m.mime_type?.startsWith('image/') ? (
+                      <NextImage
+                        src={toProxiedMaterialUrl(m.file_url)}
+                        alt=""
+                        width={40}
+                        height={40}
+                        unoptimized
+                        className="h-10 w-10 rounded object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded bg-surface-100 flex items-center justify-center shrink-0">
+                        {isPdfMaterial(m) ? (
+                          <FileText className="h-5 w-5 text-surface-400" />
+                        ) : (
+                          <Layers className="h-5 w-5 text-surface-400" />
+                        )}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-surface-800 truncate">{m.title}</p>
+                      <p className="text-xs text-surface-400">
+                        {m.brand === 'hato' ? 'HATO' : 'LocalVIP'} • {getQrPlacements(m.metadata as Record<string, unknown> | null).length} zone(s) • {isPdfMaterial(m) ? 'Stamped PDF' : 'Stamped PNG'}
+                      </p>
+                    </div>
+                    {compositingMaterialId === m.id && (
+                      <Loader2 className="h-4 w-4 animate-spin text-brand-500 shrink-0" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {materialExportError && (
+            <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
+              {materialExportError}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMaterialPickerOpen(false)} disabled={batchExporting}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleExportSelectedMaterials()}
+              disabled={batchExporting || !selectedMaterialIds.length || !previewUrl}
+            >
+              {batchExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Stamp &amp; download ({selectedMaterialIds.length})
             </Button>
           </DialogFooter>
         </DialogContent>
