@@ -72,6 +72,7 @@ export interface QaBusinessDetail extends QaDashboardAccountDetail {
   category?: string | null
   avgTicket?: string | null
   productsServices?: string | null
+  qrAppearance?: string | null
 }
 
 export type QaCauseListItem = QaDashboardAccountSummary

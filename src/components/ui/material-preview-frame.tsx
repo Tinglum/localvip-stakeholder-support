@@ -50,9 +50,16 @@ export function MaterialPreviewFrame({
   }
 
   if (pdf) {
-    const previewUrl = src.includes('#')
-      ? src
-      : `${src}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH`
+    // Cross-origin PDFs (served from qa.localvip.com) won't render inline in an
+    // <object> on the dashboard/webapp origin — the preview comes up blank. Route
+    // remote PDFs through a same-origin proxy so the bytes are same-origin. Data
+    // URLs are already same-origin and pass straight through.
+    const proxied = /^https?:\/\//i.test(src)
+      ? `/api/qa/material-proxy?url=${encodeURIComponent(src)}`
+      : src
+    const previewUrl = proxied.includes('#')
+      ? proxied
+      : `${proxied}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH`
 
     return (
       <div className={cn('relative overflow-hidden bg-surface-50', className)}>

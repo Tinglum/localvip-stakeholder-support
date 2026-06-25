@@ -321,7 +321,20 @@ export async function buildQaBusinessJoinResource(businessId: string): Promise<B
   }
 
   const syntheticBusiness = buildSyntheticBusiness(qaBusiness)
-  const appearance = normalizeAppearance(syntheticBusiness, {})
+  // The saved look is persisted as a JSON blob on the business (Account.QrAppearance).
+  // normalizeAppearance reads it from metadata.qr_appearance and falls back to the
+  // business-derived defaults for any field that isn't set.
+  let storedAppearance: Record<string, unknown> = {}
+  const rawStored = (qaBusiness as { qrAppearance?: string | null }).qrAppearance
+  if (rawStored) {
+    try {
+      const parsed = JSON.parse(rawStored)
+      if (parsed && typeof parsed === 'object') storedAppearance = { qr_appearance: parsed }
+    } catch {
+      /* ignore malformed stored appearance */
+    }
+  }
+  const appearance = normalizeAppearance(syntheticBusiness, storedAppearance)
   const offer = buildOfferSummary(await fetchQaCaptureOffer(businessId))
 
   // Drive the QR + offer link straight off the business's own referral code and
@@ -360,9 +373,10 @@ export async function updateQaBusinessStakeholderAppearance(
   businessId: string,
   appearancePatch: Partial<BusinessJoinQrAppearance>,
 ) {
-  // QR appearance is no longer persisted through a stakeholder record. Apply the
-  // requested look on top of the business-derived defaults and return the
-  // updated resource.
+  // Merge the requested look onto whatever is currently saved (or the defaults),
+  // then PERSIST it on the business so it survives reloads. Stakeholders are gone;
+  // the look now lives in Account.QrAppearance (JSON), round-tripped by the
+  // Business detail/setup endpoints.
   const resource = await buildQaBusinessJoinResource(businessId)
   const current = resource.qrAppearance
   const nextAppearance: BusinessJoinQrAppearance = {
@@ -375,12 +389,27 @@ export async function updateQaBusinessStakeholderAppearance(
       : current.gradientColors,
   }
 
-  return {
-    ...resource,
-    frameText: nextAppearance.frameText || resource.frameText,
-    logoUrl: nextAppearance.logoUrl,
-    qrAppearance: nextAppearance,
+  // Only the user-chosen fields are stored; logoUrl is derived from useBusinessLogo
+  // at read time, so it isn't persisted.
+  const toStore = {
+    foregroundColor: nextAppearance.foregroundColor,
+    backgroundColor: nextAppearance.backgroundColor,
+    frameText: nextAppearance.frameText,
+    useBusinessLogo: nextAppearance.useBusinessLogo,
+    dotStyle: nextAppearance.dotStyle,
+    cornerStyle: nextAppearance.cornerStyle,
+    gradientType: nextAppearance.gradientType,
+    gradientColors: nextAppearance.gradientColors,
   }
+  const saveRes = await fetchQaApi(`/api/dashboard/v1/Business/${encodeURIComponent(businessId)}/setup`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ qrAppearance: JSON.stringify(toStore) }),
+  })
+  await parseQaResponse(saveRes, 'The QR appearance could not be saved.')
+
+  // Rebuild from the persisted state so the caller gets exactly what's now stored.
+  return buildQaBusinessJoinResource(businessId)
 }
 
 export function buildImportedBusinessPayload(
