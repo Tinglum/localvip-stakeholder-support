@@ -62,9 +62,13 @@ export function RealLogInAsButton({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetUserId: numericId }),
       })
-      const payload = await response.json().catch(() => ({ error: 'Request failed.' }))
+      // Read as text first so a non-JSON error page (HTML 500) still surfaces a
+      // useful message instead of the opaque "Request failed.".
+      const raw = await response.text()
+      let payload: { error?: string } = {}
+      try { payload = raw ? JSON.parse(raw) : {} } catch { payload = { error: raw.slice(0, 200) } }
       if (!response.ok) {
-        setError(payload.error || 'Could not start a real session.')
+        setError(payload.error || `Could not start a real session (HTTP ${response.status}).`)
         return
       }
       // Session cookies are swapped server-side; hard reload so the app resolves

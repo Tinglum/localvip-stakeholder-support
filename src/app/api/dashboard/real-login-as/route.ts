@@ -145,8 +145,12 @@ export async function POST(request: NextRequest) {
     if (error instanceof QaApiError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
+    // Surface the real reason instead of a generic 500 so the UI can show it and
+    // so an HTML 500 page never reaches the client (which would have been parsed
+    // as the unhelpful "Request failed.").
+    const detail = error instanceof Error ? error.message : 'Unknown error.'
     return NextResponse.json(
-      { error: 'Real log in as could not be completed.' },
+      { error: `Real log in as could not be completed: ${detail}` },
       { status: 500 },
     )
   }
