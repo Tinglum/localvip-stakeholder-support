@@ -530,7 +530,7 @@ export function CauseMaterialsQrModal({
 
           {/* Codes editor */}
           <div className="space-y-3 rounded-xl border border-surface-200 bg-surface-50 p-4">
-            <p className="text-sm font-semibold text-surface-900">Stakeholder codes</p>
+            <p className="text-sm font-semibold text-surface-900">Referral &amp; connection codes</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-surface-600">Referral code</label>
@@ -650,7 +650,7 @@ export function ActivationDecisionModal({
   blocker,
 }: ActivationDecisionModalProps) {
   const checklist = [
-    { label: 'Stakeholder setup complete', done: stakeholderReady },
+    { label: 'Profile complete', done: stakeholderReady },
     { label: 'Codes assigned', done: codesReady },
     { label: 'Materials generated', done: generatedCount > 0 },
     { label: 'QR code linked', done: qrCount > 0 },

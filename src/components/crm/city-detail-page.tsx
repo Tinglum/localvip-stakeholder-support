@@ -439,7 +439,7 @@ export default function CityDetailPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-surface-400">No stakeholders assigned to this city yet.</p>
+              <p className="text-sm text-surface-400">No businesses or causes assigned to this city yet.</p>
             )}
           </CardContent>
         </Card>
