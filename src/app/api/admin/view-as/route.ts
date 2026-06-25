@@ -21,10 +21,55 @@ interface QaUserLookup {
   lastName?: string
   accountType?: string | number
   consumerType?: string
+  roles?: string[]
 }
 
 const COOKIE_NAME = 'lvip_view_as'
 const COOKIE_MAX_AGE = 60 * 60 * 4 // 4 hours
+
+// Roles are the reliable persona signal on QA — `accountType` is frequently null
+// on the user/list/detail responses, so mapping on it alone misclassifies (e.g. a
+// BusinessAdmin with a null accountType would fall through to 'community'). Mirror
+// the entity-type priority used by the main login role mapper.
+function mapRolesToRole(roles: string[] | undefined): UserRole | null {
+  if (!roles || roles.length === 0) return null
+  const r = roles.map((role) => role.toLowerCase())
+  if (r.some((x) => x.includes('sysadmin') || x.includes('superadmin') || (x.includes('super') && x.includes('admin')))) return 'super_admin'
+  if (r.some((x) => x.includes('business'))) return 'business'
+  if (r.some((x) => x.includes('school'))) return 'school_leader'
+  if (r.some((x) => x.includes('nonprofit') || x.includes('cause'))) return 'cause_leader'
+  if (r.some((x) => x.includes('admin'))) return 'super_admin'
+  if (r.some((x) => x.includes('launch') || x.includes('partner') || x.includes('onboarding'))) return 'launch_partner'
+  if (r.some((x) => x.includes('intern'))) return 'intern'
+  if (r.some((x) => x.includes('volunteer'))) return 'volunteer'
+  if (r.some((x) => x.includes('influencer'))) return 'influencer'
+  if (r.some((x) => x.includes('consumer') || x.includes('customer') || x.includes('client'))) return 'community'
+  return null
+}
+
+// Normalize the various user-lookup shapes QA returns into a flat record. The
+// `User/{id}` route in particular wraps the user in `{ roles, user: {...} }`;
+// treating that envelope as the user leaves accountType/email/name undefined.
+function normalizeUserLookup(json: unknown, fallbackId: number): QaUserLookup | null {
+  if (!json || typeof json !== 'object') return null
+  const record = json as Record<string, unknown>
+  const inner = (record.user && typeof record.user === 'object' ? record.user : record) as Record<string, unknown>
+  const roles = Array.isArray(record.roles)
+    ? (record.roles as unknown[]).map(String)
+    : Array.isArray(inner.roles)
+      ? (inner.roles as unknown[]).map(String)
+      : undefined
+  const idValue = inner.id ?? record.id ?? fallbackId
+  return {
+    id: typeof idValue === 'number' ? idValue : Number(idValue) || fallbackId,
+    email: typeof inner.email === 'string' ? inner.email : '',
+    firstName: typeof inner.firstName === 'string' ? inner.firstName : undefined,
+    lastName: typeof inner.lastName === 'string' ? inner.lastName : undefined,
+    accountType: (inner.accountType ?? record.accountType) as string | number | undefined,
+    consumerType: (inner.consumerType ?? record.consumerType) as string | undefined,
+    roles,
+  }
+}
 
 /**
  * Map the backend AccountType enum to the frontend Profile.role string.
@@ -58,31 +103,32 @@ function mapAccountTypeToRole(accountType: unknown, consumerType?: string | null
 }
 
 async function fetchUserById(userId: number): Promise<QaUserLookup | null> {
-  // Try Consumer first (most common view-as target — gives consumerType)
+  // Try Consumer first (gives consumerType) — only a genuine consumer 200s here.
   try {
     const res = await fetchQaApi(`/api/dashboard/v1/Consumer/${userId}`)
     if (res.ok) {
-      const json = await res.json()
-      return { ...json, accountType: 4 }
+      const normalized = normalizeUserLookup(await res.json(), userId)
+      if (normalized) return { ...normalized, accountType: 4 }
     }
   } catch {}
 
-  // Fall back: pull from the admin user list (we know this endpoint works
-  // and returns accountType + consumerType for every user).
+  // Admin user list — returns accountType + consumerType + roles per user.
   try {
     const res = await fetchQaApi('/api/dashboard/v1/User/list?pageSize=500')
     if (res.ok) {
       const json = await res.json()
       const items = Array.isArray(json) ? json : (json?.items ?? [])
       const match = items.find((u: { id?: number }) => u?.id === userId)
-      if (match) return match as QaUserLookup
+      if (match) return normalizeUserLookup(match, userId)
     }
   } catch {}
 
-  // Last resort: the {id} route
+  // Last resort: the {id} route — returns a { roles, user: {...} } envelope, so
+  // it MUST be normalized (treating the envelope as the user leaves accountType,
+  // email and name undefined → misclassified as 'community' with a blank name).
   try {
     const res = await fetchQaApi(`/api/dashboard/v1/User/${userId}`)
-    if (res.ok) return await res.json()
+    if (res.ok) return normalizeUserLookup(await res.json(), userId)
   } catch {}
 
   return null
@@ -107,7 +153,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Target user not found.' }, { status: 404 })
     }
 
-    const role = mapAccountTypeToRole(user.accountType, user.consumerType)
+    // Prefer the roles-based mapping (reliable); fall back to accountType only
+    // when the user carries no role claims.
+    const role = mapRolesToRole(user.roles) ?? mapAccountTypeToRole(user.accountType, user.consumerType)
     const payload = {
       userId: user.id,
       email: user.email,
