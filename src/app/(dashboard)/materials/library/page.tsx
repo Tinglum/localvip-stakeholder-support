@@ -476,8 +476,9 @@ function UploadMaterialDialog({
                 output_format: mimeType?.includes('pdf') ? 'pdf' : (mimeType?.startsWith('image/') ? 'image' : 'pdf'),
                 source_path: fileUrl,
                 library_folder: templateLibraryFolder,
-                stakeholder_types: templateStakeholderTypes,
-                audience_tags: parseTemplateTags(templateAudienceTags),
+                // The backend stores these as CSV strings and rejects JSON arrays (400).
+                stakeholder_types: templateStakeholderTypes.join(','),
+                audience_tags: (() => { const t = parseTemplateTags(templateAudienceTags); return Array.isArray(t) ? t.join(', ') : (t || '') })(),
                 is_active: templateStatus === 'active',
                 qr_position_json: qrPlacements.length > 0 ? JSON.stringify(qrPlacementMetadata(qrPlacements)) : null,
               }),
