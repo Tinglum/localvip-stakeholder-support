@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { Bug, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -188,7 +189,7 @@ export function BugReporter() {
 
   if (!enabled) return null
 
-  return (
+  return createPortal(
     <>
       <button
         type="button"
@@ -286,6 +287,7 @@ export function BugReporter() {
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body,
   )
 }
