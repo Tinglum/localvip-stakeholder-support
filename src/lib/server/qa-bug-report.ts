@@ -11,6 +11,22 @@ import type {
 
 const BASE = '/api/dashboard/v1/BugReport'
 
+// The backend stores/returns `tags` as a CSV string and `notes` as a JSON string.
+// The UI types them as arrays (tags: string[], notes: BugReportNote[]) and call
+// .map/.join on them — so normalize every report on the way in.
+function normalizeReport(raw: unknown): BugReport {
+  const r = (raw ?? {}) as Record<string, unknown>
+  let tags: string[] = []
+  if (Array.isArray(r.tags)) tags = (r.tags as unknown[]).map(String)
+  else if (typeof r.tags === 'string') tags = r.tags.split(',').map((t) => t.trim()).filter(Boolean)
+  let notes: BugReport['notes'] = []
+  if (Array.isArray(r.notes)) notes = r.notes as BugReport['notes']
+  else if (typeof r.notes === 'string' && r.notes.trim()) {
+    try { const p = JSON.parse(r.notes); if (Array.isArray(p)) notes = p } catch { notes = [] }
+  }
+  return { ...(r as unknown as BugReport), tags, notes }
+}
+
 export async function fetchBugSettings(): Promise<BugReportSettings> {
   const res = await fetchQaApi(`${BASE}/settings`)
   return parseQaJsonResponse<BugReportSettings>(res, 'Bug Center settings could not be loaded.')
@@ -31,7 +47,7 @@ export async function createBugReport(payload: BugReportCreateInput): Promise<Bu
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  return parseQaJsonResponse<BugReport>(res, 'The bug report could not be submitted.')
+  return normalizeReport(await parseQaJsonResponse<BugReport>(res, 'The bug report could not be submitted.'))
 }
 
 export async function listBugReports(query: BugReportListQuery): Promise<BugReportListResponse> {
@@ -45,12 +61,15 @@ export async function listBugReports(query: BugReportListQuery): Promise<BugRepo
   params.set('pageSize', String(query.pageSize ?? 25))
 
   const res = await fetchQaApi(`${BASE}?${params.toString()}`)
-  return parseQaJsonResponse<BugReportListResponse>(res, 'Bug reports could not be loaded.')
+  const data = await parseQaJsonResponse<BugReportListResponse | BugReport[]>(res, 'Bug reports could not be loaded.')
+  const items = Array.isArray(data) ? data : (data.items || [])
+  const totalCount = Array.isArray(data) ? items.length : (data.totalCount ?? items.length)
+  return { items: items.map(normalizeReport), totalCount, page: query.page ?? 1, pageSize: query.pageSize ?? 25 }
 }
 
 export async function fetchBugReport(id: string): Promise<BugReport> {
   const res = await fetchQaApi(`${BASE}/${encodeURIComponent(id)}`)
-  return parseQaJsonResponse<BugReport>(res, 'The bug report could not be loaded.')
+  return normalizeReport(await parseQaJsonResponse<BugReport>(res, 'The bug report could not be loaded.'))
 }
 
 export async function updateBugReport(id: string, payload: BugReportUpdateInput): Promise<BugReport> {
@@ -63,7 +82,7 @@ export async function updateBugReport(id: string, payload: BugReportUpdateInput)
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
-  return parseQaJsonResponse<BugReport>(res, 'The bug report could not be updated.')
+  return normalizeReport(await parseQaJsonResponse<BugReport>(res, 'The bug report could not be updated.'))
 }
 
 export async function deleteBugReport(id: string): Promise<void> {
