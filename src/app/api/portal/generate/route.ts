@@ -26,8 +26,21 @@ export async function POST(request: NextRequest) {
     // against the business (or cause) account. The GeneratedMaterial endpoint
     // embeds the business QR and renders the file.
     const causeId = (body as { causeId?: string }).causeId
+    // Self-serve from the business portal: resolve the business from the session
+    // when no explicit id was passed (the owner just clicks Generate on a template).
     if (!businessId && !causeId) {
-      return NextResponse.json({ error: 'businessId (or causeId) is required.' }, { status: 400 })
+      const candidate = session.viewingAs?.targetUserId ?? (session.qaClaims?.sub != null ? Number(session.qaClaims.sub) : null)
+      const userId = candidate != null && Number.isFinite(Number(candidate)) ? Number(candidate) : null
+      if (userId) {
+        try {
+          const byUserRes = await fetchQaApi(`/api/dashboard/v1/Business/by-user/${userId}`)
+          const byUser = await parseQaResponse<{ accountId?: number }>(byUserRes, 'Could not resolve business.')
+          if (byUser?.accountId != null) businessId = String(byUser.accountId)
+        } catch { /* fall through */ }
+      }
+    }
+    if (!businessId && !causeId) {
+      return NextResponse.json({ error: 'Could not resolve your business account.' }, { status: 400 })
     }
     try {
       const payload: Record<string, unknown> = { templateId: Number(templateId) }

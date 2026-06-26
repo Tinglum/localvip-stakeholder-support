@@ -1,403 +1,125 @@
 'use client'
 
 import * as React from 'react'
-import { FileText, FolderOpen, Loader2, Search, Sparkles } from 'lucide-react'
-import { toast } from 'sonner'
+import Link from 'next/link'
+import { ArrowRight, CheckCircle2, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { useAuth } from '@/lib/auth/context'
-import { resolveScopedBusiness } from '@/lib/business-portal'
-import { useBusinesses, useMaterialTemplates } from '@/lib/supabase/hooks'
-import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
-import type { MaterialTemplate, MaterialLibraryFolder } from '@/lib/types/database'
+import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 
-// ─── Helpers ───────────────────────────────────────────────
-
-function getFolderLabel(folder: MaterialLibraryFolder) {
-  return MATERIAL_LIBRARY_FOLDERS.find((f) => f.value === folder)?.label || folder
+interface PortalTemplate {
+  id: number | string
+  name: string
+  sourcePath: string | null
+  outputFormat?: string | null
 }
 
-function getTemplateDescription(template: MaterialTemplate | null): string {
-  if (!template) return ''
-  const meta = template.metadata as Record<string, unknown> | null
-  if (meta?.description && typeof meta.description === 'string') return meta.description
-  return ''
-}
-
-function getTemplateBrand(template: MaterialTemplate): string | null {
-  const meta = template.metadata as Record<string, unknown> | null
-  if (meta?.brand && typeof meta.brand === 'string') return meta.brand
-  return null
-}
-
-function getTemplateCity(template: MaterialTemplate): string | null {
-  if (template.scope_cities?.length === 1) return template.scope_cities[0]
-  return null
-}
-
-// ─── Component ─────────────────────────────────────────────
-
+// Business-portal template browser: shows each available template (with its
+// design), and one click generates a customized copy — the business's QR stamped
+// on the design — straight into their materials library. No pre-creation.
 export function TemplateLibraryPage() {
-  const { profile } = useAuth()
-  const businessFilters = React.useMemo<Record<string, string>>(() => {
-    const filters: Record<string, string> = {}
-    if (profile.business_id) {
-      filters.id = profile.business_id
-    } else {
-      filters.owner_id = profile.id
+  const [templates, setTemplates] = React.useState<PortalTemplate[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [doneIds, setDoneIds] = React.useState<Set<string>>(new Set())
+  const [error, setError] = React.useState<string | null>(null)
+
+  const load = React.useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/portal/templates', { cache: 'no-store' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Could not load templates.')
+      setTemplates(json.templates || [])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load templates.')
+    } finally {
+      setLoading(false)
     }
-    return filters
-  }, [profile.business_id, profile.id])
-  const { data: businesses, loading: businessesLoading } = useBusinesses(businessFilters)
-  const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
+  }, [])
+  React.useEffect(() => { void load() }, [load])
 
-  // Stakeholders were removed from the backend; the page no longer provisions or
-  // gates on a stakeholder record. Previously the provisioning effect looped
-  // forever (stakeholder always null → re-provision), which spun the wheel of
-  // doom. Templates now render off the business + selfserve tier alone.
-
-  // Fetch all active selfserve templates
-  const { data: allTemplates, loading: templatesLoading } = useMaterialTemplates({
-    is_active: 'true',
-  } as Record<string, string>)
-
-  // Filter to selfserve only.
-  // Coerce the array fields defensively — QA rows can come back with these
-  // missing/null, and a bare `.includes`/`.map` on undefined crashes the page.
-  const selfserveTemplates = React.useMemo(() => {
-    return allTemplates
-      .map((t) => ({
-        ...t,
-        tiers: Array.isArray(t.tiers) ? t.tiers : [],
-        stakeholder_types: Array.isArray(t.stakeholder_types) ? t.stakeholder_types : [],
-        audience_tags: Array.isArray(t.audience_tags) ? t.audience_tags : [],
-        scope_cities: Array.isArray(t.scope_cities) ? t.scope_cities : [],
-      }))
-      .filter((t) => t.tiers.includes('selfserve'))
-  }, [allTemplates])
-
-  // ─── Filters ─────────────────────────────────────
-
-  const [search, setSearch] = React.useState('')
-  const [brandFilter, setBrandFilter] = React.useState<string | null>(null)
-  const [cityFilter, setCityFilter] = React.useState<string | null>(null)
-  const [typeFilter, setTypeFilter] = React.useState<string | null>(null)
-
-  // Derive available filter values
-  const filterOptions = React.useMemo(() => {
-    const brands = new Set<string>()
-    const cities = new Set<string>()
-    const types = new Set<string>()
-
-    for (const t of selfserveTemplates) {
-      const brand = getTemplateBrand(t)
-      if (brand) brands.add(brand)
-      const city = getTemplateCity(t)
-      if (city) cities.add(city)
-      for (const st of t.stakeholder_types) {
-        types.add(st)
-      }
-    }
-
-    return {
-      brands: Array.from(brands).sort(),
-      cities: Array.from(cities).sort(),
-      types: Array.from(types).sort(),
-    }
-  }, [selfserveTemplates])
-
-  // Apply filters
-  const filtered = React.useMemo(() => {
-    return selfserveTemplates.filter((t) => {
-      if (search) {
-        const q = search.toLowerCase()
-        const desc = getTemplateDescription(t)
-        if (
-          !(t.name || '').toLowerCase().includes(q) &&
-          !desc.toLowerCase().includes(q) &&
-          !t.audience_tags.some((tag) => tag.toLowerCase().includes(q))
-        ) {
-          return false
-        }
-      }
-
-      if (brandFilter) {
-        const brand = getTemplateBrand(t)
-        if (brand !== brandFilter) return false
-      }
-
-      if (cityFilter) {
-        if (!t.scope_cities.includes(cityFilter)) return false
-      }
-
-      if (typeFilter) {
-        if (t.stakeholder_types.length > 0 && !t.stakeholder_types.includes(typeFilter as any)) {
-          return false
-        }
-      }
-
-      return true
-    })
-  }, [selfserveTemplates, search, brandFilter, cityFilter, typeFilter])
-
-  // ─── Preview & Generate Dialog ───────────────────
-
-  const [selectedTemplate, setSelectedTemplate] = React.useState<MaterialTemplate | null>(null)
-  const [generating, setGenerating] = React.useState(false)
-
-  async function handleGenerate() {
-    if (!selectedTemplate || !business?.id) return
-
-    setGenerating(true)
+  async function generate(t: PortalTemplate) {
+    setBusyId(String(t.id))
+    setError(null)
     try {
       const res = await fetch('/api/portal/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessId: business?.id,
-          templateId: selectedTemplate.id,
-        }),
+        body: JSON.stringify({ templateId: String(t.id) }),
       })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        toast.error(data.error || 'Failed to generate material.')
-        return
-      }
-
-      toast.success(`"${selectedTemplate.name}" has been added to your materials library.`)
-      setSelectedTemplate(null)
-    } catch {
-      toast.error('Something went wrong. Please try again.')
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || json.error) throw new Error(json.error || 'Could not generate this material.')
+      setDoneIds((prev) => new Set(prev).add(String(t.id)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate this material.')
     } finally {
-      setGenerating(false)
+      setBusyId(null)
     }
   }
-
-  // ─── Loading / empty states ──────────────────────
-
-  const isLoading = templatesLoading || businessesLoading
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
-      </div>
-    )
-  }
-
-  // ─── Render ──────────────────────────────────────
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Template Library"
-        description="Browse available templates and add them to your materials library with one click."
+        description="Pick a template and generate it — your business QR code is added to the design and the finished material lands in your library."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Refresh
+            </Button>
+            <Link href="/materials/mine"><Button variant="outline">My Materials <ArrowRight className="h-4 w-4" /></Button></Link>
+          </div>
+        }
       />
 
-      {/* Search & Filters */}
-      <div className="space-y-3">
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-          <Input
-            placeholder="Search templates..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+      {error && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{error}</div>}
+
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="animate-pulse"><div className="h-44 bg-surface-100" /><CardContent className="space-y-2 p-4"><div className="h-4 w-2/3 rounded bg-surface-100" /><div className="h-8 w-full rounded bg-surface-50" /></CardContent></Card>
+          ))}
         </div>
-
-        {(filterOptions.brands.length > 1 || filterOptions.cities.length > 1 || filterOptions.types.length > 1) && (
-          <div className="flex flex-wrap items-center gap-2">
-            {filterOptions.brands.length > 1 && (
-              <>
-                <span className="text-xs font-medium text-surface-500">Brand:</span>
-                {filterOptions.brands.map((b) => (
-                  <button
-                    key={b}
-                    onClick={() => setBrandFilter(brandFilter === b ? null : b)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
-                      brandFilter === b
-                        ? 'bg-brand-100 text-brand-700'
-                        : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-                    }`}
-                  >
-                    {b}
-                  </button>
-                ))}
-              </>
-            )}
-
-            {filterOptions.cities.length > 1 && (
-              <>
-                <span className="ml-2 text-xs font-medium text-surface-500">City:</span>
-                {filterOptions.cities.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setCityFilter(cityFilter === c ? null : c)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
-                      cityFilter === c
-                        ? 'bg-brand-100 text-brand-700'
-                        : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </>
-            )}
-
-            {filterOptions.types.length > 1 && (
-              <>
-                <span className="ml-2 text-xs font-medium text-surface-500">Type:</span>
-                {filterOptions.types.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTypeFilter(typeFilter === t ? null : t)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
-                      typeFilter === t
-                        ? 'bg-brand-100 text-brand-700'
-                        : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </>
-            )}
-
-            {(brandFilter || cityFilter || typeFilter) && (
-              <button
-                onClick={() => {
-                  setBrandFilter(null)
-                  setCityFilter(null)
-                  setTypeFilter(null)
-                }}
-                className="ml-1 text-xs text-surface-400 hover:text-surface-600 transition-colors"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Template Grid */}
-      {filtered.length === 0 ? (
+      ) : templates.length === 0 ? (
         <EmptyState
-          icon={<FileText className="h-10 w-10 text-surface-300" />}
-          title="No templates found"
-          description={search || brandFilter || cityFilter || typeFilter
-            ? 'Try adjusting your search or filters.'
-            : 'No self-serve templates are available at this time.'}
+          icon={<Sparkles className="h-8 w-8" />}
+          title="No templates available yet"
+          description="Your team hasn't published any templates yet. Once they do, you'll be able to generate them here with your QR code."
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((template) => {
-            const description = getTemplateDescription(template)
-            const folderLabel = getFolderLabel(template.library_folder)
-
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {templates.map((t) => {
+            const done = doneIds.has(String(t.id))
             return (
-              <Card key={template.id} className="flex flex-col">
-                <CardHeader>
-                  <CardTitle className="text-sm">{template.name}</CardTitle>
-                  {description && (
-                    <p className="text-xs text-surface-500 line-clamp-2">{description}</p>
+              <Card key={t.id} className="group overflow-hidden transition-shadow hover:shadow-card-hover">
+                <div className="relative h-44 border-b border-surface-100 bg-surface-50">
+                  {t.sourcePath ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={toProxiedMaterialUrl(t.sourcePath)} alt={t.name} className="h-full w-full object-contain" />
+                  ) : null}
+                </div>
+                <CardContent className="space-y-3 p-4">
+                  <h3 className="truncate text-sm font-semibold text-surface-900">{t.name}</h3>
+                  {done ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-sm font-medium text-success-700"><CheckCircle2 className="h-4 w-4" /> Added to your library</span>
+                      <Link href="/materials/mine" className="text-xs font-medium text-brand-600 hover:underline">View</Link>
+                    </div>
+                  ) : (
+                    <Button className="w-full" onClick={() => void generate(t)} disabled={busyId === String(t.id)}>
+                      {busyId === String(t.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Generate with my QR
+                    </Button>
                   )}
-                </CardHeader>
-
-                <CardContent className="flex-1">
-                  <div className="flex flex-wrap gap-1.5">
-                    {template.audience_tags.map((tag) => (
-                      <Badge key={tag} variant="default">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-
-                  <div className="mt-3 flex items-center gap-1.5 text-xs text-surface-400">
-                    <FolderOpen className="h-3.5 w-3.5" />
-                    {folderLabel}
-                  </div>
                 </CardContent>
-
-                <CardFooter>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelectedTemplate(template)}
-                    className="w-full"
-                  >
-                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                    Preview & Add
-                  </Button>
-                </CardFooter>
               </Card>
             )
           })}
         </div>
       )}
-
-      {/* Preview & Add Dialog */}
-      <Dialog open={!!selectedTemplate} onOpenChange={(open) => !open && setSelectedTemplate(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{selectedTemplate?.name}</DialogTitle>
-            <DialogDescription>
-              {getTemplateDescription(selectedTemplate)}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {selectedTemplate && (
-              <>
-                {selectedTemplate.audience_tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedTemplate.audience_tags.map((tag) => (
-                      <Badge key={tag} variant="default">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-1.5 text-sm text-surface-500">
-                  <FolderOpen className="h-4 w-4" />
-                  {getFolderLabel(selectedTemplate.library_folder)}
-                </div>
-
-                <div className="rounded-lg border border-surface-100 bg-surface-50 p-3 text-sm text-surface-600">
-                  This will be generated with your business details and QR code. The finished material
-                  will appear in your materials library.
-                </div>
-              </>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedTemplate(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleGenerate} disabled={generating}>
-              {generating && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              Add to My Materials
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
