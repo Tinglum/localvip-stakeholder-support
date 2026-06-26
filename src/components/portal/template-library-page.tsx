@@ -7,13 +7,13 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
+import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 
 interface PortalTemplate {
   id: number | string
   name: string
   sourcePath: string | null
-  outputFormat?: string | null
+  outputFormat?: string | null | undefined
 }
 
 // Business-portal template browser: shows each available template (with its
@@ -98,8 +98,16 @@ export function TemplateLibraryPage() {
               <Card key={t.id} className="group overflow-hidden transition-shadow hover:shadow-card-hover">
                 <div className="relative h-44 border-b border-surface-100 bg-surface-50">
                   {t.sourcePath ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={toProxiedMaterialUrl(t.sourcePath)} alt={t.name} className="h-full w-full object-contain" />
+                    // Templates are usually PDFs — an <img> can't render a PDF
+                    // (it showed a broken thumbnail). MaterialPreviewFrame uses
+                    // the browser's native viewer for PDFs and <img> for images.
+                    <MaterialPreviewFrame
+                      src={t.sourcePath}
+                      mimeType={t.outputFormat}
+                      title={t.name}
+                      className="h-full w-full"
+                      fit="contain"
+                    />
                   ) : null}
                 </div>
                 <CardContent className="space-y-3 p-4">

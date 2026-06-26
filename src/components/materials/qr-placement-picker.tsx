@@ -5,8 +5,6 @@ import * as React from 'react'
 import {
   ChevronLeft,
   ChevronRight,
-  FileText,
-  Loader2,
   Move,
   QrCode,
   Trash2,
@@ -15,20 +13,11 @@ import { cn } from '@/lib/utils'
 import { createQrPlacementId, type QrPlacement } from '@/lib/materials/qr-placement'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 
-let pdfModulePromise: Promise<any> | null = null
-
-async function loadPdfModule() {
-  if (!pdfModulePromise) {
-    pdfModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((pdfjs) => {
-      if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-      }
-      return pdfjs
-    })
-  }
-
-  return pdfModulePromise
-}
+// US-Letter portrait aspect (8.5 x 11). The placement zones are stored as
+// fractions of the page, and the backend stamps the QR at the same fraction of
+// the real PDF page — so what you place here lands there. Most templates are
+// Letter sell-sheets, so we size the backdrop to Letter for an accurate WYSIWYG.
+const LETTER_ASPECT = 8.5 / 11
 
 function isPdfSource(src: string, mimeType?: string | null) {
   return mimeType === 'application/pdf'
@@ -59,20 +48,34 @@ export function QrPlacementPicker({
   onChange: (placements: QrPlacement[]) => void
 }) {
   const isPdf = isPdfSource(previewUrl, previewMimeType)
-  const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const pageFrameRef = React.useRef<HTMLDivElement>(null)
   const sizeHostRef = React.useRef<HTMLDivElement>(null)
-  const [pageCount, setPageCount] = React.useState(1)
+  // PDF page count isn't probed (we render via the browser's native viewer, not
+  // pdf.js). Templates are single-page, so default to 1; image flyers are 1 too.
+  const pageCount = 1
   const [currentPage, setCurrentPage] = React.useState(1)
   const [activePlacementId, setActivePlacementId] = React.useState<string | null>(null)
   const [containerWidth, setContainerWidth] = React.useState(0)
   const [renderedSize, setRenderedSize] = React.useState({ width: 0, height: 0 })
-  const [loadingPdf, setLoadingPdf] = React.useState(false)
-  const [pdfError, setPdfError] = React.useState<string | null>(null)
   const [imageLoaded, setImageLoaded] = React.useState(false)
-  const [pdfRenderVersion, setPdfRenderVersion] = React.useState(0)
-  const pdfDocumentRef = React.useRef<any>(null)
   const draggingIdRef = React.useRef<string | null>(null)
+
+  // Proxy the PDF through this origin and render it with the browser's native
+  // viewer (reliable everywhere, unlike pdf.js which needs a version-matched
+  // worker). Hide the toolbar/scrollbar so it reads as a flat backdrop.
+  const pdfFrameSrc = React.useMemo(() => {
+    if (!isPdf) return ''
+    const proxied = toProxiedMaterialUrl(previewUrl)
+    return proxied.includes('#') ? proxied : `${proxied}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`
+  }, [isPdf, previewUrl])
+
+  // For PDFs, size the placement frame to Letter aspect within the available
+  // width so the overlay coordinates map cleanly onto the page.
+  React.useEffect(() => {
+    if (!isPdf) return
+    const width = clamp(containerWidth - 48, 240, 460)
+    if (width > 0) setRenderedSize({ width, height: width / LETTER_ASPECT })
+  }, [isPdf, containerWidth])
 
   const placementsOnCurrentPage = React.useMemo(
     () => placements.filter((placement) => placement.page === currentPage),
@@ -86,7 +89,6 @@ export function QrPlacementPicker({
 
   React.useEffect(() => {
     setCurrentPage(1)
-    setPdfError(null)
     setImageLoaded(false)
     setRenderedSize({ width: 0, height: 0 })
   }, [previewUrl])
@@ -114,106 +116,6 @@ export function QrPlacementPicker({
     const onCurrentPage = placements.find((placement) => placement.page === currentPage)
     setActivePlacementId(onCurrentPage?.id || null)
   }, [activePlacementId, currentPage, placements])
-
-  React.useEffect(() => {
-    if (!isPdf) {
-      setPageCount(1)
-      pdfDocumentRef.current = null
-      return
-    }
-
-    let disposed = false
-    setLoadingPdf(true)
-    setPdfError(null)
-
-    ;(async () => {
-      try {
-        const pdfjs = await loadPdfModule()
-        const loadingTask = pdfjs.getDocument(toProxiedMaterialUrl(previewUrl))
-        const document = await loadingTask.promise
-        if (disposed) {
-          await document.destroy()
-          return
-        }
-
-        pdfDocumentRef.current = document
-        setPdfRenderVersion((value) => value + 1)
-        setPageCount(document.numPages || 1)
-        setCurrentPage((value) => clamp(value, 1, document.numPages || 1))
-      } catch (error) {
-        console.error('Failed to load PDF preview', error)
-        if (!disposed) {
-          setPdfError('PDF preview could not be rendered.')
-          pdfDocumentRef.current = null
-          setPageCount(1)
-        }
-      } finally {
-        if (!disposed) setLoadingPdf(false)
-      }
-    })()
-
-    return () => {
-      disposed = true
-      const existingDocument = pdfDocumentRef.current
-      pdfDocumentRef.current = null
-      if (existingDocument?.destroy) {
-        void existingDocument.destroy()
-      }
-    }
-  }, [isPdf, previewUrl])
-
-  React.useEffect(() => {
-    if (!isPdf || !pdfDocumentRef.current || !canvasRef.current || !containerWidth) return
-
-    let disposed = false
-    setLoadingPdf(true)
-    setPdfError(null)
-
-    ;(async () => {
-      try {
-        const page = await pdfDocumentRef.current.getPage(currentPage)
-        if (disposed) return
-
-        const baseViewport = page.getViewport({ scale: 1 })
-        const maxWidth = clamp(containerWidth - 48, 240, 460)
-        const maxHeight = 620
-        const scale = Math.min(maxWidth / baseViewport.width, maxHeight / baseViewport.height)
-        const cssWidth = baseViewport.width * scale
-        const cssHeight = baseViewport.height * scale
-        const outputScale = Math.min(window.devicePixelRatio || 1, 2)
-        const renderViewport = page.getViewport({ scale: scale * outputScale })
-        const canvas = canvasRef.current
-        const context = canvas?.getContext('2d')
-
-        if (!canvas || !context) return
-
-        canvas.width = Math.floor(renderViewport.width)
-        canvas.height = Math.floor(renderViewport.height)
-        canvas.style.width = `${cssWidth}px`
-        canvas.style.height = `${cssHeight}px`
-
-        const renderTask = page.render({
-          canvasContext: context,
-          viewport: renderViewport,
-        })
-
-        await renderTask.promise
-
-        if (!disposed) {
-          setRenderedSize({ width: cssWidth, height: cssHeight })
-        }
-      } catch (error) {
-        console.error('Failed to render PDF page', error)
-        if (!disposed) setPdfError('PDF page could not be rendered.')
-      } finally {
-        if (!disposed) setLoadingPdf(false)
-      }
-    })()
-
-    return () => {
-      disposed = true
-    }
-  }, [containerWidth, currentPage, isPdf, pdfRenderVersion])
 
   function updatePlacement(id: string, updates: Partial<QrPlacement>) {
     onChange(
@@ -337,19 +239,14 @@ export function QrPlacementPicker({
             >
               {isPdf ? (
                 <>
-                  <canvas ref={canvasRef} className="block" />
+                  {/* Native PDF backdrop — pointer-events off so clicks/drags
+                      land on the zone overlay, not the iframe. */}
+                  <iframe
+                    src={pdfFrameSrc}
+                    title="Material preview"
+                    className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-white"
+                  />
                   {showPdfBadge()}
-                  {loadingPdf && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                      <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
-                    </div>
-                  )}
-                  {pdfError && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-surface-400">
-                      <FileText className="h-8 w-8" />
-                      <span className="text-xs font-medium">{pdfError}</span>
-                    </div>
-                  )}
                 </>
               ) : (
                 <>

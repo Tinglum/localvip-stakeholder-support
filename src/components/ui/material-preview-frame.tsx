@@ -14,6 +14,11 @@ interface MaterialPreviewFrameProps {
   showPdfBadge?: boolean
   pdfClassName?: string
   imageSizes?: string
+  /**
+   * When true the PDF iframe accepts pointer events (native scroll / zoom / page
+   * nav). Defaults to false so grid thumbnails stay click-through to the card.
+   */
+  interactive?: boolean
 }
 
 function isPdfSource(src: string | null, mimeType?: string | null) {
@@ -38,6 +43,7 @@ export function MaterialPreviewFrame({
   showPdfBadge = false,
   pdfClassName,
   imageSizes = '100vw',
+  interactive = false,
 }: MaterialPreviewFrameProps) {
   const pdf = isPdfSource(src, mimeType)
   const image = isImageSource(src, mimeType)
@@ -61,16 +67,17 @@ export function MaterialPreviewFrame({
     // Data URLs are already same-origin and pass straight through. An <iframe>
     // is more reliable than <object> for inline PDF rendering across browsers.
     const proxied = toProxiedMaterialUrl(src)
-    const previewUrl = proxied.includes('#')
-      ? proxied
-      : `${proxied}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH`
+    // Thumbnails hide the toolbar/scrollbar and fit-to-width; the interactive
+    // (full preview) view keeps the native toolbar so the user can scroll/zoom.
+    const hash = interactive ? '#view=FitH' : '#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH'
+    const previewUrl = proxied.includes('#') ? proxied : `${proxied}${hash}`
 
     return (
       <div className={cn('relative overflow-hidden bg-surface-50', className)}>
         <iframe
           src={previewUrl}
           title={`${title} PDF preview`}
-          className={cn('h-full w-full border-0 pointer-events-none', pdfClassName)}
+          className={cn('h-full w-full border-0', interactive ? '' : 'pointer-events-none', pdfClassName)}
         />
         <noscript>
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-surface-400">
