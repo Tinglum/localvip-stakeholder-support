@@ -23,7 +23,7 @@ const actionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('generate_template'),
-    templateId: z.string().uuid('A template is required.'),
+    templateId: z.string().min(1, 'A template is required.'),
   }),
   z.object({
     action: z.literal('generate_materials'),

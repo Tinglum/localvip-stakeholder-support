@@ -111,13 +111,14 @@ export function QaTemplateStudio() {
   async function testGenerate(id: string | number) {
     setTestingId(String(id)); setErr(null); setMsg(null)
     try {
-      const res = await fetch('/api/qa/dashboard/generated_materials', {
+      const res = await fetch('/api/crm/businesses/1/materials', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessAccountId: 1, templateId: Number(id) }),
+        body: JSON.stringify({ action: 'generate_template', templateId: String(id) }),
       })
-      const json: { generatedFileUrl?: string; error?: string } = res.ok ? await res.json() : { error: `Generate failed (${res.status}).` }
-      if (json?.generatedFileUrl) {
-        window.open(toProxiedMaterialUrl(json.generatedFileUrl), '_blank')
+      const json: { result?: { generatedFileUrl?: string }; error?: string } = res.ok ? await res.json() : { error: `Generate failed (${res.status}).` }
+      const url = json?.result?.generatedFileUrl
+      if (url) {
+        window.open(toProxiedMaterialUrl(url), '_blank')
         setMsg('Generated a sample for Barre Pizza (opened in a new tab).')
       } else {
         setErr(json?.error || 'Generation did not return a file.')
