@@ -67,9 +67,13 @@ export function MaterialPreviewFrame({
     // Data URLs are already same-origin and pass straight through. An <iframe>
     // is more reliable than <object> for inline PDF rendering across browsers.
     const proxied = toProxiedMaterialUrl(src)
-    // Thumbnails hide the toolbar/scrollbar and fit-to-width; the interactive
-    // (full preview) view keeps the native toolbar so the user can scroll/zoom.
-    const hash = interactive ? '#view=FitH' : '#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH'
+    // Always hide the browser's PDF chrome (toolbar, thumbnail rail, print/
+    // download buttons) so the preview is a clean page render, not the raw
+    // viewer. Interactive keeps pointer events (scroll/zoom for multi-page) but
+    // still hides the toolbar; thumbnails additionally pin to page 1.
+    const hash = interactive
+      ? '#toolbar=0&navpanes=0&view=FitH'
+      : '#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH'
     const previewUrl = proxied.includes('#') ? proxied : `${proxied}${hash}`
 
     return (
