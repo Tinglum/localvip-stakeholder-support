@@ -17,8 +17,10 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   let { stakeholderId, templateId, businessId } = body as { stakeholderId?: string; templateId?: string; businessId?: string }
 
-  if (!templateId || (!stakeholderId && !businessId)) {
-    return NextResponse.json({ error: 'templateId and either stakeholderId or businessId are required.' }, { status: 400 })
+  // For the QA path the business is resolved from the session below, so only the
+  // templateId is required up front.
+  if (!templateId) {
+    return NextResponse.json({ error: 'templateId is required.' }, { status: 400 })
   }
 
   if (session.source === 'qa') {
