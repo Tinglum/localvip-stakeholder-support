@@ -48,9 +48,18 @@ export function BugReporter() {
   const [expected, setExpected] = React.useState('')
   const [priority, setPriority] = React.useState<BugPriority>('need')
   const [category, setCategory] = React.useState<BugCategory>('functionality')
+  const [reporterName, setReporterName] = React.useState('')
 
   React.useEffect(() => {
     installBugCapture()
+  }, [])
+
+  // Prefill the reporter's name from the session (still required + editable).
+  React.useEffect(() => {
+    fetch('/api/auth/session', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((sx) => { const n = sx?.profile?.full_name; if (n) setReporterName(n) })
+      .catch(() => {})
   }, [])
 
   // Read the master toggle (cookie-authenticated, same-origin). Fail closed.
@@ -105,12 +114,20 @@ export function BugReporter() {
       let screenshotBase64 = ''
       try {
         const html2canvas = (await import('html2canvas')).default
+        // Capture the VISIBLE viewport (not the whole tall page) at scale 1 and
+        // export JPEG — a full-page PNG was both distorted and too large (413).
         const canvas = await html2canvas(document.body, {
           logging: false,
           useCORS: true,
-          scale: Math.min(window.devicePixelRatio || 1, 2),
+          scale: 1,
+          x: window.scrollX,
+          y: window.scrollY,
+          width: window.innerWidth,
+          height: window.innerHeight,
+          windowWidth: document.documentElement.scrollWidth,
+          windowHeight: document.documentElement.scrollHeight,
         })
-        screenshotBase64 = canvas.toDataURL('image/png')
+        screenshotBase64 = canvas.toDataURL('image/jpeg', 0.7)
       } catch {
         screenshotBase64 = ''
       }
@@ -124,6 +141,10 @@ export function BugReporter() {
 
   async function handleSubmit() {
     if (!context) return
+    if (!reporterName.trim()) {
+      setError('Please enter your name.')
+      return
+    }
     if (!whatWrong.trim()) {
       setError('Please describe what went wrong.')
       return
@@ -136,6 +157,7 @@ export function BugReporter() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           app: 'dashboard',
+          reporterName: reporterName.trim(),
           whatWrong: whatWrong.trim(),
           expectedBehavior: expected.trim(),
           priority,
@@ -202,6 +224,10 @@ export function BugReporter() {
                 <p className="text-xs text-surface-400">Screenshot unavailable — your report will still be sent.</p>
               )}
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-surface-600">Your name <span className="text-danger-500">*</span></label>
+                <input value={reporterName} onChange={(e) => setReporterName(e.target.value)} placeholder="Who is reporting this?" className="h-9 w-full rounded-lg border border-surface-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-surface-600">What was wrong?</label>
                 <Textarea value={whatWrong} onChange={(e) => setWhatWrong(e.target.value)} rows={3} placeholder="Describe the problem you ran into" />

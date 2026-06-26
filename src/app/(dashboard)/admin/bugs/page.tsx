@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Bug, Download, Loader2, RefreshCw, Search, Trash2, X, ExternalLink, Link2, ArrowUp, ArrowDown, UserCheck, RotateCcw } from 'lucide-react'
+import { Bug, Download, Loader2, RefreshCw, Search, Trash2, X, ExternalLink, Link2, ArrowUp, ArrowDown, UserCheck, RotateCcw, Sparkles, FileDown } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -43,6 +43,48 @@ function parseUA(ua?: string | null) {
   const os = /Windows NT/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Linux/.test(ua) ? 'Linux' : 'Unknown OS'
   const br = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Unknown browser'
   return `${br} · ${os}`
+}
+
+// Build a complete Claude-ready markdown brief for a single bug.
+function buildClaudeMd(r: BugReport): string {
+  const env = parseUA(r.userAgent)
+  const NL = String.fromCharCode(10)
+  const join = (raw: string | null | undefined) => safeParse(raw).map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(NL) || '(none)'
+  const shot = r.screenshotUrl ? `https://qa.localvip.com${r.screenshotUrl}` : '(none)'
+  return [
+    `# Bug #${r.id} — ${(r.whatWrong || '').slice(0, 90)}`,
+    '',
+    `- **App:** ${lab(APPS, String(r.app))}`,
+    `- **Priority:** ${lab(PRIORITIES, String(r.priority))}`,
+    `- **Category:** ${lab(CATEGORIES, String(r.category))}`,
+    `- **Status:** ${lab(STATUSES, String(r.status))}`,
+    `- **Reported by:** ${r.reporterName || '—'}${r.createdAt ? ` on ${r.createdAt}` : ''}`,
+    `- **Page:** ${r.pageUrl || '—'}`,
+    `- **Environment:** ${env} · ${r.viewport || '—'}`,
+    `- **Tags:** ${(r.tags || []).join(', ') || '—'}`,
+    '',
+    '## What was wrong',
+    r.whatWrong || '—',
+    '',
+    '## What should have happened',
+    r.expectedBehavior || '—',
+    '',
+    '## Console errors',
+    '```',
+    join(r.consoleErrors),
+    '```',
+    '',
+    '## Failed network requests',
+    '```',
+    join(r.networkErrors),
+    '```',
+    '',
+    '## Screenshot',
+    shot,
+    '',
+    '---',
+    `Please reproduce and fix this in the LocalVIP ${lab(APPS, String(r.app))} (Next.js) — and the QA C# backend if it is server-side. Use the page URL, console/network errors, and screenshot above as evidence.`,
+  ].join(NL)
 }
 
 type SortKey = 'createdAt' | 'priority' | 'status' | 'category' | 'app'
@@ -359,12 +401,20 @@ function BugDetail({ report, meId, onClose, onPatch, onDelete, onLightbox }: {
   const [note, setNote] = React.useState('')
   const [tags, setTags] = React.useState((report.tags || []).join(', '))
   const [copied, setCopied] = React.useState(false)
+  const [claudeCopied, setClaudeCopied] = React.useState(false)
   const consoleErrors = safeParse(report.consoleErrors)
   const networkErrors = safeParse(report.networkErrors)
 
   function copyLink() {
     const url = `${window.location.origin}/admin/bugs?id=${report.id}`
     navigator.clipboard.writeText(url).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500) }).catch(() => {})
+  }
+  function copyClaude() {
+    navigator.clipboard.writeText(buildClaudeMd(report)).then(() => { setClaudeCopied(true); window.setTimeout(() => setClaudeCopied(false), 1500) }).catch(() => {})
+  }
+  function downloadMd() {
+    const blob = new Blob([buildClaudeMd(report)], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bug-${report.id}.md`; a.click(); URL.revokeObjectURL(url)
   }
   // Resolution note: prompt for a fix note when resolving.
   async function changeStatus(v: string) {
@@ -381,6 +431,8 @@ function BugDetail({ report, meId, onClose, onPatch, onDelete, onLightbox }: {
         <div className="flex items-center justify-between border-b border-surface-100 px-5 py-4">
           <h2 className="flex items-center gap-2 text-base font-semibold text-surface-900"><Bug className="h-5 w-5 text-brand-600" /> Bug #{report.id}</h2>
           <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={copyClaude} title="Copy a Claude-ready brief"><Sparkles className="h-4 w-4" /> {claudeCopied ? 'Copied!' : 'For Claude'}</Button>
+            <Button variant="ghost" size="sm" onClick={downloadMd} title="Download .md for Claude"><FileDown className="h-4 w-4" /> .md</Button>
             <Button variant="ghost" size="sm" onClick={copyLink}><Link2 className="h-4 w-4" /> {copied ? 'Copied!' : 'Copy link'}</Button>
             <button onClick={onClose} className="text-surface-400 hover:text-surface-600"><X className="h-5 w-5" /></button>
           </div>
