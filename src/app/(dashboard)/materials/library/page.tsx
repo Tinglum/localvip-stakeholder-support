@@ -27,6 +27,8 @@ import {
   type MaterialAutomationTemplateConfig,
 } from '@/lib/materials/automation-template'
 import {
+  MATERIAL_VISIBILITY_ROLE_OPTIONS,
+  MATERIAL_VISIBILITY_SUBTYPE_OPTIONS,
   getMaterialCustomTags,
   getMaterialVisibilityRoleLabels,
   getMaterialVisibilitySubtypeLabels,
@@ -42,7 +44,7 @@ import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
 import { useMaterials, useMaterialTemplates, useGeneratedMaterials } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
-import type { Material, MaterialLibraryFolder, StakeholderType } from '@/lib/types/database'
+import type { Material, MaterialLibraryFolder, StakeholderType, UserRole, UserRoleSubtype } from '@/lib/types/database'
 
 // ─── Helpers ──────────────────────────────────────────────────
 
@@ -220,6 +222,8 @@ function UploadMaterialDialog({
   const [uploading, setUploading] = React.useState(false)
   const [dragOver, setDragOver] = React.useState(false)
   const [qrPlacements, setQrPlacements] = React.useState<QrPlacement[]>([])
+  const [roleTags, setRoleTags] = React.useState<UserRole[]>([])
+  const [subtypeTags, setSubtypeTags] = React.useState<UserRoleSubtype[]>([])
   const [templateEnabled, setTemplateEnabled] = React.useState(false)
   const [templateLibraryFolder, setTemplateLibraryFolder] = React.useState<MaterialLibraryFolder>('share_with_customers')
   const [templateStakeholderTypes, setTemplateStakeholderTypes] = React.useState<StakeholderType[]>(['business'])
@@ -247,12 +251,26 @@ function UploadMaterialDialog({
     setUploading(false)
     setDragOver(false)
     setQrPlacements([])
+    setRoleTags([])
+    setSubtypeTags([])
     setTemplateEnabled(false)
     setTemplateLibraryFolder('share_with_customers')
     setTemplateStakeholderTypes(['business'])
     setTemplateAudienceTags('customers')
     setTemplateStatus('active')
     setTemplateError(null)
+  }
+
+  function toggleRoleTag(role: UserRole) {
+    setRoleTags((current) =>
+      current.includes(role) ? current.filter((item) => item !== role) : [...current, role],
+    )
+  }
+
+  function toggleSubtypeTag(subtype: UserRoleSubtype) {
+    setSubtypeTags((current) =>
+      current.includes(subtype) ? current.filter((item) => item !== subtype) : [...current, subtype],
+    )
   }
 
   function handleFileSelect(selectedFile: File | undefined) {
@@ -403,8 +421,8 @@ function UploadMaterialDialog({
       thumbnail_url: thumbnailUrl,
       category: category || null,
       use_case: useCase || null,
-      target_roles: [],
-      target_subtypes: [],
+      target_roles: roleTags,
+      target_subtypes: subtypeTags.filter(Boolean) as Exclude<UserRoleSubtype, null>[],
       campaign_id: null,
       city_id: null,
       is_template: templateEnabled,
@@ -446,7 +464,8 @@ function UploadMaterialDialog({
           file_size: fileSize,
           mime_type: mimeType,
           thumbnail_url: thumbnailUrl,
-          target_roles: [],
+          target_roles: roleTags,
+          target_subtypes: subtypeTags.filter(Boolean) as Exclude<UserRoleSubtype, null>[],
           campaign_id: null,
           city_id: null,
           is_template: templateEnabled,
@@ -746,6 +765,65 @@ function UploadMaterialDialog({
               </select>
             </div>
           </div>
+
+          <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+            <p className="text-sm font-semibold text-surface-900">Visibility tags</p>
+            <p className="mt-1 text-xs text-surface-500">
+              Add more stakeholder roles here to make this material visible in more stakeholder libraries.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-surface-500">Stakeholder roles</p>
+                <div className="flex flex-wrap gap-2">
+                  {MATERIAL_VISIBILITY_ROLE_OPTIONS.map((option) => {
+                    const active = roleTags.includes(option.value)
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => toggleRoleTag(option.value)}
+                        className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                          active
+                            ? 'border-brand-500 bg-brand-50 text-brand-700'
+                            : 'border-surface-200 bg-white text-surface-600 hover:border-brand-300 hover:text-brand-700'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-surface-500">Subtype tags</p>
+                <div className="flex flex-wrap gap-2">
+                  {MATERIAL_VISIBILITY_SUBTYPE_OPTIONS.map((option) => {
+                    const active = subtypeTags.includes(option.value)
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => toggleSubtypeTag(option.value)}
+                        className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                          active
+                            ? 'border-success-500 bg-success-50 text-success-700'
+                            : 'border-surface-200 bg-white text-surface-600 hover:border-success-300 hover:text-success-700'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="mt-1 text-xs text-surface-500">
+                  Use subtype tags when a material should only show for a narrower audience like interns, volunteers, schools, or causes.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {(templateError || error) && <p className="text-xs text-red-600">{templateError || error}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
