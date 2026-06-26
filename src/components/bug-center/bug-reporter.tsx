@@ -33,6 +33,37 @@ const CATEGORIES: Array<{ value: BugCategory; label: string }> = [
   { value: 'functionality', label: 'Functionality' },
 ]
 
+// Find the visible, open modal on top of the page so we can screenshot it
+// directly (avoids html2canvas's position:fixed crop issues). Looks for Radix
+// dialogs and generic role="dialog"/aria-modal nodes; returns the largest
+// visible one (the topmost), or null when no modal is open.
+function findTopmostOpenModal(): HTMLElement | null {
+  const selectors = [
+    '[data-radix-dialog-content][data-state="open"]',
+    '[role="dialog"][data-state="open"]',
+    '[role="alertdialog"][data-state="open"]',
+    '[role="dialog"][aria-modal="true"]',
+    '[role="dialog"]',
+  ]
+  const seen = new Set<HTMLElement>()
+  let best: HTMLElement | null = null
+  let bestArea = 0
+  for (const sel of selectors) {
+    document.querySelectorAll<HTMLElement>(sel).forEach((el) => {
+      if (seen.has(el)) return
+      seen.add(el)
+      const rect = el.getBoundingClientRect()
+      const style = getComputedStyle(el)
+      const visible = rect.width > 40 && rect.height > 40 && style.visibility !== 'hidden' && style.display !== 'none'
+      if (!visible) return
+      const area = rect.width * rect.height
+      if (area > bestArea) { bestArea = area; best = el }
+    })
+    if (best) break
+  }
+  return best
+}
+
 // App-wide "report a bug" widget. Renders a floating button when the Bug Center
 // is enabled for the dashboard; clicking it screenshots the page (html2canvas) +
 // captures recent console/network errors, then opens a quick report form.
@@ -115,25 +146,26 @@ export function BugReporter() {
       let screenshotBase64 = ''
       try {
         const html2canvas = (await import('html2canvas')).default
-        // Capture the VISIBLE viewport (not the whole tall page) at scale 1 and
-        // export JPEG — a full-page PNG was both distorted and too large (413).
-        const canvas = await html2canvas(document.body, {
-          logging: false,
-          useCORS: true,
-          scale: 1,
-          // Capture the visible viewport. Do NOT override windowWidth/Height to
-          // the full document — that makes html2canvas place position:fixed
-          // modals at 50% of the whole page (far below the shot), so an open
-          // modal goes missing. Defaulting them to the viewport keeps fixed
-          // modals where they actually are on screen.
-          x: window.scrollX,
-          y: window.scrollY,
-          width: window.innerWidth,
-          height: window.innerHeight,
-          windowWidth: window.innerWidth,
-          windowHeight: window.innerHeight,
-        })
-        screenshotBase64 = canvas.toDataURL('image/jpeg', 0.7)
+        // Radix/portaled modals are position:fixed + transform-centered, which
+        // html2canvas renders at the document top — so a body+viewport crop
+        // slices them out. When a modal is open, capture THAT element directly
+        // (rendered at its own origin, no fixed-position crop issue). Otherwise
+        // capture the visible viewport.
+        const modalEl = findTopmostOpenModal()
+        const canvas = modalEl
+          ? await html2canvas(modalEl, { logging: false, useCORS: true, scale: 1, backgroundColor: '#ffffff' })
+          : await html2canvas(document.body, {
+              logging: false,
+              useCORS: true,
+              scale: 1,
+              x: window.scrollX,
+              y: window.scrollY,
+              width: window.innerWidth,
+              height: window.innerHeight,
+              windowWidth: window.innerWidth,
+              windowHeight: window.innerHeight,
+            })
+        screenshotBase64 = canvas.toDataURL('image/jpeg', 0.72)
       } catch {
         screenshotBase64 = ''
       }
