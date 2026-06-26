@@ -1,5 +1,5 @@
-import { MaterialEngineTemplatesPage } from '@/components/admin/material-engine-templates-page'
+import { QaTemplateStudio } from '@/components/admin/qa-template-studio'
 
 export default function AdminMaterialEngineTemplatesRoute() {
-  return <MaterialEngineTemplatesPage />
+  return <QaTemplateStudio />
 }
