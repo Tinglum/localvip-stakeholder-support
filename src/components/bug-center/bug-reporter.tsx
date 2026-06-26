@@ -69,6 +69,20 @@ export function BugReporter() {
     }
   }, [])
 
+  // Keyboard shortcut: Alt+B opens the reporter from anywhere.
+  React.useEffect(() => {
+    if (!enabled) return
+    function onKey(e: KeyboardEvent) {
+      if (e.altKey && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault()
+        if (!open && !capturing) void handleOpen()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, open, capturing])
+
   function reset() {
     setWhatWrong('')
     setExpected('')
@@ -159,7 +173,7 @@ export function BugReporter() {
         onClick={handleOpen}
         disabled={capturing}
         aria-label="Report a bug"
-        title="Report a bug"
+        title="Report a bug (Alt+B)"
         className="fixed bottom-5 right-5 z-[70] flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 ring-1 ring-white/20 transition-transform hover:scale-105 active:scale-95 disabled:opacity-70"
       >
         {capturing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Bug className="h-5 w-5" />}

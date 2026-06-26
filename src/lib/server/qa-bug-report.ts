@@ -54,10 +54,14 @@ export async function fetchBugReport(id: string): Promise<BugReport> {
 }
 
 export async function updateBugReport(id: string, payload: BugReportUpdateInput): Promise<BugReport> {
+  // The backend stores Tags as a CSV string and rejects a JSON array (400). The
+  // UI works with arrays (the read shape is string[]), so coerce on the way out.
+  const body: Record<string, unknown> = { ...payload }
+  if (Array.isArray(body.tags)) body.tags = (body.tags as string[]).map((t) => String(t).trim()).filter(Boolean).join(', ')
   const res = await fetchQaApi(`${BASE}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   })
   return parseQaJsonResponse<BugReport>(res, 'The bug report could not be updated.')
 }
