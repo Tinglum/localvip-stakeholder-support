@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json()
   let { stakeholderId, templateId, businessId } = body as { stakeholderId?: string; templateId?: string; businessId?: string }
-  const { qrContent, qrCodeId } = body as { qrContent?: string; qrCodeId?: number | string }
+  const { qrContent, qrCodeId, qrImageBase64 } = body as { qrContent?: string; qrCodeId?: number | string; qrImageBase64?: string }
 
   // For the QA path the business is resolved from the session below, so only the
   // templateId is required up front.
@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
       // one). Otherwise the backend falls back to the owner's default join QR.
       if (typeof qrContent === 'string' && qrContent.trim()) payload.qrContent = qrContent.trim()
       if (qrCodeId != null && String(qrCodeId).trim()) payload.qrCodeId = Number(qrCodeId)
+      // A client-rendered styled QR (with the business logo) to stamp as-is.
+      if (typeof qrImageBase64 === 'string' && qrImageBase64.trim()) payload.qrImageBase64 = qrImageBase64
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

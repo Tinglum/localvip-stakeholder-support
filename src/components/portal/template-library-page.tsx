@@ -162,6 +162,11 @@ function TemplateGenerateDialog({
   const [newUrl, setNewUrl] = React.useState('')
   const [generating, setGenerating] = React.useState(false)
   const [genError, setGenError] = React.useState<string | null>(null)
+  // Dynamic business details + the QR preview built from them.
+  const [ctx, setCtx] = React.useState<{ joinUrl: string; logoUrl: string; name: string } | null>(null)
+  const [logoOn, setLogoOn] = React.useState(true)
+  const [preview, setPreview] = React.useState('')
+  const [previewBusy, setPreviewBusy] = React.useState(false)
 
   React.useEffect(() => {
     if (!open) return
@@ -170,6 +175,8 @@ function TemplateGenerateDialog({
     setNewUrl('')
     setGenError(null)
     setQrError(null)
+    setPreview('')
+    setCtx(null)
     setQrLoading(true)
     fetch('/api/portal/qrcodes', { cache: 'no-store' })
       .then(async (r) => {
@@ -179,7 +186,48 @@ function TemplateGenerateDialog({
       })
       .catch((e) => setQrError(e instanceof Error ? e.message : 'Could not load your QR codes.'))
       .finally(() => setQrLoading(false))
+    // Resolve the business's dynamic join link + logo for the QR.
+    fetch('/api/portal/qr-context', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && !j.error) { setCtx({ joinUrl: j.joinUrl || '', logoUrl: j.logoUrl || '', name: j.name || '' }); setLogoOn(!!j.logoUrl) } })
+      .catch(() => {})
   }, [open])
+
+  // The destination the selected QR will encode.
+  const activeLink = React.useMemo(() => {
+    if (choice === 'default') return ctx?.joinUrl || ''
+    if (choice === 'new') return newUrl.trim() || ctx?.joinUrl || ''
+    const q = qrCodes.find((x) => String(x.id) === choice)
+    return q?.targetUrl || q?.code || ''
+  }, [choice, ctx, newUrl, qrCodes])
+
+  const logoSrc = logoOn && ctx?.logoUrl ? ctx.logoUrl : undefined
+
+  // Render the QR (the exact image that will be stamped) at a fixed size for the
+  // preview. Returns a PNG data URL — or '' if rendering fails.
+  const renderQr = React.useCallback(async (size: number): Promise<string> => {
+    if (!activeLink) return ''
+    const { generateStyledQR } = await import('@/lib/qr/generate')
+    return generateStyledQR({ data: activeLink, size, logoUrl: logoSrc })
+  }, [activeLink, logoSrc])
+
+  // Live, debounced preview.
+  React.useEffect(() => {
+    if (!open || !activeLink) { setPreview(''); return }
+    let cancelled = false
+    setPreviewBusy(true)
+    const t = setTimeout(async () => {
+      try {
+        const url = await renderQr(320)
+        if (!cancelled) setPreview(url)
+      } catch {
+        if (!cancelled) setPreview('')
+      } finally {
+        if (!cancelled) setPreviewBusy(false)
+      }
+    }, 250)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [open, activeLink, renderQr])
 
   async function handleGenerate() {
     if (!template) return
@@ -198,10 +246,16 @@ function TemplateGenerateDialog({
         const cJson = await cRes.json().catch(() => ({}))
         if (!cRes.ok || cJson.error) throw new Error(cJson.error || 'Could not create the QR code.')
         if (cJson.qrCode?.id != null) payload.qrCodeId = cJson.qrCode.id
-        else if (cJson.qrCode?.targetUrl) payload.qrContent = cJson.qrCode.targetUrl
       } else if (choice !== 'default') {
         payload.qrCodeId = choice
       }
+      if (activeLink) payload.qrContent = activeLink
+
+      // Render the styled QR (with the business logo) and stamp that exact image.
+      try {
+        const img = await renderQr(900)
+        if (img) payload.qrImageBase64 = img
+      } catch { /* fall back to the backend's plain QR render */ }
 
       const res = await fetch('/api/portal/generate', {
         method: 'POST',
@@ -253,12 +307,38 @@ function TemplateGenerateDialog({
               <QrCode className="h-4 w-4 text-brand-500" /> QR code to add
             </div>
 
+            {/* Live preview of the exact QR + where it leads */}
+            <div className="rounded-2xl border border-surface-200 bg-surface-50 p-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl border border-surface-200 bg-white">
+                  {previewBusy ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-surface-300" />
+                  ) : preview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={preview} alt="QR preview" className="h-full w-full rounded-lg object-contain p-1" />
+                  ) : (
+                    <QrCode className="h-7 w-7 text-surface-300" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-surface-400">Leads to</p>
+                  <p className="break-words text-xs text-surface-700">{activeLink || '—'}</p>
+                </div>
+              </div>
+              {ctx?.logoUrl && (
+                <label className="mt-3 flex items-center gap-2 text-sm text-surface-700">
+                  <input type="checkbox" checked={logoOn} onChange={(e) => setLogoOn(e.target.checked)} className="h-4 w-4 accent-brand-600" />
+                  Place my logo in the middle
+                </label>
+              )}
+            </div>
+
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               <QrOption
                 active={choice === 'default'}
                 onClick={() => setChoice('default')}
-                title="My default join QR"
-                subtitle="Your business's standard join QR code"
+                title="My join link (dynamic)"
+                subtitle={ctx?.joinUrl || "Your business's join link"}
               />
 
               {qrLoading && (
@@ -302,9 +382,10 @@ function TemplateGenerateDialog({
                     <input
                       value={newUrl}
                       onChange={(e) => setNewUrl(e.target.value)}
-                      placeholder="https://…"
+                      placeholder={ctx?.joinUrl || 'https://…'}
                       className="h-9 w-full rounded-lg border border-surface-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
+                    <p className="text-[11px] text-surface-500">Leave blank to use your dynamic join link.</p>
                   </div>
                 </div>
               )}
