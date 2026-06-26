@@ -33,7 +33,16 @@ interface PortalQr {
   qrImageUrl: string | null
 }
 
+interface PortalQrTemplate {
+  id: number | string
+  name: string
+  layout: Record<string, unknown>
+  link: 'business_join' | 'fixed'
+  logo: 'business' | 'none'
+}
+
 // The "default" choice = let the backend stamp the business's default join QR.
+// A `tpl:<id>` choice selects an admin style template.
 type QrChoice = 'default' | 'new' | string
 
 // Business-portal template browser: pick a template, preview the design, choose
@@ -167,6 +176,7 @@ function TemplateGenerateDialog({
   const [logoOn, setLogoOn] = React.useState(true)
   const [preview, setPreview] = React.useState('')
   const [previewBusy, setPreviewBusy] = React.useState(false)
+  const [qrTemplates, setQrTemplates] = React.useState<PortalQrTemplate[]>([])
 
   React.useEffect(() => {
     if (!open) return
@@ -191,25 +201,54 @@ function TemplateGenerateDialog({
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (j && !j.error) { setCtx({ joinUrl: j.joinUrl || '', logoUrl: j.logoUrl || '', name: j.name || '' }); setLogoOn(!!j.logoUrl) } })
       .catch(() => {})
+    // Admin-defined styled QR templates (auto-filled from the business).
+    fetch('/api/portal/qr-templates', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && Array.isArray(j.templates)) setQrTemplates(j.templates) })
+      .catch(() => {})
   }, [open])
+
+  // A selected admin style template (choice = `tpl:<id>`), if any.
+  const activeTpl = React.useMemo(
+    () => (choice.startsWith('tpl:') ? qrTemplates.find((t) => `tpl:${t.id}` === choice) || null : null),
+    [choice, qrTemplates],
+  )
 
   // The destination the selected QR will encode.
   const activeLink = React.useMemo(() => {
+    if (activeTpl) return ctx?.joinUrl || '' // style templates bind link -> business join
     if (choice === 'default') return ctx?.joinUrl || ''
     if (choice === 'new') return newUrl.trim() || ctx?.joinUrl || ''
     const q = qrCodes.find((x) => String(x.id) === choice)
     return q?.targetUrl || q?.code || ''
-  }, [choice, ctx, newUrl, qrCodes])
+  }, [activeTpl, choice, ctx, newUrl, qrCodes])
 
-  const logoSrc = logoOn && ctx?.logoUrl ? ctx.logoUrl : undefined
+  // Logo: a style template carries its own logo binding; otherwise the toggle.
+  const logoSrc = activeTpl
+    ? (activeTpl.logo === 'business' && ctx?.logoUrl ? ctx.logoUrl : undefined)
+    : (logoOn && ctx?.logoUrl ? ctx.logoUrl : undefined)
 
   // Render the QR (the exact image that will be stamped) at a fixed size for the
-  // preview. Returns a PNG data URL — or '' if rendering fails.
+  // preview. Returns a PNG data URL — or '' if rendering fails. A style template
+  // applies its saved look (colors, dot/corner style, gradient, frame).
   const renderQr = React.useCallback(async (size: number): Promise<string> => {
     if (!activeLink) return ''
     const { generateStyledQR } = await import('@/lib/qr/generate')
-    return generateStyledQR({ data: activeLink, size, logoUrl: logoSrc })
-  }, [activeLink, logoSrc])
+    const L = (activeTpl?.layout || {}) as Record<string, unknown>
+    const gc = Array.isArray(L.gradientColors) ? (L.gradientColors as string[]) : undefined
+    return generateStyledQR({
+      data: activeLink,
+      size,
+      logoUrl: logoSrc,
+      foregroundColor: typeof L.foregroundColor === 'string' ? L.foregroundColor : undefined,
+      backgroundColor: typeof L.backgroundColor === 'string' ? L.backgroundColor : undefined,
+      dotStyle: (L.dotStyle as never) || undefined,
+      cornerStyle: (L.cornerStyle as never) || undefined,
+      frameText: typeof L.frameText === 'string' ? L.frameText : undefined,
+      gradientType: (L.gradientType as never) || undefined,
+      gradientColors: gc && gc.length === 2 ? [gc[0], gc[1]] : undefined,
+    })
+  }, [activeLink, logoSrc, activeTpl])
 
   // Live, debounced preview.
   React.useEffect(() => {
@@ -246,7 +285,9 @@ function TemplateGenerateDialog({
         const cJson = await cRes.json().catch(() => ({}))
         if (!cRes.ok || cJson.error) throw new Error(cJson.error || 'Could not create the QR code.')
         if (cJson.qrCode?.id != null) payload.qrCodeId = cJson.qrCode.id
-      } else if (choice !== 'default') {
+      } else if (choice !== 'default' && !choice.startsWith('tpl:')) {
+        // A saved business QR code (numeric id). Style templates (tpl:) carry no
+        // QR-code row — they stamp the rendered image + link below.
         payload.qrCodeId = choice
       }
       if (activeLink) payload.qrContent = activeLink
@@ -355,6 +396,20 @@ function TemplateGenerateDialog({
                   onClick={() => setChoice(String(q.id))}
                   title={q.name}
                   subtitle={q.targetUrl || q.code || ''}
+                />
+              ))}
+
+              {qrTemplates.length > 0 && (
+                <p className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-400">Styled templates</p>
+              )}
+              {qrTemplates.map((t) => (
+                <QrOption
+                  key={`tpl:${t.id}`}
+                  active={choice === `tpl:${t.id}`}
+                  onClick={() => setChoice(`tpl:${t.id}`)}
+                  title={t.name}
+                  subtitle={`Your join link${t.logo === 'business' ? ' + your logo' : ''}, styled`}
+                  icon={<QrCode className="h-4 w-4" />}
                 />
               ))}
 

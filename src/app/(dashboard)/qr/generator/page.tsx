@@ -9,7 +9,7 @@ import {
   Check, ChevronDown, Sparkles, Tag, MapPin, Building2,
   Heart, Users, FolderOpen, Megaphone, ExternalLink, ArrowLeft,
   Image as ImageIcon, Mail, Phone, Wifi, ContactRound, FileUp,
-  MessageSquare, Globe, Layers, Loader2, FileText,
+  MessageSquare, Globe, Layers, Loader2, FileText, Link2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { QrLogoEditor } from '@/components/qr/qr-logo-editor'
@@ -733,6 +733,12 @@ export default function QRGeneratorPage() {
           gradientType,
           gradientColors: [gradientColor1, gradientColor2],
         }),
+        // When a business generates a material with this template, fill the QR
+        // from THEIR details: link = their join link; logo = their logo (opt-in).
+        field_bindings: {
+          link: 'business_join',
+          logo: templateUseBusinessLogo ? 'business' : 'none',
+        },
         source_entity_type: sourceEntityType,
       },
     })
@@ -745,6 +751,7 @@ export default function QRGeneratorPage() {
     setSelectedTemplateCollectionId(created.id)
     setTemplateName('')
     setTemplateDescription('')
+    setTemplateUseBusinessLogo(true)
     setSaveTemplateOpen(false)
     setTemplateMessage(`Saved "${created.name}" to the template gallery.`)
     refetchQrCollections({ silent: true })
@@ -761,6 +768,9 @@ export default function QRGeneratorPage() {
   const [saveTemplateOpen, setSaveTemplateOpen] = React.useState(false)
   const [templateName, setTemplateName] = React.useState('')
   const [templateDescription, setTemplateDescription] = React.useState('')
+  // Field bindings: when a BUSINESS uses this template, the QR's link auto-fills
+  // with their join link and (optionally) their logo goes in the center.
+  const [templateUseBusinessLogo, setTemplateUseBusinessLogo] = React.useState(true)
   const [templateMessage, setTemplateMessage] = React.useState<string | null>(null)
   const [templateError, setTemplateError] = React.useState<string | null>(null)
   const [selectedTemplateCollectionId, setSelectedTemplateCollectionId] = React.useState<string | null>(null)
@@ -1808,8 +1818,30 @@ export default function QRGeneratorPage() {
                 placeholder="Optional note about where this layout is used."
               />
             </div>
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 text-sm text-surface-600">
-              This saves the QR layout only: colors, styles, frame text, and size. The actual destination stays tied to the current QR you are building.
+            <div className="space-y-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+              <p className="text-sm font-medium text-surface-700">When a business uses this template</p>
+              <p className="text-xs text-surface-500">
+                This saves the QR look (colors, styles, frame text, size). These fields auto-fill with each business&apos;s own details:
+              </p>
+              <div className="flex items-start gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2">
+                <Link2 className="mt-0.5 h-4 w-4 text-brand-500" />
+                <div>
+                  <p className="text-sm font-medium text-surface-800">Link → the business&apos;s join link</p>
+                  <p className="text-xs text-surface-500">The QR always points to that business&apos;s dynamic join link.</p>
+                </div>
+              </div>
+              <label className="flex items-start gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={templateUseBusinessLogo}
+                  onChange={(e) => setTemplateUseBusinessLogo(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-brand-600"
+                />
+                <div>
+                  <p className="text-sm font-medium text-surface-800">Logo → the business&apos;s logo in the center</p>
+                  <p className="text-xs text-surface-500">Place each business&apos;s own logo in the middle of the QR.</p>
+                </div>
+              </label>
             </div>
             {templateError ? (
               <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
