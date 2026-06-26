@@ -42,7 +42,7 @@ import {
 import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
-import { useMaterials, useMaterialTemplates, useGeneratedMaterials } from '@/lib/supabase/hooks'
+import { useMaterials, useGeneratedMaterials } from '@/lib/supabase/hooks'
 import { createClient } from '@/lib/supabase/client'
 import type { Material, MaterialLibraryFolder, StakeholderType, UserRole, UserRoleSubtype } from '@/lib/types/database'
 
@@ -478,40 +478,11 @@ function UploadMaterialDialog({
         const body = await res.json().catch(() => ({}))
         setError(body.error || `Upload failed (${res.status})`)
       } else {
-        // "Save as Template": also persist a real MaterialTemplate row so it
-        // shows up in the Template Gallery (which reads material_templates).
-        // Previously only the Material was created with is_template=true, so the
-        // template gallery stayed empty. POST → /api/dashboard/v1/MaterialTemplate.
-        if (templateEnabled) {
-          try {
-            const tplRes = await fetch('/api/qa/dashboard/material_templates', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: title,
-                description: description || null,
-                template_type: type,
-                brand,
-                output_format: mimeType?.includes('pdf') ? 'pdf' : (mimeType?.startsWith('image/') ? 'image' : 'pdf'),
-                source_path: fileUrl,
-                library_folder: templateLibraryFolder,
-                // The backend stores these as CSV strings and rejects JSON arrays (400).
-                stakeholder_types: templateStakeholderTypes.join(','),
-                audience_tags: (() => { const t = parseTemplateTags(templateAudienceTags); return Array.isArray(t) ? t.join(', ') : (t || '') })(),
-                is_active: templateStatus === 'active',
-                qr_position_json: qrPlacements.length > 0 ? JSON.stringify(qrPlacementMetadata(qrPlacements)) : null,
-              }),
-            })
-            if (!tplRes.ok) {
-              const tplBody = await tplRes.json().catch(() => ({}))
-              setError(tplBody.error || `The template could not be saved (${tplRes.status}).`)
-              return
-            }
-          } catch (tplErr) {
-            setError(tplErr instanceof Error ? tplErr.message : 'The template could not be saved.')
-            return
-          }
-        }
+        // The uploaded DashboardMaterial (is_template=true) IS the template — the
+        // portal Template Library and material generation both read it directly.
+        // We deliberately do NOT also create a separate MaterialTemplate row: that
+        // produced a duplicate card in the library (one DashboardMaterial + one
+        // MaterialTemplate for a single upload).
         reset()
         onSuccess()
         onClose()
@@ -851,40 +822,18 @@ function UploadMaterialDialog({
 
 export default function MaterialsLibraryPage() {
   const { profile, isAdmin, localProfileId } = useAuth()
-  // Pull from the two QA-backed sources and merge them into the Material shape
-  // this page expects. Templates are marked `is_template=true`, generated files
-  // come from GeneratedMaterials and are marked `is_template=false`.
+  // Templates are DashboardMaterials flagged is_template=true (the rich row with
+  // QR zones + visibility tags, used by the portal + generation). Generated
+  // files come from GeneratedMaterials. We intentionally do NOT also pull the
+  // legacy MaterialTemplates table — every uploaded template lived there too,
+  // producing a duplicate card per upload.
   const { data: legacy, loading: legacyLoading, error: legacyError, refetch: refetchLegacy } = useMaterials()
-  const { data: templates, loading: tplLoading, error: tplError, refetch: refetchTpl } = useMaterialTemplates()
   const { data: generated, loading: genLoading, error: genError, refetch: refetchGen } = useGeneratedMaterials()
-  const loading = legacyLoading || tplLoading || genLoading
-  const error = legacyError || tplError || genError
-  const refetch = React.useCallback(() => { refetchLegacy(); refetchTpl(); refetchGen() }, [refetchLegacy, refetchTpl, refetchGen])
+  const loading = legacyLoading || genLoading
+  const error = legacyError || genError
+  const refetch = React.useCallback(() => { refetchLegacy(); refetchGen() }, [refetchLegacy, refetchGen])
 
   const materials = React.useMemo(() => {
-    // Adapt template rows → Material shape used by this page.
-    const fromTemplates = (templates || []).map((t) => {
-      const tt = t as unknown as Record<string, unknown>
-      return {
-        id: 'tpl-' + tt.id,
-        title: (tt.name as string) || 'Untitled template',
-        description: null,
-        type: (tt.template_type as string) || 'other',
-        brand: (tt.brand as string) || 'localvip',
-        use_case: (tt.library_folder as string) || 'general',
-        is_template: true,
-        file_url: (tt.source_path as string) || null,
-        thumbnail_url: null,
-        target_roles: [],
-        target_subtypes: [],
-        target_stages: [],
-        tags: [],
-        metadata: tt,
-        created_at: (tt.created_at as string) || new Date().toISOString(),
-        updated_at: (tt.updated_at as string) || new Date().toISOString(),
-      } as unknown as typeof legacy[number]
-    })
-
     const fromGenerated = (generated || []).map((g) => {
       const gg = g as unknown as Record<string, unknown>
       return {
@@ -908,8 +857,8 @@ export default function MaterialsLibraryPage() {
       } as unknown as typeof legacy[number]
     })
 
-    return [...legacy, ...fromTemplates, ...fromGenerated]
-  }, [legacy, templates, generated])
+    return [...legacy, ...fromGenerated]
+  }, [legacy, generated])
   const [search, setSearch] = React.useState('')
   const [typeFilter, setTypeFilter] = React.useState('')
   const [brandFilter, setBrandFilter] = React.useState('')
