@@ -196,13 +196,13 @@ export function BugReporter() {
         disabled={capturing}
         aria-label="Report a bug"
         title="Report a bug (Alt+B)"
-        className="fixed bottom-5 right-5 z-[70] flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 ring-1 ring-white/20 transition-transform hover:scale-105 active:scale-95 disabled:opacity-70"
+        className="fixed bottom-5 right-5 z-[2147483640] flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 ring-1 ring-white/20 transition-transform hover:scale-105 active:scale-95 disabled:opacity-70"
       >
         {capturing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Bug className="h-5 w-5" />}
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[2147483645] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
           <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-surface-100 px-5 py-4">
               <h2 className="flex items-center gap-2 text-base font-semibold text-surface-900">

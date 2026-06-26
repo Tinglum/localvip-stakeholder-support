@@ -97,25 +97,20 @@ async function handleQaMaterialsAction(
   businessId: string,
   action: z.infer<typeof actionSchema>,
 ): Promise<NextResponse> {
-  let stakeholderId: string | null = null
+  let businessAccountId: number
   try {
-    const context = await ensureQaBusinessStakeholderContext(businessId)
-    stakeholderId = String(context.stakeholder.id)
-  } catch { /* fall through */ }
+    businessAccountId = Number(await resolveQaBusinessRouteId(businessId))
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not resolve this business.' }, { status: 404 })
+  }
 
   try {
     if (action.action === 'save_codes') {
-      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this business yet.' }, { status: 404 })
-      const res = await fetchQaApi('/api/dashboard/v1/StakeholderCode', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ stakeholderId, referralCode: action.referralCode, connectionCode: action.connectionCode }),
-      })
-      const result = await parseQaResponse<unknown>(res, 'Failed to save codes.')
-      return NextResponse.json({ success: true, result })
+      // Codes are backend-assigned from the business owner's referral code.
+      return NextResponse.json({ success: true })
     }
     if (action.action === 'list_generation_templates') {
-      const res = await fetchQaApi('/api/dashboard/v1/MaterialTemplate')
+      const res = await fetchQaApi('/api/dashboard/v1/MaterialTemplate?isActive=true')
       const json = await parseQaResponse<unknown>(res, 'Failed to list templates.')
       const items = Array.isArray(json) ? json
         : (json && typeof json === 'object' && Array.isArray((json as Record<string, unknown>).items))
@@ -133,19 +128,35 @@ async function handleQaMaterialsAction(
       })
       return NextResponse.json({ success: true, templates })
     }
-    if (action.action === 'generate_template' || action.action === 'generate_materials') {
-      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this business yet.' }, { status: 404 })
-      const payload: Record<string, unknown> = { stakeholderId }
-      if (action.action === 'generate_template') payload.templateId = action.templateId
+    if (action.action === 'generate_template') {
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ businessAccountId, templateId: Number(action.templateId) }),
       })
       const result = await parseQaResponse<unknown>(res, 'Failed to generate material.')
       return NextResponse.json({ success: true, result })
     }
+    if (action.action === 'generate_materials') {
+      // Generate one customized material per ACTIVE template (QR stamped on the template).
+      const tplRes = await fetchQaApi('/api/dashboard/v1/MaterialTemplate?isActive=true')
+      const tplJson = await parseQaResponse<unknown>(tplRes, 'Failed to list templates.')
+      const tpls = Array.isArray(tplJson) ? tplJson
+        : (tplJson && typeof tplJson === 'object' && Array.isArray((tplJson as Record<string, unknown>).items))
+          ? (tplJson as Record<string, unknown>).items as unknown[] : []
+      const tplIds = tpls.map((t) => (t as Record<string, unknown>).id).filter((x) => x != null)
+      if (tplIds.length === 0) {
+        const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ businessAccountId }) })
+        await parseQaResponse(res, 'Failed to generate material.')
+        return NextResponse.json({ success: true, generated: 1, total: 1 })
+      }
+      const genResults = await Promise.allSettled(tplIds.map((tid) =>
+        fetchQaApi('/api/dashboard/v1/GeneratedMaterial', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ businessAccountId, templateId: Number(tid) }) }).then((r) => parseQaResponse(r, 'Generation failed.')),
+      ))
+      const generated = genResults.filter((r) => r.status === 'fulfilled').length
+      return NextResponse.json({ success: true, generated, total: tplIds.length })
+    }
     if (action.action === 'regenerate_all') {
-      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this business yet.' }, { status: 404 })
-      const listRes = await fetchQaApi(`/api/dashboard/v1/GeneratedMaterial?stakeholderId=${encodeURIComponent(stakeholderId)}`)
+      const listRes = await fetchQaApi(`/api/dashboard/v1/GeneratedMaterial?businessAccountId=${businessAccountId}`)
       const listJson = await parseQaResponse<unknown>(listRes, 'Failed to list materials.')
       const list = Array.isArray(listJson) ? listJson
         : (listJson && typeof listJson === 'object' && Array.isArray((listJson as Record<string, unknown>).items))

@@ -346,7 +346,7 @@ function BugCenterInner() {
               ) : visible.length === 0 ? (
                 <tr><td colSpan={9} className="py-10 text-center text-surface-400">No bug reports match these filters.</td></tr>
               ) : visible.map((r) => (
-                <tr key={r.id} className="cursor-pointer border-b border-surface-50 hover:bg-surface-50" onClick={() => setDetail(r)}>
+                <tr key={r.id} className={`cursor-pointer border-b border-surface-50 border-l-4 hover:bg-surface-50 ${String(r.status)==='open'?'border-l-warning-400 bg-warning-50/30':String(r.status)==='in_progress'?'border-l-brand-400 bg-brand-50/30':String(r.status)==='resolved'?'border-l-success-400 bg-success-50/20':'border-l-surface-300'}`} onClick={() => setDetail(r)}>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected.has(String(r.id))} onChange={(e) => setSelected((p) => { const n = new Set(p); if (e.target.checked) n.add(String(r.id)); else n.delete(String(r.id)); return n })} className="h-4 w-4 rounded border-surface-300" /></td>
                   <td className="px-3 py-2">{r.screenshotUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element

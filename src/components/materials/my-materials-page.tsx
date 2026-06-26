@@ -559,30 +559,8 @@ function StandardMaterialsPage() {
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
   const [deleteError, setDeleteError] = React.useState<string | null>(null)
 
-  // Lazy auto-generate on first open: ask the server to fill in any active
-  // template that hasn't been generated for this business yet, then refresh.
-  // Idempotent + non-blocking — the library still renders whatever exists if
-  // generation is slow or partially fails. Runs once per business account.
-  const ensuredRef = React.useRef<string | null>(null)
-  React.useEffect(() => {
-    if (!businessAccountId || ensuredRef.current === businessAccountId) return
-    ensuredRef.current = businessAccountId
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await fetch('/api/portal/ensure-materials', { method: 'POST' })
-        const json = await res.json().catch(() => null)
-        if (!cancelled && res.ok && (json?.created ?? 0) > 0) {
-          refetchGenerated({ silent: true })
-        }
-      } catch {
-        /* non-blocking */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [businessAccountId, refetchGenerated])
+  // No pre-creation: materials are generated on demand by clicking Generate on a
+  // template (in the Template Library / Codes + Materials), not auto-seeded here.
 
   const materials = React.useMemo(() => {
     const assignedIds = new Set(assignments.map(assignment => assignment.material_id))
