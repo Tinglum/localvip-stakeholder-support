@@ -121,12 +121,17 @@ export function BugReporter() {
           logging: false,
           useCORS: true,
           scale: 1,
+          // Capture the visible viewport. Do NOT override windowWidth/Height to
+          // the full document — that makes html2canvas place position:fixed
+          // modals at 50% of the whole page (far below the shot), so an open
+          // modal goes missing. Defaulting them to the viewport keeps fixed
+          // modals where they actually are on screen.
           x: window.scrollX,
           y: window.scrollY,
           width: window.innerWidth,
           height: window.innerHeight,
-          windowWidth: document.documentElement.scrollWidth,
-          windowHeight: document.documentElement.scrollHeight,
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
         })
         screenshotBase64 = canvas.toDataURL('image/jpeg', 0.7)
       } catch {
@@ -197,13 +202,14 @@ export function BugReporter() {
         disabled={capturing}
         aria-label="Report a bug"
         title="Report a bug (Alt+B)"
-        className="fixed bottom-5 right-5 z-[2147483640] flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 ring-1 ring-white/20 transition-transform hover:scale-105 active:scale-95 disabled:opacity-70"
+        style={{ pointerEvents: 'auto' }}
+        className="pointer-events-auto fixed bottom-5 right-5 z-[2147483640] flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 ring-1 ring-white/20 transition-transform hover:scale-105 active:scale-95 disabled:opacity-70"
       >
         {capturing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Bug className="h-5 w-5" />}
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[2147483645] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+        <div className="pointer-events-auto fixed inset-0 z-[2147483645] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" style={{ pointerEvents: 'auto' }}>
           <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-surface-100 px-5 py-4">
               <h2 className="flex items-center gap-2 text-base font-semibold text-surface-900">
