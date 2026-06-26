@@ -180,6 +180,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
       { label: 'Material Tasks', href: '/admin/material-engine/tasks', icon: 'ListChecks', minLevel: 0 },
       { label: 'Template Manager', href: '/admin/material-engine/templates', icon: 'LayoutTemplate', minLevel: 0 },
       { label: 'Users', href: '/admin/users', icon: 'Users', minLevel: 0 },
+      { label: 'Bug Center', href: '/admin/bugs', icon: 'Bug', minLevel: 0 },
       { label: 'Audit Log', href: '/admin/audit', icon: 'ScrollText', minLevel: 0 },
     ],
   },

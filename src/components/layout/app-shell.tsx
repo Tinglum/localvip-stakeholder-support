@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { canAccessPath, getStakeholderAccess } from '@/lib/stakeholder-access'
 import type { Profile } from '@/lib/types/database'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { BugReporter } from '@/components/bug-center/bug-reporter'
 
 interface AppShellProps {
   profile: Profile
@@ -40,6 +41,7 @@ export function AppShell({ profile, children }: AppShellProps) {
   return (
     <div className={cn('min-h-screen bg-surface-50', bannerOffset)}>
       <ImpersonationBanner />
+      <BugReporter />
       <Sidebar
         profile={profile}
         brand={profile.brand_context}

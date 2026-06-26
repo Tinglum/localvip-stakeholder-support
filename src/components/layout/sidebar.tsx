@@ -34,6 +34,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  Bug,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type NavItem, BRANDS } from '@/lib/constants'
@@ -68,6 +69,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   FolderKanban,
   ListChecks,
   LayoutTemplate,
+  Bug,
 }
 
 interface SidebarProps {
