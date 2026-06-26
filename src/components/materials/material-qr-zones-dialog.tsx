@@ -56,6 +56,26 @@ export function MaterialQrZonesDialog({
       return
     }
 
+    // Also sync the zone to the matching template's qr_position_json, so when a
+    // business generates this template the QR is stamped where it was placed (the
+    // template is keyed by its source design file = this material's file_url).
+    try {
+      const fileUrl = material.file_url
+      if (fileUrl) {
+        const tplRes = await fetch('/api/qa/dashboard/material_templates?is_active=true', { cache: 'no-store' })
+        const tj = tplRes.ok ? await tplRes.json() : null
+        const items: Array<Record<string, unknown>> = Array.isArray(tj) ? tj : (tj?.items || [])
+        const match = items.find((t) => (t.sourcePath ?? t.source_path) === fileUrl)
+        if (match) {
+          await fetch(`/api/qa/dashboard/material_templates/${match.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ qr_position_json: JSON.stringify(qrPlacementMetadata(placements)) }),
+          })
+        }
+      }
+    } catch { /* the zone is saved on the material regardless */ }
+
     onSaved()
     onOpenChange(false)
   }
