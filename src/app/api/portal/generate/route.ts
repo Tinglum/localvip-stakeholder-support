@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json()
   let { stakeholderId, templateId, businessId } = body as { stakeholderId?: string; templateId?: string; businessId?: string }
+  const { qrContent, qrCodeId } = body as { qrContent?: string; qrCodeId?: number | string }
 
   // For the QA path the business is resolved from the session below, so only the
   // templateId is required up front.
@@ -48,6 +49,10 @@ export async function POST(request: NextRequest) {
       const payload: Record<string, unknown> = { templateId: Number(templateId) }
       if (businessId) payload.businessAccountId = Number(businessId)
       if (causeId) payload.causeAccountId = Number(causeId)
+      // Optional explicit QR choice (the business picked a saved QR or made a new
+      // one). Otherwise the backend falls back to the owner's default join QR.
+      if (typeof qrContent === 'string' && qrContent.trim()) payload.qrContent = qrContent.trim()
+      if (qrCodeId != null && String(qrCodeId).trim()) payload.qrCodeId = Number(qrCodeId)
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
