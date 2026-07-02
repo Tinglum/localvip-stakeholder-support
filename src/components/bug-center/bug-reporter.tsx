@@ -231,6 +231,12 @@ export function BugReporter() {
       <button
         type="button"
         onClick={handleOpen}
+        // Radix modals listen on document for pointer-down-outside and dismiss.
+        // The button is portaled outside the modal, so a normal click would close
+        // it before we screenshot. Stop the pointer event from reaching Radix's
+        // document listener so the open modal stays put and gets captured.
+        onPointerDownCapture={(e) => e.stopPropagation()}
+        onMouseDownCapture={(e) => e.stopPropagation()}
         disabled={capturing}
         aria-label="Report a bug"
         title="Report a bug (Alt+B)"
