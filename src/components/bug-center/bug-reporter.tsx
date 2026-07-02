@@ -145,27 +145,46 @@ export function BugReporter() {
 
       let screenshotBase64 = ''
       try {
-        const html2canvas = (await import('html2canvas')).default
-        // Radix/portaled modals are position:fixed + transform-centered, which
-        // html2canvas renders at the document top — so a body+viewport crop
-        // slices them out. When a modal is open, capture THAT element directly
-        // (rendered at its own origin, no fixed-position crop issue). Otherwise
-        // capture the visible viewport.
-        const modalEl = findTopmostOpenModal()
-        const canvas = modalEl
-          ? await html2canvas(modalEl, { logging: false, useCORS: true, scale: 1, backgroundColor: '#ffffff' })
-          : await html2canvas(document.body, {
-              logging: false,
-              useCORS: true,
-              scale: 1,
-              x: window.scrollX,
-              y: window.scrollY,
-              width: window.innerWidth,
-              height: window.innerHeight,
-              windowWidth: window.innerWidth,
-              windowHeight: window.innerHeight,
-            })
-        screenshotBase64 = canvas.toDataURL('image/jpeg', 0.72)
+        // Try native screen-capture API first: pixel-perfect screenshot of what
+        // the user sees. One-time permission dialog, then pixel-accurate capture.
+        let captured = false
+        try {
+          const stream = await navigator.mediaDevices.getDisplayMedia({ video: true as any, audio: false })
+          const video = document.createElement('video')
+          video.srcObject = stream
+          video.play()
+          await new Promise((r) => { video.onloadedmetadata = r })
+          const canvas = document.createElement('canvas')
+          canvas.width = video.videoWidth
+          canvas.height = video.videoHeight
+          const ctx = canvas.getContext('2d')
+          if (ctx) ctx.drawImage(video, 0, 0)
+          screenshotBase64 = canvas.toDataURL('image/jpeg', 0.72)
+          stream.getTracks().forEach((t) => t.stop())
+          captured = true
+        } catch {
+          // User denied permission or API not available — fall back to html2canvas.
+        }
+
+        // Fallback: reconstruct from DOM if native capture didn't work.
+        if (!captured) {
+          const html2canvas = (await import('html2canvas')).default
+          const modalEl = findTopmostOpenModal()
+          const canvas = modalEl
+            ? await html2canvas(modalEl, { logging: false, useCORS: true, scale: 1.5, backgroundColor: '#ffffff', allowTaint: true })
+            : await html2canvas(document.body, {
+                logging: false,
+                useCORS: true,
+                scale: 1,
+                x: window.scrollX,
+                y: window.scrollY,
+                width: window.innerWidth,
+                height: window.innerHeight,
+                windowWidth: window.innerWidth,
+                windowHeight: window.innerHeight,
+              })
+          screenshotBase64 = canvas.toDataURL('image/jpeg', 0.72)
+        }
       } catch {
         screenshotBase64 = ''
       }
