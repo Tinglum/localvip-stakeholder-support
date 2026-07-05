@@ -189,7 +189,6 @@ export async function GET(request: NextRequest) {
     crmCausesProbe,
     qaBusinessesProbe,
     materialsProbe,
-    notificationsProbe,
     searchProbe,
     qrBridgeProbe,
     outreachBridgeProbe,
@@ -211,7 +210,6 @@ export async function GET(request: NextRequest) {
     probeJson<{ items?: Array<{ rowId: string; qaCauseId?: number | null; origin?: string }>; qaError?: string | null }>(request, '/api/crm/causes'),
     probeJson<unknown[]>(request, '/api/qa/businesses'),
     probeJson<unknown[]>(request, '/api/materials'),
-    probeJson<{ notifications?: unknown[] }>(request, '/api/notifications'),
     probeJson<{ results?: unknown[]; error?: string }>(request, '/api/qa/search?q=lo'),
     probeJson<unknown[]>(request, '/api/qa/dashboard/qr_codes?entity_type=business'),
     probeJson<unknown[]>(request, '/api/qa/dashboard/outreach_activities?entity_type=business'),
@@ -434,24 +432,6 @@ export async function GET(request: NextRequest) {
       detail: materialsProbe.ok ? undefined : formatProbeFailureDetail(materialsProbe),
       metrics: materialsProbe.ok ? [
         { label: 'Rows', value: getCollectionSize(materialsProbe.payload) },
-      ] : undefined,
-    }),
-  )
-
-  checks.push(
-    makeCheck({
-      id: 'notifications_bridge',
-      title: 'Notifications bridge',
-      category: 'QA Bridges',
-      endpoint: notificationsProbe.endpoint,
-      status: notificationsProbe.ok ? 'healthy' : 'critical',
-      latencyMs: notificationsProbe.latencyMs,
-      message: notificationsProbe.ok
-        ? 'Notifications endpoint responded successfully.'
-        : notificationsProbe.error || 'The notifications endpoint failed.',
-      detail: notificationsProbe.ok ? undefined : formatProbeFailureDetail(notificationsProbe),
-      metrics: notificationsProbe.ok ? [
-        { label: 'Rows', value: getCollectionSize(notificationsProbe.payload) },
       ] : undefined,
     }),
   )

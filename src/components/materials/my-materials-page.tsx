@@ -47,7 +47,6 @@ import { EMPTY_UUID } from '@/lib/uuid'
 import { formatDate } from '@/lib/utils'
 import { useBusinesses, useGeneratedMaterials, useMaterialAssignments, useMaterialInsert, useMaterialTemplates, useMaterials, useStakeholders } from '@/lib/supabase/hooks'
 import { resolveScopedBusiness } from '@/lib/business-portal'
-import { createClient } from '@/lib/supabase/client'
 import type { BusinessJoinResource } from '@/lib/business-join'
 import type { GeneratedMaterial, Material, MaterialTemplate, Stakeholder } from '@/lib/types/database'
 
@@ -275,7 +274,6 @@ function UploadMaterialDialog({
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
   const previewable = selectedFile ? isMaterialPreviewable(selectedFile.type) : false
-  const storageOwnerKey = localProfileId || `qa-user-${String(profile.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`
 
   React.useEffect(() => {
     return () => {
@@ -346,18 +344,10 @@ function UploadMaterialDialog({
         if (qaFileUrl) {
           fileUrl = qaFileUrl
         } else {
-          // 2) Demo path — Supabase storage with data-URL fallback
-          const supabase = createClient()
-          const filePath = `materials/${storageOwnerKey}/${Date.now()}-${selectedFile.name}`
-          const { error: storageError } = await supabase.storage
-            .from('materials')
-            .upload(filePath, selectedFile, { upsert: true })
-          if (storageError) {
-            fileUrl = await fileToDataUrl(selectedFile)
-          } else {
-            const { data: urlData } = supabase.storage.from('materials').getPublicUrl(filePath)
-            fileUrl = urlData.publicUrl
-          }
+          // 2) QA upload failed — keep the material usable with an inline data
+          // URL. (The old Supabase Storage fallback was a stub that always
+          // failed through to this same path, so it was removed.)
+          fileUrl = await fileToDataUrl(selectedFile)
         }
 
         fileName = selectedFile.name

@@ -43,7 +43,6 @@ import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from 
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
 import { useMaterials, useGeneratedMaterials } from '@/lib/supabase/hooks'
-import { createClient } from '@/lib/supabase/client'
 import type { Material, MaterialLibraryFolder, StakeholderType, UserRole, UserRoleSubtype } from '@/lib/types/database'
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -234,7 +233,6 @@ function UploadMaterialDialog({
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
   const isPreviewableFile = file ? isMaterialPreviewable(file.type) : false
-  const storageOwnerKey = localProfileId || `qa-user-${String(profile.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`
 
   // Use the uploaded file itself as the preview source whenever it can render inline.
   const qrPreviewUrl = isPreviewableFile ? filePreviewUrl : null
@@ -351,26 +349,11 @@ function UploadMaterialDialog({
       }
     } catch { /* fall through */ }
 
-    // 2) Fall back to Supabase Storage (demo mode)
-    try {
-      const supabase = createClient()
-      const filePath = `${folder}/${storageOwnerKey}/${Date.now()}-${fileToUpload.name}`
-      const { error: uploadError } = await supabase.storage
-        .from('materials')
-        .upload(filePath, fileToUpload, { upsert: true })
-
-      if (uploadError) {
-        console.warn('Storage upload failed, falling back to data URL:', uploadError.message)
-        return await fileToDataUrl(fileToUpload)
-      }
-      const { data: urlData } = supabase.storage
-        .from('materials')
-        .getPublicUrl(filePath)
-      return urlData.publicUrl
-    } catch (err) {
-      console.warn('Upload error, falling back to data URL:', err)
-      return await fileToDataUrl(fileToUpload)
-    }
+    // 2) QA upload failed — keep the material usable with an inline data URL.
+    // (The old Supabase Storage fallback was a stub that always failed through
+    // to this same data-URL path, so it was removed.)
+    console.warn('QA upload failed, falling back to data URL')
+    return await fileToDataUrl(fileToUpload)
   }
 
   async function handleSubmit(e: React.FormEvent) {
