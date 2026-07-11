@@ -334,6 +334,139 @@ function normalizeQaClaims(accessToken: string, idToken?: string | null): QaAuth
   }
 }
 
+/**
+ * JWT signature verification against the QA IdentityServer JWKS.
+ *
+ * Claims (roles, sub, …) are otherwise decoded with an *unverified* base64 read,
+ * so a forged token could claim any role. This verifies the RS256 signature of a
+ * token before its claims are trusted at a mint boundary (e.g. the client-POSTed
+ * access token in /api/auth/qa/session).
+ *
+ * Uses Web Crypto (crypto.subtle) so it runs on both the Node and Edge runtimes
+ * without adding a dependency. The JWKS is fetched from the issuer's discovery
+ * endpoint and cached in-process by `kid`.
+ */
+const QA_JWKS_URI = `${QA_AUTH_CONFIG.baseUrl}/.well-known/openid-configuration/jwks`
+const QA_JWT_ISSUER = QA_AUTH_CONFIG.baseUrl
+
+interface JwkEntry {
+  kid?: string
+  kty?: string
+  alg?: string
+  use?: string
+  n?: string
+  e?: string
+}
+
+let jwksCache: { keys: JwkEntry[]; fetchedAt: number } | null = null
+const JWKS_CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+const importedKeyCache = new Map<string, CryptoKey>()
+
+async function fetchQaJwks(force = false): Promise<JwkEntry[]> {
+  const now = Date.now()
+  if (!force && jwksCache && now - jwksCache.fetchedAt < JWKS_CACHE_TTL_MS) {
+    return jwksCache.keys
+  }
+  const response = await fetch(QA_JWKS_URI, { cache: 'no-store' })
+  if (!response.ok) {
+    throw new Error(`Unable to fetch QA JWKS (status ${response.status}).`)
+  }
+  const json = (await response.json()) as { keys?: JwkEntry[] }
+  const keys = Array.isArray(json.keys) ? json.keys : []
+  jwksCache = { keys, fetchedAt: now }
+  return keys
+}
+
+async function importRsaVerifyKey(jwk: JwkEntry): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    'jwk',
+    { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true } as JsonWebKey,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['verify'],
+  )
+}
+
+async function getVerifyKeyForKid(kid: string | null): Promise<CryptoKey | null> {
+  if (kid && importedKeyCache.has(kid)) return importedKeyCache.get(kid) || null
+
+  // Try the cached JWKS first; if the kid is unknown (e.g. after key rotation),
+  // force a refresh once before giving up.
+  for (const force of [false, true]) {
+    const keys = await fetchQaJwks(force)
+    const candidates = keys.filter((k) => (k.kty === 'RSA') && (!kid || !k.kid || k.kid === kid))
+    for (const jwk of candidates) {
+      if (kid && jwk.kid && jwk.kid !== kid) continue
+      const key = await importRsaVerifyKey(jwk)
+      if (kid && jwk.kid) importedKeyCache.set(jwk.kid, key)
+      return key
+    }
+    if (kid && keys.some((k) => k.kid === kid)) break
+  }
+  return null
+}
+
+function parseJwtHeader(token: string): Record<string, unknown> {
+  const segments = token.split('.')
+  if (segments.length < 2) return {}
+  try {
+    return JSON.parse(base64UrlToString(segments[0])) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Verify a QA-issued JWT's RS256 signature (and iss/exp) against the QA JWKS.
+ * Returns the decoded payload only when the signature is valid; otherwise null.
+ */
+export async function verifyQaJwt(token: string): Promise<Record<string, unknown> | null> {
+  if (!token || typeof token !== 'string') return null
+  const segments = token.split('.')
+  if (segments.length !== 3) return null
+
+  const header = parseJwtHeader(token)
+  const alg = typeof header.alg === 'string' ? header.alg : null
+  if (alg !== 'RS256') return null // reject "none" and unexpected algorithms
+  const kid = typeof header.kid === 'string' ? header.kid : null
+
+  let key: CryptoKey | null
+  try {
+    key = await getVerifyKeyForKid(kid)
+  } catch {
+    return null
+  }
+  if (!key) return null
+
+  const signingInput = new TextEncoder().encode(`${segments[0]}.${segments[1]}`)
+  const signature = base64UrlToBytes(segments[2])
+
+  let valid = false
+  try {
+    valid = await crypto.subtle.verify(
+      { name: 'RSASSA-PKCS1-v1_5' },
+      key,
+      signature,
+      signingInput,
+    )
+  } catch {
+    return null
+  }
+  if (!valid) return null
+
+  const payload = parseJwtPayload(token)
+
+  // Issuer must match the configured QA IdentityServer.
+  const iss = typeof payload.iss === 'string' ? payload.iss.replace(/\/+$/, '') : null
+  if (iss !== trimTrailingSlash(QA_JWT_ISSUER)) return null
+
+  // Reject expired tokens (allow a small clock-skew grace).
+  const exp = typeof payload.exp === 'number' ? payload.exp : null
+  if (exp !== null && exp < Math.floor(Date.now() / 1000) - 60) return null
+
+  return payload
+}
+
 export function buildQaSessionFromTokens(tokens: {
   accessToken: string
   idToken?: string | null
@@ -476,6 +609,62 @@ export function buildFallbackQaProfile(claims: QaAuthClaims): Profile {
     },
     created_at: now,
     updated_at: now,
+  }
+}
+
+/**
+ * Signed "View As" impersonation payload.
+ *
+ * The `lvip_view_as` cookie must be tamper-proof: an admin overlay that swaps the
+ * effective profile is a privilege boundary. We reuse the same HMAC-SHA256 scheme
+ * used for the OAuth state cookie (`signQaStatePayload`) so no new crypto is
+ * introduced — the cookie value is `base64url(payload).signature` and any edit to
+ * the payload invalidates the signature.
+ */
+export interface ViewAsSignedPayload {
+  userId: number
+  email: string
+  name: string
+  role: string
+  accountType?: string | number
+  consumerType?: string
+  since: string
+}
+
+export async function signViewAsPayload(payload: ViewAsSignedPayload): Promise<string> {
+  const payloadBase64Url = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)))
+  const signature = await signQaStatePayload(payloadBase64Url)
+  return `${payloadBase64Url}.${signature}`
+}
+
+export async function readSignedViewAsPayload(value: string | null | undefined): Promise<ViewAsSignedPayload | null> {
+  if (!value) return null
+
+  const [payloadBase64Url, signature] = value.split('.')
+  if (!payloadBase64Url || !signature) return null
+
+  const expectedSignature = await signQaStatePayload(payloadBase64Url)
+  if (signature !== expectedSignature) return null
+
+  try {
+    const payload = JSON.parse(base64UrlToString(payloadBase64Url)) as Partial<ViewAsSignedPayload>
+    if (typeof payload.userId !== 'number' || !Number.isFinite(payload.userId)) return null
+    if (typeof payload.email !== 'string') return null
+    if (typeof payload.name !== 'string') return null
+    if (typeof payload.role !== 'string' || !payload.role) return null
+    if (typeof payload.since !== 'string') return null
+
+    return {
+      userId: payload.userId,
+      email: payload.email,
+      name: payload.name,
+      role: payload.role,
+      accountType: payload.accountType,
+      consumerType: typeof payload.consumerType === 'string' ? payload.consumerType : undefined,
+      since: payload.since,
+    }
+  } catch {
+    return null
   }
 }
 

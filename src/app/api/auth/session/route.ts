@@ -12,6 +12,7 @@ export async function GET() {
       claims: session.qaClaims || null,
       expiresAt: session.qaSession?.expiresAt || null,
       localProfileId: session.localProfileId,
+      viewingAs: session.viewingAs || null,
     })
   }
 

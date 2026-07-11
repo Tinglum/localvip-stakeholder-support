@@ -3,6 +3,13 @@ import { getDemoProfileByEmail, setDemoSessionCookie } from '@/lib/auth/demo-aut
 import { sanitizeReturnTo } from '@/lib/auth/qa-auth'
 
 export async function POST(request: NextRequest) {
+  // Demo login accepts a static password and issues a real session, so it must
+  // never be reachable in production. It is enabled only when ENABLE_DEMO_LOGIN
+  // is explicitly set to "true" (production is assumed not to set this flag).
+  if (process.env.ENABLE_DEMO_LOGIN !== 'true') {
+    return NextResponse.json({ ok: false, error: 'Not found.' }, { status: 404 })
+  }
+
   const body = await request.json().catch(() => null)
   const email = typeof body?.email === 'string' ? body.email : null
   const password = typeof body?.password === 'string' ? body.password : null

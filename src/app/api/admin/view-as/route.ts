@@ -12,6 +12,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { fetchQaApi, parseQaJsonResponse, QaApiError } from '@/lib/auth/qa-api'
+import { readSignedViewAsPayload, signViewAsPayload } from '@/lib/auth/qa-auth'
+import { requireQaRouteAccess } from '@/lib/server/qa-route'
 import type { UserRole } from '@/lib/types/database'
 
 interface QaUserLookup {
@@ -135,6 +137,12 @@ async function fetchUserById(userId: number): Promise<QaUserLookup | null> {
 }
 
 export async function POST(request: NextRequest) {
+  // Gate the impersonation route itself: only an admin/operator may start a
+  // "View As" overlay. This must run BEFORE any cookie is set, independent of
+  // any downstream check.
+  const access = await requireQaRouteAccess(['admin'])
+  if ('error' in access) return access.error
+
   let body: { userId?: number | string } = {}
   try {
     body = await request.json()
@@ -169,9 +177,10 @@ export async function POST(request: NextRequest) {
     const jar = cookies()
     jar.set({
       name: COOKIE_NAME,
-      value: JSON.stringify(payload),
-      httpOnly: false,
+      value: await signViewAsPayload(payload),
+      httpOnly: true,
       sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
       path: '/',
       maxAge: COOKIE_MAX_AGE,
     })
@@ -195,9 +204,6 @@ export async function GET() {
   const jar = cookies()
   const cookie = jar.get(COOKIE_NAME)?.value
   if (!cookie) return NextResponse.json({ viewingAs: null })
-  try {
-    return NextResponse.json({ viewingAs: JSON.parse(cookie) })
-  } catch {
-    return NextResponse.json({ viewingAs: null })
-  }
+  const payload = await readSignedViewAsPayload(cookie)
+  return NextResponse.json({ viewingAs: payload })
 }

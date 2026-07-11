@@ -5,11 +5,9 @@ import { useRouter } from 'next/navigation'
 import { Eye, X } from 'lucide-react'
 
 interface ViewAsPayload {
-  userId: number
   email: string
   name: string
   consumerType?: string
-  since: string
 }
 
 function readCookie(name: string): string | null {
@@ -28,12 +26,23 @@ export function ViewAsBanner() {
 
   React.useEffect(() => {
     setRealImpersonation(readCookie('lvip_real_impersonation') === '1')
-    const raw = readCookie('lvip_view_as')
-    if (!raw) return
-    try {
-      setViewingAs(JSON.parse(raw))
-    } catch {
-      setViewingAs(null)
+    // The `lvip_view_as` cookie is now httpOnly + signed, so it can't be read
+    // from document.cookie. Read the resolved impersonation identity from the
+    // server session instead.
+    let cancelled = false
+    void fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((session) => {
+        if (cancelled || !session?.viewingAs) return
+        setViewingAs({
+          email: session.viewingAs.targetEmail,
+          name: session.viewingAs.targetName,
+          consumerType: session.viewingAs.targetConsumerType || undefined,
+        })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
     }
   }, [])
 

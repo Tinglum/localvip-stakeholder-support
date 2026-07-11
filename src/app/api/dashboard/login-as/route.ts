@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { qaAdminLoginAs, QaApiError } from '@/lib/auth/qa-api'
+import { signViewAsPayload } from '@/lib/auth/qa-auth'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
 import type { UserRole } from '@/lib/types/database'
 
@@ -74,9 +75,10 @@ export async function POST(request: NextRequest) {
 
     cookies().set({
       name: COOKIE_NAME,
-      value: JSON.stringify(payload),
-      httpOnly: false,
+      value: await signViewAsPayload(payload),
+      httpOnly: true,
       sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
       path: '/',
       maxAge: COOKIE_MAX_AGE,
     })

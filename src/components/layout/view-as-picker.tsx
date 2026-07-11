@@ -56,11 +56,24 @@ function roleChip(at: number | undefined, consumerType?: string) {
   return { label, dot: meta.dot, text: meta.text }
 }
 
-function readCookieJson<T>(name: string): T | null {
-  if (typeof document === 'undefined') return null
-  const m = document.cookie.split('; ').find((row) => row.startsWith(`${name}=`))
-  if (!m) return null
-  try { return JSON.parse(decodeURIComponent(m.split('=')[1])) as T } catch { return null }
+// The `lvip_view_as` cookie is httpOnly + signed and can't be read from the
+// client. Resolve the current impersonation identity from the server session.
+async function fetchViewingAs(): Promise<ViewAsTarget | null> {
+  try {
+    const res = await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' })
+    if (!res.ok) return null
+    const session = await res.json()
+    if (!session?.viewingAs) return null
+    return {
+      userId: session.viewingAs.targetUserId,
+      email: session.viewingAs.targetEmail,
+      name: session.viewingAs.targetName,
+      role: session.viewingAs.targetRole,
+      consumerType: session.viewingAs.targetConsumerType || undefined,
+    }
+  } catch {
+    return null
+  }
 }
 
 export function ViewAsPicker() {
@@ -75,9 +88,9 @@ export function ViewAsPicker() {
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [focusIdx, setFocusIdx] = React.useState(0)
 
-  // Pick up the current cookie state when mounted + after switches.
+  // Pick up the current impersonation state when mounted + after switches.
   const refreshState = React.useCallback(() => {
-    setViewingAs(readCookieJson<ViewAsTarget>('lvip_view_as'))
+    void fetchViewingAs().then(setViewingAs)
   }, [])
   React.useEffect(() => { refreshState() }, [refreshState])
 

@@ -3,6 +3,7 @@ import {
   buildFallbackQaProfile,
   getQaSessionFromCookieStore,
   mapQaRoleFromSignals,
+  readSignedViewAsPayload,
   type QaAuthClaims,
   type QaSession,
 } from '@/lib/auth/qa-auth'
@@ -24,7 +25,9 @@ export interface ResolvedAuthSession {
   viewingAs?: {
     targetUserId: number
     targetEmail: string
+    targetName: string
     targetRole: string
+    targetConsumerType: string | null
     adminId: string
     adminEmail: string | null
   }
@@ -60,14 +63,14 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = AUTH_IO_TIMEOUT_MS, lab
   })
 }
 
-function getViewAsPayload(cookieStore: ReturnType<typeof cookies>): ViewAsCookiePayload | null {
+async function getViewAsPayload(cookieStore: ReturnType<typeof cookies>): Promise<ViewAsCookiePayload | null> {
   const raw = cookieStore.get('lvip_view_as')?.value
   if (!raw) return null
-  try {
-    return JSON.parse(raw) as ViewAsCookiePayload
-  } catch {
-    return null
-  }
+  // Verify the HMAC signature before trusting the impersonation payload. A forged
+  // or edited cookie fails signature validation and is ignored.
+  const verified = await readSignedViewAsPayload(raw)
+  if (!verified) return null
+  return verified as ViewAsCookiePayload
 }
 
 function applyViewAsOverride(
@@ -100,7 +103,9 @@ function applyViewAsOverride(
     viewingAs: {
       targetUserId: payload.userId,
       targetEmail: payload.email,
+      targetName: payload.name,
       targetRole: payload.role,
+      targetConsumerType: payload.consumerType ?? null,
       adminId: original.id,
       adminEmail: original.email,
     },
@@ -179,7 +184,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
         localProfileId: asUuid(profile.id),
         source: 'demo',
       }
-      const viewAs = getViewAsPayload(cookieStore)
+      const viewAs = await getViewAsPayload(cookieStore)
       return viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession
     }
   }
@@ -211,7 +216,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       qaSession,
     }
 
-    const viewAs = getViewAsPayload(cookieStore)
+    const viewAs = await getViewAsPayload(cookieStore)
     return viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession
   }
 
