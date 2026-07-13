@@ -13,6 +13,7 @@ import {
   Heart,
   UserCircle2,
   LogIn,
+  ExternalLink,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -106,6 +107,36 @@ export default function CustomersPage() {
   }, [load])
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+
+  const [openingId, setOpeningId] = React.useState<number | string | null>(null)
+
+  // "Open in app": mint a token for the customer and open my.localvip.com already
+  // signed in as them (the mobile-app experience).
+  const handleOpenInApp = async (node: QaNodeListItem) => {
+    setOpeningId(node.userId)
+    setLoginError(null)
+    // Open the tab synchronously (before the await) so it isn't blocked as a
+    // popup; we point it at the handoff URL once the token is minted.
+    const win = window.open('', '_blank')
+    try {
+      const res = await fetch('/api/dashboard/open-in-app', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targetUserId: node.userId }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.url) {
+        throw new Error((json as { error?: string }).error || 'Could not open the app.')
+      }
+      if (win) win.location.href = json.url as string
+      else window.location.href = json.url as string
+    } catch (err) {
+      if (win) win.close()
+      setLoginError(err instanceof Error ? err.message : 'Could not open the app.')
+    } finally {
+      setOpeningId(null)
+    }
+  }
 
   const handleLoginAs = async () => {
     if (!loginTarget) return
@@ -226,10 +257,24 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-4 py-3 text-center text-surface-600">{node.directReferralCount ?? 0}</td>
                     <td className="px-4 py-3 text-right">
-                      <Button size="sm" variant="outline" onClick={() => { setLoginTarget(node); setLoginError(null) }}>
-                        <LogIn className="h-3.5 w-3.5" />
-                        Log in as {meta.verb}
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        {node.type === 'customer' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleOpenInApp(node)}
+                            disabled={openingId === node.userId}
+                            title="Open my.localvip.com signed in as this customer"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            {openingId === node.userId ? 'Opening…' : 'Open in app'}
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => { setLoginTarget(node); setLoginError(null) }}>
+                          <LogIn className="h-3.5 w-3.5" />
+                          Log in as {meta.verb}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 )
