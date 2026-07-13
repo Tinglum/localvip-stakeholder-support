@@ -88,6 +88,11 @@ function applyViewAsOverride(
     email: payload.email,
     full_name: payload.name,
     role: payload.role as Profile['role'],
+    // Do NOT inherit the admin's own subtype (e.g. 'super'). It made
+    // deriveSubtype() return the admin's value, which caused isConsumerProfile()
+    // to bail and an impersonated CONSUMER to render the 'community' shell instead
+    // of the consumer one. Null lets the subtype derive from the target's role.
+    role_subtype: null,
     metadata: {
       ...(original.metadata as object || {}),
       view_as_target_user_id: payload.userId,
