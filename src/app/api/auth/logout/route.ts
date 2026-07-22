@@ -11,12 +11,9 @@ export async function POST(request: NextRequest) {
   const session = getQaSessionFromCookieStore(request.cookies)
   const publicOrigin = getRequestPublicOrigin(request)
 
-  const loginUrl = new URL('/login', publicOrigin)
-  loginUrl.searchParams.set('signout', '1')
-
   const redirectTo = session
     ? getQaLogoutUrl(publicOrigin, session.idToken)
-    : loginUrl.toString()
+    : `${publicOrigin}/`
 
   const response = NextResponse.json({ ok: true, redirectTo })
   clearQaSessionCookies(response)

@@ -748,7 +748,7 @@ export function getQaPostLogoutRedirectUri(origin?: string) {
     throw new Error('No dashboard origin is available for QA logout redirect URI generation.')
   }
 
-  return `${appOrigin}/login`
+  return `${appOrigin}/`
 }
 
 export function getQaLogoutUrl(origin?: string, idToken?: string | null) {

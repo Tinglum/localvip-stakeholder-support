@@ -270,7 +270,7 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
       // Keep local sign-out fallback if the server response fails.
     }
 
-    window.location.assign(redirectTo ?? '/login?signout=1')
+    window.location.assign(redirectTo ?? '/')
   }
 
   React.useEffect(() => {
