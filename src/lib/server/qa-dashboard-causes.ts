@@ -4,8 +4,10 @@ import type {
   CrmCauseDetailResponse,
   CrmCauseListItem,
   CrmCauseOrigin,
+  QaCreateCauseInput,
   QaCauseDetail,
   QaCauseListItem,
+  QaRegistrationResult,
 } from '@/lib/crm-api'
 import { QaApiError, fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import {
@@ -30,6 +32,16 @@ function resolveOrigin(localCause: Cause | null, qaCause: QaCauseListItem | QaCa
   if (localCause && qaCause) return 'hybrid'
   if (qaCause) return 'qa'
   return 'local'
+}
+
+function resolveCauseType(value: string | null | undefined): Cause['type'] {
+  return value === 'school'
+    || value === 'nonprofit'
+    || value === 'church'
+    || value === 'community'
+    || value === 'other'
+    ? value
+    : 'nonprofit'
 }
 
 export function findQaCauseForLocal(
@@ -61,7 +73,7 @@ export function mergeCauseRecord(
     ...qaFields,
     id: localCause?.id || `qa-${qaCause!.id}`,
     name: qaCause?.name || localCause!.name,
-    type: localCause?.type || 'nonprofit',
+    type: localCause?.type || resolveCauseType(qaCause?.category),
     organization_id: localCause?.organization_id || null,
     website: localCause?.website || null,
     email: qaFields.owner_email || localCause?.email || null,
@@ -111,7 +123,7 @@ function toListItem(localCause: Cause | null, qaCause: QaCauseListItem | null): 
     qaCauseId,
     origin,
     name: qaCause?.name || localCause?.name || 'Unnamed Cause',
-    type: localCause?.type || 'nonprofit',
+    type: localCause?.type || resolveCauseType(qaCause?.category),
     headline: qaCause?.headline || null,
     ownerName: qaCause?.ownerName || null,
     ownerEmail: qaCause?.ownerEmail || localCause?.email || null,
@@ -122,13 +134,15 @@ function toListItem(localCause: Cause | null, qaCause: QaCauseListItem | null): 
     state: qaCause?.state || null,
     country: qaCause?.country || null,
     active: qaCause?.active ?? null,
-    stage: localCause?.stage || null,
-    status: localCause?.status || (qaCause ? (qaCause.active ? 'active' : 'inactive') : null),
+    stage: (qaCause?.crmStage as Cause['stage']) || localCause?.stage || null,
+    status: (qaCause?.crmStatus as Cause['status']) || localCause?.status || (qaCause ? (qaCause.active ? 'active' : 'inactive') : null),
     brand: localCause?.brand || 'localvip',
     source: localCause?.source || null,
     updatedAt: localCause?.updated_at || qaCause?.createdDate || null,
     createdAt: localCause?.created_at || qaCause?.createdDate || null,
-    duplicateOf: localCause?.duplicate_of || null,
+    duplicateOf: qaCause?.duplicateOfAccountId != null
+      ? String(qaCause.duplicateOfAccountId)
+      : localCause?.duplicate_of || null,
   }
 }
 
@@ -194,6 +208,27 @@ export async function fetchQaCauseList() {
 export async function fetchQaCauseDetail(qaCauseId: number) {
   const response = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${qaCauseId}`)
   return parseJsonResponse<QaCauseDetail>(response)
+}
+
+export async function createQaCause(payload: QaCreateCauseInput) {
+  const response = await fetchQaApi('/api/dashboard/v1/Nonprofit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  return parseQaResponse<QaRegistrationResult>(response, 'The QA cause could not be created.')
+    .then(result => {
+      if (!result) throw new QaApiError('The QA cause API returned an empty response.', response.status)
+      return result
+    })
+}
+
+export function qaCauseCreateError(error: unknown) {
+  if (error instanceof QaApiError) {
+    return { message: error.message, status: error.status }
+  }
+  return { message: asErrorMessage(error), status: 500 }
 }
 
 function shouldRetryLogoUpload(error: unknown) {

@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
 import {
   buildCrmCauseList,
+  createQaCause,
   fetchQaCauseList,
+  qaCauseCreateError,
   qaCauseRouteError,
 } from '@/lib/server/qa-dashboard-causes'
-import type { Brand, Cause, OnboardingStage } from '@/lib/types/database'
+import type { QaCreateCauseInput } from '@/lib/crm-api'
+import type { OnboardingStage } from '@/lib/types/database'
 
 export async function GET() {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
@@ -29,6 +32,9 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
   if ('error' in context) return context.error
+  if (!context.session.qaSession) {
+    return NextResponse.json({ error: 'A QA session is required.' }, { status: 401 })
+  }
 
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {
@@ -40,24 +46,60 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Organization name is required.' }, { status: 400 })
   }
 
-  return NextResponse.json(
-    {
-      error: 'Cause creation is not available until the QA API exposes a create nonprofit/cause endpoint. Local-only cause creation has been disabled.',
-      requested: {
-        name,
-        type: isCauseType(body.type) ? body.type : 'school',
-        brand: isBrand(body.brand) ? body.brand : 'localvip',
-        stage: isOnboardingStage(body.stage) ? body.stage : 'lead',
-        email: asOptionalString(body.email),
-        phone: asOptionalString(body.phone),
-        website: asOptionalString(body.website),
-        city_id: asOptionalString(body.city_id),
-        source: asOptionalString(body.source),
-        source_detail: asOptionalString(body.source_detail) || 'Added from CRM',
-      },
-    },
-    { status: 501 },
-  )
+  const primaryUserId = asPositiveInteger(body.primaryUserId)
+  const ownerFirstName = asOptionalString(body.ownerFirstName)
+  const ownerLastName = asOptionalString(body.ownerLastName)
+  const ownerEmail = asOptionalString(body.ownerEmail ?? body.email)
+  if (!primaryUserId && (!ownerFirstName || !ownerLastName || !ownerEmail)) {
+    return NextResponse.json(
+      { error: 'Choose an existing primary contact or provide the owner first name, last name, and email.' },
+      { status: 400 },
+    )
+  }
+
+  const address1 = asOptionalString(body.address1)
+  const city = asOptionalString(body.city)
+  const state = asOptionalString(body.state)
+  const zipCode = asOptionalString(body.zipCode)
+  const country = asOptionalString(body.country)
+  if (!address1 || !city || !state || !zipCode || !country) {
+    return NextResponse.json(
+      { error: 'Street address, city, state, ZIP code, and country are required.' },
+      { status: 400 },
+    )
+  }
+
+  const payload = {
+    name,
+    headline: asOptionalString(body.headline),
+    description: asOptionalString(body.description),
+    category: asOptionalString(body.category ?? body.type),
+    crmStage: isOnboardingStage(body.stage) ? body.stage : 'lead',
+    ownerFirstName,
+    ownerLastName,
+    ownerTitle: asOptionalString(body.ownerTitle),
+    ownerName: primaryUserId
+      ? null
+      : asOptionalString(body.ownerName) || [ownerFirstName, ownerLastName].filter(Boolean).join(' ') || null,
+    ownerEmail,
+    ownerPhone: asOptionalString(body.ownerPhone ?? body.phone),
+    primaryUserId,
+    sendInvite: body.sendInvite === true,
+    address1,
+    address2: asOptionalString(body.address2),
+    city,
+    state,
+    zipCode,
+    country,
+  } satisfies QaCreateCauseInput
+
+  try {
+    const result = await createQaCause(payload)
+    return NextResponse.json(result, { status: 201 })
+  } catch (error) {
+    const normalized = qaCauseCreateError(error)
+    return NextResponse.json({ error: normalized.message }, { status: normalized.status })
+  }
 }
 
 function asOptionalString(value: unknown) {
@@ -66,8 +108,9 @@ function asOptionalString(value: unknown) {
   return trimmed || null
 }
 
-function isBrand(value: unknown): value is Brand {
-  return value === 'localvip' || value === 'hato'
+function asPositiveInteger(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
 function isOnboardingStage(value: unknown): value is OnboardingStage {
@@ -79,12 +122,4 @@ function isOnboardingStage(value: unknown): value is OnboardingStage {
     || value === 'live'
     || value === 'paused'
     || value === 'declined'
-}
-
-function isCauseType(value: unknown): value is Cause['type'] {
-  return value === 'school'
-    || value === 'nonprofit'
-    || value === 'church'
-    || value === 'community'
-    || value === 'other'
 }

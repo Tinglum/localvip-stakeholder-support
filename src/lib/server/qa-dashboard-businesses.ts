@@ -4,8 +4,10 @@ import type {
   CrmBusinessDetailResponse,
   CrmBusinessListItem,
   CrmBusinessOrigin,
+  QaCreateBusinessInput,
   QaBusinessDetail,
   QaBusinessListItem,
+  QaRegistrationResult,
 } from '@/lib/crm-api'
 import { QaApiError, fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import {
@@ -145,13 +147,15 @@ function toListItem(localBusiness: Business | null, qaBusiness: QaBusinessListIt
     stripe_onboarding_complete: qaBusiness && 'hasStripeOnboarding' in qaBusiness
       ? (qaBusiness.hasStripeOnboarding ?? null)
       : null,
-    stage: localBusiness?.stage || null,
-    status: localBusiness?.status || (qaBusiness ? (qaBusiness.active ? 'active' : 'inactive') : null),
-    category: localBusiness?.category || null,
+    stage: (qaBusiness?.crmStage as Business['stage']) || localBusiness?.stage || null,
+    status: (qaBusiness?.crmStatus as Business['status']) || localBusiness?.status || (qaBusiness ? (qaBusiness.active ? 'active' : 'inactive') : null),
+    category: qaBusiness?.category || localBusiness?.category || null,
     source: localBusiness?.source || null,
     updatedAt: localBusiness?.updated_at || qaBusiness?.createdDate || null,
     createdAt: localBusiness?.created_at || qaBusiness?.createdDate || null,
-    duplicateOf: localBusiness?.duplicate_of || null,
+    duplicateOf: qaBusiness?.duplicateOfAccountId != null
+      ? String(qaBusiness.duplicateOfAccountId)
+      : localBusiness?.duplicate_of || null,
   }
 }
 
@@ -215,6 +219,27 @@ export async function fetchQaBusinessList() {
 export async function fetchQaBusinessDetail(qaBusinessId: number) {
   const response = await fetchQaApi(`/api/dashboard/v1/Business/${qaBusinessId}`)
   return parseJsonResponse<QaBusinessDetail>(response)
+}
+
+export async function createQaBusiness(payload: QaCreateBusinessInput) {
+  const response = await fetchQaApi('/api/dashboard/v1/Business', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  return parseQaResponse<QaRegistrationResult>(response, 'The QA business could not be created.')
+    .then(result => {
+      if (!result) throw new QaApiError('The QA business API returned an empty response.', response.status)
+      return result
+    })
+}
+
+export function qaBusinessCreateError(error: unknown) {
+  if (error instanceof QaApiError) {
+    return { message: error.message, status: error.status }
+  }
+  return { message: asErrorMessage(error), status: 500 }
 }
 
 function shouldRetryLogoUpload(error: unknown) {

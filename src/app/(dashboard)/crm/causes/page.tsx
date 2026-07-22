@@ -29,7 +29,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { useCrmCauses } from '@/lib/hooks/crm-businesses'
-import { useCities } from '@/lib/supabase/hooks'
 import type { Brand, Cause, OnboardingStage } from '@/lib/types/database'
 import type { CrmCauseListItem } from '@/lib/crm-api'
 
@@ -75,8 +74,17 @@ interface CauseForm {
   type: Cause['type']
   email: string
   phone: string
+  ownerFirstName: string
+  ownerLastName: string
+  ownerTitle: string
+  address1: string
+  address2: string
+  city: string
+  state: string
+  zipCode: string
+  country: string
+  sendInvite: boolean
   website: string
-  city_id: string
   brand: Brand
   source: string
   stage: OnboardingStage
@@ -87,8 +95,17 @@ const INITIAL_FORM: CauseForm = {
   type: 'school',
   email: '',
   phone: '',
+  ownerFirstName: '',
+  ownerLastName: '',
+  ownerTitle: '',
+  address1: '',
+  address2: '',
+  city: '',
+  state: '',
+  zipCode: '',
+  country: 'US',
+  sendInvite: false,
   website: '',
-  city_id: '',
   brand: 'localvip',
   source: '',
   stage: 'lead',
@@ -110,11 +127,54 @@ export default function CausesPage() {
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [dupWarning, setDupWarning] = React.useState<string | null>(null)
   const [inserting, setInserting] = React.useState(false)
+  const [contactQuery, setContactQuery] = React.useState('')
+  const [contactResults, setContactResults] = React.useState<Array<{
+    id: number
+    firstName: string | null
+    lastName: string | null
+    email: string | null
+    phoneNumber: string | null
+    referralCode?: string | null
+  }>>([])
+  const [pickedContact, setPickedContact] = React.useState<{
+    id: number
+    name: string
+    email: string | null
+    phoneNumber: string | null
+    referralCode?: string | null
+  } | null>(null)
 
   const { data: causeResponse, loading, error, refetch } = useCrmCauses()
-  const { data: cities } = useCities()
   const causes = React.useMemo(() => causeResponse?.items || [], [causeResponse])
   const qaError = causeResponse?.qaError || null
+
+  React.useEffect(() => {
+    if (!addOpen || pickedContact || contactQuery.trim().length < 2) {
+      setContactResults([])
+      return
+    }
+
+    const handle = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/qa/users/search?q=${encodeURIComponent(contactQuery)}`)
+        const data = response.ok ? await response.json() : []
+        setContactResults(Array.isArray(data) ? data : [])
+      } catch {
+        setContactResults([])
+      }
+    }, 300)
+
+    return () => window.clearTimeout(handle)
+  }, [addOpen, contactQuery, pickedContact])
+
+  React.useEffect(() => {
+    if (!pickedContact) return
+    setForm(current => ({
+      ...current,
+      email: pickedContact.email || '',
+      phone: pickedContact.phoneNumber || '',
+    }))
+  }, [pickedContact])
 
   const rows = React.useMemo<CauseRow[]>(() =>
     causes.map(item => ({
@@ -132,10 +192,10 @@ export default function CausesPage() {
     return result
   }, [filters.brand, filters.stage, filters.type, rows])
 
-  const handleFormChange = React.useCallback((field: keyof CauseForm, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }))
+  const handleFormChange = React.useCallback((field: keyof CauseForm, value: string | boolean) => {
+    setForm(prev => ({ ...prev, [field]: value } as CauseForm))
 
-    if (field === 'name') {
+    if (field === 'name' && typeof value === 'string') {
       if (!value.trim()) {
         setDupWarning(null)
         return
@@ -158,13 +218,23 @@ export default function CausesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name.trim(),
+          ownerFirstName: form.ownerFirstName.trim() || null,
+          ownerLastName: form.ownerLastName.trim() || null,
+          ownerTitle: form.ownerTitle.trim() || null,
+          ownerEmail: form.email.trim() || null,
+          ownerPhone: form.phone.trim() || null,
+          primaryUserId: pickedContact?.id || null,
+          sendInvite: !pickedContact && form.sendInvite,
+          address1: form.address1.trim(),
+          address2: form.address2.trim() || null,
+          city: form.city.trim(),
+          state: form.state.trim(),
+          zipCode: form.zipCode.trim(),
+          country: form.country.trim(),
           type: form.type,
           brand: form.brand,
           stage: form.stage,
-          email: form.email.trim() || null,
-          phone: form.phone.trim() || null,
           website: form.website.trim() || null,
-          city_id: form.city_id || null,
           source: form.source.trim() || null,
           source_detail: 'Added from CRM causes page',
         }),
@@ -178,13 +248,18 @@ export default function CausesPage() {
 
       setAddOpen(false)
       setForm(INITIAL_FORM)
+      setPickedContact(null)
+      setContactQuery('')
+      setContactResults([])
       setDupWarning(null)
-      refetch()
-      if (payload?.id) router.push(`/crm/causes/${payload.id}`)
+      void refetch()
+      if (payload?.id) router.push(`/crm/causes/qa-${payload.id}`)
+    } catch {
+      setSubmitError('Failed to create cause. Please try again.')
     } finally {
       setInserting(false)
     }
-  }, [form, refetch, router])
+  }, [form, pickedContact, refetch, router])
 
   const columns: Column<CauseRow>[] = [
     {
@@ -344,12 +419,15 @@ export default function CausesPage() {
           setAddOpen(open)
           if (!open) {
             setForm(INITIAL_FORM)
+            setPickedContact(null)
+            setContactQuery('')
+            setContactResults([])
             setSubmitError(null)
             setDupWarning(null)
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add a New Cause</DialogTitle>
             <DialogDescription>Register a school, nonprofit, church, or community organization.</DialogDescription>
@@ -370,6 +448,89 @@ export default function CausesPage() {
                 </p>
               )}
             </div>
+            <div className="rounded-md border border-pink-200 bg-pink-50/40 p-3">
+              <div className="mb-2 text-sm font-medium text-pink-900">Use an existing owner (optional)</div>
+              {pickedContact ? (
+                <div className="flex items-center justify-between rounded-md border border-pink-300 bg-white p-2">
+                  <div>
+                    <div className="text-sm font-medium text-surface-900">{pickedContact.name}</div>
+                    <div className="text-xs text-surface-600">
+                      {pickedContact.email}
+                      {pickedContact.referralCode && (
+                        <span className="ml-2 rounded bg-pink-100 px-1.5 py-0.5 font-mono text-[10px] text-pink-900">
+                          referral: {pickedContact.referralCode}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setPickedContact(null); setContactQuery('') }}>
+                    Clear
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    placeholder="Search by name, email, or phone..."
+                    value={contactQuery}
+                    onChange={event => setContactQuery(event.target.value)}
+                  />
+                  {contactResults.length > 0 && (
+                    <div className="mt-2 max-h-44 overflow-y-auto rounded-md border border-pink-200 bg-white">
+                      {contactResults.map(user => (
+                        <button
+                          key={user.id}
+                          type="button"
+                          onClick={() => setPickedContact({
+                            id: user.id,
+                            name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || 'Unknown user',
+                            email: user.email,
+                            phoneNumber: user.phoneNumber,
+                            referralCode: user.referralCode,
+                          })}
+                          className="flex w-full items-center justify-between gap-2 border-b border-pink-100 p-2 text-left text-sm hover:bg-pink-50 last:border-b-0"
+                        >
+                          <span>
+                            <span className="block font-medium text-surface-900">{user.firstName} {user.lastName}</span>
+                            <span className="block text-xs text-surface-600">{user.email}{user.phoneNumber ? ` · ${user.phoneNumber}` : ''}</span>
+                          </span>
+                          <span className="rounded-full bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-900">Pick</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-pink-800">If you do not select someone, a new owner login will be created.</p>
+                </>
+              )}
+            </div>
+            {!pickedContact && (
+              <div className="space-y-3 rounded-md border border-surface-200 bg-surface-50 p-3">
+                <p className="text-sm font-medium text-surface-900">New owner</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-surface-700">First Name *</label>
+                    <Input required value={form.ownerFirstName} onChange={event => handleFormChange('ownerFirstName', event.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-surface-700">Last Name *</label>
+                    <Input required value={form.ownerLastName} onChange={event => handleFormChange('ownerLastName', event.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-surface-700">Email *</label>
+                    <Input required type="email" value={form.email} onChange={event => handleFormChange('email', event.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-surface-700">Phone</label>
+                    <Input type="tel" value={form.phone} onChange={event => handleFormChange('phone', event.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-surface-700">Title</label>
+                  <Input placeholder="Director" value={form.ownerTitle} onChange={event => handleFormChange('ownerTitle', event.target.value)} />
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Type</label>
@@ -386,38 +547,31 @@ export default function CausesPage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">City</label>
-                <select
-                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  value={form.city_id}
-                  onChange={event => handleFormChange('city_id', event.target.value)}
-                >
-                  <option value="">Select a city...</option>
-                  {cities.map(city => (
-                    <option key={city.id} value={city.id}>{city.name}</option>
-                  ))}
-                </select>
+                <label className="text-sm font-medium text-surface-700">City *</label>
+                <Input required value={form.city} onChange={event => handleFormChange('city', event.target.value)} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-surface-700">Street Address *</label>
+              <Input required placeholder="123 Main Street" value={form.address1} onChange={event => handleFormChange('address1', event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-surface-700">Address Line 2</label>
+              <Input placeholder="Suite, unit, or floor" value={form.address2} onChange={event => handleFormChange('address2', event.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">Email</label>
-                <Input
-                  type="email"
-                  placeholder="contact@school.edu"
-                  value={form.email}
-                  onChange={event => handleFormChange('email', event.target.value)}
-                />
+                <label className="text-sm font-medium text-surface-700">State *</label>
+                <Input required value={form.state} onChange={event => handleFormChange('state', event.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">Phone</label>
-                <Input
-                  type="tel"
-                  placeholder="(404) 555-0000"
-                  value={form.phone}
-                  onChange={event => handleFormChange('phone', event.target.value)}
-                />
+                <label className="text-sm font-medium text-surface-700">ZIP Code *</label>
+                <Input required value={form.zipCode} onChange={event => handleFormChange('zipCode', event.target.value)} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-surface-700">Country *</label>
+              <Input required value={form.country} onChange={event => handleFormChange('country', event.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -464,6 +618,20 @@ export default function CausesPage() {
                 </select>
               </div>
             </div>
+            {!pickedContact && (
+              <label className="flex items-start gap-3 rounded-md border border-surface-200 bg-surface-50 p-3">
+                <input
+                  type="checkbox"
+                  checked={form.sendInvite}
+                  onChange={event => handleFormChange('sendInvite', event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-surface-300 text-pink-600 focus:ring-pink-500"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-surface-900">Email login invitation</span>
+                  <span className="block text-xs text-surface-500">Off by default. Sends credentials to the new owner after registration.</span>
+                </span>
+              </label>
+            )}
             {submitError && (
               <p className="text-sm text-danger-600">{submitError}</p>
             )}

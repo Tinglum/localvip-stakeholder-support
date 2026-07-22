@@ -19,12 +19,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ONBOARDING_STAGES } from '@/lib/constants'
-import { useAuth } from '@/lib/auth/context'
 import { useCrmBusinesses } from '@/lib/hooks/crm-businesses'
-import { useCities } from '@/lib/supabase/hooks'
 import { formatDate } from '@/lib/utils'
 import type { CrmBusinessListItem } from '@/lib/crm-api'
-import type { Business, OnboardingStage } from '@/lib/types/database'
+import type { OnboardingStage } from '@/lib/types/database'
 
 const SOURCE_OPTIONS = [
   { value: 'Walk-in', label: 'Walk-in' },
@@ -78,7 +76,6 @@ function normalizeName(name: string) {
 
 export default function BusinessesPage() {
   const router = useRouter()
-  const { profile } = useAuth()
   const [addOpen, setAddOpen] = React.useState(false)
   const [filters, setFilters] = React.useState<Record<string, string>>({})
 
@@ -88,7 +85,16 @@ export default function BusinessesPage() {
   const [formWebsite, setFormWebsite] = React.useState('')
   const [formCategory, setFormCategory] = React.useState('')
   const [formSource, setFormSource] = React.useState('')
-  const [formCityId, setFormCityId] = React.useState('')
+  const [formOwnerFirstName, setFormOwnerFirstName] = React.useState('')
+  const [formOwnerLastName, setFormOwnerLastName] = React.useState('')
+  const [formOwnerTitle, setFormOwnerTitle] = React.useState('')
+  const [formAddress1, setFormAddress1] = React.useState('')
+  const [formAddress2, setFormAddress2] = React.useState('')
+  const [formCity, setFormCity] = React.useState('')
+  const [formState, setFormState] = React.useState('')
+  const [formZipCode, setFormZipCode] = React.useState('')
+  const [formCountry, setFormCountry] = React.useState('US')
+  const [formSendInvite, setFormSendInvite] = React.useState(false)
   const [formBrand, setFormBrand] = React.useState<'localvip' | 'hato'>('localvip')
   const [formStage, setFormStage] = React.useState<OnboardingStage>('lead')
   const [inserting, setInserting] = React.useState(false)
@@ -109,6 +115,7 @@ export default function BusinessesPage() {
     id: number
     name: string
     email: string | null
+    phoneNumber: string | null
     referralCode?: string | null
   } | null>(null)
 
@@ -131,14 +138,14 @@ export default function BusinessesPage() {
     return () => window.clearTimeout(handle)
   }, [contactQuery, addOpen, pickedContact])
 
-  // When a contact is picked, prefill owner email/phone + referral code
+  // When a contact is picked, prefill owner email/phone for display and fallback metadata.
   React.useEffect(() => {
     if (!pickedContact) return
-    if (pickedContact.email && !formEmail) setFormEmail(pickedContact.email)
-  }, [pickedContact, formEmail])
+    setFormEmail(pickedContact.email || '')
+    setFormPhone(pickedContact.phoneNumber || '')
+  }, [pickedContact])
 
   const { data: businessResponse, loading, error, refetch } = useCrmBusinesses()
-  const { data: cities } = useCities()
   const businesses = React.useMemo(() => businessResponse?.items || [], [businessResponse])
   const qaError = businessResponse?.qaError || null
 
@@ -171,9 +178,21 @@ export default function BusinessesPage() {
     setFormWebsite('')
     setFormCategory('')
     setFormSource('')
-    setFormCityId('')
+    setFormOwnerFirstName('')
+    setFormOwnerLastName('')
+    setFormOwnerTitle('')
+    setFormAddress1('')
+    setFormAddress2('')
+    setFormCity('')
+    setFormState('')
+    setFormZipCode('')
+    setFormCountry('US')
+    setFormSendInvite(false)
     setFormBrand('localvip')
     setFormStage('lead')
+    setPickedContact(null)
+    setContactQuery('')
+    setContactResults([])
     setInsertError(null)
     setDupWarning(null)
   }, [])
@@ -195,18 +214,26 @@ export default function BusinessesPage() {
     setInsertError(null)
     setInserting(true)
 
-    const record: Partial<Business> = {
-      name: formName,
-      email: formEmail || null,
-      phone: formPhone || null,
+    const record = {
+      name: formName.trim(),
+      ownerFirstName: formOwnerFirstName.trim() || null,
+      ownerLastName: formOwnerLastName.trim() || null,
+      ownerTitle: formOwnerTitle.trim() || null,
+      ownerEmail: formEmail.trim() || null,
+      ownerPhone: formPhone.trim() || null,
+      primaryUserId: pickedContact?.id || null,
+      sendInvite: !pickedContact && formSendInvite,
+      address1: formAddress1.trim(),
+      address2: formAddress2.trim() || null,
+      city: formCity.trim(),
+      state: formState.trim(),
+      zipCode: formZipCode.trim(),
+      country: formCountry.trim(),
       website: formWebsite || null,
       category: formCategory || null,
       source: formSource || null,
-      city_id: formCityId || null,
       brand: formBrand,
       stage: formStage,
-      owner_id: profile.id,
-      status: 'active',
     }
 
     try {
@@ -229,8 +256,8 @@ export default function BusinessesPage() {
 
       setAddOpen(false)
       resetForm()
-      refetch()
-      if (payload?.id) router.push(`/crm/businesses/${payload.id}`)
+      void refetch()
+      if (payload?.id) router.push(`/crm/businesses/qa-${payload.id}`)
     } catch {
       setInsertError('Business could not be created. Please try again.')
     } finally {
@@ -238,15 +265,24 @@ export default function BusinessesPage() {
     }
   }, [
     formBrand,
+    formAddress1,
+    formAddress2,
     formCategory,
-    formCityId,
+    formCity,
+    formCountry,
     formEmail,
     formName,
+    formOwnerFirstName,
+    formOwnerLastName,
+    formOwnerTitle,
     formPhone,
+    formSendInvite,
     formSource,
     formStage,
+    formState,
     formWebsite,
-    profile.id,
+    formZipCode,
+    pickedContact,
     refetch,
     resetForm,
     router,
@@ -450,12 +486,18 @@ export default function BusinessesPage() {
         </div>
       )}
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+      <Dialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          setAddOpen(open)
+          if (!open) resetForm()
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add a New Business</DialogTitle>
             <DialogDescription>
-              Enter the basics to create a new business lead. You can add more details later.
+              Register the business and its owner directly in the QA network.
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -477,7 +519,7 @@ export default function BusinessesPage() {
 
             {/* Primary contact search — link the business to an existing user/contact */}
             <div className="rounded-md border border-blue-200 bg-blue-50/40 p-3">
-              <div className="mb-2 text-sm font-medium text-blue-900">Primary contact (optional)</div>
+              <div className="mb-2 text-sm font-medium text-blue-900">Use an existing owner (optional)</div>
               {pickedContact ? (
                 <div className="flex items-center justify-between rounded-md border border-blue-300 bg-white p-2">
                   <div>
@@ -517,6 +559,7 @@ export default function BusinessesPage() {
                             id: u.id,
                             name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email || '—',
                             email: u.email,
+                            phoneNumber: u.phoneNumber,
                             referralCode: u.referralCode,
                           })}
                           className="flex w-full items-center justify-between gap-2 border-b border-blue-100 p-2 text-left text-sm hover:bg-blue-50 last:border-b-0"
@@ -534,54 +577,73 @@ export default function BusinessesPage() {
                     </div>
                   )}
                   <p className="mt-2 text-xs text-blue-800">
-                    Linking an existing user pulls their referral code straight from the backend.
+                    If you do not select someone, a new owner login will be created from the details below.
                   </p>
                 </>
               )}
             </div>
 
+            {!pickedContact && (
+              <div className="space-y-3 rounded-md border border-surface-200 bg-surface-50 p-3">
+                <p className="text-sm font-medium text-surface-900">New owner</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-surface-700">First Name *</label>
+                    <Input required value={formOwnerFirstName} onChange={event => setFormOwnerFirstName(event.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-surface-700">Last Name *</label>
+                    <Input required value={formOwnerLastName} onChange={event => setFormOwnerLastName(event.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-surface-700">Email *</label>
+                    <Input required type="email" placeholder="owner@business.com" value={formEmail} onChange={event => setFormEmail(event.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-surface-700">Phone</label>
+                    <Input type="tel" placeholder="(404) 555-0000" value={formPhone} onChange={event => setFormPhone(event.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-surface-700">Title</label>
+                  <Input placeholder="Owner" value={formOwnerTitle} onChange={event => setFormOwnerTitle(event.target.value)} />
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-surface-700">Street Address *</label>
+              <Input required placeholder="123 Main Street" value={formAddress1} onChange={event => setFormAddress1(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-surface-700">Address Line 2</label>
+              <Input placeholder="Suite, unit, or floor" value={formAddress2} onChange={event => setFormAddress2(event.target.value)} />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">City</label>
-                <select
-                  value={formCityId}
-                  onChange={event => setFormCityId(event.target.value)}
-                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                >
-                  <option value="">Select a city...</option>
-                  {cities.map(city => (
-                    <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
-                  ))}
-                </select>
+                <label className="text-sm font-medium text-surface-700">City *</label>
+                <Input required value={formCity} onChange={event => setFormCity(event.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">Category</label>
-                <Input
-                  placeholder="e.g. Restaurant"
-                  value={formCategory}
-                  onChange={event => setFormCategory(event.target.value)}
-                />
+                <label className="text-sm font-medium text-surface-700">State *</label>
+                <Input required value={formState} onChange={event => setFormState(event.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">Email</label>
-                <Input
-                  type="email"
-                  placeholder="owner@business.com"
-                  value={formEmail}
-                  onChange={event => setFormEmail(event.target.value)}
-                />
+                <label className="text-sm font-medium text-surface-700">ZIP Code *</label>
+                <Input required value={formZipCode} onChange={event => setFormZipCode(event.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">Phone</label>
-                <Input
-                  type="tel"
-                  placeholder="(404) 555-0000"
-                  value={formPhone}
-                  onChange={event => setFormPhone(event.target.value)}
-                />
+                <label className="text-sm font-medium text-surface-700">Country *</label>
+                <Input required value={formCountry} onChange={event => setFormCountry(event.target.value)} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-surface-700">Category</label>
+              <Input placeholder="e.g. Restaurant" value={formCategory} onChange={event => setFormCategory(event.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -631,6 +693,21 @@ export default function BusinessesPage() {
                 </select>
               </div>
             </div>
+
+            {!pickedContact && (
+              <label className="flex items-start gap-3 rounded-md border border-surface-200 bg-surface-50 p-3">
+                <input
+                  type="checkbox"
+                  checked={formSendInvite}
+                  onChange={event => setFormSendInvite(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-surface-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-surface-900">Email login invitation</span>
+                  <span className="block text-xs text-surface-500">Off by default. Sends credentials to the new owner after registration.</span>
+                </span>
+              </label>
+            )}
 
             {insertError && (
               <p className="text-sm text-danger-600">{insertError}</p>

@@ -34,6 +34,10 @@ export interface QaDashboardAccountSummary {
   createdDate: string
   active: boolean
   hasStripeOnboarding?: boolean | null
+  category?: string | null
+  crmStage?: string | null
+  crmStatus?: string | null
+  duplicateOfAccountId?: number | null
 }
 
 export interface QaDashboardAccountDetail extends QaDashboardAccountSummary {
@@ -77,6 +81,61 @@ export interface QaBusinessDetail extends QaDashboardAccountDetail {
 
 export type QaCauseListItem = QaDashboardAccountSummary
 export type QaCauseDetail = QaDashboardAccountDetail
+
+export interface QaRegistrationOwnerInput {
+  ownerFirstName: string | null
+  ownerLastName: string | null
+  ownerTitle: string | null
+  ownerName: string | null
+  ownerEmail: string | null
+  ownerPhone: string | null
+  primaryUserId: number | null
+  sendInvite: boolean
+}
+
+export interface QaRegistrationAddressInput {
+  address1: string
+  address2: string | null
+  city: string
+  state: string
+  zipCode: string
+  country: string
+}
+
+export interface QaCreateBusinessInput extends QaRegistrationOwnerInput, QaRegistrationAddressInput {
+  name: string
+  headline: string | null
+  description: string | null
+  category: string | null
+  crmStage: OnboardingStage
+}
+
+export interface QaCreateCauseInput extends QaRegistrationOwnerInput, QaRegistrationAddressInput {
+  name: string
+  headline: string | null
+  description: string | null
+  category: string | null
+  crmStage: OnboardingStage
+}
+
+export interface QaRegistrationResult {
+  id: number
+  name: string
+  active: boolean
+  createdDate: string
+  latitude: number | null
+  longitude: number | null
+  timeZone: string | null
+  ownerUserId: number | null
+  ownerCreated?: boolean
+  referralCode: string | null
+  referralId?: number | null
+  referrerUserId?: number | null
+  branchReferralUrl: string | null
+  branchCreated?: boolean
+  inviteSent?: boolean
+  warnings?: string[]
+}
 
 export type CrmRecordOrigin = 'local' | 'qa' | 'hybrid'
 export type CrmBusinessOrigin = CrmRecordOrigin
