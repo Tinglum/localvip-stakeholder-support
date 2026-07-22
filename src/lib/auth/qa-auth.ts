@@ -838,6 +838,53 @@ export async function exchangeCodeForSession(options: {
   })
 }
 
+// Resource-owner password grant: lets the dashboard authenticate a user with its
+// OWN email/password form (no redirect to the QA IdentityServer login page). The
+// lvip_dashboard client permits this grant. The token comes straight from QA's
+// trusted /connect/token endpoint server-side, so no client-POST verification is
+// needed (unlike /api/auth/qa/session).
+export async function loginWithPassword(username: string, password: string): Promise<QaSession> {
+  const tokenUrl = new URL('/connect/token', QA_AUTH_CONFIG.baseUrl)
+  const body = new URLSearchParams({
+    grant_type: 'password',
+    client_id: QA_AUTH_CONFIG.clientId,
+    username,
+    password,
+    scope: QA_AUTH_CONFIG.scopes,
+  })
+  const headers: Record<string, string> = {
+    'content-type': 'application/x-www-form-urlencoded',
+  }
+  if (QA_AUTH_CONFIG.clientSecret) {
+    const credentials = btoa(`${QA_AUTH_CONFIG.clientId}:${QA_AUTH_CONFIG.clientSecret}`)
+    headers.authorization = `Basic ${credentials}`
+  }
+
+  const response = await fetch(tokenUrl.toString(), {
+    method: 'POST',
+    headers,
+    body: body.toString(),
+    cache: 'no-store',
+  })
+
+  const json = await response.json().catch(() => null)
+  if (!response.ok || !json?.access_token) {
+    throw new Error(json?.error_description || json?.error || 'Invalid email or password.')
+  }
+
+  const expiresIn = typeof json.expires_in === 'number'
+    ? json.expires_in
+    : Number.parseInt(String(json.expires_in || '3600'), 10)
+
+  return buildQaSessionFromTokens({
+    accessToken: String(json.access_token),
+    idToken: typeof json.id_token === 'string' ? json.id_token : null,
+    refreshToken: typeof json.refresh_token === 'string' ? json.refresh_token : null,
+    expiresIn,
+    grantedScopes: typeof json.scope === 'string' ? json.scope : null,
+  })
+}
+
 export function setQaSessionCookies(response: NextResponse, session: QaSession) {
   const secure = process.env.NODE_ENV === 'production'
   const cookieOptions = {

@@ -2,8 +2,9 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck } from 'lucide-react'
+import { ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 const QA_STORAGE_KEYS = {
   state: 'lvip_qa_browser_state',
@@ -54,8 +55,40 @@ export function QaLoginPage({
   const [redirecting, setRedirecting] = React.useState(false)
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null)
   const [clientError, setClientError] = React.useState<string | null>(null)
+  const [email, setEmail] = React.useState('')
+  const [password, setPassword] = React.useState('')
+  const [submitting, setSubmitting] = React.useState(false)
   const isOidcCallback = !!code && !!state
-  const shouldAutoRedirect = !manual && !signout && !error && !isOidcCallback
+  // Never auto-bounce to the QA login page: the dashboard has its own sign-in
+  // form below. The QA OAuth flow stays available as a fallback button, and the
+  // OIDC callback (isOidcCallback) is still handled if someone returns from it.
+  const shouldAutoRedirect = false
+
+  // Native dashboard sign-in via the QA password grant — no redirect to QA.
+  const handlePasswordLogin = React.useCallback(async (event: React.FormEvent) => {
+    event.preventDefault()
+    setClientError(null)
+    if (!email.trim() || !password) {
+      setClientError('Enter your email and password.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) {
+        throw new Error((json as { error?: string }).error || 'Invalid email or password.')
+      }
+      window.location.assign(returnTo || '/dashboard')
+    } catch (err) {
+      setClientError(err instanceof Error ? err.message : 'Could not sign in.')
+      setSubmitting(false)
+    }
+  }, [email, password, returnTo])
 
   const startQaLogin = React.useCallback(async () => {
     setClientError(null)
@@ -252,9 +285,9 @@ export function QaLoginPage({
         <section className="w-full max-w-xl justify-self-center">
           <div className="rounded-[2rem] border border-surface-200 bg-white/95 p-8 shadow-xl shadow-brand-100/40">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-600">Dashboard access</p>
-            <h2 className="mt-3 text-3xl font-bold text-surface-900">Continue on qa.localvip.com</h2>
+            <h2 className="mt-3 text-3xl font-bold text-surface-900">Sign in to your dashboard</h2>
             <p className="mt-3 text-sm leading-6 text-surface-600">
-              Use the secure QA sign-in page to open your LocalVIP dashboard. If anything goes wrong, you can start again here.
+              Enter your LocalVIP email and password.
             </p>
 
             {statusMessage && !error && !clientError ? (
@@ -275,21 +308,41 @@ export function QaLoginPage({
               </div>
             ) : null}
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Button className="sm:flex-1" onClick={() => { void startQaLogin() }}>
-                {redirecting
-                  ? isOidcCallback
-                    ? 'Finishing sign-in...'
-                    : 'Opening secure sign-in...'
-                  : 'Continue to secure sign-in'}
+            <form onSubmit={handlePasswordLogin} className="mt-6 space-y-3">
+              <Input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <Button type="submit" className="w-full" disabled={submitting}>
+                {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Signing in…</> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
               </Button>
-              <Button variant="outline" className="sm:flex-1" asChild>
-                <Link href="/demo">Use demo login instead</Link>
-              </Button>
+            </form>
+
+            <div className="mt-6 flex items-center gap-3 text-xs text-surface-400">
+              <span className="h-px flex-1 bg-surface-200" /> or <span className="h-px flex-1 bg-surface-200" />
             </div>
 
-            <div className="mt-6 rounded-2xl border border-dashed border-surface-200 bg-surface-50 px-4 py-3 text-xs leading-6 text-surface-500">
-              This page does not store your QA password. It only keeps a short-lived secure sign-in state in your browser so we can return you to the right screen.
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <Button variant="outline" className="sm:flex-1" onClick={() => { void startQaLogin() }} disabled={submitting}>
+                {redirecting
+                  ? isOidcCallback ? 'Finishing sign-in…' : 'Opening QA sign-in…'
+                  : 'Sign in via QA'}
+              </Button>
+              <Button variant="ghost" className="sm:flex-1" asChild>
+                <Link href="/demo">Demo login</Link>
+              </Button>
             </div>
           </div>
         </section>
