@@ -166,6 +166,34 @@ export default function CustomersPage() {
     }
   }
 
+  // "Real log in": swap the admin's own dashboard session for a genuine session
+  // as the target (vs the read-only view-as overlay). A backup of the admin
+  // session is kept so "Return to admin" can restore it.
+  const handleRealLogin = async () => {
+    if (!loginTarget) return
+    setLoggingIn(true)
+    setLoginError(null)
+    try {
+      const res = await fetch('/api/dashboard/real-login-as', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targetUserId: loginTarget.userId }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error((json as { error?: string }).error || 'Real log in failed.')
+      }
+      setLoginTarget(null)
+      router.push('/dashboard')
+      router.refresh()
+      setTimeout(() => { window.location.href = '/dashboard' }, 100)
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : 'Real log in failed.')
+    } finally {
+      setLoggingIn(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -258,18 +286,16 @@ export default function CustomersPage() {
                     <td className="px-4 py-3 text-center text-surface-600">{node.directReferralCount ?? 0}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {node.type === 'customer' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void handleOpenInApp(node)}
-                            disabled={openingId === node.userId}
-                            title="Open my.localvip.com signed in as this customer"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            {openingId === node.userId ? 'Opening…' : 'Open in app'}
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleOpenInApp(node)}
+                          disabled={openingId === node.userId}
+                          title={`Open my.localvip.com signed in as this ${meta.verb}`}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          {openingId === node.userId ? 'Opening…' : 'Log in to webapp'}
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => { setLoginTarget(node); setLoginError(null) }}>
                           <LogIn className="h-3.5 w-3.5" />
                           Log in as {meta.verb}
@@ -307,19 +333,24 @@ export default function CustomersPage() {
               Log in as {loginTarget ? typeMeta(loginTarget.type).verb : ''}
             </DialogTitle>
             <DialogDescription>
-              You will enter an impersonated session as{' '}
-              <span className="font-medium text-surface-900">{loginTarget?.name || loginTarget?.email}</span>.
-              A banner at the top lets you return to your admin account at any time.
+              Choose how to sign in as{' '}
+              <span className="font-medium text-surface-900">{loginTarget?.name || loginTarget?.email}</span>:
+              a read-only <strong>view-as overlay</strong> (a banner lets you return to admin anytime),
+              or a <strong>real log in</strong> that swaps your dashboard session for a genuine one.
             </DialogDescription>
           </DialogHeader>
           {loginError && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{loginError}</div>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setLoginTarget(null)} disabled={loggingIn}>Cancel</Button>
-            <Button onClick={() => void handleLoginAs()} disabled={loggingIn}>
+            <Button variant="outline" onClick={() => void handleLoginAs()} disabled={loggingIn}>
               {loggingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
-              Enter session
+              View-as overlay
+            </Button>
+            <Button onClick={() => void handleRealLogin()} disabled={loggingIn}>
+              {loggingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+              Real log in
             </Button>
           </DialogFooter>
         </DialogContent>
