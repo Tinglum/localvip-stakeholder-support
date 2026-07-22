@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, Loader2, Repeat, Users, Sparkles, Heart } from 'lucide-react'
+import { ArrowRight, Loader2, Users, GraduationCap, Award, BadgeCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -235,46 +235,47 @@ export function QaLoginPage({
         <section className="space-y-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700 shadow-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-            The local growth platform
+            Generosity Pays
           </div>
 
           <div className="space-y-5">
             <h1 className="max-w-xl text-4xl font-bold leading-[1.08] tracking-tight text-surface-900 sm:text-[3.25rem]">
-              Turn local shoppers into loyal regulars.
+              Turn slow days into busy days.
             </h1>
             <p className="max-w-xl text-base leading-7 text-surface-600 sm:text-lg">
-              LocalVIP turns everyday purchases into cashback, referrals, and repeat visits — while giving back to
-              the causes your community cares about. The flyers, QR codes, and campaigns are done for you.
+              Stop advertising to strangers — start giving back to neighbors. LocalVIP fills your slow days with new
+              customers who care, and a share of every sale supports local schools. $0 upfront: you only pay for
+              performance.
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <InfoTile
-              icon={<Repeat className="h-4 w-4" />}
-              title="Repeat visits"
-              description="Cashback rewards bring customers back — automatically."
-            />
-            <InfoTile
               icon={<Users className="h-4 w-4" />}
-              title="Word of mouth"
-              description="Every member invites friends. Your reach compounds."
+              title="Get more new customers"
+              description="Reward neighbors for choosing you — on the days you choose."
             />
             <InfoTile
-              icon={<Sparkles className="h-4 w-4" />}
-              title="Done for you"
-              description="Branded flyers and QR codes for every location."
+              icon={<GraduationCap className="h-4 w-4" />}
+              title="Support local schools"
+              description="A share of every sale gives back to your community."
+            />
+            <InfoTile
+              icon={<Award className="h-4 w-4" />}
+              title="Build your community brand"
+              description="Become the local business that gives back."
             />
           </div>
 
           <div className="flex items-start gap-3 rounded-3xl border border-brand-200/70 bg-gradient-to-br from-white to-brand-50/60 p-5 shadow-sm">
             <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-700">
-              <Heart className="h-4 w-4" />
+              <BadgeCheck className="h-4 w-4" />
             </span>
             <div>
-              <p className="text-sm font-semibold text-surface-900">Good for business. Good for the neighborhood.</p>
+              <p className="text-sm font-semibold text-surface-900">Zero risk. Real results.</p>
               <p className="mt-1 text-sm leading-6 text-surface-600">
-                A share of every transaction flows to the local causes your customers choose — turning loyalty into
-                visible community impact.
+                100% guaranteed to work, or you don&apos;t pay. Just a 10% success fee — never the 30% the delivery
+                apps take.
               </p>
             </div>
           </div>
