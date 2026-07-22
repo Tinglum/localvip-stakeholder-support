@@ -229,8 +229,8 @@ export default function CustomersPage() {
           description={search || type !== 'all' ? 'No nodes match the current filters.' : 'No nodes exist yet.'}
         />
       ) : (
-        {/* overflow-x-auto (not hidden) + a table min-width so narrow screens can
-            scroll horizontally to reach the action buttons (bug #23). */}
+        // overflow-x-auto (not hidden) + a table min-width so narrow screens can
+        // scroll horizontally to reach the action buttons (bug #23).
         <div className="overflow-x-auto rounded-xl border border-surface-200">
           <table className="w-full min-w-[920px] text-sm">
             <thead className="bg-surface-50 text-left text-xs uppercase tracking-wider text-surface-500">
