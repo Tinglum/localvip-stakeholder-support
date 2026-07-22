@@ -229,8 +229,10 @@ export default function CustomersPage() {
           description={search || type !== 'all' ? 'No nodes match the current filters.' : 'No nodes exist yet.'}
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-surface-200">
-          <table className="w-full text-sm">
+        {/* overflow-x-auto (not hidden) + a table min-width so narrow screens can
+            scroll horizontally to reach the action buttons (bug #23). */}
+        <div className="overflow-x-auto rounded-xl border border-surface-200">
+          <table className="w-full min-w-[920px] text-sm">
             <thead className="bg-surface-50 text-left text-xs uppercase tracking-wider text-surface-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Name</th>
@@ -285,7 +287,7 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-4 py-3 text-center text-surface-600">{node.directReferralCount ?? 0}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                         <Button
                           size="sm"
                           variant="outline"
