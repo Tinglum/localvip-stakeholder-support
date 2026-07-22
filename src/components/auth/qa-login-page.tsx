@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck, Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2, Repeat, Users, Sparkles, Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -232,56 +232,51 @@ export function QaLoginPage({
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.18),_transparent_28%),linear-gradient(180deg,_#f8fafc_0%,_#ffffff_45%,_#eef6ff_100%)] px-6 py-10">
       <div className="mx-auto grid min-h-[calc(100vh-5rem)] w-full max-w-6xl items-center gap-8 lg:grid-cols-[1.1fr,0.9fr]">
-        <section className="space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700 shadow-sm">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            LocalVIP Secure Sign-In
+        <section className="space-y-8">
+          <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700 shadow-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
+            The local growth platform
           </div>
 
-          <div className="space-y-4">
-            <h1 className="max-w-xl text-4xl font-bold tracking-tight text-surface-900 sm:text-5xl">
-              Sign in once. Get straight back to work.
+          <div className="space-y-5">
+            <h1 className="max-w-xl text-4xl font-bold leading-[1.08] tracking-tight text-surface-900 sm:text-[3.25rem]">
+              Turn local shoppers into loyal regulars.
             </h1>
-            <p className="max-w-2xl text-base leading-7 text-surface-600 sm:text-lg">
-              We send you to the LocalVIP QA sign-in page, confirm your identity there, and bring you back here
-              automatically. No technical setup is needed.
+            <p className="max-w-xl text-base leading-7 text-surface-600 sm:text-lg">
+              LocalVIP turns everyday purchases into cashback, referrals, and repeat visits — while giving back to
+              the causes your community cares about. The flyers, QR codes, and campaigns are done for you.
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <InfoTile
-              icon={<LockKeyhole className="h-4 w-4" />}
-              title="Secure"
-              description="Your sign-in stays on the QA identity server."
+              icon={<Repeat className="h-4 w-4" />}
+              title="Repeat visits"
+              description="Cashback rewards bring customers back — automatically."
             />
             <InfoTile
-              icon={<ArrowRight className="h-4 w-4" />}
-              title="Simple"
-              description="Log in there, then come straight back here."
+              icon={<Users className="h-4 w-4" />}
+              title="Word of mouth"
+              description="Every member invites friends. Your reach compounds."
             />
             <InfoTile
-              icon={<CheckCircle2 className="h-4 w-4" />}
-              title="Ready"
-              description="Once you are back, your dashboard session is ready to use."
+              icon={<Sparkles className="h-4 w-4" />}
+              title="Done for you"
+              description="Branded flyers and QR codes for every location."
             />
           </div>
 
-          <div className="rounded-3xl border border-surface-200 bg-white/85 p-5 shadow-sm">
-            <p className="text-sm font-semibold text-surface-900">What happens next</p>
-            <ol className="mt-3 space-y-3 text-sm leading-6 text-surface-600">
-              <li className="flex gap-3">
-                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">1</span>
-                <span>Choose <strong>Continue to secure sign-in</strong>.</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">2</span>
-                <span>Enter your QA login details on the secure page.</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">3</span>
-                <span>We bring you back here and open your dashboard automatically.</span>
-              </li>
-            </ol>
+          <div className="flex items-start gap-3 rounded-3xl border border-brand-200/70 bg-gradient-to-br from-white to-brand-50/60 p-5 shadow-sm">
+            <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-700">
+              <Heart className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-surface-900">Good for business. Good for the neighborhood.</p>
+              <p className="mt-1 text-sm leading-6 text-surface-600">
+                A share of every transaction flows to the local causes your customers choose — turning loyalty into
+                visible community impact.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -377,8 +372,8 @@ function InfoTile({
   description: string
 }) {
   return (
-    <div className="rounded-3xl border border-surface-200 bg-white/80 p-4 shadow-sm">
-      <div className="inline-flex rounded-2xl bg-brand-50 p-2 text-brand-700">{icon}</div>
+    <div className="group rounded-3xl border border-surface-200 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md hover:shadow-brand-100/50">
+      <div className="inline-flex rounded-2xl bg-brand-50 p-2 text-brand-700 transition-colors group-hover:bg-brand-100">{icon}</div>
       <p className="mt-3 text-sm font-semibold text-surface-900">{title}</p>
       <p className="mt-1 text-sm leading-6 text-surface-500">{description}</p>
     </div>
