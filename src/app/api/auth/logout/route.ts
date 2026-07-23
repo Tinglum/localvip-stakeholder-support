@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   clearQaSessionCookies,
+  getQaAccountLogoutUrl,
   getQaLogoutUrl,
   getQaSessionFromCookieStore,
   getRequestPublicOrigin,
@@ -15,21 +16,21 @@ export async function POST(request: NextRequest) {
   const session = getQaSessionFromCookieStore(request.cookies, { allowExpired: true })
   const publicOrigin = getRequestPublicOrigin(request)
 
-  // Only hand the browser to QA's endsession when we have a usable id_token_hint.
+  // Both paths end QA's session and return here; they differ only in how.
   //
-  // Without one, IdentityServer cannot identify the client, so it ignores
-  // post_logout_redirect_uri and its fallback redirects to "~/Dashboard" — an
-  // authenticated page — stranding the user on QA's login screen. Landing on our
-  // own /login beats that dead end.
+  //  - Valid id_token: the standard OIDC end-session flow, which IdentityServer is
+  //    built around.
+  //  - Stale id_token: /connect/endsession cannot identify the client without a
+  //    usable hint, so it ignores post_logout_redirect_uri and its fallback lands
+  //    the user on QA's own login page. Go straight to /Account/Logout?returnTo=,
+  //    which signs out and redirects back (the backend accepts returnTo only if it
+  //    is a registered post-logout URL).
   //
-  // Trade-off: in that case QA's SSO cookie is not cleared, so signing back in may
-  // not re-prompt for credentials. Our own session is fully cleared either way, and
-  // the alternative is the current behaviour of stranding the user on QA.
-  const canEndQaSession = isIdTokenUsableAsHint(session?.idToken)
-
-  const redirectTo = canEndQaSession
+  // The hint goes stale an hour into a session, so the second path is the common
+  // one in practice.
+  const redirectTo = isIdTokenUsableAsHint(session?.idToken)
     ? getQaLogoutUrl(publicOrigin, session?.idToken)
-    : `${publicOrigin}/login?signout=1`
+    : getQaAccountLogoutUrl(publicOrigin)
 
   const response = NextResponse.json({ ok: true, redirectTo })
   clearQaSessionCookies(response)

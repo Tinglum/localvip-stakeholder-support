@@ -786,6 +786,26 @@ export function isIdTokenUsableAsHint(idToken: string | null | undefined): boole
   }
 }
 
+/**
+ * Sign out at QA without relying on id_token_hint.
+ *
+ * /connect/endsession can only honour post_logout_redirect_uri when it can identify
+ * the client from a valid hint, and it does not forward unknown query params to the
+ * logout page — so ?returnTo= has to go straight to /Account/Logout. That action
+ * still clears QA's SSO cookie (AccountOptions.ShowLogoutPrompt is false, so it
+ * signs out immediately) and then redirects to returnTo, which the backend accepts
+ * only if it is a registered post-logout URL.
+ *
+ * Use this when the id_token is stale; prefer getQaLogoutUrl otherwise, since the
+ * standard OIDC end-session flow is the one IdentityServer is built around.
+ */
+export function getQaAccountLogoutUrl(origin?: string) {
+  const returnTo = getQaPostLogoutRedirectUri(origin)
+  const url = new URL('/Account/Logout', QA_AUTH_CONFIG.baseUrl)
+  url.searchParams.set('returnTo', returnTo)
+  return url.toString()
+}
+
 export function getQaLogoutUrl(origin?: string, idToken?: string | null) {
   const postLogoutRedirectUri = getQaPostLogoutRedirectUri(origin)
   const url = new URL('/connect/endsession', QA_AUTH_CONFIG.baseUrl)
