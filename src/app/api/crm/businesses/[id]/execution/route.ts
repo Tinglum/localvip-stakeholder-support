@@ -256,8 +256,10 @@ async function handleQaAction(
     }
 
     if (action.action === 'generate_template' || action.action === 'generate_materials') {
-      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this business yet.' }, { status: 404 })
-      const payload: Record<string, unknown> = { stakeholderId }
+      // Scope by business account, not stakeholder: the stakeholder model was removed
+      // from the backend, and GeneratedMaterial requires BusinessAccountId/
+      // CauseAccountId — a stakeholder-only payload is rejected with 400.
+      const payload: Record<string, unknown> = { businessAccountId: Number(businessId) }
       if (action.action === 'generate_template') payload.templateId = action.templateId
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
         method: 'POST',
@@ -269,9 +271,14 @@ async function handleQaAction(
     }
 
     if (action.action === 'regenerate_all') {
-      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this business yet.' }, { status: 404 })
-      // List all generated materials for the stakeholder, then regenerate each.
-      const listRes = await fetchQaApi(`/api/dashboard/v1/GeneratedMaterial?stakeholderId=${encodeURIComponent(stakeholderId)}`)
+      // List this BUSINESS's materials, then regenerate each.
+      //
+      // This previously filtered by ?stakeholderId=, a parameter the backend does not
+      // accept. Unknown query params are silently ignored, so the request arrived
+      // unscoped and returned every material in the system — which is how one
+      // business's page came to display another business's files (and would have
+      // regenerated them). Scope by businessAccountId, which the backend honours.
+      const listRes = await fetchQaApi(`/api/dashboard/v1/GeneratedMaterial?businessAccountId=${encodeURIComponent(businessId)}`)
       const listJson = await parseQaResponse<unknown>(listRes, 'Failed to list materials.')
       const list = Array.isArray(listJson) ? listJson
         : (listJson && typeof listJson === 'object' && Array.isArray((listJson as Record<string, unknown>).items))

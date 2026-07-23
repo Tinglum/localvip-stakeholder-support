@@ -180,8 +180,10 @@ async function handleQaCauseAction(
       return NextResponse.json({ success: true, templates })
     }
     if (action.action === 'generate_template' || action.action === 'generate_materials') {
-      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this cause yet.' }, { status: 404 })
-      const payload: Record<string, unknown> = { stakeholderId }
+      // Scope by cause account, not stakeholder — see the businesses execution route:
+      // the stakeholder model was removed and GeneratedMaterial requires
+      // BusinessAccountId/CauseAccountId.
+      const payload: Record<string, unknown> = { causeAccountId: Number(causeId) }
       if (action.action === 'generate_template') payload.templateId = action.templateId
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
@@ -190,8 +192,10 @@ async function handleQaCauseAction(
       return NextResponse.json({ success: true, result })
     }
     if (action.action === 'regenerate_all') {
-      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this cause yet.' }, { status: 404 })
-      const listRes = await fetchQaApi(`/api/dashboard/v1/GeneratedMaterial?stakeholderId=${encodeURIComponent(stakeholderId)}`)
+      // ?stakeholderId= is not a parameter the backend accepts; it was silently
+      // ignored, so this listed (and would have regenerated) every material in the
+      // system rather than this cause's.
+      const listRes = await fetchQaApi(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${encodeURIComponent(causeId)}`)
       const listJson = await parseQaResponse<unknown>(listRes, 'Failed to list materials.')
       const list = Array.isArray(listJson) ? listJson
         : (listJson && typeof listJson === 'object' && Array.isArray((listJson as Record<string, unknown>).items))

@@ -19,7 +19,7 @@ This is **not** a consumer-facing application. It is a CRM and workflow tool use
 | Validation | Zod |
 | Notifications | Sonner (toast) |
 | Icons | Lucide React |
-| Deployment | Netlify with `@netlify/plugin-nextjs` |
+| Deployment | Self-hosted: PM2 + nginx on our own server (`deploy-dashboard.ps1`) |
 | Node | 20+ |
 
 ## Getting Started

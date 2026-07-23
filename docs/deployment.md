@@ -1,6 +1,41 @@
 # Deployment Guide
 
-This guide covers local development setup, Supabase project configuration, environment variables, Netlify deployment, database migrations, and seed data.
+This guide covers local development setup, environment variables, production
+deployment, database migrations, and seed data.
+
+---
+
+## Production deployment (read this first)
+
+**The dashboard is self-hosted. It is not on Netlify.** The `netlify.toml` and
+`.netlify/` directory in this repo are leftovers and have misled people into
+thinking a `git push` deploys the site. It does not — pushing to GitHub changes
+nothing in production until you run the deploy script.
+
+| | |
+|---|---|
+| URL | https://dashboard.localvip.com |
+| Host | `5.252.52.243` (Ubuntu), SSH as `root` with `~/.ssh/contabo_localvip` |
+| Path | `/var/www/localvip-dashboard` — a git checkout, detached HEAD at the deployed commit |
+| Process | PM2 app `localvip-dashboard` → `npm start` → `next start` on port 3001 |
+| Proxy | nginx → the PM2 process |
+| Config | `.env.production` on the server (gitignored — never overwritten by a deploy) |
+
+Deploy with the script at the repo root:
+
+```powershell
+.\deploy-dashboard.ps1                # deploy origin/main
+.\deploy-dashboard.ps1 -Ref <sha>     # deploy a specific commit
+.\deploy-dashboard.ps1 -Rollback      # restore the previous build + commit
+```
+
+It backs up the current `.next` and commit, checks out the target, runs `npm ci`
+only if the lockfile changed, builds, then restarts PM2. The build runs *before*
+the restart so the site keeps serving the old build; if the build or the
+post-restart health check fails, it restores the backup automatically.
+
+The QA backend is a separate deploy on a different machine — see
+`deploy-qa-zip.ps1` in the backend repo.
 
 ---
 
