@@ -27,6 +27,13 @@ export interface BugReportCreateInput {
   networkErrors: string
   /** data:image/png;base64,... */
   screenshotBase64: string
+  /**
+   * Who is reporting. The client sends the form value, but the server overrides it
+   * with the chosen operator when one is set (shared SuperAdmin login), so this is
+   * attribution rather than free text. The backend falls back to the account email
+   * when it is absent.
+   */
+  reporterName?: string
 }
 
 export interface BugReportNote {

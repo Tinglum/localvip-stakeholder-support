@@ -86,12 +86,31 @@ export function BugReporter() {
     installBugCapture()
   }, [])
 
-  // Prefill the reporter's name from the session (still required + editable).
+  // Prefill the reporter's name (still required + editable).
+  //
+  // Prefer the operator chosen in the topbar picker over the profile name: on the
+  // shared SuperAdmin login the profile name is "SuperAdmin" for everyone, which is
+  // exactly the attribution problem the picker exists to solve. The server applies
+  // the same preference authoritatively — this is only so the field shows the right
+  // name before submitting.
   React.useEffect(() => {
-    fetch('/api/auth/session', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((sx) => { const n = sx?.profile?.full_name; if (n) setReporterName(n) })
-      .catch(() => {})
+    let cancelled = false
+    void (async () => {
+      const [operator, profileName] = await Promise.all([
+        fetch('/api/admin/operator', { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => (typeof d?.operator === 'string' ? d.operator : null))
+          .catch(() => null),
+        fetch('/api/auth/session', { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((s) => (typeof s?.profile?.full_name === 'string' ? s.profile.full_name : null))
+          .catch(() => null),
+      ])
+      if (cancelled) return
+      const name = operator || profileName
+      if (name) setReporterName(name)
+    })()
+    return () => { cancelled = true }
   }, [])
 
   // Read the master toggle (cookie-authenticated, same-origin). Fail closed.

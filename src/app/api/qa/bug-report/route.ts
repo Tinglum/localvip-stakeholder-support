@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createBugReport, listBugReports } from '@/lib/server/qa-bug-report'
 import { qaRouteErrorResponse, requireQaRouteAccess, parseJsonRequest } from '@/lib/server/qa-route'
+import { getSessionOperator } from '@/lib/auth/operator-identity'
 import type { BugReportCreateInput, BugReportListQuery } from '@/lib/bug-center/types'
 
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,13 @@ export async function POST(request: NextRequest) {
   // Force app:'dashboard' regardless of client input — this proxy only serves the
   // dashboard widget.
   const payload: BugReportCreateInput = { ...body, app: 'dashboard' }
+
+  // Attribute the report to the operator chosen in the topbar picker, resolved
+  // server-side from the signed cookie so it cannot be spoofed. Without this the
+  // reporter is whatever the form sent, which on the shared SuperAdmin login is
+  // "SuperAdmin" for all three of us — the exact thing the picker is meant to fix.
+  const operator = await getSessionOperator(access.session.profile)
+  if (operator) payload.reporterName = operator
 
   try {
     return NextResponse.json(await createBugReport(payload))
