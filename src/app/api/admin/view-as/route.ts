@@ -75,8 +75,13 @@ function normalizeUserLookup(json: unknown, fallbackId: number): QaUserLookup | 
 
 /**
  * Map the backend AccountType enum to the frontend Profile.role string.
- * Backend enum values (from Data/Enums.cs AccountType):
- *   0 = SysAdmin, 1 = Stripe, 2 = Business, 3 = NonProfit, 4 = Consumer, 5 = Field
+ * Backend enum values (App/Data/Enums.cs, AccountType):
+ *   0 = Unknown, 1 = System, 2 = Business, 3 = NonProfit, 4 = Consumer, 5 = Employee
+ *
+ * NOTE: an earlier version of this comment claimed 0 = SysAdmin / 1 = Stripe /
+ * 5 = Field and mapped 0 -> super_admin. Unknown(0) is what half-created accounts
+ * get, so that silently presented them as super admins. Unknown now falls through
+ * to the safest role; System(1) is the actual admin value.
  */
 function mapAccountTypeToRole(accountType: unknown, consumerType?: string | null): UserRole {
   const at = typeof accountType === 'number'
@@ -95,11 +100,12 @@ function mapAccountTypeToRole(accountType: unknown, consumerType?: string | null
   }
 
   switch (at) {
-    case 0: return 'super_admin'
+    case 1: return 'super_admin'   // System
     case 2: return 'business'
     case 3: return 'cause_leader'
     case 4: return 'community'
-    case 5: return 'field'
+    case 5: return 'field'         // Employee
+    case 0:                        // Unknown — never infer admin from a missing type
     default: return 'community'
   }
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Users,
@@ -253,7 +254,12 @@ export default function CustomersPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-surface-400">{meta.icon}</span>
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-surface-900">{node.name || `Node ${node.accountId}`}</p>
+                          <Link
+                            href={`/crm/contacts/${node.userId}`}
+                            className="truncate font-medium text-surface-900 hover:text-brand-700 hover:underline"
+                          >
+                            {node.name || `Node ${node.accountId}`}
+                          </Link>
                           {node.referralCode && (
                             <p className="truncate font-mono text-[11px] text-surface-400">{node.referralCode}</p>
                           )}

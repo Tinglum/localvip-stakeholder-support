@@ -506,6 +506,90 @@ export async function fetchQaNodes(params: {
   return parseQaJsonResponse<QaNodeList>(res, 'The QA nodes list could not be loaded.')
 }
 
+/** Full detail for one node, from GET /api/dashboard/v1/Nodes/{userId}. */
+export interface QaNodeDetail {
+  userId: number
+  accountId: number
+  name: string
+  type: string
+  accountType: number
+  accountTypeName: string
+  /** Null for nodes with no Accounts row — ConsumerType lives on Accounts. */
+  consumerType: number | null
+  consumerTypeName: string | null
+  roles: string[]
+  contact: {
+    firstName: string | null
+    lastName: string | null
+    email: string | null
+    phone: string | null
+    city: string | null
+    state: string | null
+    zipCode: string | null
+    country: string | null
+  }
+  status: {
+    isEnabled: boolean
+    isLockedOut: boolean
+    emailConfirmed: boolean
+    accountActive: boolean | null
+    joinedAt: string | null
+  }
+  network: {
+    referralCode: string | null
+    sharedUrl: string | null
+    directReferralCount: number
+    networkDepth: number
+    referrer: { userId: number; name: string; email: string | null; referralCode: string | null } | null
+  }
+  account: {
+    id: number
+    name: string | null
+    headline: string | null
+    active: boolean | null
+    city: string | null
+    state: string | null
+    latitude: number | null
+    longitude: number | null
+    linkedCauseAccountId: number | null
+  } | null
+  accessGrants: string[]
+}
+
+export interface QaNodeAccess {
+  userId: number
+  roles: string[]
+  catalog: { key: string; area: string; label: string }[]
+  /** Implied by role — always on, cannot be revoked by editing explicit grants. */
+  inherited: string[]
+  /** Explicit rows only; this is what the PUT replaces. */
+  granted: string[]
+  effective: string[]
+}
+
+export async function fetchQaNodeDetail(userId: number | string): Promise<QaNodeDetail> {
+  const res = await fetchQaApi(`/api/dashboard/v1/Nodes/${encodeURIComponent(String(userId))}`)
+  return parseQaJsonResponse<QaNodeDetail>(res, 'The customer could not be loaded.')
+}
+
+export async function fetchQaNodeAccess(userId: number | string): Promise<QaNodeAccess> {
+  const res = await fetchQaApi(`/api/dashboard/v1/Nodes/${encodeURIComponent(String(userId))}/access`)
+  return parseQaJsonResponse<QaNodeAccess>(res, 'Access grants could not be loaded.')
+}
+
+export async function updateQaNodeAccess(
+  userId: number | string,
+  grants: string[],
+  grantedByName?: string | null,
+): Promise<QaNodeAccess> {
+  const res = await fetchQaApi(`/api/dashboard/v1/Nodes/${encodeURIComponent(String(userId))}/access`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ grants, grantedByName: grantedByName || null }),
+  })
+  return parseQaJsonResponse<QaNodeAccess>(res, 'Access grants could not be saved.')
+}
+
 export async function qaAdminLoginAs(targetUserId: number | string): Promise<QaLoginAsResult> {
   const res = await fetchQaApi('/api/dashboard/v1/Admin/LoginAs', {
     method: 'POST',
