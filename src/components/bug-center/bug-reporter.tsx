@@ -149,7 +149,27 @@ export function BugReporter() {
         // the user sees. One-time permission dialog, then pixel-accurate capture.
         let captured = false
         try {
-          const stream = await navigator.mediaDevices.getDisplayMedia({ video: true as any, audio: false })
+          // Ask Chrome for THIS tab, not "pick a surface".
+          //
+          // Plain getDisplayMedia({video:true}) produces the full three-tab picker
+          // (Chrome tab / Window / Entire screen) — and, because Chrome defaults
+          // selfBrowserSurface to "exclude", the one tab it leaves out is the very
+          // tab being captured. So the reporter asked the user to hunt for the page
+          // they were already on, and it wasn't in the list.
+          //
+          // preferCurrentTab + selfBrowserSurface:"include" collapse that into a
+          // single "Share this tab?" confirm. The monitor/window surfaces are
+          // excluded because a bug report wants the page, never the whole desktop
+          // (which would also capture whatever else is on screen).
+          const displayMediaOptions = {
+            video: { displaySurface: 'browser' },
+            audio: false,
+            preferCurrentTab: true,
+            selfBrowserSurface: 'include',
+            monitorTypeSurfaces: 'exclude',
+            surfaceSwitching: 'exclude',
+          } as unknown as DisplayMediaStreamOptions
+          const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
           const video = document.createElement('video')
           video.srcObject = stream
           video.play()
