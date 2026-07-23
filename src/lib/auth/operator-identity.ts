@@ -16,6 +16,7 @@
  */
 import { cookies } from 'next/headers'
 import { signQaStatePayload } from '@/lib/auth/qa-auth'
+import { isSuperAdminRole } from '@/lib/auth/display-name'
 import type { Profile } from '@/lib/types/database'
 
 export const OPERATOR_COOKIE_NAME = 'lvip_operator'
@@ -92,7 +93,10 @@ export async function readSignedOperatorPayload(
  * rather than the shared account.
  */
 export async function getSessionOperator(profile: Profile | null | undefined): Promise<OperatorName | null> {
-  if (!profile || profile.role !== 'super_admin') return null
+  // isSuperAdminRole, not `role === 'super_admin'` — see its doc comment; the
+  // literal check is never true for a QA session, which silently disabled operator
+  // attribution on bug notes and access-grant changes.
+  if (!profile || !isSuperAdminRole(profile.role, profile.role_subtype)) return null
 
   const subject = (profile.metadata as Record<string, unknown> | null)?.qa_subject
   if (typeof subject !== 'string' || !subject) return null

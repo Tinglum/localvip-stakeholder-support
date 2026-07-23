@@ -11,7 +11,7 @@ import { getDemoProfileByEmail, getDemoSessionEmailFromCookieStore } from '@/lib
 import { fetchQaUserProfile } from '@/lib/auth/qa-api'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
-import { resolveUserDisplayName } from '@/lib/auth/display-name'
+import { isSuperAdminRole, resolveUserDisplayName } from '@/lib/auth/display-name'
 import type { Profile, UserRole } from '@/lib/types/database'
 
 export type AuthSource = 'qa' | 'demo'
@@ -126,13 +126,14 @@ function resolveDisplayName(
   qaProfile: Awaited<ReturnType<typeof fetchQaUserProfile>>,
   baseProfile: Profile,
   role: UserRole,
+  subtype: string | null | undefined,
 ): string {
   return resolveUserDisplayName({
     firstName: qaProfile?.firstName,
     lastName: qaProfile?.lastName,
     email: qaProfile?.email,
     existing: baseProfile.full_name,
-    isSuperAdmin: role === 'super_admin',
+    isSuperAdmin: isSuperAdminRole(role, subtype),
   })
 }
 
@@ -149,7 +150,7 @@ function mergeQaProfileIntoSessionProfile(
     profileRole,
   })
 
-  const fullName = resolveDisplayName(qaProfile, baseProfile, nextRole.role)
+  const fullName = resolveDisplayName(qaProfile, baseProfile, nextRole.role, nextRole.roleSubtype)
 
   return {
     ...baseProfile,

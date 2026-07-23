@@ -19,6 +19,7 @@ import {
   readSignedOperatorPayload,
   signOperatorPayload,
 } from '@/lib/auth/operator-identity'
+import { isSuperAdminRole } from '@/lib/auth/display-name'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,10 @@ async function requireSuperAdmin() {
   if (!session) {
     return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
   }
-  if (session.profile.role !== 'super_admin') {
+  // Must use isSuperAdminRole, not `role === 'super_admin'`: a QA SysAdmin maps to
+  // { role: 'admin', roleSubtype: 'super' }, so the literal check 403'd for every
+  // real admin and the picker silently never rendered.
+  if (!isSuperAdminRole(session.profile.role, session.profile.role_subtype)) {
     return { error: NextResponse.json({ error: 'Forbidden.' }, { status: 403 }) }
   }
   const subject = (session.profile.metadata as Record<string, unknown> | null)?.qa_subject

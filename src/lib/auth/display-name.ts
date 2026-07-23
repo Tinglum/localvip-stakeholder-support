@@ -10,6 +10,25 @@
  * of them leaves the bug visible through the other.
  */
 
+/**
+ * Is this the shared super-admin identity?
+ *
+ * IMPORTANT: do not test `role === 'super_admin'`. mapQaRole never returns that for
+ * a QA session — a SysAdmin maps to `{ role: 'admin', roleSubtype: 'super' }` (see
+ * qa-auth.ts). 'super_admin' exists in the UserRole union and the ROLES map, which
+ * makes the wrong check look right; it silently fails for every real admin.
+ *
+ * Internal admins (`subtype: 'internal'`) are deliberately excluded: they are not
+ * the shared login this identity handling exists for.
+ */
+export function isSuperAdminRole(
+  role: string | null | undefined,
+  subtype: string | null | undefined,
+): boolean {
+  if (role === 'super_admin') return true
+  return role === 'admin' && subtype === 'super'
+}
+
 const PLACEHOLDER_NAME_PARTS = new Set(['string', 'str', 'null', 'undefined', 'n/a', '-'])
 
 export function isPlaceholderNamePart(value: string | null | undefined): boolean {
