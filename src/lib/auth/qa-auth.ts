@@ -748,7 +748,17 @@ export function getQaPostLogoutRedirectUri(origin?: string) {
     throw new Error('No dashboard origin is available for QA logout redirect URI generation.')
   }
 
-  return `${appOrigin}/`
+  // /login, not the origin root.
+  //
+  // IdentityServer only honours a post_logout_redirect_uri that is REGISTERED on
+  // the client, and silently ignores anything else -- leaving the user stranded on
+  // QA's logged-out page instead of returning here. The backend registers
+  // "https://dashboard.localvip.com/login" but not the bare origin
+  // (App/Config/AppConfig.cs, DashboardPostLogoutRedirectUris), so sending the root
+  // meant logout always dead-ended on QA.
+  //
+  // /login is also where a signed-out user should land anyway.
+  return `${appOrigin}/login`
 }
 
 export function getQaLogoutUrl(origin?: string, idToken?: string | null) {

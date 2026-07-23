@@ -382,8 +382,11 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
           </div>
         ) : null}
 
-        {/* Shared SuperAdmin login: pick which person is driving this session. */}
-        <OperatorPicker className="hidden lg:flex" />
+        {/* Shared SuperAdmin login: pick which person is driving this session.
+            Not width-gated: passing "hidden lg:flex" here collided with the
+            component's own "flex" root — Tailwind emits .hidden after .flex, so it
+            was display:none below 1024px and the picker simply never appeared. */}
+        <OperatorPicker />
         {isAdminProfile(profile) ? <ViewAsPicker /> : null}
 
         <DropdownMenu.Root>
