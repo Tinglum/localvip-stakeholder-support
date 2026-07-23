@@ -11,7 +11,7 @@ import { getDemoProfileByEmail, getDemoSessionEmailFromCookieStore } from '@/lib
 import { fetchQaUserProfile } from '@/lib/auth/qa-api'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
-import type { Profile } from '@/lib/types/database'
+import type { Profile, UserRole } from '@/lib/types/database'
 
 export type AuthSource = 'qa' | 'demo'
 
@@ -117,6 +117,38 @@ function applyViewAsOverride(
   }
 }
 
+// Some QA accounts were created through Swagger and kept its placeholder defaults,
+// so firstName/lastName come back as the literal "string" — the shared admin login
+// rendered as "string string" across the UI. Treat those as absent.
+const PLACEHOLDER_NAME_PARTS = new Set(['string', 'str', 'null', 'undefined', 'n/a', '-'])
+
+function isPlaceholderNamePart(value: string | null | undefined): boolean {
+  if (!value) return true
+  return PLACEHOLDER_NAME_PARTS.has(value.trim().toLowerCase())
+}
+
+/**
+ * Display name for the session profile. Drops Swagger placeholder name parts, and
+ * falls back to "SuperAdmin" for the shared super-admin login rather than showing a
+ * meaningless "string string". Individual attribution for that shared account comes
+ * from the operator picker (see `lib/auth/operator-identity`).
+ */
+function resolveDisplayName(
+  qaProfile: Awaited<ReturnType<typeof fetchQaUserProfile>>,
+  baseProfile: Profile,
+  role: UserRole,
+): string {
+  const parts = [qaProfile?.firstName, qaProfile?.lastName].filter(
+    (part): part is string => !isPlaceholderNamePart(part),
+  )
+  const fromQa = parts.join(' ').trim()
+  if (fromQa) return fromQa
+
+  if (role === 'super_admin') return 'SuperAdmin'
+  if (!isPlaceholderNamePart(baseProfile.full_name)) return baseProfile.full_name
+  return qaProfile?.email?.split('@')[0] || 'LocalVIP User'
+}
+
 function mergeQaProfileIntoSessionProfile(
   baseProfile: Profile,
   qaClaims: QaAuthClaims,
@@ -130,9 +162,7 @@ function mergeQaProfileIntoSessionProfile(
     profileRole,
   })
 
-  const fullName = qaProfile
-    ? [qaProfile.firstName, qaProfile.lastName].filter(Boolean).join(' ').trim() || baseProfile.full_name
-    : baseProfile.full_name
+  const fullName = resolveDisplayName(qaProfile, baseProfile, nextRole.role)
 
   return {
     ...baseProfile,

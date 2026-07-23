@@ -86,6 +86,11 @@ export interface BugReportUpdateInput {
   tags?: string[]
   /** Appended to the notes/comments thread. */
   note?: string
+  /**
+   * Display name of the human behind a shared login (SuperAdmin). Set server-side
+   * from the signed operator cookie — never trust a client-supplied value.
+   */
+  noteAuthor?: string
 }
 
 export interface BugReportStats {

@@ -223,7 +223,7 @@ function getQaStateSecret() {
     || `${QA_AUTH_CONFIG.clientId}:${QA_AUTH_CONFIG.baseUrl}`
 }
 
-async function signQaStatePayload(payloadBase64Url: string) {
+export async function signQaStatePayload(payloadBase64Url: string) {
   const secret = new TextEncoder().encode(getQaStateSecret())
   const key = await crypto.subtle.importKey(
     'raw',

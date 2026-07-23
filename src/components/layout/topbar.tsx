@@ -22,6 +22,7 @@ import { BRANDS } from '@/lib/constants'
 import { getStakeholderAccess, isAdminProfile } from '@/lib/stakeholder-access'
 import type { Profile } from '@/lib/types/database'
 import { ViewAsPicker } from '@/components/layout/view-as-picker'
+import { OperatorPicker } from '@/components/admin/operator-picker'
 import { TopbarSearch } from '@/components/layout/topbar-search'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -381,6 +382,8 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
           </div>
         ) : null}
 
+        {/* Shared SuperAdmin login: pick which person is driving this session. */}
+        <OperatorPicker className="hidden lg:flex" />
         {isAdminProfile(profile) ? <ViewAsPicker /> : null}
 
         <DropdownMenu.Root>

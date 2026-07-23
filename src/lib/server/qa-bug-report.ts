@@ -4,6 +4,7 @@ import type {
   BugReportCreateInput,
   BugReportListQuery,
   BugReportListResponse,
+  BugReportNote,
   BugReportSettings,
   BugReportStats,
   BugReportUpdateInput,
@@ -19,12 +20,27 @@ function normalizeReport(raw: unknown): BugReport {
   let tags: string[] = []
   if (Array.isArray(r.tags)) tags = (r.tags as unknown[]).map(String)
   else if (typeof r.tags === 'string') tags = r.tags.split(',').map((t) => t.trim()).filter(Boolean)
-  let notes: BugReport['notes'] = []
-  if (Array.isArray(r.notes)) notes = r.notes as BugReport['notes']
+  let rawNotes: unknown[] = []
+  if (Array.isArray(r.notes)) rawNotes = r.notes as unknown[]
   else if (typeof r.notes === 'string' && r.notes.trim()) {
-    try { const p = JSON.parse(r.notes); if (Array.isArray(p)) notes = p } catch { notes = [] }
+    try { const p = JSON.parse(r.notes); if (Array.isArray(p)) rawNotes = p } catch { rawNotes = [] }
   }
+  const notes: BugReportNote[] = rawNotes.map(normalizeNote)
   return { ...(r as unknown as BugReport), tags, notes }
+}
+
+// The backend persists notes as `{ author, authorEmail, text, at }` while the UI
+// reads `{ authorName, createdAt }` — without this mapping every note renders as a
+// nameless "Note" with no timestamp. Accept both shapes so older rows still work.
+function normalizeNote(raw: unknown): BugReportNote {
+  const n = (raw ?? {}) as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  return {
+    ...(n as object),
+    authorName: str(n.authorName) ?? str(n.author) ?? str(n.authorEmail),
+    text: typeof n.text === 'string' ? n.text : '',
+    createdAt: str(n.createdAt) ?? str(n.at),
+  } as BugReportNote
 }
 
 export async function fetchBugSettings(): Promise<BugReportSettings> {
