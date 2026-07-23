@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { fetchQaApi, parseQaJsonResponse, QaApiError } from '@/lib/auth/qa-api'
 import { readSignedViewAsPayload, signViewAsPayload } from '@/lib/auth/qa-auth'
+import { resolveUserDisplayName } from '@/lib/auth/display-name'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
 import type { UserRole } from '@/lib/types/database'
 
@@ -173,7 +174,16 @@ export async function POST(request: NextRequest) {
     const payload = {
       userId: user.id,
       email: user.email,
-      name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
+      // Use the shared resolver: a raw first+last join here re-introduced the
+      // "string string" placeholder for accounts created via Swagger, because this
+      // name is written straight onto Profile.full_name by applyViewAsOverride and
+      // so bypasses the session profile's own sanitization.
+      name: resolveUserDisplayName({
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        isSuperAdmin: role === 'super_admin',
+      }),
       role,
       accountType: user.accountType,
       consumerType: user.consumerType,

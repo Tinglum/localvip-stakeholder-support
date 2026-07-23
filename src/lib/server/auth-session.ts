@@ -11,6 +11,7 @@ import { getDemoProfileByEmail, getDemoSessionEmailFromCookieStore } from '@/lib
 import { fetchQaUserProfile } from '@/lib/auth/qa-api'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
+import { resolveUserDisplayName } from '@/lib/auth/display-name'
 import type { Profile, UserRole } from '@/lib/types/database'
 
 export type AuthSource = 'qa' | 'demo'
@@ -117,36 +118,22 @@ function applyViewAsOverride(
   }
 }
 
-// Some QA accounts were created through Swagger and kept its placeholder defaults,
-// so firstName/lastName come back as the literal "string" — the shared admin login
-// rendered as "string string" across the UI. Treat those as absent.
-const PLACEHOLDER_NAME_PARTS = new Set(['string', 'str', 'null', 'undefined', 'n/a', '-'])
-
-function isPlaceholderNamePart(value: string | null | undefined): boolean {
-  if (!value) return true
-  return PLACEHOLDER_NAME_PARTS.has(value.trim().toLowerCase())
-}
-
 /**
- * Display name for the session profile. Drops Swagger placeholder name parts, and
- * falls back to "SuperAdmin" for the shared super-admin login rather than showing a
- * meaningless "string string". Individual attribution for that shared account comes
- * from the operator picker (see `lib/auth/operator-identity`).
+ * Display name for the session profile. See `lib/auth/display-name` — the same
+ * helper is used by the View As override, which is the other place full_name is set.
  */
 function resolveDisplayName(
   qaProfile: Awaited<ReturnType<typeof fetchQaUserProfile>>,
   baseProfile: Profile,
   role: UserRole,
 ): string {
-  const parts = [qaProfile?.firstName, qaProfile?.lastName].filter(
-    (part): part is string => !isPlaceholderNamePart(part),
-  )
-  const fromQa = parts.join(' ').trim()
-  if (fromQa) return fromQa
-
-  if (role === 'super_admin') return 'SuperAdmin'
-  if (!isPlaceholderNamePart(baseProfile.full_name)) return baseProfile.full_name
-  return qaProfile?.email?.split('@')[0] || 'LocalVIP User'
+  return resolveUserDisplayName({
+    firstName: qaProfile?.firstName,
+    lastName: qaProfile?.lastName,
+    email: qaProfile?.email,
+    existing: baseProfile.full_name,
+    isSuperAdmin: role === 'super_admin',
+  })
 }
 
 function mergeQaProfileIntoSessionProfile(

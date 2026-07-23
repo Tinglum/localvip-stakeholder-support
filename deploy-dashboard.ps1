@@ -9,13 +9,10 @@
 #   process PM2 app "localvip-dashboard" -> `npm start` -> next start on :3001
 #   proxy   nginx -> https://dashboard.localvip.com
 #
-# Order matters: build BEFORE restarting. PM2 keeps serving the old build while the
-# new one compiles, so a failed build never takes the site down -- but `next build`
-# overwrites .next in place, so we back it up first and restore on failure.
-#
-# `npm ci` is skipped unless the lockfile actually changed between the deployed and
-# target commits. Reinstalling node_modules is the slowest and riskiest step, and
-# most deploys do not need it.
+# This wrapper only uploads scripts/deploy-dashboard.sh and runs it. All the real
+# logic lives in that script deliberately: multi-line commands with nested quotes
+# do not survive the trip through ssh reliably, and it means the deploy can also be
+# run directly on the server if a workstation isn't available.
 #
 # Usage:
 #   .\deploy-dashboard.ps1                 # deploy origin/main
@@ -31,116 +28,42 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$server      = "root@5.252.52.243"
-$keyFile     = "$env:USERPROFILE\.ssh\contabo_localvip"
-$remotePath  = "/var/www/localvip-dashboard"
-$backupPath  = "/var/www/.next-rollback"
-$commitFile  = "/var/www/.dashboard-rollback-commit"
-$pmApp       = "localvip-dashboard"
-$siteUrl     = "https://dashboard.localvip.com"
+$server     = "root@5.252.52.243"
+$keyFile    = "$env:USERPROFILE\.ssh\contabo_localvip"
+$localSh    = Join-Path $PSScriptRoot "scripts\deploy-dashboard.sh"
+$remoteSh   = "/root/deploy-dashboard.sh"
+$siteUrl    = "https://dashboard.localvip.com"
 
-function Invoke-Remote([string]$cmd) {
-    ssh -o BatchMode=yes -i $keyFile $server $cmd
-    if ($LASTEXITCODE -ne 0) { throw "Remote command failed (exit $LASTEXITCODE): $cmd" }
-}
+if (-not (Test-Path $localSh)) { Write-Host "Missing $localSh" -ForegroundColor Red; exit 1 }
 
-function Test-Site {
-    try {
-        $r = Invoke-WebRequest -Uri $siteUrl -Method Head -TimeoutSec 30 -UseBasicParsing
-        return [int]$r.StatusCode
-    } catch {
-        if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
-        return 0
-    }
-}
+Write-Host "`n=== Uploading deploy script ===" -ForegroundColor Cyan
+# Normalise to LF: bash rejects CRLF line endings with a confusing error.
+$sh = [System.IO.File]::ReadAllText($localSh).Replace("`r`n", "`n")
+$tmp = [System.IO.Path]::GetTempFileName()
+[System.IO.File]::WriteAllText($tmp, $sh, (New-Object System.Text.UTF8Encoding $false))
+scp -o BatchMode=yes -i $keyFile $tmp "${server}:${remoteSh}"
+if ($LASTEXITCODE -ne 0) { Write-Host "Upload failed." -ForegroundColor Red; exit 1 }
+Remove-Item $tmp -Force
 
-if ($Rollback) {
-    Write-Host "`n=== ROLLBACK ===" -ForegroundColor Yellow
-    Invoke-Remote "set -e
-        cd $remotePath
-        [ -d $backupPath ] || { echo 'No build backup to roll back to.'; exit 1; }
-        [ -f $commitFile ] && git checkout --quiet `$(cat $commitFile)
-        rm -rf .next && cp -a $backupPath .next
-        pm2 restart $pmApp --update-env >/dev/null
-        echo \"rolled back to `$(git rev-parse HEAD)\""
-    Start-Sleep -Seconds 8
-    Write-Host ("Site: {0}" -f (Test-Site)) -ForegroundColor Green
-    exit 0
-}
+$action = if ($Rollback) { "rollback" } else { "deploy" }
+$install = if ($ForceInstall) { "1" } else { "0" }
 
-Write-Host "`n=== STEP 1: Fetch and inspect ===" -ForegroundColor Cyan
-Invoke-Remote "set -e
-    cd $remotePath
-    git fetch origin --quiet
-    echo \"deployed: `$(git rev-parse HEAD)\"
-    echo \"target:   `$(git rev-parse $Ref)\"
-    git status --short | head -5"
+Write-Host "=== Running: $action $Ref ===" -ForegroundColor Cyan
+ssh -o BatchMode=yes -i $keyFile $server "chmod +x $remoteSh && $remoteSh $action $Ref $install"
+$deployExit = $LASTEXITCODE
 
-Write-Host "`n=== STEP 2: Back up current build + commit ===" -ForegroundColor Cyan
-Invoke-Remote "set -e
-    cd $remotePath
-    git rev-parse HEAD > $commitFile
-    rm -rf $backupPath
-    cp -a .next $backupPath
-    echo \"backup: $backupPath (`$(du -sh $backupPath | cut -f1)) at commit `$(cat $commitFile)\""
-
-Write-Host "`n=== STEP 3: Check out target ===" -ForegroundColor Cyan
-Invoke-Remote "set -e
-    cd $remotePath
-    git checkout --quiet `$(git rev-parse $Ref)
-    echo \"HEAD now: `$(git rev-parse HEAD)\"
-    git log --oneline -1"
-
-Write-Host "`n=== STEP 4: Dependencies ===" -ForegroundColor Cyan
-$installFlag = if ($ForceInstall) { "1" } else { "0" }
-Invoke-Remote "set -e
-    cd $remotePath
-    prev=`$(cat $commitFile)
-    if [ '$installFlag' = '1' ] || ! git diff --quiet `$prev HEAD -- package-lock.json package.json; then
-        echo 'lockfile changed (or forced) -> npm ci'
-        npm ci
-    else
-        echo 'no dependency changes -> skipping install'
-    fi"
-
-Write-Host "`n=== STEP 5: Build (site stays up on the old build) ===" -ForegroundColor Cyan
-$buildOk = $true
+Write-Host "`n=== Public health check ===" -ForegroundColor Cyan
 try {
-    Invoke-Remote "cd $remotePath && npm run build 2>&1 | tail -15"
+    $r = Invoke-WebRequest -Uri $siteUrl -Method Head -TimeoutSec 30 -UseBasicParsing
+    $status = [int]$r.StatusCode
 } catch {
-    $buildOk = $false
+    $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
 }
-
-if (-not $buildOk) {
-    Write-Host "`nBUILD FAILED - restoring previous build, NOT restarting." -ForegroundColor Red
-    Invoke-Remote "set -e
-        cd $remotePath
-        git checkout --quiet `$(cat $commitFile)
-        rm -rf .next && cp -a $backupPath .next
-        echo 'restored'"
-    Write-Host "Site untouched: $(Test-Site)" -ForegroundColor Yellow
-    exit 1
-}
-
-Write-Host "`n=== STEP 6: Restart ===" -ForegroundColor Cyan
-Invoke-Remote "pm2 restart $pmApp --update-env >/dev/null && echo restarted"
-Start-Sleep -Seconds 10
-
-Write-Host "`n=== STEP 7: Verify ===" -ForegroundColor Cyan
-$status = Test-Site
 Write-Host ("{0} -> HTTP {1}" -f $siteUrl, $status)
-Invoke-Remote "pm2 list --no-color | grep $pmApp"
 
-if ($status -ne 200) {
-    Write-Host "`nVERIFY FAILED (expected 200) - rolling back." -ForegroundColor Red
-    Invoke-Remote "set -e
-        cd $remotePath
-        git checkout --quiet `$(cat $commitFile)
-        rm -rf .next && cp -a $backupPath .next
-        pm2 restart $pmApp --update-env >/dev/null
-        echo 'rolled back'"
-    Start-Sleep -Seconds 8
-    Write-Host ("Site after rollback: {0}" -f (Test-Site)) -ForegroundColor Yellow
+if ($deployExit -ne 0 -or $status -ne 200) {
+    Write-Host "`nDEPLOY FAILED (the script restores the previous build automatically)." -ForegroundColor Red
+    Write-Host "Manual rollback: .\deploy-dashboard.ps1 -Rollback" -ForegroundColor Yellow
     exit 1
 }
 
