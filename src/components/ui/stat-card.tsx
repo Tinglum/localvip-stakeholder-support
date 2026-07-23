@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { cn, formatNumber } from '@/lib/utils'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
@@ -11,6 +12,14 @@ interface StatCardProps {
   icon?: React.ReactNode
   className?: string
   format?: 'number' | 'percent' | 'raw'
+  /**
+   * Where the number leads. When set, the whole card becomes one link — a number
+   * on a dashboard is a question ("which 101 businesses?"), and the answer should
+   * be one click away. Optional: cards that summarise something with no list
+   * behind it (e.g. diagnostics counts) stay non-interactive rather than linking
+   * somewhere that doesn't answer the question.
+   */
+  href?: string
 }
 
 export function StatCard({
@@ -22,6 +31,7 @@ export function StatCard({
   icon,
   className,
   format = 'number',
+  href,
 }: StatCardProps) {
   const displayValue = format === 'number' && typeof value === 'number'
     ? formatNumber(value)
@@ -41,8 +51,15 @@ export function StatCard({
     ? 'text-success-500'
     : 'text-danger-500'
 
-  return (
-    <div className={cn('stat-card', className)}>
+  const card = (
+    <div
+      className={cn(
+        'stat-card h-full',
+        // Only show affordance when the card actually goes somewhere.
+        href && 'transition-shadow hover:shadow-card-hover focus-visible:shadow-card-hover',
+        className,
+      )}
+    >
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-surface-500">{label}</p>
@@ -63,5 +80,19 @@ export function StatCard({
         </div>
       )}
     </div>
+  )
+
+  if (!href) return card
+
+  return (
+    <Link
+      href={href}
+      // The label already says what the number is; naming the destination tells a
+      // screen-reader user where the click goes, which the number alone does not.
+      aria-label={`${label}: ${displayValue}. View details`}
+      className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+    >
+      {card}
+    </Link>
   )
 }

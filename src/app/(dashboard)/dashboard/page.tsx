@@ -393,36 +393,32 @@ function TeamDashboardPage() {
                 </p>
               </div>
 
+              {/* Each headline number links to the thing it counts: the two that
+                  refer to sections further down scroll there, the onboarding count
+                  opens the business list. */}
               <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-2xl border border-surface-200 bg-white/90 p-4 shadow-sm">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
-                    Start here
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-surface-900">{immediateItems.length}</p>
-                  <p className="mt-1 text-sm leading-6 text-surface-600">
-                    {immediateItems.length === 1
+                <SummaryTile
+                  label="Start here"
+                  value={immediateItems.length}
+                  href="#priority-queue"
+                  description={
+                    immediateItems.length === 1
                       ? 'urgent item needs attention first.'
-                      : 'urgent items are waiting for movement first.'}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-surface-200 bg-white/90 p-4 shadow-sm">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
-                    Keep moving
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-surface-900">{openWorkCount}</p>
-                  <p className="mt-1 text-sm leading-6 text-surface-600">
-                    businesses and causes still in active onboarding.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-surface-200 bg-white/90 p-4 shadow-sm">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
-                    Stay informed
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-surface-900">{activityCount}</p>
-                  <p className="mt-1 text-sm leading-6 text-surface-600">
-                    recent updates are listed lower on the page.
-                  </p>
-                </div>
+                      : 'urgent items are waiting for movement first.'
+                  }
+                />
+                <SummaryTile
+                  label="Keep moving"
+                  value={openWorkCount}
+                  href="/crm/businesses"
+                  description="businesses and causes still in active onboarding."
+                />
+                <SummaryTile
+                  label="Stay informed"
+                  value={activityCount}
+                  href="#recent-updates"
+                  description="recent updates are listed lower on the page."
+                />
               </div>
             </div>
 
@@ -464,7 +460,7 @@ function TeamDashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="space-y-3">
+      <div className="scroll-mt-24 space-y-3" id="priority-queue">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Priority queue</p>
           <h2 className="text-2xl font-semibold text-surface-900">Start here before anything else</h2>
@@ -485,16 +481,36 @@ function TeamDashboardPage() {
             value={businessCount}
             subtitle={newBusinessesThisWeek > 0 ? `+${newBusinessesThisWeek} new this week` : 'No new ones this week'}
             icon={<Store className="h-5 w-5" />}
+            href="/crm/businesses"
           />
           <StatCard
             label="Total Causes"
             value={causeCount}
             subtitle={newCausesThisWeek > 0 ? `+${newCausesThisWeek} new this week` : 'No new ones this week'}
             icon={<Heart className="h-5 w-5" />}
+            href="/crm/causes"
           />
-          <StatCard label="Customers" value={consumerCount} subtitle="People signed up" icon={<Users className="h-5 w-5" />} />
-          <StatCard label="Stakeholders" value={stakeholderCount} subtitle="Team & partners" icon={<Users className="h-5 w-5" />} />
-          <StatCard label="QR Codes" value={qrCodeCount} subtitle="Live join codes" icon={<QrCode className="h-5 w-5" />} />
+          <StatCard
+            label="Customers"
+            value={consumerCount}
+            subtitle="People signed up"
+            icon={<Users className="h-5 w-5" />}
+            href="/crm/consumers"
+          />
+          <StatCard
+            label="Stakeholders"
+            value={stakeholderCount}
+            subtitle="Team & partners"
+            icon={<Users className="h-5 w-5" />}
+            href="/crm/stakeholders"
+          />
+          <StatCard
+            label="QR Codes"
+            value={qrCodeCount}
+            subtitle="Live join codes"
+            icon={<QrCode className="h-5 w-5" />}
+            href="/qr/mine"
+          />
         </div>
       </div>
 
@@ -542,7 +558,7 @@ function TeamDashboardPage() {
       </div>
 
       <div className="space-y-3">
-        <div className="space-y-1">
+        <div className="scroll-mt-24 space-y-1" id="recent-updates">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Updates and progress</p>
           <h2 className="text-2xl font-semibold text-surface-900">See what changed and where work is sitting</h2>
           <p className="max-w-3xl text-sm leading-6 text-surface-500">
@@ -739,6 +755,51 @@ function TeamDashboardPage() {
 }
 
 const OPEN_PIPELINE_STAGES = new Set(['lead', 'contacted', 'interested', 'in_progress'])
+
+/**
+ * One headline number in the welcome panel, linked to whatever it counts.
+ *
+ * Renders an <a> for in-page anchors and a next/link for route changes: Next's
+ * client router does not scroll to a hash on the current route, so a Link would
+ * make "#priority-queue" do nothing.
+ */
+function SummaryTile({
+  label,
+  value,
+  description,
+  href,
+}: {
+  label: string
+  value: number
+  description: string
+  href: string
+}) {
+  const isAnchor = href.startsWith('#')
+  const className =
+    'block rounded-2xl border border-surface-200 bg-white/90 p-4 shadow-sm transition-shadow hover:shadow-card-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
+
+  const body = (
+    <>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-surface-900">{value}</p>
+      <p className="mt-1 text-sm leading-6 text-surface-600">{description}</p>
+    </>
+  )
+
+  if (isAnchor) {
+    return (
+      <a href={href} className={className} aria-label={`${label}: ${value}. ${description}`}>
+        {body}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={href} className={className} aria-label={`${label}: ${value}. ${description}`}>
+      {body}
+    </Link>
+  )
+}
 
 function withinDays(date: string | null | undefined, days: number) {
   if (!date) return false
