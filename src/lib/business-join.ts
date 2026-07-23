@@ -3,6 +3,7 @@ import type { Business, Profile, QrCode } from '@/lib/types/database'
 import { getBusinessOfferTitle, getBusinessPortalData } from '@/lib/business-portal'
 import { BUSINESS_ACCENT_DARK_HEX, BUSINESS_ACCENT_HEX } from '@/lib/business-theme'
 import { normalizeDomain, slugify } from '@/lib/utils'
+import { isAdminProfile } from '@/lib/stakeholder-access'
 
 export interface BusinessJoinCaptureData {
   join_slug?: string
@@ -270,7 +271,11 @@ export function buildBusinessJoinResource(
 export function canManageBusinessJoin(profile: Profile | null | undefined, business: Business | null | undefined) {
   if (!profile || !business) return false
 
-  if (profile.role === 'super_admin' || profile.role === 'internal_admin') {
+  // Must include 'admin': mapQaRole maps every QA admin to { role: 'admin',
+  // roleSubtype: 'super' | 'internal' } and never returns 'super_admin', so the
+  // two literals below matched nobody on a QA session and admins fell through to
+  // the ownership checks below.
+  if (isAdminProfile(profile) || profile.role === 'super_admin' || profile.role === 'internal_admin') {
     return true
   }
 

@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { setQaSessionCookies } from '@/lib/auth/qa-auth'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const session = await getAuthenticatedSession()
 
   if (session) {
-    return NextResponse.json({
+    const response = NextResponse.json({
       authenticated: true,
       source: session.source,
       profile: session.profile,
@@ -14,6 +17,16 @@ export async function GET() {
       localProfileId: session.localProfileId,
       viewingAs: session.viewingAs || null,
     })
+
+    // The session resolver refreshed an expired access token. Persist it here --
+    // this is a Route Handler, the only place cookies may be written. Without this
+    // the refresh would repeat on every request until the refresh token itself
+    // expired, and the client would keep seeing a stale expiresAt.
+    if (session.qaSessionRefreshed && session.qaSession) {
+      setQaSessionCookies(response, session.qaSession)
+    }
+
+    return response
   }
 
   return NextResponse.json({

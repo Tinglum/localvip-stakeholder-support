@@ -8,7 +8,7 @@ import {
   type QaSession,
 } from '@/lib/auth/qa-auth'
 import { getDemoProfileByEmail, getDemoSessionEmailFromCookieStore } from '@/lib/auth/demo-auth'
-import { fetchQaUserProfile } from '@/lib/auth/qa-api'
+import { fetchQaUserProfile, resolveQaSessionWithRefresh } from '@/lib/auth/qa-api'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
 import { isSuperAdminRole, resolveUserDisplayName } from '@/lib/auth/display-name'
@@ -23,6 +23,15 @@ export interface ResolvedAuthSession {
   source: AuthSource
   qaClaims?: QaAuthClaims
   qaSession?: QaSession
+  /**
+   * Set when the access token was refreshed while resolving this session, meaning
+   * the auth cookies are now stale and should be rewritten with `qaSession`.
+   *
+   * Only a Route Handler or Server Action may set cookies, so persistence is left
+   * to the caller (see /api/auth/session). A Server Component still gets a working
+   * session in-process even if nothing persists it.
+   */
+  qaSessionRefreshed?: boolean
   viewingAs?: {
     targetUserId: number
     targetEmail: string
@@ -192,7 +201,11 @@ function buildQaSessionProfile(
 export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | null> {
   const cookieStore = cookies()
   const demoSessionEmail = getDemoSessionEmailFromCookieStore(cookieStore)
-  const qaSession = getQaSessionFromCookieStore(cookieStore)
+  // Refresh an expired access token rather than treating it as "no session".
+  // Previously an expired token logged the user straight out to QA even though a
+  // valid refresh token was sitting in the cookie.
+  const resolved = await resolveQaSessionWithRefresh(cookieStore)
+  const qaSession = resolved?.session ?? null
 
   if (!demoSessionEmail && !qaSession) {
     return null
@@ -237,6 +250,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
       source: 'qa',
       qaClaims: qaSession.claims,
       qaSession,
+      qaSessionRefreshed: resolved?.refreshed ?? false,
     }
 
     const viewAs = await getViewAsPayload(cookieStore)

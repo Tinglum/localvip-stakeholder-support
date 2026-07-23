@@ -92,7 +92,7 @@ function readScopeTokens(value: unknown): string[] {
     .filter(Boolean)
 }
 
-function mergeScopeLists(...scopeLists: unknown[]) {
+export function mergeScopeLists(...scopeLists: unknown[]) {
   const result: string[] = []
   const seen = new Set<string>()
 
@@ -314,7 +314,7 @@ function matchesSysadminSignal(signal: string) {
     || (signal.includes('sys') && signal.includes('admin'))
 }
 
-function normalizeQaClaims(accessToken: string, idToken?: string | null): QaAuthClaims {
+export function normalizeQaClaims(accessToken: string, idToken?: string | null): QaAuthClaims {
   const idPayload = idToken ? parseJwtPayload(idToken) : {}
   const accessPayload = parseJwtPayload(accessToken)
   const merged = { ...accessPayload, ...idPayload }
@@ -944,13 +944,27 @@ function readCookieValue(source: CookieSource, name: string) {
   return source.get(name)?.value || null
 }
 
-export function getQaSessionFromCookieStore(cookieStore: CookieSource): QaSession | null {
+export function getQaSessionFromCookieStore(
+  cookieStore: CookieSource,
+  options?: {
+    /**
+     * Return the session even if the access token has expired.
+     *
+     * Only for the refresh path (see resolveQaSessionWithRefresh): an expired
+     * access token is recoverable when a refresh token is present, and treating it
+     * as "no session" is what logged people out mid-work. Every other caller must
+     * leave this off so an expired token is never treated as valid.
+     */
+    allowExpired?: boolean
+  },
+): QaSession | null {
   const accessToken = readCookieValue(cookieStore, QA_COOKIE_NAMES.accessToken)
   const expiresAtRaw = readCookieValue(cookieStore, QA_COOKIE_NAMES.expiresAt)
   if (!accessToken || !expiresAtRaw) return null
 
   const expiresAt = Number.parseInt(expiresAtRaw, 10)
-  if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
+  if (!Number.isFinite(expiresAt)) return null
+  if (!options?.allowExpired && expiresAt <= Math.floor(Date.now() / 1000)) {
     return null
   }
 

@@ -1,5 +1,12 @@
 import { cookies } from 'next/headers'
-import { getQaSessionFromCookieStore, QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
+import {
+  getQaSessionFromCookieStore,
+  hasRequiredQaScopes,
+  mergeScopeLists,
+  normalizeQaClaims,
+  QA_AUTH_CONFIG,
+  type QaSession,
+} from '@/lib/auth/qa-auth'
 
 type CachedQaToken = {
   accessToken: string
@@ -15,7 +22,11 @@ function buildQaApiUrl(path: string) {
 }
 
 export async function getQaAccessToken() {
-  const session = getQaSessionFromCookieStore(cookies())
+  // Read with allowExpired so the refresh cache is still consulted once the cookie
+  // has expired. With the strict read this returned null in exactly that window --
+  // between a refresh and the cookies being persisted -- and outbound calls went
+  // out unauthenticated instead of using the freshly refreshed token.
+  const session = getQaSessionFromCookieStore(cookies(), { allowExpired: true })
   const refreshToken = session?.refreshToken || null
   const now = Math.floor(Date.now() / 1000)
 
@@ -26,7 +37,59 @@ export async function getQaAccessToken() {
     }
   }
 
+  // May be an expired token: that yields a 401, which fetchQaApi already handles by
+  // refreshing and retrying, so it self-heals.
   return session?.accessToken || null
+}
+
+/**
+ * Resolve the QA session, refreshing the access token if it has expired.
+ *
+ * Why this exists: getQaSessionFromCookieStore returns null the moment the access
+ * token expires, which made getAuthenticatedSession report "not authenticated" and
+ * bounced the user to the QA login — while a perfectly good refresh token sat in
+ * the cookie. The existing refresh only ran on a 401 from an API call, so it never
+ * covered session resolution itself.
+ *
+ * Fails safe: any refresh problem returns null, i.e. exactly the previous
+ * behaviour (log in again). It can only turn a forced logout into a working
+ * session, never the reverse.
+ *
+ * `refreshed` tells the caller the cookies need rewriting. Only a Route Handler or
+ * Server Action may set cookies, so persistence is the caller's job — a Server
+ * Component still benefits from the refreshed token in-process, and the cache in
+ * getQaAccessToken keeps that token usable until a route handler persists it.
+ */
+export async function resolveQaSessionWithRefresh(
+  cookieStore: Parameters<typeof getQaSessionFromCookieStore>[0],
+): Promise<{ session: QaSession; refreshed: boolean } | null> {
+  const live = getQaSessionFromCookieStore(cookieStore)
+  if (live) return { session: live, refreshed: false }
+
+  // Expired (or unreadable). Only an expired-but-refreshable session is recoverable.
+  const expired = getQaSessionFromCookieStore(cookieStore, { allowExpired: true })
+  if (!expired?.refreshToken) return null
+
+  try {
+    const next = await refreshQaAccessToken(expired.refreshToken)
+    const claims = normalizeQaClaims(next.accessToken, expired.idToken)
+    const grantedScopes = mergeScopeLists(expired.grantedScopes.join(' '), claims.scopes)
+    if (grantedScopes.length === 0 || !hasRequiredQaScopes(grantedScopes)) return null
+
+    return {
+      session: {
+        ...expired,
+        accessToken: next.accessToken,
+        expiresAt: next.expiresAt,
+        claims,
+        grantedScopes,
+      },
+      refreshed: true,
+    }
+  } catch {
+    // Refresh token rejected/expired — genuinely needs a fresh login.
+    return null
+  }
 }
 
 async function refreshQaAccessToken(refreshToken: string) {
@@ -74,7 +137,9 @@ async function refreshQaAccessToken(refreshToken: string) {
   } satisfies CachedQaToken
 
   qaRefreshTokenCache.set(refreshToken, next)
-  return next.accessToken
+  // Returns the whole token record, not just the string: the session resolver needs
+  // expiresAt to rebuild a valid session (and to write the cookie).
+  return next
 }
 
 export async function fetchQaApi(path: string, init?: RequestInit) {
@@ -103,10 +168,10 @@ export async function fetchQaApi(path: string, init?: RequestInit) {
   }
 
   try {
-    const refreshedAccessToken = await refreshQaAccessToken(session.refreshToken)
+    const refreshed = await refreshQaAccessToken(session.refreshToken)
     return fetch(url, {
       ...init,
-      headers: makeHeaders(refreshedAccessToken),
+      headers: makeHeaders(refreshed.accessToken),
       cache: 'no-store',
     })
   } catch {
