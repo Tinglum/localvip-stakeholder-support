@@ -761,6 +761,31 @@ export function getQaPostLogoutRedirectUri(origin?: string) {
   return `${appOrigin}/login`
 }
 
+/**
+ * Is this id_token still usable as an `id_token_hint` for logout?
+ *
+ * IdentityServer identifies the client from the hint. Without a usable one it
+ * cannot validate post_logout_redirect_uri, so it returns an empty
+ * PostLogoutRedirectUri and the backend's fallback sends the browser to
+ * "~/Dashboard" — which needs auth and lands on QA's own login page. That is the
+ * "logging out dumps me in QA" symptom.
+ *
+ * The dashboard client's IdentityTokenLifetime is 3600s, so the hint goes stale
+ * about an hour into a session — i.e. essentially always, in practice.
+ */
+export function isIdTokenUsableAsHint(idToken: string | null | undefined): boolean {
+  if (!idToken) return false
+  try {
+    const payload = parseJwtPayload(idToken)
+    const exp = typeof payload.exp === 'number' ? payload.exp : null
+    if (exp === null) return true // no expiry claim — let the server decide
+    // Small grace so a token expiring mid-redirect is not treated as valid.
+    return exp > Math.floor(Date.now() / 1000) + 30
+  } catch {
+    return false
+  }
+}
+
 export function getQaLogoutUrl(origin?: string, idToken?: string | null) {
   const postLogoutRedirectUri = getQaPostLogoutRedirectUri(origin)
   const url = new URL('/connect/endsession', QA_AUTH_CONFIG.baseUrl)

@@ -11,6 +11,8 @@ import {
 type CachedQaToken = {
   accessToken: string
   expiresAt: number
+  /** Refreshed id_token, when the server returned one. Null if it did not. */
+  idToken?: string | null
 }
 
 const qaRefreshTokenCache = new Map<string, CachedQaToken>()
@@ -72,7 +74,10 @@ export async function resolveQaSessionWithRefresh(
 
   try {
     const next = await refreshQaAccessToken(expired.refreshToken)
-    const claims = normalizeQaClaims(next.accessToken, expired.idToken)
+    // Prefer a freshly issued id_token; keep the old one when the server did not
+    // send a new one, since a stale hint is still better than none.
+    const idToken = next.idToken || expired.idToken
+    const claims = normalizeQaClaims(next.accessToken, idToken)
     const grantedScopes = mergeScopeLists(expired.grantedScopes.join(' '), claims.scopes)
     if (grantedScopes.length === 0 || !hasRequiredQaScopes(grantedScopes)) return null
 
@@ -81,6 +86,7 @@ export async function resolveQaSessionWithRefresh(
         ...expired,
         accessToken: next.accessToken,
         expiresAt: next.expiresAt,
+        idToken,
         claims,
         grantedScopes,
       },
@@ -118,6 +124,7 @@ async function refreshQaAccessToken(refreshToken: string) {
 
   const json = await response.json().catch(() => null) as {
     access_token?: string
+    id_token?: string
     expires_in?: number | string
     error?: string
     error_description?: string
@@ -134,6 +141,11 @@ async function refreshQaAccessToken(refreshToken: string) {
   const next = {
     accessToken: String(json.access_token),
     expiresAt,
+    // Capture a refreshed id_token when the server sends one. It is the
+    // id_token_hint used at logout, and its lifetime is only an hour — letting it
+    // go stale is what makes IdentityServer refuse to redirect back to us on
+    // sign-out (see isIdTokenUsableAsHint).
+    idToken: typeof json.id_token === 'string' && json.id_token ? json.id_token : null,
   } satisfies CachedQaToken
 
   qaRefreshTokenCache.set(refreshToken, next)
