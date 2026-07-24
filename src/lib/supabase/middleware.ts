@@ -28,6 +28,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/forgot-password')
 
   const isPublicRoute = pathname === '/' ||
+    // Invite auto-login lands here before any session exists.
+    pathname.startsWith('/welcome') ||
     pathname.startsWith('/demo') ||
     pathname.startsWith('/r/') ||
     pathname.startsWith('/join/') ||
