@@ -37,6 +37,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return
       }
 
+      // Invited owner's first login: force them to set their own password before
+      // anything else. The account still carries the temporary password until they
+      // do. /set-password lives outside this layout, so a full navigation is correct.
+      if (session.forcePasswordReset === true && window.location.pathname !== '/set-password') {
+        window.location.assign('/set-password')
+        return
+      }
+
       if (!cancelled) {
         setProfile(normalizeBusinessProfile(session.profile as Profile, []))
         setLocalProfileId(typeof session.localProfileId === 'string' ? session.localProfileId : null)

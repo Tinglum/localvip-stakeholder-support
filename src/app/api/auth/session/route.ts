@@ -16,6 +16,9 @@ export async function GET() {
       expiresAt: session.qaSession?.expiresAt || null,
       localProfileId: session.localProfileId,
       viewingAs: session.viewingAs || null,
+      // Surfaced for the first-login gate in the dashboard layout.
+      forcePasswordReset:
+        (session.profile.metadata as Record<string, unknown> | null)?.qa_force_password_reset === true,
     })
 
     // The session resolver refreshed an expired access token. Persist it here --

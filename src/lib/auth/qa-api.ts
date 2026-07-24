@@ -300,6 +300,8 @@ export interface QaUserProfile {
   sharedURL: string | null
   referralLink: string | null
   isStripeOnboardingComplete: boolean
+  /** True until the invited owner has set their own password (first login). */
+  forcePasswordReset?: boolean
 }
 
 export interface QaUserProfileUpdateInput {
@@ -414,6 +416,15 @@ export async function changeQaUserPassword(payload: QaUserChangePasswordInput) {
   })
 
   return parseQaResponse(res, 'The QA password change request failed.')
+}
+
+export async function setQaInitialPassword(newPassword: string) {
+  const res = await fetchQaApi('/api/dashboard/v1/User/set-initial-password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ newPassword }),
+  })
+  return parseQaResponse(res, 'The password could not be set.')
 }
 
 export async function forgotQaUserPassword(payload: QaUserForgotPasswordInput) {

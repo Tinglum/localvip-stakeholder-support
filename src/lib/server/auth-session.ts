@@ -186,6 +186,9 @@ function mergeQaProfileIntoSessionProfile(
       qa_country: qaProfile?.country || null,
       qa_zip_code: qaProfile?.zipCode || null,
       qa_referral_synced_at: new Date().toISOString(),
+      // First-login flag from the QA profile. The layout reads this to force the
+      // invited owner through /set-password before using the dashboard.
+      qa_force_password_reset: qaProfile?.forcePasswordReset === true,
     },
   }
 }
