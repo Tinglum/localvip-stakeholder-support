@@ -70,6 +70,42 @@ function splitProducts(value: string) {
     .filter(Boolean)
 }
 
+type SetupSnapshotInput = {
+  name: string
+  category: string
+  description: string
+  avgTicket: string
+  products: string
+  logoUrl: string | null
+  coverUrl: string | null
+  logoFileName: string | null
+  coverFileName: string | null
+  captureHeadline: string
+  captureDescription: string
+  captureValue: string
+  cashbackPercent: number
+  supportedCauseId: string | null
+}
+
+function serializeSetupSnapshot(input: SetupSnapshotInput) {
+  return JSON.stringify({
+    name: input.name,
+    category: input.category,
+    description: input.description,
+    avgTicket: input.avgTicket,
+    products: input.products,
+    logoUrl: input.logoUrl,
+    coverUrl: input.coverUrl,
+    logoFile: input.logoFileName,
+    coverFile: input.coverFileName,
+    captureHeadline: input.captureHeadline,
+    captureDescription: input.captureDescription,
+    captureValue: input.captureValue,
+    cashbackPercent: input.cashbackPercent,
+    supportedCauseId: input.supportedCauseId,
+  })
+}
+
 export function BusinessSetupWizardPage() {
   const { profile } = useAuth()
   const searchParams = useSearchParams()
@@ -276,7 +312,7 @@ export function BusinessSetupWizardPage() {
     setCaptureOfferId(captureOffer?.id || null)
     setCashbackOfferId(cashbackOffer?.id || null)
     setSupportedCauseId(business.linked_cause_id || null)
-    snapshotRef.current = JSON.stringify({
+    snapshotRef.current = serializeSetupSnapshot({
       name: business.name || '',
       category: business.category || '',
       description: business.public_description || portal.description || '',
@@ -284,6 +320,8 @@ export function BusinessSetupWizardPage() {
       products: (business.products_services || []).join(', '),
       logoUrl: business.logo_url || portal.logo_url || null,
       coverUrl: business.cover_photo_url || portal.cover_photo_url || null,
+      logoFileName: null,
+      coverFileName: null,
       captureHeadline: captureOffer?.headline || '',
       captureDescription: captureOffer?.description || '',
       captureValue: captureOffer?.value_label || '',
@@ -418,7 +456,7 @@ export function BusinessSetupWizardPage() {
 
       setLogoUrl(nextLogoUrl)
       setCoverUrl(nextCoverUrl)
-      snapshotRef.current = JSON.stringify({
+      snapshotRef.current = serializeSetupSnapshot({
         name,
         category,
         description,
@@ -426,6 +464,8 @@ export function BusinessSetupWizardPage() {
         products,
         logoUrl: nextLogoUrl,
         coverUrl: nextCoverUrl,
+        logoFileName: null,
+        coverFileName: null,
         captureHeadline,
         captureDescription,
         captureValue,
@@ -471,7 +511,7 @@ export function BusinessSetupWizardPage() {
   React.useEffect(() => {
     if (!business) return
 
-    const snapshot = JSON.stringify({
+    const snapshot = serializeSetupSnapshot({
       name,
       category,
       description,
@@ -479,8 +519,8 @@ export function BusinessSetupWizardPage() {
       products,
       logoUrl,
       coverUrl,
-      logoFile: logoFile?.name || null,
-      coverFile: coverFile?.name || null,
+      logoFileName: logoFile?.name || null,
+      coverFileName: coverFile?.name || null,
       captureHeadline,
       captureDescription,
       captureValue,
@@ -633,84 +673,115 @@ export function BusinessSetupWizardPage() {
         title="Business Setup"
         description="Open any step, finish the requirements, then complete onboarding for live review."
         actions={
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button
-              type="button"
-              onClick={() => void activatePortal()}
-              disabled={activating}
-              className={readyToActivate ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-600 text-white hover:bg-red-700'}
-            >
-              {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : readyToActivate ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-              {activating ? 'Completing...' : 'COMPLETE ONBOARDING'}
-            </Button>
-            <div className="flex items-center gap-2 text-sm text-surface-500">
+          <div className="flex items-center gap-2 text-sm text-surface-500">
             {saveState === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : saveState === 'saved' ? <CheckCircle2 className="h-4 w-4 text-success-600" /> : null}
             <span>{saveState === 'saving' ? 'Saving changes...' : saveState === 'saved' ? 'All changes saved' : saveState === 'error' ? 'Autosave failed' : 'Changes save automatically'}</span>
-            </div>
           </div>
         }
       />
 
       <Card className="overflow-hidden border-surface-200">
         <CardContent className="p-0">
-          <div className="flex flex-col gap-4 border-b border-surface-200 bg-surface-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Setup progress</p>
-              <p className="mt-1 text-sm font-semibold text-surface-950">
-                {completedStepsCount} of {setupState.totalSteps} steps complete
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="h-2 w-36 overflow-hidden rounded-full bg-surface-200 sm:w-52">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-success-500 to-brand-500 transition-all"
-                  style={{ width: `${completionRatio * 100}%` }}
-                />
+          <div className="border-b border-surface-200 bg-surface-50 px-5 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Setup progress</p>
+                <p className="mt-1 text-sm font-semibold text-surface-950">
+                  {completedStepsCount} of {setupState.totalSteps} steps complete
+                </p>
               </div>
-              <span className="text-sm font-semibold text-surface-700">{Math.round(completionRatio * 100)}%</span>
+              <div className="flex items-center gap-3 sm:min-w-64 sm:justify-end">
+                <div
+                  className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-200 sm:max-w-64"
+                  role="progressbar"
+                  aria-label="Onboarding completion"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(completionRatio * 100)}
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-success-500 via-teal-500 to-brand-500 transition-all duration-500"
+                    style={{ width: `${completionRatio * 100}%` }}
+                  />
+                </div>
+                <span className="w-12 text-right text-sm font-bold tabular-nums text-surface-800">{Math.round(completionRatio * 100)}%</span>
+              </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <div className="grid min-w-[820px] grid-cols-6">
+          <div className="overflow-x-auto px-3 py-5 sm:px-5">
+            <ol className="flex min-w-[840px] items-start sm:min-w-0">
               {STEPS.map((item, index) => {
                 const complete = getStepCompletion(item.key)
                 const isActive = step === item.key
+                const statusLabel = complete ? 'Complete' : isActive ? 'Current step' : 'Open step'
                 return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setStep(item.key)}
-                    className={`relative flex min-h-28 flex-col items-center justify-center gap-2 border-r border-surface-200 px-3 py-4 text-center transition-colors last:border-r-0 ${
-                      isActive
-                        ? 'bg-brand-50 text-brand-800'
-                        : complete
-                          ? 'bg-white text-success-800 hover:bg-success-50'
-                          : 'bg-white text-surface-400'
-                    } hover:bg-surface-50`}
-                  >
-                    <span className={`flex h-9 w-9 items-center justify-center rounded-full border-2 ${
-                      complete
-                        ? 'border-success-600 bg-success-600 text-white'
-                        : isActive
-                          ? 'border-brand-600 bg-brand-600 text-white'
-                          : 'border-surface-300 bg-white'
-                    }`}>
-                      {complete ? <CheckCircle2 className="h-4 w-4" /> : item.icon}
-                    </span>
-                    <span className="text-sm font-semibold">{item.label}</span>
-                    <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                      {complete ? 'Complete' : isActive ? `Step ${index + 1}` : 'Open step'}
-                    </span>
-                  </button>
+                  <li key={item.key} className="relative flex min-w-[140px] flex-1 justify-center">
+                    {index < STEPS.length - 1 ? (
+                      <span
+                        aria-hidden="true"
+                        className={`absolute left-1/2 right-[-50%] top-6 h-1 -translate-y-1/2 ${complete ? 'bg-success-500' : 'bg-surface-200'}`}
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setStep(item.key)}
+                      className={`relative z-10 flex w-full flex-col items-center gap-2 rounded-xl px-2 py-1 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+                        isActive ? 'bg-brand-50 text-brand-800' : complete ? 'text-success-800 hover:bg-success-50' : 'text-surface-500 hover:bg-surface-50'
+                      }`}
+                      aria-current={isActive ? 'step' : undefined}
+                      aria-label={`${item.label}: ${statusLabel}. Open this step.`}
+                    >
+                      <span className={`flex h-12 w-12 items-center justify-center rounded-full border-2 bg-white shadow-sm ${
+                        complete
+                          ? 'border-success-600 bg-success-600 text-white'
+                          : isActive
+                            ? 'border-brand-600 bg-brand-600 text-white ring-4 ring-brand-100'
+                            : 'border-surface-300 text-surface-500'
+                      }`}>
+                        {complete ? <CheckCircle2 className="h-5 w-5" /> : isActive ? item.icon : <span className="text-sm font-bold">{index + 1}</span>}
+                      </span>
+                      <span className="max-w-[130px] text-xs font-bold leading-4 sm:text-sm">{item.label}</span>
+                      <span className={`text-[10px] font-semibold uppercase tracking-[0.12em] ${complete ? 'text-success-700' : isActive ? 'text-brand-700' : 'text-surface-400'}`}>
+                        {statusLabel}
+                      </span>
+                    </button>
+                  </li>
                 )
               })}
-            </div>
+            </ol>
           </div>
         </CardContent>
       </Card>
 
       {saveError ? <p className="text-sm text-danger-600">{saveError}</p> : null}
+
+      <Card className={setupState.isComplete ? 'border-success-200 bg-success-50/60' : 'border-brand-200 bg-gradient-to-r from-brand-50 via-white to-white'}>
+        <CardContent className="flex flex-col gap-5 px-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-start gap-4">
+            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${setupState.isComplete ? 'bg-success-600 text-white' : 'bg-brand-600 text-white'}`}>
+              {setupState.isComplete ? <CheckCircle2 className="h-6 w-6" /> : <Rocket className="h-6 w-6" />}
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold text-surface-950">{setupState.isComplete ? 'Onboarding complete' : 'Finish your onboarding'}</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-600">
+                {setupState.isComplete
+                  ? 'All setup requirements are complete and your live-review request has been submitted.'
+                  : 'Click the button to check every requirement. Any missing steps will be highlighted and opened for you.'}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            onClick={() => void activatePortal()}
+            disabled={activating}
+            className={`h-12 shrink-0 px-5 font-bold ${setupState.isComplete || readyToActivate ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
+          >
+            {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : setupState.isComplete || readyToActivate ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            {activating ? 'Completing...' : 'COMPLETE ONBOARDING'}
+          </Button>
+        </CardContent>
+      </Card>
 
       {completionAttempted && missingSetupSteps.length > 0 ? (
         <Card className="border-red-200 bg-red-50">

@@ -124,7 +124,7 @@ export function isBusinessSetupStepComplete(key: BusinessSetupStepKey, signals: 
     case 'stripe':
       return signals.stripeConnected
     case 'activate':
-      return signals.liveReviewSubmitted
+      return hasCompletedLiveReviewRequirements(signals) && signals.liveReviewSubmitted
     default:
       return false
   }
