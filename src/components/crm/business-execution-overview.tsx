@@ -967,7 +967,14 @@ export function BusinessExecutionOverview({
                         </div>
                       )
                     }
-                    return filtered.map((item: GeneratedMaterial) => (
+                    return filtered.map((item: GeneratedMaterial) => {
+                      const assetKind = typeof item.metadata?.assetKind === 'string' ? item.metadata.assetKind : null
+                      const assetLabel = assetKind === 'customer_capture'
+                        ? '100-list capture'
+                        : assetKind === 'network_referral'
+                          ? 'Network referral'
+                          : null
+                      return (
                       <div key={item.id} className="rounded-xl border border-surface-200 bg-white px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
@@ -977,6 +984,7 @@ export function BusinessExecutionOverview({
                               {item.version_number > 1 ? (
                                 <Badge variant="outline">v{item.version_number}</Badge>
                               ) : null}
+                              {assetLabel ? <Badge variant="info">{assetLabel}</Badge> : null}
                             </div>
                           </div>
                           <Badge variant={item.generation_status === 'generated' ? 'success' : 'danger'}>
@@ -1002,7 +1010,8 @@ export function BusinessExecutionOverview({
                           ) : null}
                         </div>
                       </div>
-                    ))
+                      )
+                    })
                   })()}
                 </CardContent>
               </Card>

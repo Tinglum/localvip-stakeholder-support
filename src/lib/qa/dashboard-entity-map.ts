@@ -549,6 +549,13 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
   },
   generated_materials: (row) => {
     row.tags = csvToArray(row.tags)
+    if (typeof row.metadata === 'string' && row.metadata.trim()) {
+      try {
+        row.metadata = JSON.parse(row.metadata)
+      } catch {
+        row.metadata = null
+      }
+    }
     // The UI calls library_folder.replace(); backend can send null.
     if (row.library_folder == null) row.library_folder = ''
     // Backend GeneratedMaterialController emits completed/error/pending; the
