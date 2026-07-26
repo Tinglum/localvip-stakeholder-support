@@ -10,6 +10,7 @@ import {
 } from '@/lib/server/stakeholder-lifecycle'
 import {
   generateMaterialsForStakeholder,
+  ensureStakeholderCodesAndQrCode,
   listAutoGenerationTemplatesForStakeholder,
   upsertStakeholderCodes,
   regenerateAllForStakeholder,
@@ -19,7 +20,7 @@ import { computeBusinessExecutionSteps, computeBusinessStageFromSteps } from '@/
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { getQaAccountIdFromLocal } from '@/lib/server/qa-dashboard-shared'
-import { ensureQaBusinessStakeholderContext } from '@/lib/server/qa-business-stakeholders'
+import { ensureQaBusinessReferralAssets } from '@/lib/server/qa-business-stakeholders'
 import type { Business, OnboardingFlow, OnboardingStep, Profile, QrCode, Stakeholder, StakeholderCode } from '@/lib/types/database'
 
 export const runtime = 'nodejs'
@@ -33,6 +34,9 @@ const actionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('generate_materials'),
+  }),
+  z.object({
+    action: z.literal('ensure_referral_assets'),
   }),
   z.object({
     action: z.literal('list_generation_templates'),
@@ -210,29 +214,25 @@ async function handleQaAction(
   businessId: string,
   action: z.infer<typeof actionSchema>,
 ): Promise<NextResponse> {
-  // Resolve the QA stakeholder for this business (one stakeholder per business)
-  let stakeholderId: string | null = null
   try {
-    const context = await ensureQaBusinessStakeholderContext(businessId)
-    stakeholderId = String(context.stakeholder.id)
-  } catch {
-    // Non-fatal — fall through; codes/templates calls may not need a stakeholder
-  }
-
-  try {
-    if (action.action === 'save_codes') {
-      if (!stakeholderId) return NextResponse.json({ error: 'No stakeholder for this business yet.' }, { status: 404 })
-      const res = await fetchQaApi('/api/dashboard/v1/StakeholderCode', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          stakeholderId,
-          referralCode: action.referralCode,
-          connectionCode: action.connectionCode,
-        }),
+    if (action.action === 'ensure_referral_assets') {
+      const referralAssets = await ensureQaBusinessReferralAssets(businessId)
+      return NextResponse.json({
+        success: true,
+        codes: referralAssets.codes,
+        qrCode: referralAssets.qrCode,
+        joinUrl: referralAssets.codes.joinUrl,
       })
-      const result = await parseQaResponse<unknown>(res, 'Failed to save codes.')
-      return NextResponse.json({ success: true, result })
+    }
+
+    if (action.action === 'save_codes') {
+      const referralAssets = await ensureQaBusinessReferralAssets(businessId)
+      return NextResponse.json({
+        success: true,
+        codes: referralAssets.codes,
+        qrCode: referralAssets.qrCode,
+        message: 'QA business codes are assigned automatically from the business referral code.',
+      })
     }
 
     if (action.action === 'list_generation_templates') {
@@ -395,6 +395,15 @@ export async function POST(
       )
 
       return NextResponse.json({ success: true, result })
+    }
+
+    if (parsed.data.action === 'ensure_referral_assets') {
+      const result = await ensureStakeholderCodesAndQrCode(
+        context.supabase,
+        context.stakeholder.id,
+        context.localProfileId,
+      )
+      return NextResponse.json({ success: true, ...result })
     }
 
     if (parsed.data.action === 'list_generation_templates') {

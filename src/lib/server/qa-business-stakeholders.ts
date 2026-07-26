@@ -1,5 +1,5 @@
 import type { QaBusinessDetail } from '@/lib/crm-api'
-import type { Business, Stakeholder } from '@/lib/types/database'
+import type { Business } from '@/lib/types/database'
 import {
   BusinessJoinResource,
   getBusinessJoinDisplayUrl,
@@ -8,28 +8,9 @@ import {
   type BusinessJoinQrAppearance,
 } from '@/lib/business-join'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
-import { buildStakeholderJoinUrl } from '@/lib/material-engine'
 import { sanitizeStakeholderCodeValue } from '@/lib/stakeholder-codes'
 import { buildQaAccountMetadata, buildQaBusinessLogoUrl, joinAddress } from '@/lib/server/qa-dashboard-shared'
-import { generateShortCode, slugify } from '@/lib/utils'
-
-interface QaStakeholderRecord {
-  id: string | number
-  name?: string | null
-  metadata?: unknown
-  businessAccountId?: string | number | null
-}
-
-interface QaStakeholderCodeRecord {
-  id?: string | number | null
-  stakeholderId?: string | number | null
-  referralCode?: string | null
-  connectionCode?: string | null
-  joinUrl?: string | null
-  referral_code?: string | null
-  connection_code?: string | null
-  join_url?: string | null
-}
+import { slugify } from '@/lib/utils'
 
 interface QaOfferRecord {
   id?: string | number | null
@@ -47,7 +28,37 @@ interface QaOfferRecord {
   status?: string | null
 }
 
+interface QaQrCodeRecord {
+  id?: string | number | null
+  code?: string | null
+  targetUrl?: string | null
+  target_url?: string | null
+  qrImageUrl?: string | null
+  qr_image_url?: string | null
+  metadata?: unknown
+}
+
 const DEFAULT_JOIN_FRAME = 'GET MY OFFER'
+const qaReferralAssetPromises = new Map<string, Promise<QaBusinessReferralAssets>>()
+
+export interface QaBusinessReferralAssets {
+  business: QaBusinessDetail
+  codes: {
+    id: null
+    stakeholderId: null
+    referralCode: string
+    connectionCode: string
+    joinUrl: string
+    branchReferralUrl: string | null
+  }
+  qrCode: {
+    id: string
+    code: string | null
+    targetUrl: string
+    qrImageUrl: string | null
+    logoUrl: string | null
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -145,124 +156,133 @@ function normalizeAppearance(
   }
 }
 
-async function fetchQaStakeholderByBusinessId(businessId: string) {
-  const stakeholderRes = await fetchQaApi(`/api/dashboard/v1/Stakeholder?businessAccountId=${encodeURIComponent(businessId)}`)
-  const stakeholderJson = await parseQaResponse<unknown>(stakeholderRes, 'Failed to load stakeholder.')
-  return asItems<QaStakeholderRecord>(stakeholderJson)[0] || null
+function getQaBusinessReferralCode(qaBusiness: QaBusinessDetail) {
+  return sanitizeStakeholderCodeValue(qaBusiness.referralCode)
 }
 
-async function createQaStakeholder(
-  qaBusiness: QaBusinessDetail,
-  existing: QaStakeholderRecord | null,
-) {
-  if (existing) return existing
-
-  const metadata = JSON.stringify({
-    auto_created: true,
-    source: 'dashboard_auto_provision',
-    business_name: qaBusiness.name,
-    business_account_id: qaBusiness.id,
-  })
-
+function parseQrMetadata(value: unknown) {
+  if (isRecord(value)) return value
+  if (typeof value !== 'string' || !value.trim()) return {}
   try {
-    const createRes = await fetchQaApi('/api/dashboard/v1/Stakeholder', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        type: 'business',
-        name: qaBusiness.name,
-        businessAccountId: qaBusiness.id,
-        status: qaBusiness.active ? 'active' : 'pending',
-        source: 'dashboard_auto_provision',
-        sourceDetail: 'Auto-created from the business portal or CRM workspace',
-        metadata,
-      }),
-    })
-    const created = await parseQaResponse<unknown>(createRes, 'Failed to create stakeholder.')
-    return (asItems<QaStakeholderRecord>(created)[0] || null)
+    const parsed = JSON.parse(value)
+    return isRecord(parsed) ? parsed : {}
   } catch {
-    return fetchQaStakeholderByBusinessId(String(qaBusiness.id))
+    return {}
   }
 }
 
-async function fetchQaStakeholderCode(stakeholderId: string) {
-  try {
-    const directRes = await fetchQaApi(`/api/dashboard/v1/StakeholderCode/${encodeURIComponent(stakeholderId)}`)
-    const directJson = await parseQaResponse<unknown>(directRes, 'Failed to load stakeholder codes.')
-    const direct = asItems<QaStakeholderCodeRecord>(directJson)[0]
-    if (direct) return direct
-  } catch {
-    // Fall through to the query endpoint.
-  }
-
-  const listRes = await fetchQaApi(`/api/dashboard/v1/StakeholderCode?stakeholderId=${encodeURIComponent(stakeholderId)}`)
-  const listJson = await parseQaResponse<unknown>(listRes, 'Failed to load stakeholder codes.')
-  return asItems<QaStakeholderCodeRecord>(listJson)[0] || null
-}
-
-function buildCodeSeed(source: string, fallbackPrefix: string) {
-  const normalized = sanitizeStakeholderCodeValue(source)
-  if (normalized) return normalized
-  return sanitizeStakeholderCodeValue(`${fallbackPrefix}-${generateShortCode(6).toLowerCase()}`) || `${fallbackPrefix}-${generateShortCode(6).toLowerCase()}`
-}
-
-async function ensureQaStakeholderCodes(
-  stakeholder: QaStakeholderRecord,
-  qaBusiness: QaBusinessDetail,
+async function findQaBusinessReferralQr(
+  businessId: string,
+  referralCode: string,
+  targetUrl: string,
 ) {
-  const stakeholderId = String(stakeholder.id)
-  const existing = await fetchQaStakeholderCode(stakeholderId)
-  const referralCode = sanitizeStakeholderCodeValue(existing?.referralCode || existing?.referral_code)
-    || buildCodeSeed(`${qaBusiness.name}-${qaBusiness.id}`, 'biz')
-  const connectionCode = sanitizeStakeholderCodeValue(existing?.connectionCode || existing?.connection_code)
-    || buildCodeSeed(`${qaBusiness.name}-${stakeholderId}`, 'join')
-  const joinUrl = existing?.joinUrl || existing?.join_url || buildStakeholderJoinUrl('business', connectionCode)
+  const response = await fetchQaApi(
+    `/api/dashboard/v1/QrCode?entityType=business&entityId=${encodeURIComponent(businessId)}&pageSize=200`,
+  )
+  const json = await parseQaResponse<unknown>(response, 'Failed to load business QR codes.')
 
-  const needsWrite =
-    !existing
-    || !sanitizeStakeholderCodeValue(existing.referralCode || existing.referral_code)
-    || !sanitizeStakeholderCodeValue(existing.connectionCode || existing.connection_code)
-    || !(existing.joinUrl || existing.join_url)
+  return asItems<QaQrCodeRecord>(json).find((record) => {
+    const metadata = parseQrMetadata(record.metadata)
+    const recordTarget = record.targetUrl || record.target_url || ''
+    return recordTarget === targetUrl
+      || (
+        metadata.purpose === 'business_referral'
+        && (
+        String(metadata.business_account_id || '') === businessId
+        || metadata.referral_code === referralCode
+        )
+      )
+  }) || null
+}
 
-  if (needsWrite) {
-    const payload = {
-      stakeholderId,
-      referralCode,
-      connectionCode,
-      joinUrl,
+async function ensureQaBusinessReferralQr(
+  qaBusiness: QaBusinessDetail,
+  codes: QaBusinessReferralAssets['codes'],
+) {
+  const businessId = String(qaBusiness.id)
+  const targetUrl = codes.joinUrl
+  const logoUrl = buildQaBusinessLogoUrl(qaBusiness)
+  let qrCode = await findQaBusinessReferralQr(businessId, codes.referralCode, targetUrl)
+
+  if (!qrCode) {
+    const metadata = {
+      name: `${qaBusiness.name} referral QR`,
+      purpose: 'business_referral',
+      business_account_id: qaBusiness.id,
+      business_id: String(qaBusiness.id),
+      referral_code: codes.referralCode,
+      connection_code: codes.connectionCode,
+      logo_url: logoUrl,
+      qr_appearance: {
+        useBusinessLogo: Boolean(logoUrl),
+        logoUrl,
+        dotStyle: 'rounded',
+        cornerStyle: 'rounded',
+        errorCorrectionLevel: 'H',
+      },
     }
 
-    // Best-effort persistence: the codes above are already computed locally, so a
-    // failure to write them back to QA should not break the whole QR/offer-link
-    // resource. Swallow write errors and continue with the computed values.
     try {
-      if (existing?.id != null) {
-        const putRes = await fetchQaApi(`/api/dashboard/v1/StakeholderCode/${encodeURIComponent(String(existing.id))}`, {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        await parseQaResponse<unknown>(putRes, 'Failed to save stakeholder codes.')
-      } else {
-        const postRes = await fetchQaApi('/api/dashboard/v1/StakeholderCode', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        await parseQaResponse<unknown>(postRes, 'Failed to create stakeholder codes.')
-      }
-    } catch {
-      // Ignore — fall back to the locally computed codes.
+      const response = await fetchQaApi('/api/dashboard/v1/QrCode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          entityType: 'business',
+          entityId: qaBusiness.id,
+          code: codes.referralCode,
+          targetUrl,
+          metadata: JSON.stringify(metadata),
+        }),
+      })
+      qrCode = await parseQaResponse<QaQrCodeRecord>(response, 'Failed to create the business referral QR code.')
+    } catch (error) {
+      qrCode = await findQaBusinessReferralQr(businessId, codes.referralCode, targetUrl)
+      if (!qrCode) throw error
     }
   }
+
+  if (!qrCode?.id) throw new Error('The business referral QR code could not be prepared.')
 
   return {
-    id: existing?.id || null,
-    stakeholderId,
-    referralCode,
-    connectionCode,
-    joinUrl,
+    id: String(qrCode.id),
+    code: qrCode.code || null,
+    targetUrl: qrCode.targetUrl || qrCode.target_url || targetUrl,
+    qrImageUrl: qrCode.qrImageUrl || qrCode.qr_image_url || null,
+    logoUrl,
   }
+}
+
+export function ensureQaBusinessReferralAssets(businessId: string) {
+  const key = String(businessId)
+  const active = qaReferralAssetPromises.get(key)
+  if (active) return active
+
+  const operation = (async () => {
+    const businessRes = await fetchQaApi(`/api/dashboard/v1/Business/${encodeURIComponent(businessId)}`)
+    const qaBusiness = await parseQaResponse<QaBusinessDetail>(businessRes, 'Failed to load business.')
+    if (!qaBusiness) throw new Error('The QA business could not be loaded.')
+
+    const resource = await buildQaBusinessJoinResource(String(qaBusiness.id))
+    const referralCode = getQaBusinessReferralCode(qaBusiness)
+    if (!referralCode) {
+      throw new Error('This business owner does not have a referral code in QA yet.')
+    }
+    const codes: QaBusinessReferralAssets['codes'] = {
+      id: null,
+      stakeholderId: null,
+      referralCode,
+      connectionCode: referralCode,
+      joinUrl: resource.joinUrl,
+      branchReferralUrl: qaBusiness.branchReferralUrl?.trim() || null,
+    }
+    const qrCode = await ensureQaBusinessReferralQr(qaBusiness, codes)
+    return { business: qaBusiness, codes, qrCode }
+  })().finally(() => {
+    qaReferralAssetPromises.delete(key)
+  })
+
+  qaReferralAssetPromises.set(key, operation)
+  return operation
 }
 
 async function fetchQaCaptureOffer(businessId: string) {
@@ -295,21 +315,18 @@ function buildJoinSlug(qaBusiness: QaBusinessDetail) {
 }
 
 export async function ensureQaBusinessStakeholderContext(businessId: string) {
-  const businessRes = await fetchQaApi(`/api/dashboard/v1/Business/${encodeURIComponent(businessId)}`)
-  const qaBusiness = await parseQaResponse<QaBusinessDetail>(businessRes, 'Failed to load business.')
-  if (!qaBusiness) {
-    throw new Error('The QA business could not be loaded.')
-  }
-  const stakeholder = await createQaStakeholder(qaBusiness, await fetchQaStakeholderByBusinessId(businessId))
-  if (!stakeholder?.id) {
-    throw new Error('The stakeholder could not be prepared for this business.')
-  }
-
-  const codes = await ensureQaStakeholderCodes(stakeholder, qaBusiness)
+  const assets = await ensureQaBusinessReferralAssets(businessId)
   return {
-    business: qaBusiness,
-    stakeholder,
-    codes,
+    business: assets.business,
+    // Compatibility for older material callers. This is a synthetic local shape;
+    // no QA Stakeholder endpoint is read or written.
+    stakeholder: {
+      id: `qa-business-${assets.business.id}`,
+      name: assets.business.name,
+      businessAccountId: assets.business.id,
+    },
+    codes: assets.codes,
+    qrCode: assets.qrCode,
   }
 }
 
@@ -340,7 +357,10 @@ export async function buildQaBusinessJoinResource(businessId: string): Promise<B
   // Drive the QR + offer link straight off the business's own referral code and
   // Branch.io link from QA. Every QA business is created with these, so there is
   // no stakeholder / StakeholderCode indirection to set up.
-  const referralCode = sanitizeStakeholderCodeValue(qaBusiness.referralCode) || `biz-${qaBusiness.id}`
+  const referralCode = sanitizeStakeholderCodeValue(qaBusiness.referralCode)
+  if (!referralCode) {
+    throw new Error('This business owner does not have a referral code in QA yet.')
+  }
   const joinSlug = buildJoinSlug(qaBusiness)
   // The QR + offer link must point at our own "100-list" join page (which shows
   // the capture offer and the join form), NOT the branch.io app deep link.

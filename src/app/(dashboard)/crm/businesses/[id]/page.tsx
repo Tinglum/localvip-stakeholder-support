@@ -7,7 +7,7 @@ import {
   ArrowLeft, Phone, Mail, Globe, MapPin, Clock,
   AlertTriangle, Copy, Key, MessageSquare, CheckSquare, StickyNote, QrCode as QrCodeIcon,
   FileText, Send, Plus, ExternalLink, MoreHorizontal, User,
-  Check, CheckCircle2, ChevronDown, CreditCard, Loader2, RefreshCw, Rocket,
+  Check, ChevronDown, CreditCard, Loader2, RefreshCw,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -260,7 +260,9 @@ export default function BusinessDetailPage() {
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
     if (!biz || !crmWriteId || readOnly) return
-    await updateBusiness(crmWriteId, { stage: newStage })
+    if (newStage === 'live') return
+    const saved = await updateBusiness(crmWriteId, { stage: newStage })
+    if (!saved) return
     setStageDropdownOpen(false)
     refetchBusinessDetail()
   }, [biz, crmWriteId, readOnly, refetchBusinessDetail, updateBusiness])
@@ -375,16 +377,6 @@ export default function BusinessDetailPage() {
     )
   }
 
-  const stageOrder = ONBOARDING_STAGES[biz.stage].order
-  const onboardingSteps = [
-    { label: 'Lead', completed: stageOrder >= 0, current: biz.stage === 'lead' },
-    { label: 'Contacted', completed: stageOrder >= 1, current: biz.stage === 'contacted' },
-    { label: 'Interested', completed: stageOrder >= 2, current: biz.stage === 'interested' },
-    { label: 'In Progress', completed: stageOrder >= 3, current: biz.stage === 'in_progress' },
-    { label: 'Onboarded', completed: stageOrder >= 4, current: biz.stage === 'onboarded' },
-    { label: 'Live', completed: stageOrder >= 5, current: biz.stage === 'live' },
-  ]
-
   const tabs = readOnly
     ? [{ key: 'overview' as const, label: 'Overview' }]
     : [
@@ -402,6 +394,65 @@ export default function BusinessDetailPage() {
   const onboardingComplete = isPendingLiveReview || isLive
   const onboardingHref = adminOnboardingHref
   const customerPreviewHref = biz.branch_referral_url || qaBusiness?.branchReferralUrl || null
+  const stageOrder = ONBOARDING_STAGES[biz.stage].order
+  const stageSteps: Array<{ label: string; stage: OnboardingStage }> = [
+    { label: 'Lead', stage: 'lead' },
+    { label: 'Contacted', stage: 'contacted' },
+    { label: 'Interested', stage: 'interested' },
+    { label: 'In Progress', stage: 'in_progress' },
+  ]
+  const onboardingActionLabel = isLive
+    ? 'LIVE'
+    : isPendingLiveReview
+      ? isAdmin
+        ? publishing
+          ? 'SENDING...'
+          : 'SEND TO LIVE'
+        : 'AWAITING APPROVAL'
+      : stageOrder >= ONBOARDING_STAGES.onboarded.order
+        ? 'COMPLETE ONBOARDING'
+        : 'CONTINUE ONBOARDING'
+  const onboardingSteps = [
+    ...stageSteps.map(({ label, stage }) => ({
+      label,
+      completed: stageOrder >= ONBOARDING_STAGES[stage].order,
+      current: biz.stage === stage,
+      onClick: canEditCrm && biz.stage !== stage
+        ? () => void handleStageChange(stage)
+        : undefined,
+      disabled: updateLoading,
+    })),
+    {
+      label: 'Onboarded',
+      description: isPendingLiveReview
+        ? 'Ready for admin approval'
+        : isLive
+          ? 'Approved and active'
+          : 'Finish business setup',
+      completed: onboardingComplete,
+      current: !isLive && (biz.stage === 'onboarded' || isPendingLiveReview),
+      onClick: isLive
+        ? undefined
+        : isPendingLiveReview
+          ? isAdmin
+            ? () => void handlePublishLive()
+            : undefined
+          : () => router.push(onboardingHref),
+      actionLabel: onboardingActionLabel,
+      actionVariant: isLive
+        ? 'success' as const
+        : isPendingLiveReview && !isAdmin
+          ? 'default' as const
+          : 'danger' as const,
+      actionPending: publishing,
+      disabled: publishing,
+    },
+    {
+      label: 'Live',
+      completed: isLive,
+      current: isLive,
+    },
+  ]
 
   return (
     <div className="space-y-6">
@@ -451,8 +502,8 @@ export default function BusinessDetailPage() {
 
       {/* Onboarding Progress */}
       <Card>
-        <CardContent className="py-4">
-          <ProgressSteps steps={onboardingSteps} />
+        <CardContent className="px-3 py-2 sm:px-5">
+          <ProgressSteps steps={onboardingSteps} ariaLabel="Business lifecycle" />
         </CardContent>
       </Card>
 
@@ -469,30 +520,6 @@ export default function BusinessDetailPage() {
         ]}
         actions={
           <div className="flex items-center gap-3">
-            {!onboardingComplete ? (
-              <Link href={onboardingHref}>
-                <Badge variant="danger" dot className="cursor-pointer px-3 py-1.5 text-sm hover:bg-red-100">
-                  ONBOARDING
-                </Badge>
-              </Link>
-            ) : null}
-            {isAdmin && isLive ? (
-              <Button size="sm" disabled className="bg-emerald-600 text-white opacity-100">
-                <CheckCircle2 className="h-4 w-4" />
-                LIVE
-              </Button>
-            ) : null}
-            {isAdmin && isPendingLiveReview && !isLive ? (
-              <Button
-                size="sm"
-                onClick={() => void handlePublishLive()}
-                disabled={publishing}
-                className="bg-red-600 text-white hover:bg-red-700"
-              >
-                {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-                {publishing ? 'SENDING...' : 'SEND TO LIVE'}
-              </Button>
-            ) : null}
             {/* Stage Dropdown */}
             <div className="relative">
               <button
@@ -513,7 +540,7 @@ export default function BusinessDetailPage() {
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setStageDropdownOpen(false)} />
                   <div className="absolute right-0 z-40 mt-1 w-44 rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-lg">
-                    {STAGE_OPTIONS.map((s) => (
+                    {STAGE_OPTIONS.filter((stage) => stage !== 'live').map((s) => (
                       <button
                         key={s}
                         onClick={() => handleStageChange(s)}

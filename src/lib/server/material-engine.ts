@@ -280,6 +280,31 @@ export async function ensureAutomatedStakeholderMaterials(
   })
 }
 
+export async function ensureStakeholderCodesAndQrCode(
+  supabase: ServiceSupabaseClient,
+  stakeholderId: string,
+  actorId: string | null,
+) {
+  const stakeholder = await getStakeholderById(supabase, stakeholderId)
+  if (!stakeholder) throw new Error('Stakeholder not found.')
+
+  const existingCodes = await getStakeholderCode(supabase, stakeholderId)
+  const defaultCodes = await buildDefaultStakeholderCodes(supabase, stakeholder, existingCodes)
+  const saved = await upsertStakeholderCodes(supabase, stakeholderId, {
+    referralCode: defaultCodes.referralCode,
+    connectionCode: defaultCodes.connectionCode,
+  })
+  const context = await buildStakeholderMaterialContext(supabase, stakeholder, saved.codes)
+  const qrCode = await ensureStakeholderQrCode(supabase, context, actorId)
+
+  return {
+    stakeholder,
+    codes: saved.codes,
+    joinUrl: saved.joinUrl,
+    qrCode,
+  }
+}
+
 export async function upsertStakeholderCodes(
   supabase: ServiceSupabaseClient,
   stakeholderId: string,

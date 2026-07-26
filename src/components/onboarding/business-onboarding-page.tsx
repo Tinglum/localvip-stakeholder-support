@@ -39,6 +39,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -93,15 +94,78 @@ import type {
 const STAGE_ORDER: OnboardingStage[] = ['lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live']
 type QuickFilter = 'all' | 'active_build' | 'live_review' | 'live' | 'follow_ups'
 type BusinessLifecycleModalKey = 'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision'
+type ChecklistEditorMode = 'profile' | 'relationships' | 'brand'
 type QaBusinessReadiness = {
   stripeOnboarded: boolean | null
   liveOnQa: boolean | null
   loading: boolean
   error: string | null
 }
+type ReferralAssetsResult = {
+  codes?: {
+    referralCode?: string | null
+    connectionCode?: string | null
+    joinUrl?: string | null
+    referral_code?: string | null
+    connection_code?: string | null
+    join_url?: string | null
+  } | null
+  qrCode?: {
+    id?: string | null
+    targetUrl?: string | null
+    qrImageUrl?: string | null
+    logoUrl?: string | null
+    destination_url?: string | null
+    redirect_url?: string | null
+  } | null
+  joinUrl?: string | null
+}
+type ReferralAssetProvisioning = {
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  error: string | null
+  result: ReferralAssetsResult | null
+}
 
 const businessTheme = getEntityTheme('business')
 const causeTheme = getEntityTheme('cause')
+
+const REQUIRED_CHECKLIST_IDS = new Set([
+  'name',
+  'contact',
+  'category',
+  'city',
+  'owner',
+  'cause',
+  'referral_code',
+  'connection_code',
+  'qr',
+  'capture_offer',
+  'cashback',
+  'logo',
+])
+
+const OPTIONAL_CHECKLIST_IDS = new Set([
+  'website',
+  'campaign',
+  'first_outreach',
+  'owner_convo',
+  'materials',
+  'task_done',
+  'cover',
+  'all_steps',
+])
+
+function getRequiredChecklistProgress(checklist: { items: Array<{ id: string; met: boolean }> }) {
+  const requiredItems = checklist.items.filter((item) => REQUIRED_CHECKLIST_IDS.has(String(item.id)))
+  const completedCount = requiredItems.filter((item) => item.met).length
+  const totalCount = requiredItems.length
+
+  return {
+    completedCount,
+    totalCount,
+    percent: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+  }
+}
 
 function getStageBadgeVariant(stage: string) {
   switch (stage) {
@@ -145,7 +209,8 @@ function StageChanger({
   const [open, setOpen] = React.useState(false)
 
   async function handleStageChange(newStage: OnboardingStage) {
-    await update(business.id, { stage: newStage })
+    const saved = await update(business.id, { stage: newStage })
+    if (!saved) return
     setOpen(false)
     onStageChanged()
   }
@@ -166,7 +231,7 @@ function StageChanger({
         <>
           <div className="fixed inset-0 z-30" onClick={(e) => { e.stopPropagation(); setOpen(false) }} />
           <div className="absolute right-0 top-full z-40 mt-2 w-48 rounded-xl border border-surface-200 bg-surface-0 p-1 shadow-panel">
-            {STAGE_ORDER.map(stage => (
+            {STAGE_ORDER.filter((stage) => stage !== 'live').map(stage => (
               <button
                 key={stage}
                 onClick={(e) => { e.stopPropagation(); void handleStageChange(stage) }}
@@ -321,10 +386,12 @@ export default function BusinessOnboardingPage() {
   const qrByBusiness = React.useMemo(() => {
     const map = new Map<string, typeof qrCodes>()
     qrCodes.forEach((item) => {
-      if (!item.business_id) return
-      const current = map.get(item.business_id) || []
+      const businessId = item.business_id
+        || (item.entity_type === 'business' && item.entity_id != null ? String(item.entity_id) : null)
+      if (!businessId) return
+      const current = map.get(businessId) || []
       current.push(item)
-      map.set(item.business_id, current)
+      map.set(businessId, current)
     })
     return map
   }, [qrCodes])
@@ -519,7 +586,28 @@ export default function BusinessOnboardingPage() {
   function getBusinessDetail(business: Business) {
     const flow = flowByBusiness.get(business.id)
     const stakeholder = stakeholderByBusiness.get(business.id) || null
-    const codes = stakeholder ? codesByStakeholder.get(stakeholder.id) || null : null
+    const stakeholderCodesForBusiness = stakeholder ? codesByStakeholder.get(stakeholder.id) || null : null
+    const businessMetadata = (business.metadata as Record<string, unknown> | null) || {}
+    const directReferralCode = typeof businessMetadata.referralCode === 'string'
+      ? businessMetadata.referralCode.trim()
+      : ''
+    const directConnectionCode = typeof businessMetadata.connectionCode === 'string'
+      ? businessMetadata.connectionCode.trim()
+      : directReferralCode
+    const directJoinUrl = typeof businessMetadata.businessJoinUrl === 'string'
+      ? businessMetadata.businessJoinUrl.trim()
+      : ''
+    const codes = stakeholderCodesForBusiness || (directReferralCode
+      ? {
+          id: `qa-business-${business.id}`,
+          stakeholder_id: `qa-business-${business.id}`,
+          referral_code: directReferralCode,
+          connection_code: directConnectionCode || directReferralCode,
+          join_url: directJoinUrl || null,
+          created_at: business.created_at,
+          updated_at: business.updated_at,
+        }
+      : null)
     const generated = stakeholder ? generatedByStakeholder.get(stakeholder.id) || [] : []
     const generatedReady = generated.filter((item) => item.generation_status === 'generated')
     const businessOffers = offersByBusiness.get(business.id) || []
@@ -555,7 +643,16 @@ export default function BusinessOnboardingPage() {
       .filter((item): item is { assignment: typeof assignments[number]; profile: Profile } => !!item.profile)
     const linkedCause = business.linked_cause_id ? causeMap.get(business.linked_cause_id) : null
     const campaign = business.campaign_id ? campaignMap.get(business.campaign_id) : null
-    const city = business.city_id ? cityMap.get(business.city_id) : null
+    const qaLocation = business as Business & { city?: string | null; state?: string | null }
+    const city = (business.city_id ? cityMap.get(business.city_id) : null)
+      || cities.find((candidate) => (
+        candidate.name.trim().toLowerCase() === String(qaLocation.city || '').trim().toLowerCase()
+        && (
+          !qaLocation.state
+          || String(candidate.state || '').trim().toLowerCase() === String(qaLocation.state).trim().toLowerCase()
+        )
+      ))
+      || null
     const businessTasks = openTasksByBusiness.get(business.id) || []
     const businessOutreach = (outreachByBusiness.get(business.id) || [])
       .slice()
@@ -931,7 +1028,8 @@ function BusinessOnboardingSummaryCard({
   onOpenAction: (modal: BusinessLifecycleModalKey) => void
 }) {
   const { checklist, owner, city, linkedCause, businessTasks, businessOutreach, coverPhotoUrl, pendingLiveReview } = detail
-  const progressColors = getProgressColor(checklist.percent)
+  const requiredProgress = getRequiredChecklistProgress(checklist)
+  const progressColors = getProgressColor(requiredProgress.percent)
 
   return (
     <article
@@ -986,10 +1084,10 @@ function BusinessOnboardingSummaryCard({
           <div className="shrink-0 text-right">
             <p className="text-[11px] uppercase tracking-[0.16em] text-surface-700">Progress</p>
             <p className={cn('mt-1 text-3xl font-bold leading-none', progressColors.text)}>
-              {checklist.percent}%
+              {requiredProgress.percent}%
             </p>
             <p className="mt-1 text-[11px] text-surface-700">
-              {checklist.completedCount}/{checklist.totalCount}
+              {requiredProgress.completedCount}/{requiredProgress.totalCount} required
             </p>
           </div>
         </div>
@@ -1000,11 +1098,11 @@ function BusinessOnboardingSummaryCard({
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-100">
             <div
               className={cn('h-full rounded-full transition-all duration-500', progressColors.bar)}
-              style={{ width: `${checklist.percent}%` }}
+              style={{ width: `${requiredProgress.percent}%` }}
             />
           </div>
           <span className={cn('text-xs font-bold tabular-nums', progressColors.text)}>
-            {checklist.percent}%
+            {requiredProgress.percent}%
           </span>
         </div>
 
@@ -1122,6 +1220,48 @@ function getBusinessChecklistSection(itemId: string): BusinessModalSection {
   }
 }
 
+function getChecklistItemGuidance(itemId: string) {
+  switch (itemId) {
+    case 'name':
+    case 'category':
+    case 'city':
+    case 'contact':
+      return { action: 'Edit business details', detail: 'Add the missing business identity or contact information.' }
+    case 'website':
+      return { action: 'Add website', detail: 'Add the public website customers should visit.' }
+    case 'owner':
+      return { action: 'Assign owner', detail: 'Choose the person responsible for this business.' }
+    case 'cause':
+      return { action: 'Link cause or school', detail: 'Choose the community partner this business supports.' }
+    case 'campaign':
+      return { action: 'Link campaign', detail: 'Connect this business to an active campaign.' }
+    case 'first_outreach':
+      return { action: 'Log outreach', detail: 'Record the first call, email, message, or visit.' }
+    case 'owner_convo':
+      return { action: 'Log another touch', detail: 'Record outreach until three owner touches are complete.' }
+    case 'referral_code':
+    case 'connection_code':
+      return { action: 'Open Materials & QR', detail: 'Check the automatically assigned codes and current generation actions.' }
+    case 'qr':
+      return { action: 'Open Materials & QR', detail: 'Review existing QR codes or start the current generation flow.' }
+    case 'materials':
+      return { action: 'Generate materials', detail: 'Create the ready-to-share launch materials.' }
+    case 'capture_offer':
+      return { action: 'Set capture offer', detail: 'Create the offer used to build the first customer list.' }
+    case 'cashback':
+      return { action: 'Set cashback', detail: 'Choose the live cashback percentage customers receive.' }
+    case 'logo':
+    case 'cover':
+      return { action: 'Upload branding', detail: 'Upload the image used on the business profile and materials.' }
+    case 'task_done':
+      return { action: 'Open task area', detail: 'Open the business tasks and complete at least one item.' }
+    case 'all_steps':
+      return { action: 'Continue onboarding', detail: 'Open the next incomplete lifecycle step and complete it.' }
+    default:
+      return { action: 'Open', detail: 'Open the related onboarding action.' }
+  }
+}
+
 function getSectionHighlight(activeSection: string | null, section: string) {
   return activeSection === section ? 'ring-2 ring-brand-300 ring-offset-2 ring-offset-surface-0' : ''
 }
@@ -1129,10 +1269,14 @@ function getSectionHighlight(activeSection: string | null, section: string) {
 function ChecklistJumpButton({
   met,
   label,
+  actionLabel,
+  detail,
   onClick,
 }: {
   met: boolean
   label: string
+  actionLabel: string
+  detail: string
   onClick: () => void
 }) {
   return (
@@ -1140,14 +1284,246 @@ function ChecklistJumpButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
-        met ? 'bg-success-50 text-success-700 hover:bg-success-100' : 'bg-white text-surface-700 hover:bg-surface-100'
+        'group flex min-h-[82px] w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
+        met
+          ? 'border-success-200 bg-success-50 text-success-800 hover:border-success-300 hover:bg-success-100'
+          : 'border-surface-200 bg-white text-surface-800 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-sm'
       )}
     >
-      {met ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" /> : <Circle className="h-4 w-4 shrink-0 text-surface-300" />}
-      <span className={cn('flex-1', met && 'line-through opacity-60')}>{label}</span>
-      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />
+      <span className={cn(
+        'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border',
+        met ? 'border-success-500 bg-success-500 text-white' : 'border-surface-300 bg-surface-50 text-surface-400'
+      )}>
+        {met ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-3.5 w-3.5" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{label}</span>
+        <span className={cn('mt-1 block text-xs leading-4', met ? 'text-success-700' : 'text-surface-500')}>
+          {met ? 'Complete. Open to review or change.' : detail}
+        </span>
+        <span className={cn('mt-2 inline-flex items-center gap-1 text-xs font-semibold', met ? 'text-success-700' : 'text-brand-700')}>
+          {met ? 'Review' : actionLabel}
+          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </span>
     </button>
+  )
+}
+
+function ChecklistEditorDialog({
+  open,
+  mode,
+  business,
+  cities,
+  causes,
+  campaigns,
+  owners,
+  saving,
+  onOpenChange,
+  onSave,
+}: {
+  open: boolean
+  mode: ChecklistEditorMode
+  business: Business
+  cities: Array<{ id: string; name: string; state: string | null }>
+  causes: Array<{ id: string; name: string }>
+  campaigns: Array<{ id: string; name: string }>
+  owners: Profile[]
+  saving: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: (changes: Partial<Business>, files: { logo: File | null; cover: File | null }) => Promise<void>
+}) {
+  const [name, setName] = React.useState('')
+  const [category, setCategory] = React.useState('')
+  const [email, setEmail] = React.useState('')
+  const [phone, setPhone] = React.useState('')
+  const [website, setWebsite] = React.useState('')
+  const [cityId, setCityId] = React.useState('')
+  const [ownerId, setOwnerId] = React.useState('')
+  const [causeId, setCauseId] = React.useState('')
+  const [campaignId, setCampaignId] = React.useState('')
+  const [logo, setLogo] = React.useState<File | null>(null)
+  const [cover, setCover] = React.useState<File | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+  const [localSaving, setLocalSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!open) return
+    const qaLocation = business as Business & { city?: string | null; state?: string | null }
+    const directCity = cities.find((city) => city.id === business.city_id)
+    const [displayCity = '', displayState = ''] = (business.city_id || '').split(',').map((part) => part.trim())
+    const cityName = (qaLocation.city || displayCity).trim().toLowerCase()
+    const stateName = (qaLocation.state || displayState).trim().toLowerCase()
+    const matchingCity = directCity || cities.find((city) => {
+      if (city.name.trim().toLowerCase() !== cityName) return false
+      return !stateName || (city.state || '').trim().toLowerCase() === stateName
+    })
+
+    setName(business.name || '')
+    setCategory(business.category || '')
+    setEmail(business.email || '')
+    setPhone(business.phone || '')
+    setWebsite(business.website || '')
+    setCityId(matchingCity?.id || '')
+    setOwnerId(business.owner_id || '')
+    setCauseId(business.linked_cause_id || '')
+    setCampaignId(business.campaign_id || '')
+    setLogo(null)
+    setCover(null)
+    setError(null)
+  }, [business, cities, open])
+
+  async function handleSave() {
+    setError(null)
+    setLocalSaving(true)
+    try {
+      const selectedCityId = cities.some((city) => city.id === cityId) ? cityId : ''
+      const changes: Partial<Business> = mode === 'profile'
+        ? {
+            name: name.trim(),
+            category: category.trim() || null,
+            email: email.trim() || null,
+            phone: phone.trim() || null,
+            website: website.trim() || null,
+            city_id: selectedCityId || null,
+          }
+        : mode === 'relationships'
+          ? {
+              owner_id: ownerId || null,
+              linked_cause_id: causeId || null,
+              campaign_id: campaignId || null,
+            }
+          : {}
+
+      await onSave(changes, { logo, cover })
+      onOpenChange(false)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'The changes could not be saved.')
+    } finally {
+      setLocalSaving(false)
+    }
+  }
+
+  const title = mode === 'profile'
+    ? 'Business essentials'
+    : mode === 'relationships'
+      ? 'Owner and community links'
+      : 'Business branding'
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-surface-500">
+          {mode === 'profile'
+            ? 'Complete the identity and contact details required before this business can go live.'
+            : mode === 'relationships'
+              ? 'Assign the business owner and the cause or school this business supports.'
+              : 'Upload the logo and cover image used in the business profile and generated materials.'}
+        </p>
+
+        {mode === 'profile' ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1.5 sm:col-span-2">
+              <span className="text-sm font-medium text-surface-700">Business name *</span>
+              <Input value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-surface-700">Category *</span>
+              <Input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Restaurant, salon, home services..." />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-surface-700">City *</span>
+              <select
+                value={cityId}
+                onChange={(event) => setCityId(event.target.value)}
+                className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">Select a city...</option>
+                {cities.map((city) => <option key={city.id} value={city.id}>{city.name}{city.state ? `, ${city.state}` : ''}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-surface-700">Email</span>
+              <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-surface-700">Phone</span>
+              <Input value={phone} onChange={(event) => setPhone(event.target.value)} />
+            </label>
+            <label className="space-y-1.5 sm:col-span-2">
+              <span className="text-sm font-medium text-surface-700">Website <span className="font-normal text-surface-400">(nice to have)</span></span>
+              <Input value={website} onChange={(event) => setWebsite(event.target.value)} placeholder="https://..." />
+            </label>
+          </div>
+        ) : null}
+
+        {mode === 'relationships' ? (
+          <div className="grid gap-4">
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-surface-700">Business owner *</span>
+              <select
+                value={ownerId}
+                onChange={(event) => setOwnerId(event.target.value)}
+                className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">Select an owner...</option>
+                {owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.full_name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-surface-700">Linked cause or school *</span>
+              <select
+                value={causeId}
+                onChange={(event) => setCauseId(event.target.value)}
+                className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">Select a cause or school...</option>
+                {causes.map((cause) => <option key={cause.id} value={cause.id}>{cause.name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-surface-700">Campaign <span className="font-normal text-surface-400">(nice to have)</span></span>
+              <select
+                value={campaignId}
+                onChange={(event) => setCampaignId(event.target.value)}
+                className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">No campaign</option>
+                {campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+              </select>
+            </label>
+          </div>
+        ) : null}
+
+        {mode === 'brand' ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1.5 rounded-xl border border-surface-200 bg-surface-50 p-4">
+              <span className="block text-sm font-semibold text-surface-800">Logo *</span>
+              <span className="block text-xs text-surface-500">{business.logo_url ? 'A logo is already uploaded. Choose a file to replace it.' : 'PNG, JPG, or WebP.'}</span>
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setLogo(event.target.files?.[0] || null)} className="block w-full text-xs text-surface-600" />
+            </label>
+            <label className="space-y-1.5 rounded-xl border border-surface-200 bg-surface-50 p-4">
+              <span className="block text-sm font-semibold text-surface-800">Cover image *</span>
+              <span className="block text-xs text-surface-500">{business.cover_photo_url ? 'A cover is already uploaded. Choose a file to replace it.' : 'Use a wide landscape image.'}</span>
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setCover(event.target.files?.[0] || null)} className="block w-full text-xs text-surface-600" />
+            </label>
+          </div>
+        ) : null}
+
+        {error ? <p role="alert" className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p> : null}
+
+        <div className="flex justify-end gap-2 border-t border-surface-100 pt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => void handleSave()} disabled={saving || localSaving || (mode === 'profile' && !name.trim())}>
+            {saving || localSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -1258,6 +1634,8 @@ function BusinessDetailModal({
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
   const { data: allCities } = useCities()
+  const { data: allCauses } = useCauses()
+  const { data: allCampaigns } = useCampaigns()
   const { data: contacts } = useContacts({ business_id: business.id })
   const { update: updateBusiness, loading: updateLoading } = useBusinessUpdate()
   const { insert: insertOffer, loading: insertingOffer } = useOfferInsert()
@@ -1276,17 +1654,43 @@ function BusinessDetailModal({
     error: null,
   })
 
-  const progressColors = getProgressColor(checklist.percent)
   const [showChecklist, setShowChecklist] = React.useState(false)
   const [activeSection, setActiveSection] = React.useState<BusinessModalSection | null>(null)
+  const [checklistEditorMode, setChecklistEditorMode] = React.useState<ChecklistEditorMode | null>(null)
   const [liveActionMessage, setLiveActionMessage] = React.useState<string | null>(null)
   const [liveActionTone, setLiveActionTone] = React.useState<'success' | 'danger'>('success')
-  const [engineBusy, setEngineBusy] = React.useState<'codes' | 'generate' | null>(null)
+  const [engineBusy, setEngineBusy] = React.useState<'generate' | null>(null)
   const [regenBusy, setRegenBusy] = React.useState(false)
   const [modalActionMessage, setModalActionMessage] = React.useState<string | null>(null)
   const [modalActionError, setModalActionError] = React.useState<string | null>(null)
+  const [referralAssetProvisioning, setReferralAssetProvisioning] = React.useState<ReferralAssetProvisioning>({
+    status: 'idle',
+    error: null,
+    result: null,
+  })
   const sectionRefs = React.useRef<Partial<Record<BusinessModalSection, HTMLDivElement | null>>>({})
   const clearHighlightRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshExecutionBoardsRef = React.useRef(onStageChanged)
+  const requiredChecklist = React.useMemo(
+    () => checklist.items.filter((item: any) => REQUIRED_CHECKLIST_IDS.has(String(item.id))),
+    [checklist.items]
+  )
+  const optionalChecklist = React.useMemo(
+    () => checklist.items.filter((item: any) => OPTIONAL_CHECKLIST_IDS.has(String(item.id))),
+    [checklist.items]
+  )
+  const requiredCompletedCount = requiredChecklist.filter((item: any) => item.met).length
+  const optionalCompletedCount = optionalChecklist.filter((item: any) => item.met).length
+  const requiredPercent = requiredChecklist.length > 0
+    ? Math.round((requiredCompletedCount / requiredChecklist.length) * 100)
+    : 0
+  const progressColors = getProgressColor(requiredPercent)
+  const provisionedJoinUrl =
+    referralAssetProvisioning.result?.joinUrl
+    || referralAssetProvisioning.result?.codes?.joinUrl
+    || referralAssetProvisioning.result?.codes?.join_url
+    || null
+  const effectiveJoinUrl = joinUrl || provisionedJoinUrl
 
   const setSectionRef = React.useCallback((section: BusinessModalSection) => {
     return (node: HTMLDivElement | null) => {
@@ -1316,6 +1720,10 @@ function BusinessDetailModal({
   React.useEffect(() => {
     setLifecycleModal(initialModal)
   }, [business.id, initialModal])
+
+  React.useEffect(() => {
+    refreshExecutionBoardsRef.current = onStageChanged
+  }, [onStageChanged])
 
   React.useEffect(() => {
     let cancelled = false
@@ -1363,7 +1771,7 @@ function BusinessDetailModal({
     }
   }, [business.id])
 
-  async function callExecutionAction(action: Record<string, unknown>) {
+  const callExecutionAction = React.useCallback(async (action: Record<string, unknown>) => {
     const response = await fetch(`/api/crm/businesses/${business.id}/execution`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1374,22 +1782,35 @@ function BusinessDetailModal({
       throw new Error(typeof payload.error === 'string' ? payload.error : 'The action could not be completed.')
     }
     return payload
-  }
+  }, [business.id])
 
-  async function handleSaveCodes(referralCode: string, connectionCode: string) {
-    setEngineBusy('codes')
-    setModalActionMessage(null)
-    setModalActionError(null)
+  const ensureReferralAssets = React.useCallback(async () => {
+    setReferralAssetProvisioning((current) => ({
+      status: 'loading',
+      error: null,
+      result: current.result,
+    }))
     try {
-      await callExecutionAction({ action: 'save_codes', referralCode, connectionCode })
-      setModalActionMessage('Codes saved.')
-      onStageChanged()
+      const payload = await callExecutionAction({ action: 'ensure_referral_assets' }) as ReferralAssetsResult
+      setReferralAssetProvisioning({
+        status: 'ready',
+        error: null,
+        result: payload,
+      })
+      refreshExecutionBoardsRef.current()
     } catch (error) {
-      setModalActionError(error instanceof Error ? error.message : 'Codes could not be saved.')
-    } finally {
-      setEngineBusy(null)
+      setReferralAssetProvisioning((current) => ({
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Referral assets could not be prepared.',
+        result: current.result,
+      }))
     }
-  }
+  }, [callExecutionAction])
+
+  React.useEffect(() => {
+    setReferralAssetProvisioning({ status: 'idle', error: null, result: null })
+    void ensureReferralAssets()
+  }, [business.id, ensureReferralAssets])
 
   async function handleGenerateMaterials() {
     setEngineBusy('generate')
@@ -1453,9 +1874,12 @@ function BusinessDetailModal({
       }
 
       if (captureOffer?.id) await updateOffer(captureOffer.id, capturePayload)
-      else await insertOffer(capturePayload)
-      if (cashbackOffer?.id) await updateOffer(cashbackOffer.id, cashbackPayload)
-      else await insertOffer(cashbackPayload)
+      else if (!await insertOffer(capturePayload)) throw new Error('The customer capture offer could not be saved.')
+      if (cashbackOffer?.id) {
+        if (!await updateOffer(cashbackOffer.id, cashbackPayload)) throw new Error('The cashback offer could not be saved.')
+      } else if (!await insertOffer(cashbackPayload)) {
+        throw new Error('The cashback offer could not be saved.')
+      }
 
       setModalActionMessage('Offer settings saved.')
       onStageChanged()
@@ -1465,12 +1889,59 @@ function BusinessDetailModal({
     }
   }
 
+  async function handleSaveChecklistDetails(
+    changes: Partial<Business>,
+    files: { logo: File | null; cover: File | null }
+  ) {
+    if (Object.keys(changes).length > 0) {
+      const saved = await updateBusiness(business.id, changes)
+      if (!saved) throw new Error('The business setup could not be saved. Review the fields and try again.')
+    }
+
+    for (const [mediaType, file] of [
+      ['logo', files.logo],
+      ['cover_photo', files.cover],
+    ] as const) {
+      if (!file) continue
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('mediaType', mediaType)
+      const response = await fetch(`/api/crm/businesses/${business.id}/media`, {
+        method: 'POST',
+        body: formData,
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload.error === 'string' ? payload.error : `${mediaType === 'logo' ? 'Logo' : 'Cover image'} upload failed.`)
+      }
+    }
+
+    onStageChanged()
+  }
+
   const openChecklistTarget = React.useCallback((itemId: string) => {
-    const section = getBusinessChecklistSection(itemId)
-    if (section === 'profile') {
-      setLifecycleModal('initial_connection')
+    if (itemId === 'name' || itemId === 'category' || itemId === 'city' || itemId === 'contact' || itemId === 'website') {
+      setChecklistEditorMode('profile')
       return
     }
+    if (itemId === 'owner' || itemId === 'cause' || itemId === 'campaign') {
+      setChecklistEditorMode('relationships')
+      return
+    }
+    if (itemId === 'logo' || itemId === 'cover') {
+      setChecklistEditorMode('brand')
+      return
+    }
+    if (itemId === 'all_steps') {
+      const nextStep = businessSteps.find((step: any) => step.state !== 'completed')
+      if (nextStep) {
+        setLifecycleModal(nextStep.key as BusinessLifecycleModalKey)
+      } else {
+        jumpToSection('steps')
+      }
+      return
+    }
+    const section = getBusinessChecklistSection(itemId)
     if (section === 'outreach') {
       setLifecycleModal('owner_conversation')
       return
@@ -1484,10 +1955,10 @@ function BusinessDetailModal({
       return
     }
     jumpToSection(section)
-  }, [jumpToSection])
+  }, [businessSteps, jumpToSection])
 
   const goLiveBlockers = React.useMemo(() => {
-    const blockers: Array<{ id: string; label: string; detail: string; onClick: () => void }> = checklist.items
+    const blockers: Array<{ id: string; label: string; detail: string; onClick: () => void }> = requiredChecklist
       .filter((item: any) => !item.met)
       .map((item: any) => ({
         id: String(item.id),
@@ -1505,7 +1976,7 @@ function BusinessDetailModal({
       })
     }
 
-    if (!joinUrl) {
+    if (!effectiveJoinUrl) {
       blockers.push({
         id: 'customer_preview',
         label: 'Customer preview not ready',
@@ -1515,7 +1986,7 @@ function BusinessDetailModal({
     }
 
     return blockers
-  }, [checklist.items, joinUrl, qaReadiness.error, qaReadiness.stripeOnboarded, jumpToSection, openChecklistTarget])
+  }, [effectiveJoinUrl, qaReadiness.error, qaReadiness.stripeOnboarded, jumpToSection, openChecklistTarget, requiredChecklist])
 
   const activityTimeline = React.useMemo(() => {
     const items: Array<{ id: string; label: string; detail: string; at: string | null; tone: 'success' | 'warning' | 'default' }> = []
@@ -1597,23 +2068,13 @@ function BusinessDetailModal({
       return
     }
 
-    const metadata = {
-      ...((business.metadata as Record<string, unknown> | null) || {}),
-      portal_activation_review_state: 'approved',
-      portal_activation_reviewed_at: new Date().toISOString(),
-      portal_activation_reviewed_by: profile.id,
-    }
-
-    const saved = await updateBusiness(business.id, {
-      stage: 'live',
-      launch_phase: 'live',
-      activation_status: 'active',
-      metadata,
+    const response = await fetch(`/api/crm/businesses/${business.id}/publish`, {
+      method: 'POST',
     })
-
-    if (!saved) {
+    const payload = await response.json().catch(() => ({})) as { error?: string }
+    if (!response.ok) {
       setLiveActionTone('danger')
-      setLiveActionMessage('The business could not be marked live right now.')
+      setLiveActionMessage(payload.error || 'The business could not be marked live right now.')
       return
     }
 
@@ -1635,7 +2096,7 @@ function BusinessDetailModal({
       ip_address: null,
       metadata: {
         source: 'business_onboarding_page',
-        reviewed_at: metadata.portal_activation_reviewed_at,
+        reviewed_at: new Date().toISOString(),
       },
     })
 
@@ -1719,49 +2180,170 @@ function BusinessDetailModal({
         {/* ── Progress bar ───────────────────────────────────── */}
         <div className="mt-4 rounded-2xl border border-[#d7e200]/40 bg-white/70 px-4 py-4 shadow-sm backdrop-blur-sm">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-surface-600">
-            Progress in motion
+            Required onboarding
           </p>
-          <div className="mt-3 flex items-center gap-3">
-          <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#e8ecbf]">
-            <div
-              className={cn('h-full rounded-full transition-all duration-500', progressColors.bar)}
-              style={{ width: `${checklist.percent}%` }}
-            />
+          <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1.5 flex items-end justify-between gap-3">
+                <span className="text-xs font-medium text-surface-600">
+                  {requiredCompletedCount} of {requiredChecklist.length} required complete
+                </span>
+                <span className={cn('text-sm font-bold tabular-nums', progressColors.text)}>
+                  {requiredPercent}%
+                </span>
+              </div>
+              <div
+                className="h-3 overflow-hidden rounded-full bg-[#e8ecbf]"
+                role="progressbar"
+                aria-label="Required onboarding completion"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={requiredPercent}
+              >
+                <div
+                  className={cn('h-full rounded-full transition-all duration-500', progressColors.bar)}
+                  style={{ width: `${requiredPercent}%` }}
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 lg:pl-3">
+              <span className="rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-600">
+                Nice to have: {optionalCompletedCount}/{optionalChecklist.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowChecklist((current) => !current)}
+                aria-expanded={showChecklist}
+                className="flex items-center gap-1 rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-semibold text-surface-700 transition-colors hover:border-brand-300 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              >
+                {showChecklist ? 'Hide checklist' : 'Open checklist'}
+                <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', showChecklist && 'rotate-90')} />
+              </button>
+            </div>
           </div>
-          <span className={cn('text-sm font-bold tabular-nums', progressColors.text)}>
-            {checklist.percent}%
-          </span>
-          <span className="text-xs font-medium text-surface-700">
-            ({checklist.completedCount}/{checklist.totalCount})
-          </span>
-          <button
-            onClick={() => setShowChecklist((current) => !current)}
-            className="ml-auto flex items-center gap-1 rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-700 transition-colors hover:bg-surface-50"
-          >
-            {showChecklist ? 'Hide' : 'View'} Checklist
-            <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', showChecklist && 'rotate-90')} />
-          </button>
-        </div>
         </div>
         </div>
       </div>
 
+      <nav
+        aria-label="Business onboarding workspace"
+        className="sticky top-0 z-20 border-b border-surface-200 bg-white/95 px-6 py-3 backdrop-blur"
+      >
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => {
+              setShowChecklist(true)
+              jumpToSection('profile')
+            }}
+            className="group flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-left transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            <span>
+              <span className="block text-xs font-bold uppercase tracking-[0.12em] text-emerald-800">Required setup</span>
+              <span className="mt-0.5 block text-xs text-emerald-700">{requiredCompletedCount}/{requiredChecklist.length} complete</span>
+            </span>
+            <ArrowRight className="h-4 w-4 text-emerald-700 transition-transform group-hover:translate-x-0.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => jumpToSection('codes')}
+            className="group flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-left transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          >
+            <span>
+              <span className="block text-xs font-bold uppercase tracking-[0.12em] text-sky-800">Growth tools</span>
+              <span className="mt-0.5 block text-xs text-sky-700">{optionalCompletedCount}/{optionalChecklist.length} launch boosters</span>
+            </span>
+            <ArrowRight className="h-4 w-4 text-sky-700 transition-transform group-hover:translate-x-0.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => jumpToSection('outreach')}
+            className="group flex items-center justify-between gap-3 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2.5 text-left transition-colors hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          >
+            <span>
+              <span className="block text-xs font-bold uppercase tracking-[0.12em] text-surface-800">Activity</span>
+              <span className="mt-0.5 block text-xs text-surface-600">{businessOutreach.length} outreach updates</span>
+            </span>
+            <ArrowRight className="h-4 w-4 text-surface-600 transition-transform group-hover:translate-x-0.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => jumpToSection('readiness')}
+            className="group flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          >
+            <span>
+              <span className="block text-xs font-bold uppercase tracking-[0.12em] text-amber-900">Go-live readiness</span>
+              <span className="mt-0.5 block text-xs text-amber-800">
+                {goLiveBlockers.length === 0 ? 'Ready for approval' : `${goLiveBlockers.length} required blockers`}
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 text-amber-700 transition-transform group-hover:translate-x-0.5" />
+          </button>
+        </div>
+      </nav>
+
       {/* ── Expanded checklist ──────────────────────────────────── */}
       {showChecklist && (
-        <div className="border-b border-surface-200 bg-surface-50 px-6 py-4">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-surface-400">
-            Onboarding Checklist — {checklist.completedCount}/{checklist.totalCount} completed
+        <div className="space-y-6 border-b border-surface-200 bg-surface-50 px-6 py-6">
+          <p className="sr-only">
+            Required onboarding checklist: {requiredCompletedCount}/{requiredChecklist.length} completed.
+            Launch boosters: {optionalCompletedCount}/{optionalChecklist.length} completed.
           </p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {checklist.items.map((item: any) => (
-              <ChecklistJumpButton
-                key={item.id}
-                met={item.met}
-                label={item.label}
-                onClick={() => openChecklistTarget(item.id)}
-              />
-            ))}
-          </div>
+          <section aria-labelledby="required-onboarding-heading" className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Have to have before live</p>
+                <h3 id="required-onboarding-heading" className="mt-1 text-lg font-semibold text-surface-950">Required onboarding</h3>
+                <p className="mt-1 text-sm text-surface-600">Complete every item in this group before the business can be approved live.</p>
+              </div>
+              <span className="w-fit rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold tabular-nums text-emerald-800">
+                {requiredCompletedCount}/{requiredChecklist.length} complete
+              </span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {requiredChecklist.map((item: any) => {
+                const guidance = getChecklistItemGuidance(String(item.id))
+                return (
+                  <ChecklistJumpButton
+                    key={item.id}
+                    met={item.met}
+                    label={item.label}
+                    actionLabel={guidance.action}
+                    detail={guidance.detail}
+                    onClick={() => openChecklistTarget(String(item.id))}
+                  />
+                )
+              })}
+            </div>
+          </section>
+
+          <section aria-labelledby="optional-onboarding-heading" className="rounded-2xl border border-sky-200 bg-sky-50/40 p-4">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-700">Nice to have onboarded</p>
+                <h3 id="optional-onboarding-heading" className="mt-1 text-lg font-semibold text-surface-950">Launch boosters</h3>
+                <p className="mt-1 text-sm text-surface-600">These improve the launch, but they do not stop an otherwise-ready business from going live.</p>
+              </div>
+              <span className="w-fit rounded-full bg-sky-100 px-3 py-1.5 text-xs font-bold tabular-nums text-sky-800">
+                {optionalCompletedCount}/{optionalChecklist.length} complete
+              </span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {optionalChecklist.map((item: any) => {
+                const guidance = getChecklistItemGuidance(String(item.id))
+                return (
+                  <ChecklistJumpButton
+                    key={item.id}
+                    met={item.met}
+                    label={item.label}
+                    actionLabel={guidance.action}
+                    detail={guidance.detail}
+                    onClick={() => openChecklistTarget(String(item.id))}
+                  />
+                )
+              })}
+            </div>
+          </section>
         </div>
       )}
 
@@ -1850,12 +2432,17 @@ function BusinessDetailModal({
               <ReadinessTile
                 icon={<Eye className="h-4 w-4" />}
                 label="Customer preview"
-                value={joinUrl ? 'Ready' : 'Needs codes'}
-                tone={joinUrl ? 'success' : 'warning'}
-                actionLabel={joinUrl ? 'Preview page' : 'Create codes'}
-                href={joinUrl || undefined}
-                onClick={!joinUrl ? () => setLifecycleModal('materials_qr') : undefined}
-                external={!!joinUrl}
+                value={effectiveJoinUrl ? 'Ready' : referralAssetProvisioning.status === 'loading' ? 'Creating assets...' : 'Needs assets'}
+                tone={effectiveJoinUrl ? 'success' : 'warning'}
+                actionLabel={effectiveJoinUrl ? 'Preview page' : referralAssetProvisioning.status === 'error' ? 'Retry creation' : 'Review assets'}
+                href={effectiveJoinUrl || undefined}
+                onClick={!effectiveJoinUrl
+                  ? () => {
+                      setLifecycleModal('materials_qr')
+                      if (referralAssetProvisioning.status === 'error') void ensureReferralAssets()
+                    }
+                  : undefined}
+                external={!!effectiveJoinUrl}
               />
             </div>
 
@@ -1946,8 +2533,8 @@ function BusinessDetailModal({
               </Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <InlineDetail label="Logo" value={logoUrl ? 'Uploaded' : 'Missing'} onClick={() => setLifecycleModal('materials_qr')} />
-              <InlineDetail label="Cover photo" value={coverPhotoUrl ? 'Uploaded' : 'Missing'} onClick={() => setLifecycleModal('materials_qr')} />
+              <InlineDetail label="Logo" value={logoUrl ? 'Uploaded' : 'Missing'} onClick={() => setChecklistEditorMode('brand')} />
+              <InlineDetail label="Cover photo" value={coverPhotoUrl ? 'Uploaded' : 'Missing'} onClick={() => setChecklistEditorMode('brand')} />
             </div>
             <div className="flex flex-wrap gap-2">
               {logoUrl ? (
@@ -2074,8 +2661,8 @@ function BusinessDetailModal({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <InlineDetail label="Campaign" value={campaign?.name || 'Not linked'} href={campaign ? `/crm/campaigns/${campaign.id}` : `/crm/businesses/${business.id}`} />
-              <InlineDetail label="Cause / school" value={linkedCause?.name || 'Not linked'} href={linkedCause ? `/crm/causes/${linkedCause.id}` : `/crm/businesses/${business.id}`} />
+              <InlineDetail label="Campaign" value={campaign?.name || 'Not linked'} href={campaign ? `/crm/campaigns/${campaign.id}` : undefined} onClick={campaign ? undefined : () => setChecklistEditorMode('relationships')} />
+              <InlineDetail label="Cause / school" value={linkedCause?.name || 'Not linked'} href={linkedCause ? `/crm/causes/${linkedCause.id}` : undefined} onClick={linkedCause ? undefined : () => setChecklistEditorMode('relationships')} />
             </div>
           </div>
         </div>
@@ -2087,7 +2674,7 @@ function BusinessDetailModal({
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Tasks</p>
               <p className="mt-1 text-xl font-semibold text-surface-900">{businessTasks.length}</p>
               <div className="mt-2 space-y-1">
-                <ActionableDetailButton label={dueTask?.due_date ? `Due ${formatDate(dueTask.due_date)}` : 'Open task board'} href="/crm/tasks" />
+                <ActionableDetailButton label={dueTask?.due_date ? `Due ${formatDate(dueTask.due_date)}` : 'Open task board'} href={`/crm/tasks?businessId=${encodeURIComponent(business.id)}`} />
                 <ActionableDetailButton label={`Outreach: ${businessOutreach.length}`} onClick={() => setLifecycleModal('owner_conversation')} />
               </div>
             </div>
@@ -2095,10 +2682,32 @@ function BusinessDetailModal({
           <div ref={setSectionRef('codes')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getSectionHighlight(activeSection, 'codes'))}>
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Codes + Materials</p>
             <div className="mt-2 space-y-1">
+              <ActionableDetailButton
+                label={
+                  referralAssetProvisioning.status === 'loading'
+                    ? 'Automatic referral assets: Creating...'
+                    : referralAssetProvisioning.status === 'error'
+                      ? 'Automatic referral assets: Retry required'
+                      : referralAssetProvisioning.status === 'ready'
+                        ? 'Automatic referral assets: Ready'
+                        : 'Automatic referral assets: Waiting'
+                }
+                onClick={() => {
+                  setLifecycleModal('materials_qr')
+                  if (referralAssetProvisioning.status === 'error') void ensureReferralAssets()
+                }}
+              />
               <ActionableDetailButton label={`Referral: ${codes?.referral_code || 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
               <ActionableDetailButton label={`Connection: ${codes?.connection_code || 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
-              <ActionableDetailButton label={`Join page: ${joinUrl ? 'Ready' : 'Waiting on codes'}`} onClick={() => setLifecycleModal('materials_qr')} />
-              <ActionableDetailButton label={`QR: ${qrCount > 0 ? `${qrCount} ready` : 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`Join page: ${effectiveJoinUrl ? 'Ready' : 'Waiting on assets'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton
+                label={`QR: ${qrCount > 0
+                  ? `${qrCount} ready`
+                  : referralAssetProvisioning.result?.qrCode
+                    ? 'Canonical QR ready'
+                    : 'Missing'}`}
+                onClick={() => setLifecycleModal('materials_qr')}
+              />
               <ActionableDetailButton label={`Materials: ${generatedCount > 0 ? `${generatedCount} ready` : 'Waiting'}`} onClick={() => setLifecycleModal('materials_qr')} />
               <ActionableDetailButton label={`Task: ${taskStatus || 'Not started'}`} onClick={() => setLifecycleModal('materials_qr')} />
             </div>
@@ -2187,8 +2796,8 @@ function BusinessDetailModal({
           <Button variant="outline" size="sm" onClick={() => setLifecycleModal('launch_decision')}>
             <Heart className="h-3.5 w-3.5" /> Offers & Launch
           </Button>
-          {joinUrl ? (
-            <a href={joinUrl} target="_blank" rel="noopener noreferrer">
+          {effectiveJoinUrl ? (
+            <a href={effectiveJoinUrl} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" size="sm">
                 <ArrowRight className="h-3.5 w-3.5" /> Join Page
               </Button>
@@ -2203,6 +2812,21 @@ function BusinessDetailModal({
       </div>
 
       {/* ── Lifecycle Modals (stay in onboarding, don't navigate away) ── */}
+      <ChecklistEditorDialog
+        open={checklistEditorMode !== null}
+        mode={checklistEditorMode || 'profile'}
+        business={business}
+        cities={allCities}
+        causes={allCauses}
+        campaigns={allCampaigns}
+        owners={Array.from(profileMap.values())}
+        saving={updateLoading}
+        onOpenChange={(open) => {
+          if (!open) setChecklistEditorMode(null)
+        }}
+        onSave={handleSaveChecklistDetails}
+      />
+
       <InitialConnectionModal
         open={lifecycleModal === 'initial_connection'}
         onOpenChange={(v) => !v && setLifecycleModal(null)}
@@ -2260,13 +2884,16 @@ function BusinessDetailModal({
         codes={codes}
         generatedMaterials={generatedAll || generated}
         qrCodes={businessQrCodes || []}
-        joinUrl={joinUrl}
+        joinUrl={effectiveJoinUrl}
+        referralAssets={referralAssetProvisioning.result}
+        assetStatus={referralAssetProvisioning.status}
+        assetError={referralAssetProvisioning.error}
         engineBusy={engineBusy}
         regenBusy={regenBusy}
         saving={engineBusy !== null || regenBusy}
         blocker={businessSteps.find((s: any) => s.key === 'materials_qr')?.blocker ?? null}
         readyToComplete={businessSteps.find((s: any) => s.key === 'materials_qr')?.readyToComplete ?? false}
-        onSaveCodes={handleSaveCodes}
+        onEnsureAssets={ensureReferralAssets}
         onGenerateMaterials={handleGenerateMaterials}
         onRegenerateAll={handleRegenerateAll}
         onCompleteStep={() => {

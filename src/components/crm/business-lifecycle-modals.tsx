@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Phone,
   QrCode,
+  RefreshCw,
   Sparkles,
   Users,
   Wallet,
@@ -31,6 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { formatDateTime } from '@/lib/utils'
+import { downloadDataURL, generateStyledQR } from '@/lib/qr/generate'
 import type {
   Business,
   City,
@@ -421,7 +423,29 @@ export interface MaterialsQrModalProps {
   generatedMaterials: GeneratedMaterial[]
   qrCodes: QrCodeType[]
   joinUrl: string
-  onSaveCodes: (referralCode: string, connectionCode: string) => Promise<void>
+  referralAssets?: {
+    codes?: {
+      referralCode?: string | null
+      connectionCode?: string | null
+      joinUrl?: string | null
+      referral_code?: string | null
+      connection_code?: string | null
+      join_url?: string | null
+    } | null
+    qrCode?: {
+      id?: string | null
+      targetUrl?: string | null
+      qrImageUrl?: string | null
+      logoUrl?: string | null
+      destination_url?: string | null
+      redirect_url?: string | null
+    } | null
+    joinUrl?: string | null
+  } | null
+  assetStatus?: 'idle' | 'loading' | 'ready' | 'error'
+  assetError?: string | null
+  onEnsureAssets?: () => Promise<void>
+  onSaveCodes?: (referralCode: string, connectionCode: string) => Promise<void>
   onGenerateMaterials: () => Promise<void>
   onRegenerateAll: () => Promise<void>
   onCompleteStep?: () => void
@@ -439,7 +463,10 @@ export function MaterialsQrModal({
   generatedMaterials,
   qrCodes,
   joinUrl,
-  onSaveCodes,
+  referralAssets = null,
+  assetStatus = 'idle',
+  assetError = null,
+  onEnsureAssets,
   onGenerateMaterials,
   onRegenerateAll,
   onCompleteStep,
@@ -449,28 +476,118 @@ export function MaterialsQrModal({
   engineBusy,
   regenBusy,
 }: MaterialsQrModalProps) {
-  const [referral, setReferral] = React.useState(codes?.referral_code || '')
-  const [connection, setConnection] = React.useState(codes?.connection_code || '')
-  const [saveMsg, setSaveMsg] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
-
-  React.useEffect(() => {
-    if (open) {
-      setReferral(codes?.referral_code || '')
-      setConnection(codes?.connection_code || '')
-      setSaveMsg(null)
-    }
-  }, [open, codes])
+  const [clientQrPreviewUrl, setClientQrPreviewUrl] = React.useState('')
+  const [qrPreviewLoading, setQrPreviewLoading] = React.useState(false)
+  const [qrPreviewError, setQrPreviewError] = React.useState<string | null>(null)
 
   const generated = generatedMaterials.filter((m) => m.generation_status === 'generated' && m.generated_file_url && m.is_active !== false && !m.is_outdated)
   const failed = generatedMaterials.filter((m) => m.generation_status === 'failed')
+  const referralCode =
+    codes?.referral_code
+    || referralAssets?.codes?.referralCode
+    || referralAssets?.codes?.referral_code
+    || ''
+  const connectionCode =
+    codes?.connection_code
+    || referralAssets?.codes?.connectionCode
+    || referralAssets?.codes?.connection_code
+    || ''
+  const effectiveJoinUrl =
+    joinUrl
+    || referralAssets?.joinUrl
+    || referralAssets?.codes?.joinUrl
+    || referralAssets?.codes?.join_url
+    || ''
+  const storedCanonicalQr = qrCodes.find((qr) => qr.metadata?.purpose === 'business_referral') || qrCodes[0] || null
+  const canonicalQr = referralAssets?.qrCode || null
+  const qrImageUrl = canonicalQr?.qrImageUrl || null
+  const canonicalQrMetadata = storedCanonicalQr?.metadata || {}
+  const canonicalQrAppearance =
+    canonicalQrMetadata.qr_appearance && typeof canonicalQrMetadata.qr_appearance === 'object'
+      ? canonicalQrMetadata.qr_appearance as Record<string, unknown>
+      : {}
+  const businessLogoUrl =
+    canonicalQr?.logoUrl
+    || storedCanonicalQr?.logo_url
+    || (typeof canonicalQrMetadata.logo_url === 'string' ? canonicalQrMetadata.logo_url : null)
+    || (typeof canonicalQrAppearance.logoUrl === 'string' ? canonicalQrAppearance.logoUrl : null)
+    || null
+  const qrDestination =
+    canonicalQr?.targetUrl
+    || canonicalQr?.destination_url
+    || storedCanonicalQr?.destination_url
+    || effectiveJoinUrl
+  const qrTrackingUrl =
+    canonicalQr?.redirect_url
+    || storedCanonicalQr?.redirect_url
+    || qrDestination
+  const displayedQrImageUrl = qrImageUrl || clientQrPreviewUrl
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    async function buildClientQrPreview() {
+      if (!open || !qrDestination || qrImageUrl) {
+        setClientQrPreviewUrl('')
+        setQrPreviewError(null)
+        setQrPreviewLoading(false)
+        return
+      }
+
+      setQrPreviewLoading(true)
+      setQrPreviewError(null)
+      try {
+        const preview = await generateStyledQR({
+          data: qrTrackingUrl || qrDestination,
+          size: 640,
+          foregroundColor: storedCanonicalQr?.foreground_color || '#111827',
+          backgroundColor: storedCanonicalQr?.background_color || '#ffffff',
+          errorCorrectionLevel: 'H',
+          dotStyle: 'rounded',
+          cornerStyle: 'rounded',
+          logoUrl: businessLogoUrl || undefined,
+        })
+        if (!cancelled) setClientQrPreviewUrl(preview)
+      } catch (error) {
+        if (!cancelled) {
+          setClientQrPreviewUrl('')
+          setQrPreviewError(error instanceof Error ? error.message : 'The QR preview could not be generated.')
+        }
+      } finally {
+        if (!cancelled) setQrPreviewLoading(false)
+      }
+    }
+
+    void buildClientQrPreview()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    businessLogoUrl,
+    open,
+    qrDestination,
+    qrImageUrl,
+    qrTrackingUrl,
+    storedCanonicalQr?.background_color,
+    storedCanonicalQr?.foreground_color,
+  ])
 
   function copyUrl() {
-    if (joinUrl) {
-      void navigator.clipboard.writeText(joinUrl)
+    if (effectiveJoinUrl) {
+      void navigator.clipboard.writeText(effectiveJoinUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
+  }
+
+  function downloadQr() {
+    if (!clientQrPreviewUrl) return
+    const safeCode = (referralCode || storedCanonicalQr?.short_code || 'business')
+      .replace(/[^a-z0-9_-]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase()
+    downloadDataURL(clientQrPreviewUrl, `${safeCode || 'business'}-referral-qr.png`)
   }
 
   return (
@@ -484,37 +601,64 @@ export function MaterialsQrModal({
         </DialogHeader>
 
         <div className="space-y-5">
-          <div className="grid grid-cols-4 gap-3">
-            <Stat label="Referral code" value={codes?.referral_code || 'Not set'} ok={!!codes?.referral_code} />
-            <Stat label="Connection code" value={codes?.connection_code || 'Not set'} ok={!!codes?.connection_code} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Referral code" value={referralCode || 'Creating'} ok={!!referralCode} />
+            <Stat label="Connection code" value={connectionCode || 'Creating'} ok={!!connectionCode} />
             <Stat label="Generated" value={`${generated.length} files`} ok={generated.length > 0} />
-            <Stat label="QR codes" value={`${qrCodes.length}`} ok={qrCodes.length > 0} />
+            <Stat label="Referral QR" value={canonicalQr || storedCanonicalQr ? 'Ready' : 'Creating'} ok={!!(canonicalQr || storedCanonicalQr)} />
           </div>
 
           {blocker && <Blocker text={blocker} />}
-          {saveMsg && <SuccessBanner text={saveMsg} />}
+          {assetStatus === 'loading' && (
+            <div className="flex items-center gap-2.5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800" role="status">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              Creating or checking the business referral code and branded QR code...
+            </div>
+          )}
+          {assetStatus === 'ready' && (
+            <SuccessBanner text="Automatic referral assets are ready. Existing codes and QR records were reused." />
+          )}
+          {assetStatus === 'error' && (
+            <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-800" role="alert">
+              <p className="font-semibold">Referral assets could not be prepared.</p>
+              <p className="mt-1">{assetError || 'Try the referral asset action again.'}</p>
+            </div>
+          )}
 
           {/* Codes */}
           <div className="space-y-3 rounded-xl border border-surface-200 bg-surface-50 p-4">
-            <p className="text-sm font-semibold text-surface-900">Referral &amp; connection codes</p>
-            <p className="text-xs text-surface-500">
-              The referral code is assigned by the backend and drives the join link and generated materials. It is read-only here.
-            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-surface-900">Automatic referral assets</p>
+                <p className="mt-1 text-xs text-surface-500">
+                  LocalVIP assigns both codes and one canonical branded QR automatically. Running this action again safely reuses existing assets.
+                </p>
+              </div>
+              <Button
+                variant={assetStatus === 'error' || !referralCode || !connectionCode ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => void onEnsureAssets?.()}
+                disabled={assetStatus === 'loading' || !onEnsureAssets}
+              >
+                {assetStatus === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {assetStatus === 'error' ? 'Retry referral assets' : referralCode && connectionCode ? 'Refresh referral assets' : 'Create referral assets'}
+              </Button>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-surface-600">Referral code</label>
-                <Input value={referral} readOnly placeholder="e.g. 2201" />
+                <Input value={referralCode} readOnly placeholder="Assigned automatically" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-surface-600">Connection code</label>
-                <Input value={connection} readOnly placeholder="e.g. 2201" />
+                <Input value={connectionCode} readOnly placeholder="Assigned automatically" />
               </div>
             </div>
-            {joinUrl && (
+            {effectiveJoinUrl && (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-surface-600">Join URL</label>
                 <div className="flex gap-2">
-                  <Input value={joinUrl} readOnly className="text-xs" />
+                  <Input value={effectiveJoinUrl} readOnly className="text-xs" />
                   <Button variant="outline" size="sm" onClick={copyUrl}>
                     <Copy className="h-3.5 w-3.5" />
                     {copied ? 'Copied!' : 'Copy'}
@@ -522,19 +666,61 @@ export function MaterialsQrModal({
                 </div>
               </div>
             )}
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => void onGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
-                {engineBusy === 'codes' || engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Generate materials
-              </Button>
-              <Button variant="outline" onClick={() => void onGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
-                {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                Generate materials
-              </Button>
-              <Button variant="outline" onClick={() => void onRegenerateAll()} disabled={regenBusy || engineBusy !== null}>
-                Regenerate all
-              </Button>
+          </div>
+
+          <div className="rounded-xl border border-surface-200 bg-white p-4">
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <div
+                className="flex h-36 w-36 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-surface-200 bg-surface-50 bg-contain bg-center bg-no-repeat"
+                style={displayedQrImageUrl ? { backgroundImage: `url("${displayedQrImageUrl}")` } : undefined}
+                role="img"
+                aria-label={displayedQrImageUrl ? 'Canonical business referral QR code preview' : 'QR code preview unavailable'}
+              >
+                {qrPreviewLoading
+                  ? <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+                  : !displayedQrImageUrl && <QrCode className="h-16 w-16 text-surface-300" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-surface-900">Canonical business referral QR</p>
+                <p className="mt-1 text-xs text-surface-500">
+                  The QR uses high error correction, rounded styling, and the business logo centered in the downloadable image.
+                </p>
+                {qrDestination && <p className="mt-3 break-all text-xs text-surface-600">{qrDestination}</p>}
+                {qrPreviewError && <p className="mt-2 text-xs font-medium text-danger-700" role="alert">{qrPreviewError}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {displayedQrImageUrl && (
+                    <a href={displayedQrImageUrl} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" size="sm">
+                        <ExternalLink className="h-4 w-4" /> Open QR image
+                      </Button>
+                    </a>
+                  )}
+                  {clientQrPreviewUrl && (
+                    <Button variant="outline" size="sm" onClick={downloadQr}>
+                      <QrCode className="h-4 w-4" /> Download QR
+                    </Button>
+                  )}
+                  {qrTrackingUrl && (
+                    <a href={qrTrackingUrl} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" size="sm">
+                        <ExternalLink className="h-4 w-4" /> Test referral link
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              </div>
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void onGenerateMaterials()} disabled={engineBusy !== null || !connectionCode}>
+              {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Generate materials
+            </Button>
+            <Button variant="outline" onClick={() => void onRegenerateAll()} disabled={regenBusy || engineBusy !== null || generated.length === 0}>
+              {regenBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Regenerate materials
+            </Button>
           </div>
 
           {/* Generated materials list */}

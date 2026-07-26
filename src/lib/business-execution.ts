@@ -76,17 +76,12 @@ export function computeBusinessExecutionSteps(input: {
         }
         break
       case 'owner_conversation':
-        if (input.outreachCount === 0) {
-          blocker = 'Log at least one outreach or owner conversation first.'
-        }
         break
       case 'materials_qr':
         if (!input.codes?.referral_code || !input.codes?.connection_code) {
           blocker = 'Save the referral code and connection code first.'
         } else if (!qrReady) {
           blocker = 'Generate or link a QR code first.'
-        } else if (generatedCount === 0) {
-          blocker = 'Generate materials first.'
         }
         break
       case 'launch_decision':

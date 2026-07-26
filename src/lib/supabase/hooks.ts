@@ -12,6 +12,8 @@
  */
 
 import * as React from 'react'
+import { getBusinessJoinUrl } from '@/lib/business-join'
+import { slugify } from '@/lib/utils'
 import type {
   Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material, Organization,
   StakeholderAssignment, OnboardingFlow, OnboardingStep, OutreachScript, MaterialAssignment, QrCodeCollection,
@@ -63,15 +65,70 @@ function buildQueryString(filters?: Record<string, string | number | boolean | n
   return qs ? `?${qs}` : ''
 }
 
+function nonEmptyString(value: unknown) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
+function durableId(value: unknown) {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value)
+  return nonEmptyString(value)
+}
+
+function readQaWebsite(socialLinks: unknown) {
+  let parsed: Record<string, unknown>
+  if (socialLinks && typeof socialLinks === 'object' && !Array.isArray(socialLinks)) {
+    parsed = socialLinks as Record<string, unknown>
+  } else {
+    if (typeof socialLinks !== 'string' || !socialLinks.trim()) return null
+    try {
+      parsed = JSON.parse(socialLinks) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }
+  return nonEmptyString(parsed.website)
+    || nonEmptyString(parsed.business_website)
+    || nonEmptyString(parsed.url)
+}
+
 function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
   const crmStatus = typeof b.crmStatus === 'string' ? b.crmStatus : null
   const crmStage = typeof b.crmStage === 'string' ? b.crmStage : null
   const isPendingLiveReview = crmStatus === 'pending_live_review'
   const isLive = crmStatus === 'live' || crmStage === 'live'
+  const city = nonEmptyString(b.city)
+  const state = nonEmptyString(b.state)
+  const ownerUserId = b.ownerUserId ?? b.primaryUserId
+  const durableOwnerId = durableId(ownerUserId)
+  const campaignId = durableId(b.crmCampaignId)
+  const referralCode = nonEmptyString(b.referralCode)
+  const branchReferralUrl = nonEmptyString(b.branchReferralUrl)
+  const joinSlug = slugify(`${String(b.name || 'business')}-${String(b.id)}`) || `business-${String(b.id)}`
+  const businessJoinUrl = getBusinessJoinUrl(joinSlug)
+  const qrState = {
+    id: durableId(b.qrCodeId ?? b.linkedQrCodeId),
+    count: typeof b.qrCodeCount === 'number' ? b.qrCodeCount : null,
+    ready: typeof b.hasQrCode === 'boolean' ? b.hasQrCode : null,
+    imageUrl: nonEmptyString(b.qrImageUrl),
+    appearance: nonEmptyString(b.qrAppearance),
+  }
   const metadata = {
     qaId: b.id,
     qaBusinessId: b.id,
     headline: b.headline,
+    referralCode,
+    connectionCode: referralCode,
+    branchReferralUrl,
+    businessJoinUrl,
+    qrState,
+    customer_capture: {
+      join_slug: joinSlug,
+      join_url: businessJoinUrl,
+      short_code: referralCode,
+      qr_code_id: qrState.id,
+    },
     portal_activation_review_state: isPendingLiveReview ? 'pending' : isLive ? 'approved' : null,
   }
 
@@ -80,17 +137,18 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
     name: String(b.name || ''),
     email: (b.ownerEmail as string) || null,
     phone: (b.ownerPhone as string) || null,
-    website: null,
+    website: readQaWebsite(b.socialLinks),
     category: (b.category as string) || null,
     public_description: (b.description as string) || null,
     address: (b.fullAddress as string) || (b.address1 as string) || null,
-    city: (b.city as string) || null,
-    state: (b.state as string) || null,
+    city,
+    state,
     country: (b.country as string) || null,
     zip: (b.zipCode as string) || null,
-    owner_id: null,
-    owner_user_id: b.ownerUserId == null ? null : String(b.ownerUserId),
-    city_id: null,
+    owner_id: durableOwnerId,
+    owner_user_id: durableOwnerId,
+    // QA stores city/state as account text rather than a city foreign key.
+    city_id: city ? [city, state].filter(Boolean).join(', ') : null,
     brand: 'localvip',
     stage: ((crmStage as Business['stage']) || (isLive ? 'live' : 'lead')),
     status: (crmStatus as Business['status']) || (b.active ? 'active' : 'inactive'),
@@ -103,6 +161,7 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
       ? (/^https?:\/\//i.test(String(b.coverPhotoUrl)) ? String(b.coverPhotoUrl) : `/api/qa/businesses/${b.id}/cover`)
       : null,
     linked_cause_id: b.linkedCauseAccountId == null ? null : String(b.linkedCauseAccountId),
+    campaign_id: campaignId,
     avg_ticket: (b.avgTicket as string) || null,
     products_services: typeof b.productsServices === 'string'
       ? b.productsServices.split(',').map((item) => item.trim()).filter(Boolean)

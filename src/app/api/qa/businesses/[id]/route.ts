@@ -7,6 +7,30 @@ import { canAccessQaBusinessRecord, normalizeQaBusinessSetupPayload } from '@/li
 import { getQaAccountIdFromLocal } from '@/lib/server/qa-dashboard-shared'
 import { parseStripeOnboardingStatus } from '@/lib/stripe-onboarding'
 
+function positiveQaId(value: unknown) {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
+  if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return null
+
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function parseSocialLinks(value: unknown) {
+  if (value === null || value === undefined || value === '') return {}
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return { ...value as Record<string, unknown> }
+  }
+  if (typeof value !== 'string') {
+    throw new Error('QA returned SocialLinks in an unsupported format.')
+  }
+
+  const parsed = JSON.parse(value) as unknown
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('QA returned SocialLinks in an unsupported format.')
+  }
+  return { ...parsed as Record<string, unknown> }
+}
+
 function buildLocalBusinessPatch(body: Record<string, unknown>) {
   const patch: Record<string, unknown> = {}
 
@@ -182,12 +206,21 @@ export async function PUT(
     const launchPhase = body.launch_phase
     const activationStatus = body.activation_status
     if (
+      body.stage === 'live'
+      || body.status === 'live'
+      || launchPhase === 'live'
+      || activationStatus === 'active'
+    ) {
+      return NextResponse.json(
+        { error: 'Businesses can only be made live through the protected publish action.' },
+        { status: 409 },
+      )
+    }
+    if (
       launchPhase === 'ready_to_go_live'
       || metadata?.portal_activation_review_state === 'pending'
     ) {
       crmPayload.status = 'pending_live_review'
-    } else if (launchPhase === 'live' || activationStatus === 'active') {
-      crmPayload.status = 'live'
     }
     delete normalizedBody.launch_phase
     delete normalizedBody.activation_status
@@ -207,16 +240,92 @@ export async function PUT(
       return NextResponse.json(crmResult ?? { id: qaBusinessId })
     }
 
-    if (typeof normalizedBody.city_id === 'string' && /^\d+$/.test(normalizedBody.city_id)) {
+    if ('website' in normalizedBody) {
       try {
-        const cityRes = await fetchQaApi(`/api/dashboard/v1/City/${encodeURIComponent(normalizedBody.city_id)}`)
+        const qaBusiness = business as unknown as Record<string, unknown>
+        const existingSocialLinks = parseSocialLinks(qaBusiness.socialLinks ?? qaBusiness.SocialLinks)
+        const requestedWebsite = normalizedBody.website
+
+        if (typeof requestedWebsite === 'string' && requestedWebsite.trim()) {
+          existingSocialLinks.website = requestedWebsite.trim()
+        } else if (requestedWebsite === null || requestedWebsite === '') {
+          delete existingSocialLinks.website
+        } else {
+          return NextResponse.json(
+            { error: 'Website must be a URL string, an empty string, or null.' },
+            { status: 422 },
+          )
+        }
+
+        normalizedBody.socialLinks = JSON.stringify(existingSocialLinks)
+        delete normalizedBody.website
+      } catch (error) {
+        console.error('[qa business] SocialLinks could not be merged', { qaBusinessId, error })
+        return NextResponse.json(
+          {
+            error: 'The existing QA social links could not be read safely. No website changes were saved.',
+          },
+          { status: 502 },
+        )
+      }
+    }
+
+    if ('city_id' in normalizedBody) {
+      const cityId = positiveQaId(normalizedBody.city_id)
+      if (cityId === null) {
+        return NextResponse.json(
+          {
+            error: 'City must be selected from the QA city list so it has a numeric QA city ID.',
+          },
+          { status: 422 },
+        )
+      }
+
+      try {
+        const cityRes = await fetchQaApi(`/api/dashboard/v1/City/${cityId}`)
         const city = await parseQaResponse<Record<string, unknown> | null>(cityRes, 'Failed to resolve city.')
         if (city && typeof city.name === 'string' && !normalizedBody.city) normalizedBody.city = city.name
         if (city && typeof city.state === 'string' && !normalizedBody.state) normalizedBody.state = city.state
         if (city && typeof city.country === 'string' && !normalizedBody.country) normalizedBody.country = city.country
-      } catch {
-        // Leave the original payload intact and let unsupported-field reporting handle it.
+        if (!city || typeof city.name !== 'string' || !city.name.trim()) {
+          return NextResponse.json(
+            { error: 'The selected QA city could not be resolved. Choose the city again and retry.' },
+            { status: 422 },
+          )
+        }
+        delete normalizedBody.city_id
+      } catch (error) {
+        console.error('[qa business] City could not be resolved', { qaBusinessId, cityId, error })
+        return NextResponse.json(
+          { error: 'The selected QA city could not be resolved. Choose the city again and retry.' },
+          { status: 502 },
+        )
       }
+    }
+
+    const ownerKeys = ['owner_id', 'owner_user_id'] as const
+    const suppliedOwnerKeys = ownerKeys.filter(key => key in normalizedBody)
+    if (suppliedOwnerKeys.length > 0) {
+      const ownerIds = suppliedOwnerKeys.map(key => positiveQaId(normalizedBody[key]))
+      if (ownerIds.some(ownerId => ownerId === null)) {
+        return NextResponse.json(
+          {
+            error: 'The selected owner is local-only and cannot be assigned in QA. Select a QA user with a numeric QA user ID.',
+          },
+          { status: 422 },
+        )
+      }
+
+      const distinctOwnerIds = [...new Set(ownerIds as number[])]
+      if (distinctOwnerIds.length > 1) {
+        return NextResponse.json(
+          { error: 'The owner fields identify different QA users. Select one QA owner and try again.' },
+          { status: 422 },
+        )
+      }
+
+      normalizedBody.primaryUserId = distinctOwnerIds[0]
+      for (const key of ownerKeys) delete normalizedBody[key]
     }
 
     const { payload, unsupportedFields } = normalizeQaBusinessSetupPayload(normalizedBody)

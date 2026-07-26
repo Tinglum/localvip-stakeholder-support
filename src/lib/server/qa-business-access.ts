@@ -19,6 +19,13 @@ function getQaUserId(profile: Profile) {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
+function numericId(value: unknown) {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
+  if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return null
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 export function canAccessQaBusinessRecord(
   shell: StakeholderShell,
   profile: Profile,
@@ -31,10 +38,12 @@ export function canAccessQaBusinessRecord(
   if (userEmail && ownerEmail && userEmail === ownerEmail) return true
 
   const userQaId = getQaUserId(profile)
+  const ownerUserId = business.ownerUserId
+    ?? (business as QaBusinessListItem & { primaryUserId?: number | null }).primaryUserId
   return userQaId !== null
-    && business.ownerUserId !== null
-    && business.ownerUserId !== undefined
-    && userQaId === business.ownerUserId
+    && ownerUserId !== null
+    && ownerUserId !== undefined
+    && userQaId === ownerUserId
 }
 
 export function filterQaBusinessesForAccess(
@@ -68,11 +77,16 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'state':
       case 'zipCode':
       case 'country':
-      case 'primaryUserId':
       case 'businessHours':
       case 'socialLinks':
         assign(key, value)
         break
+      case 'primaryUserId': {
+        const primaryUserId = numericId(value)
+        if (primaryUserId !== null) assign('primaryUserId', primaryUserId)
+        else unsupportedFields.push(key)
+        break
+      }
       case 'email':
         assign('ownerEmail', value)
         break
@@ -101,9 +115,25 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'zip_code':
         assign('zipCode', value)
         break
-      case 'primary_user_id':
-        assign('primaryUserId', value)
+      case 'zip':
+        assign('zipCode', value)
         break
+      case 'address':
+        assign('address1', value)
+        break
+      case 'primary_user_id': {
+        const primaryUserId = numericId(value)
+        if (primaryUserId !== null) assign('primaryUserId', primaryUserId)
+        else unsupportedFields.push(key)
+        break
+      }
+      case 'owner_id':
+      case 'owner_user_id': {
+        const ownerUserId = numericId(value)
+        if (ownerUserId !== null) assign('primaryUserId', ownerUserId)
+        else unsupportedFields.push(key)
+        break
+      }
       case 'category':
         assign('category', value)
         break
@@ -126,15 +156,11 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'campaign_id':
       case 'duplicate_of':
       case 'status':
-      case 'owner_id':
-      case 'owner_user_id':
       case 'source':
       case 'source_detail':
       case 'city_id':
       case 'brand':
       case 'external_id':
-      case 'website':
-      case 'address':
       case 'marketing':
       case 'txFee':
       case 'tx_fee':
@@ -148,6 +174,11 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'logo_url':
       case 'coverPhotoUrl':
       case 'cover_photo_url':
+        unsupportedFields.push(key)
+        break
+      case 'website':
+        // QA accepts SocialLinks writes but does not return SocialLinks from
+        // business detail. A blind website write could erase existing links.
         unsupportedFields.push(key)
         break
       default:
