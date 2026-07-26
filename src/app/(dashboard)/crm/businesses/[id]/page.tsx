@@ -7,7 +7,7 @@ import {
   ArrowLeft, Phone, Mail, Globe, MapPin, Clock,
   AlertTriangle, Copy, Key, MessageSquare, CheckSquare, StickyNote, QrCode as QrCodeIcon,
   FileText, Send, Plus, ExternalLink, MoreHorizontal, User,
-  Check, ChevronDown, Loader2,
+  Check, CheckCircle2, ChevronDown, Loader2, Rocket,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -120,7 +120,7 @@ export default function BusinessDetailPage() {
     const value = searchParams.get('qaId')
     return value && /^\d+$/.test(value) ? Number(value) : null
   }, [searchParams])
-  const { profile } = useAuth()
+  const { profile, isAdmin } = useAuth()
   const localProfileId = asUuid(profile.id)
   const [activeTab, setActiveTab] = React.useState<'overview' | 'activity' | 'tasks' | 'notes' | 'qr' | 'materials'>('overview')
 
@@ -243,6 +243,8 @@ export default function BusinessDetailPage() {
 
   // ── Stage change handler ──
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
+  const [publishing, setPublishing] = React.useState(false)
+  const [publishError, setPublishError] = React.useState<string | null>(null)
   const [linkCauseOpen, setLinkCauseOpen] = React.useState(false)
   const [linkCampaignOpen, setLinkCampaignOpen] = React.useState(false)
   const [reviewDupOpen, setReviewDupOpen] = React.useState(false)
@@ -256,6 +258,30 @@ export default function BusinessDetailPage() {
     setStageDropdownOpen(false)
     refetchBusinessDetail()
   }, [biz, crmWriteId, readOnly, refetchBusinessDetail, updateBusiness])
+
+  const isPendingLiveReview = String(biz?.status || '') === 'pending_live_review'
+  const isLive = biz?.stage === 'live' || String(biz?.status || '') === 'live' || qaBusiness?.active === true
+
+  const handlePublishLive = React.useCallback(async () => {
+    if (!crmWriteId || !isAdmin || publishing) return
+
+    setPublishing(true)
+    setPublishError(null)
+    try {
+      const response = await fetch(`/api/crm/businesses/${encodeURIComponent(crmWriteId)}/publish`, {
+        method: 'POST',
+      })
+      const result = await response.json().catch(() => ({})) as { error?: string }
+      if (!response.ok) {
+        throw new Error(result.error || 'The business could not be sent live.')
+      }
+      refetchBusinessDetail()
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : 'The business could not be sent live.')
+    } finally {
+      setPublishing(false)
+    }
+  }, [crmWriteId, isAdmin, publishing, refetchBusinessDetail])
 
   React.useEffect(() => {
     setPendingCauseId(biz?.linked_cause_id || '__none')
@@ -388,6 +414,16 @@ export default function BusinessDetailPage() {
         </div>
       )}
 
+      {publishError ? (
+        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+          <div>
+            <p className="font-medium">Could not send this business live</p>
+            <p className="mt-1 text-xs text-red-700">{publishError}</p>
+          </div>
+        </div>
+      ) : null}
+
       {/* Duplicate Warning Banner */}
       {biz.duplicate_of && (
         <div className="flex items-center gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3">
@@ -422,6 +458,23 @@ export default function BusinessDetailPage() {
         ]}
         actions={
           <div className="flex items-center gap-3">
+            {isAdmin && isLive ? (
+              <Button size="sm" disabled className="bg-emerald-600 text-white opacity-100">
+                <CheckCircle2 className="h-4 w-4" />
+                LIVE
+              </Button>
+            ) : null}
+            {isAdmin && isPendingLiveReview && !isLive ? (
+              <Button
+                size="sm"
+                onClick={() => void handlePublishLive()}
+                disabled={publishing}
+                className="bg-red-600 text-white hover:bg-red-700"
+              >
+                {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
+                {publishing ? 'SENDING...' : 'SEND TO LIVE'}
+              </Button>
+            ) : null}
             {/* Stage Dropdown */}
             <div className="relative">
               <button

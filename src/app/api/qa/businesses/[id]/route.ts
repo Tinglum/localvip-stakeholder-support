@@ -138,6 +138,25 @@ export async function PUT(
       else normalizedBody[key] = value
     }
 
+    // QA's Account CRM fields are the durable source of truth for live review.
+    // The dashboard's richer launch fields are local concepts, so translate them
+    // into a CRM status that both the business and super-admin can read.
+    const launchPhase = body.launch_phase
+    const activationStatus = body.activation_status
+    const metadata = body.metadata && typeof body.metadata === 'object'
+      ? body.metadata as Record<string, unknown>
+      : null
+    if (
+      launchPhase === 'ready_to_go_live'
+      || metadata?.portal_activation_review_state === 'pending'
+    ) {
+      crmPayload.status = 'pending_live_review'
+    } else if (launchPhase === 'live' || activationStatus === 'active') {
+      crmPayload.status = 'live'
+    }
+    delete normalizedBody.launch_phase
+    delete normalizedBody.activation_status
+
     let crmResult: unknown = null
     if (Object.keys(crmPayload).length > 0) {
       const crmRes = await fetchQaApi(`/api/dashboard/v1/Business/${qaBusinessId}/crm`, {

@@ -195,14 +195,15 @@ export function BusinessSetupWizardPage() {
       captureDescription: captureOffer?.description || '',
       captureValue: captureOffer?.value_label || '',
       cashbackPercent: cashbackOffer?.cashback_percent || 10,
+      supportedCauseId: business.linked_cause_id || null,
     })
   }, [business, cashbackOffer?.cashback_percent, cashbackOffer?.id, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.logo_url])
 
   const persistChanges = React.useCallback(async (options?: {
     businessPatch?: Record<string, unknown>
     metadataOverrides?: Record<string, unknown>
-  }) => {
-    if (!business) return
+  }): Promise<boolean> => {
+    if (!business) return false
 
     try {
       setSaveState('saving')
@@ -338,13 +339,16 @@ export function BusinessSetupWizardPage() {
         captureDescription,
         captureValue,
         cashbackPercent,
+        supportedCauseId,
       })
 
       setSaveState('saved')
       refetchOffers({ silent: true })
+      return true
     } catch (error) {
       setSaveState('error')
       setSaveError(error instanceof Error ? error.message : 'Changes could not be saved.')
+      return false
     }
   }, [
     avgTicket,
@@ -390,6 +394,7 @@ export function BusinessSetupWizardPage() {
       captureDescription,
       captureValue,
       cashbackPercent,
+      supportedCauseId,
     })
 
     if (!snapshotRef.current || snapshot === snapshotRef.current) return
@@ -402,7 +407,7 @@ export function BusinessSetupWizardPage() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, cashbackPercent, category, coverFile, coverUrl, description, logoFile, logoUrl, name, persistChanges, products])
+  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, cashbackPercent, category, coverFile, coverUrl, description, logoFile, logoUrl, name, persistChanges, products, supportedCauseId])
 
   if (businessLoading) {
     return (
@@ -480,7 +485,8 @@ export function BusinessSetupWizardPage() {
     setStepValidation((current) => ({ ...current, [key]: true }))
     if (!getStepCompletion(key)) return
 
-    await persistChanges()
+    const saved = await persistChanges()
+    if (!saved) return
 
     const nextStep = getNextStep(key)
     if (!nextStep) return
@@ -493,7 +499,7 @@ export function BusinessSetupWizardPage() {
     setActivating(true)
     try {
       const requestedAt = new Date().toISOString()
-      await persistChanges({
+      const saved = await persistChanges({
         businessPatch: {
           stage: 'onboarded',
           launch_phase: 'ready_to_go_live',
@@ -507,6 +513,7 @@ export function BusinessSetupWizardPage() {
           portal_activation_reviewed_by: null,
         },
       })
+      if (!saved) return
       window.location.href = '/portal/clients?review=submitted'
     } finally {
       setActivating(false)

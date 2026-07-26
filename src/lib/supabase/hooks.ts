@@ -64,13 +64,23 @@ function buildQueryString(filters?: Record<string, string | number | boolean | n
 }
 
 function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
+  const crmStatus = typeof b.crmStatus === 'string' ? b.crmStatus : null
+  const isPendingLiveReview = crmStatus === 'pending_live_review'
+  const isLive = crmStatus === 'live' || b.active === true
+  const metadata = {
+    qaId: b.id,
+    qaBusinessId: b.id,
+    headline: b.headline,
+    portal_activation_review_state: isPendingLiveReview ? 'pending' : isLive ? 'approved' : null,
+  }
+
   return {
     id: String(b.id),
     name: String(b.name || ''),
     email: (b.ownerEmail as string) || null,
     phone: (b.ownerPhone as string) || null,
     website: null,
-    category: null,
+    category: (b.category as string) || null,
     public_description: (b.description as string) || null,
     address: (b.fullAddress as string) || (b.address1 as string) || null,
     city: (b.city as string) || null,
@@ -78,11 +88,11 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
     country: (b.country as string) || null,
     zip: (b.zipCode as string) || null,
     owner_id: null,
-    owner_user_id: null,
+    owner_user_id: b.ownerUserId == null ? null : String(b.ownerUserId),
     city_id: null,
     brand: 'localvip',
-    stage: 'lead',
-    status: b.active ? 'active' : 'inactive',
+    stage: ((b.crmStage as Business['stage']) || (isLive ? 'live' : 'lead')),
+    status: (crmStatus as Business['status']) || (b.active ? 'active' : 'inactive'),
     // Route QA filenames through same-origin proxies so setup previews and
     // completion state can rehydrate after a page reload.
     logo_url: b.imageUrl
@@ -91,7 +101,14 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
     cover_photo_url: b.coverPhotoUrl
       ? (/^https?:\/\//i.test(String(b.coverPhotoUrl)) ? String(b.coverPhotoUrl) : `/api/qa/businesses/${b.id}/cover`)
       : null,
-    metadata: { qaId: b.id, qaBusinessId: b.id, headline: b.headline },
+    linked_cause_id: b.linkedCauseAccountId == null ? null : String(b.linkedCauseAccountId),
+    avg_ticket: (b.avgTicket as string) || null,
+    products_services: typeof b.productsServices === 'string'
+      ? b.productsServices.split(',').map((item) => item.trim()).filter(Boolean)
+      : null,
+    launch_phase: isPendingLiveReview ? 'ready_to_go_live' : isLive ? 'live' : null,
+    activation_status: isLive ? 'active' : isPendingLiveReview ? 'in_progress' : null,
+    metadata,
     created_at: (b.createdDate as string) || new Date().toISOString(),
     updated_at: (b.updatedDate as string) || new Date().toISOString(),
   } as unknown as Business

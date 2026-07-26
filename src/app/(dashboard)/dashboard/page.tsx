@@ -144,10 +144,16 @@ function TeamDashboardPage() {
     return () => { cancelled = true }
   }, [])
 
-  const { data: businessData, loading: businessLoading } = useBusinesses()
+  const { data: businessData, loading: businessLoading, refetch: refetchBusinesses } = useBusinesses()
   const { data: causeData } = useCauses()
   const { data: adminTasks } = useAdminTasks()
   const { data: cityRequests } = useCityAccessRequests()
+
+  React.useEffect(() => {
+    if (!isAdmin) return
+    const timer = window.setInterval(() => refetchBusinesses({ silent: true }), 15_000)
+    return () => window.clearInterval(timer)
+  }, [isAdmin, refetchBusinesses])
 
   const pendingCityRequests = React.useMemo(
     () => cityRequests.filter((request) => request.status === 'pending'),
@@ -168,6 +174,12 @@ function TeamDashboardPage() {
   const openCauseOnboarding = React.useMemo(
     () => causeData.filter((cause) => ['lead', 'contacted', 'interested', 'in_progress'].includes(cause.stage)),
     [causeData]
+  )
+  const businessesPendingLiveReview = React.useMemo(
+    () => businessData
+      .filter((business) => String(business.status) === 'pending_live_review')
+      .sort((left, right) => left.name.localeCompare(right.name)),
+    [businessData]
   )
   const immediateItems = React.useMemo(
     () => {
@@ -368,6 +380,52 @@ function TeamDashboardPage() {
 
   return (
     <div className="space-y-8">
+      {isAdmin && businessesPendingLiveReview.length > 0 ? (
+        <section className="overflow-hidden rounded-[2rem] border-4 border-emerald-500 bg-emerald-500 text-white shadow-xl shadow-emerald-200/70">
+          <div className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20">
+                  <Rocket className="h-7 w-7" />
+                </span>
+                <Badge className="border-white/40 bg-white text-emerald-800">
+                  {businessesPendingLiveReview.length} waiting
+                </Badge>
+              </div>
+              <h2 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">
+                New businesses want to go live
+              </h2>
+              <p className="mt-3 max-w-3xl text-base leading-7 text-emerald-50">
+                Their setup is submitted and waiting for your final CRM check. Open the business, review it, then use SEND TO LIVE in the top-right corner.
+              </p>
+            </div>
+            <Button asChild size="lg" className="bg-white text-emerald-800 hover:bg-emerald-50">
+              <Link href="/crm/businesses">
+                Open business CRM
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+          <div className="grid gap-px bg-emerald-400 sm:grid-cols-2 xl:grid-cols-3">
+            {businessesPendingLiveReview.map((business) => (
+              <Link
+                key={business.id}
+                href={`/crm/businesses/${business.id}`}
+                className="flex items-center justify-between gap-4 bg-emerald-600/80 px-6 py-5 transition-colors hover:bg-emerald-700"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-semibold">{business.name}</p>
+                  <p className="mt-1 text-sm text-emerald-100">
+                    {[business.category, business.email].filter(Boolean).join(' / ') || 'Ready for CRM review'}
+                  </p>
+                </div>
+                <ArrowRight className="h-5 w-5 shrink-0" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <Card className="overflow-hidden border-surface-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_transparent_42%),linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] shadow-sm">
         <CardContent className="p-6 sm:p-8">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
