@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
+import { DealManager } from '@/components/crm/deal-manager'
 import { useAuth } from '@/lib/auth/context'
 import {
   getActivationLabel,
@@ -220,6 +221,8 @@ export function BusinessProfilePage() {
         <InfoCard href="/portal/setup?step=cashback" label="LocalVIP cashback" value={formatCashbackLabel(cashbackOffer.cashback_percent)} detail="Change the ongoing customer reward." icon={<Wallet className="h-5 w-5" />} />
         <InfoCard href="/portal/setup?step=cashback" label="Linked cause or school" value={linkedCause?.name || 'Customer chooses later'} detail="Pick the cause your business champions." icon={<Heart className="h-5 w-5" />} />
       </div>
+
+      <DealManager businessAccountId={String(business.id)} mode="portal" />
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
         <Card>
