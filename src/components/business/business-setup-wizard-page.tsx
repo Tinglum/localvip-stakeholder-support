@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowRight, CheckCircle2, Image as ImageIcon, Loader2, Rocket, Store, Tag, Wallet } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Image as ImageIcon, Loader2, PartyPopper, QrCode, Rocket, Send, Store, Tag, Users, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,19 @@ import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
 import { resolveBusinessOffer } from '@/lib/offers'
-import { getBusinessLaunchPhase, getBusinessPortalData, resolveScopedBusiness } from '@/lib/business-portal'
+import { getBusinessJoinCaptureData } from '@/lib/business-join'
+import {
+  getBusinessLaunchPhase,
+  getBusinessPortalData,
+  getContactListStatus,
+  resolveScopedBusiness,
+} from '@/lib/business-portal'
+import {
+  BUSINESS_SETUP_CONFIG_STEPS,
+  getBusinessSetupState,
+  type BusinessSetupStepKey,
+  type BusinessSetupSignals,
+} from '@/lib/business-setup'
 import {
   useBusinesses,
   useBusinessUpdate,
@@ -24,17 +36,29 @@ import {
 } from '@/lib/supabase/hooks'
 // Client-side Supabase removed — media uploads now use the /api/crm/businesses/[id]/media route
 
-type StepKey = 'profile' | 'branding' | 'capture' | 'cashback' | 'activate'
+/** The steps that are actually edited on this page. The full checklist — these
+ *  plus the do-it-on-another-page tasks — lives in `@/lib/business-setup`. */
+type StepKey = Extract<BusinessSetupStepKey, 'profile' | 'branding' | 'capture' | 'cashback' | 'activate'>
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
-const STEPS: Array<{ key: StepKey; label: string; description: string; icon: React.ReactNode }> = [
-  { key: 'profile', label: 'Business Profile', description: 'Tell us the basics customers need to understand your business.', icon: <Store className="h-4 w-4" /> },
-  { key: 'branding', label: 'Branding', description: 'Add a logo and cover image for your business-facing pages.', icon: <ImageIcon className="h-4 w-4" /> },
-  { key: 'capture', label: '100-List Offer', description: 'Create the pre-launch offer used only to collect your first 100 customers.', icon: <Tag className="h-4 w-4" /> },
-  { key: 'cashback', label: 'LocalVIP Cashback', description: 'Set the live cashback customers will receive through LocalVIP.', icon: <Wallet className="h-4 w-4" /> },
-  { key: 'activate', label: 'Activate', description: 'Review your setup and submit it for LocalVIP go-live approval.', icon: <Rocket className="h-4 w-4" /> },
-]
-const STEP_SEQUENCE: StepKey[] = ['profile', 'branding', 'capture', 'cashback', 'activate']
+const STEP_ICONS: Record<BusinessSetupStepKey, React.ReactNode> = {
+  profile: <Store className="h-4 w-4" />,
+  branding: <ImageIcon className="h-4 w-4" />,
+  capture: <Tag className="h-4 w-4" />,
+  cashback: <Wallet className="h-4 w-4" />,
+  list: <Users className="h-4 w-4" />,
+  invite: <Send className="h-4 w-4" />,
+  qr: <QrCode className="h-4 w-4" />,
+  activate: <Rocket className="h-4 w-4" />,
+}
+
+const STEPS = BUSINESS_SETUP_CONFIG_STEPS.map((step) => ({
+  key: step.key as StepKey,
+  label: step.label,
+  description: step.description,
+  icon: STEP_ICONS[step.key],
+}))
+const STEP_SEQUENCE: StepKey[] = STEPS.map((step) => step.key)
 
 function splitProducts(value: string) {
   return value
@@ -69,6 +93,9 @@ export function BusinessSetupWizardPage() {
     return isStepKey(requested) ? requested : 'profile'
   }, [searchParams])
   const [step, setStep] = React.useState<StepKey>(initialStep)
+  // A `?step=` link means the owner asked for a specific step — always honour it,
+  // even after setup is finished.
+  const [reviewing, setReviewing] = React.useState(() => isStepKey(searchParams.get('step')))
   const [saveState, setSaveState] = React.useState<SaveState>('idle')
   const [saveError, setSaveError] = React.useState<string | null>(null)
   const [stepValidation, setStepValidation] = React.useState<Partial<Record<StepKey, boolean>>>({})
@@ -398,36 +425,33 @@ export function BusinessSetupWizardPage() {
     )
   }
 
-  // Profile completion is based on the two customer-facing details every
-  // business page needs today: a visible name and a real description.
-  const completeProfile = !!name.trim() && !!description.trim()
-  // Branding was previously never checked (fell through to `true`), so it always
-  // showed "Done". Require an actual logo and cover image to count it complete.
-  const completeBranding = !!(logoUrl || logoFile) && !!(coverUrl || coverFile)
-  // The capture offer isn't truly ready until the headline, long description,
-  // and short value label are all filled in.
-  const completeCapture =
-    !!captureHeadline.trim()
-    && !!captureDescription.trim()
-    && !!captureValue.trim()
-  // The 10% default is only a suggestion — the step isn't "done" until the
-  // business has explicitly set a rate this session or saved one before.
-  const completeCashback =
-    cashbackPercent >= 5 && cashbackPercent <= 25 && (cashbackTouched || !!cashbackOfferId) && !!supportedCauseId
-  const readyToActivate = completeProfile && completeBranding && completeCapture && completeCashback
-  // The activate step counts as complete once everything needed to launch is in
-  // place. It can't depend on launch_phase because QA doesn't persist it, which
-  // would keep the wizard stuck below 100% forever.
-  const completeActivate = readyToActivate
-  const completedStepsCount = STEPS.filter((item) =>
-    item.key === 'profile' ? completeProfile
-      : item.key === 'branding' ? completeBranding
-        : item.key === 'capture' ? completeCapture
-          : item.key === 'cashback' ? completeCashback
-            : item.key === 'activate' ? completeActivate
-              : true
-  ).length
-  const completionRatio = completedStepsCount / STEPS.length
+  // Completion is evaluated by the shared checklist against the DRAFT values in
+  // these inputs, so the rail updates as the owner types and can never drift
+  // from what the nav and the dashboard believe.
+  const signals: BusinessSetupSignals = {
+    name,
+    description,
+    logoUrl: logoUrl || (logoFile ? logoFile.name : null),
+    coverUrl: coverUrl || (coverFile ? coverFile.name : null),
+    captureHeadline,
+    captureDescription,
+    captureValue,
+    cashbackPercent,
+    cashbackChosen: cashbackTouched || !!cashbackOfferId,
+    supportedCauseId,
+    contactsCount: contacts.length,
+    invitedCount: contacts.filter((contact) => getContactListStatus(contact) !== 'added').length,
+    joinReady: !!(getBusinessJoinCaptureData(business).join_url || getBusinessJoinCaptureData(business).qr_code_id),
+  }
+  const setupState = getBusinessSetupState(signals)
+  const stepCompletion = new Map(setupState.steps.map((step) => [step.key, step.complete]))
+  const completeProfile = !!stepCompletion.get('profile')
+  const completeBranding = !!stepCompletion.get('branding')
+  const completeCapture = !!stepCompletion.get('capture')
+  const completeCashback = !!stepCompletion.get('cashback')
+  const readyToActivate = setupState.readyToActivate
+  const completedStepsCount = setupState.completedCount
+  const completionRatio = setupState.ratio
   const activeStepMeta = STEPS.find((item) => item.key === step) || STEPS[0]
   const showProfileValidation = !!stepValidation.profile
   const showBrandingValidation = !!stepValidation.branding
@@ -443,12 +467,7 @@ export function BusinessSetupWizardPage() {
   const cashbackMissing = !(cashbackTouched || !!cashbackOfferId)
 
   function getStepCompletion(key: StepKey) {
-    if (key === 'profile') return completeProfile
-    if (key === 'branding') return completeBranding
-    if (key === 'capture') return completeCapture
-    if (key === 'cashback') return completeCashback
-    if (key === 'activate') return completeActivate
-    return true
+    return !!stepCompletion.get(key)
   }
 
   function getNextStep(key: StepKey) {
@@ -494,6 +513,48 @@ export function BusinessSetupWizardPage() {
     }
   }
 
+  // Nothing left to do: setup retires itself. The route stays reachable by
+  // direct URL (and from the "review it anyway" button) so this is never a dead
+  // end, but the wizard doesn't nag a business that has already finished.
+  if (setupState.isComplete && !reviewing) {
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          title="Business Setup"
+          description="Every setup step is finished."
+        />
+        <Card className="border-success-200 bg-success-50/60">
+          <CardContent className="flex flex-col gap-5 px-6 py-8">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-success-600 text-white">
+              <PartyPopper className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-semibold text-surface-950">You&apos;re all set</h2>
+              <p className="max-w-2xl text-sm leading-6 text-surface-600">
+                Your profile, branding, offers, cashback, and 100-list groundwork are all complete. From here the work is
+                growth: keep your list moving and watch your network.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/portal/clients">
+                  Open my 100 list
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/portal/network">See my network</Link>
+              </Button>
+              <Button variant="ghost" onClick={() => setReviewing(true)}>
+                Review my setup anyway
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -518,7 +579,7 @@ export function BusinessSetupWizardPage() {
                 <div className="space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Progress</p>
                   <p className="text-sm font-semibold text-surface-950">
-                    {completedStepsCount} of {STEPS.length} setup steps finished
+                    {completedStepsCount} of {setupState.totalSteps} setup steps finished
                   </p>
                   <p className="text-xs leading-5 text-surface-500">
                     Completed steps stay available, so you can reopen them any time to review or change them.
@@ -631,6 +692,55 @@ export function BusinessSetupWizardPage() {
               )
             })}
             {saveError && <p className="text-sm text-danger-600">{saveError}</p>}
+
+            {/* The rest of setup happens on your 100 list, not in this form.
+                These are the only place those tasks are listed. */}
+            <div className="space-y-3 border-t border-surface-200 pt-5">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Out in the real world</p>
+                <p className="text-xs leading-5 text-surface-500">
+                  These finish on your 100 list. They count towards your setup too.
+                </p>
+              </div>
+              {setupState.actionSteps.map((item) => (
+                <Link
+                  key={item.key}
+                  href={item.href || '/portal/clients'}
+                  className={`block rounded-2xl border px-4 py-3 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 ${
+                    item.complete
+                      ? 'border-success-200 bg-white hover:border-success-300'
+                      : 'border-surface-200 bg-white hover:border-surface-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold shadow-sm ${
+                      item.complete ? 'border-success-600 bg-success-600 text-white' : 'border-surface-300 bg-white text-surface-700'
+                    }`}>
+                      {item.complete ? <CheckCircle2 className="h-4 w-4" /> : STEP_ICONS[item.key]}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className={`text-sm font-semibold ${item.complete ? 'text-success-950' : 'text-surface-950'}`}>
+                          {item.label}
+                        </p>
+                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                          item.complete
+                            ? 'border-success-200 bg-success-100 text-success-800'
+                            : 'border-amber-200 bg-amber-100 text-amber-800'
+                        }`}>
+                          {item.complete ? 'Done' : 'To do'}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-5 text-surface-500">{item.description}</p>
+                      <p className="inline-flex items-center gap-1 text-xs font-medium text-brand-700">
+                        {item.ctaLabel || 'Open'}
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
@@ -906,10 +1016,10 @@ export function BusinessSetupWizardPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <StatusPill label="Profile" ready={completeProfile} />
-                  <StatusPill label="Branding" ready={completeBranding} />
-                  <StatusPill label="100-List Offer" ready={completeCapture} />
-                  <StatusPill label="Cashback" ready={completeCashback} />
+                  <StatusPill label="Profile" ready={completeProfile} onOpen={() => setStep('profile')} />
+                  <StatusPill label="Branding" ready={completeBranding} onOpen={() => setStep('branding')} />
+                  <StatusPill label="100-List Offer" ready={completeCapture} onOpen={() => setStep('capture')} />
+                  <StatusPill label="Cashback" ready={completeCashback} onOpen={() => setStep('cashback')} />
                 </div>
                 <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
                   <p className="text-sm font-semibold text-surface-900">What unlocks next</p>
@@ -960,12 +1070,19 @@ function RequiredFieldHint() {
   return <p className="mt-1 text-sm font-medium text-red-600">(Required field)</p>
 }
 
-function StatusPill({ label, ready }: { label: string; ready: boolean }) {
+function StatusPill({ label, ready, onOpen }: { label: string; ready: boolean; onOpen: () => void }) {
   return (
-    <div className={`rounded-2xl border px-4 py-4 ${ready ? 'border-success-200 bg-success-50' : 'border-surface-200 bg-surface-50'}`}>
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${label}: ${ready ? 'ready' : 'needs work'}. Open this step.`}
+      className={`rounded-2xl border px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 ${
+        ready ? 'border-success-200 bg-success-50 hover:border-success-300' : 'border-surface-200 bg-surface-50 hover:border-surface-300'
+      }`}
+    >
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-2 text-lg font-semibold text-surface-900">{ready ? 'Ready' : 'Needs work'}</p>
-    </div>
+    </button>
   )
 }
 

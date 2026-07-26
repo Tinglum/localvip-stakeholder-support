@@ -20,6 +20,7 @@ import {
   ListChecks,
   MapPin,
   Megaphone,
+  Network,
   PanelLeft,
   PanelLeftClose,
   Plus,
@@ -59,6 +60,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Library,
   FileDown,
   Megaphone,
+  Network,
   Rocket,
   UserPlus,
   TrendingUp,
@@ -79,6 +81,8 @@ interface SidebarProps {
   onToggle: () => void
   mobile?: boolean
   onNavigate?: () => void
+  /** Business shell: retires the Setup item once every setup step is finished. */
+  businessSetupComplete?: boolean
 }
 
 export function Sidebar({
@@ -88,9 +92,10 @@ export function Sidebar({
   onToggle,
   mobile = false,
   onNavigate,
+  businessSetupComplete = false,
 }: SidebarProps) {
   const pathname = usePathname()
-  const access = getStakeholderAccess(profile)
+  const access = getStakeholderAccess(profile, { businessSetupComplete })
   const roleTheme = getThemeForProfile(profile)
 
   return (

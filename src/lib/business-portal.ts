@@ -181,6 +181,27 @@ export function resolveScopedBusiness(profile: Profile, businesses: Business[]):
   return businesses.find((business) => business.owner_user_id === profile.id || business.owner_id === profile.id) || businesses[0] || null
 }
 
+/**
+ * The numeric QA account id behind a business record — the key every network
+ * endpoint is scoped by. Lives on `external_id` for QA-sourced businesses and in
+ * metadata for records imported another way. Returns null when the business is
+ * not linked to a network account yet.
+ */
+export function getBusinessQaAccountId(
+  business: { external_id?: string | null; metadata?: Record<string, unknown> | null } | null | undefined,
+): string | null {
+  if (!business) return null
+  if (business.external_id && /^\d+$/.test(business.external_id.trim())) {
+    return business.external_id.trim()
+  }
+
+  const meta = (business.metadata as Record<string, unknown> | null) || {}
+  const candidate = meta.qaAccountId ?? meta.qaBusinessId ?? meta.qa_account_id
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate)
+  if (typeof candidate === 'string' && /^\d+$/.test(candidate.trim())) return candidate.trim()
+  return null
+}
+
 export function getBusinessProducts(business: Business): string[] {
   const data = getBusinessPortalData(business)
   const rawProducts = business.products_services ?? data.products_services ?? []

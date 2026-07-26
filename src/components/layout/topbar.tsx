@@ -118,13 +118,15 @@ function getProfileHref(profile: Profile, shell: string) {
   return '/dashboard'
 }
 
-function getQuickLinks(shell: string): { label: string; href: string }[] {
+function getQuickLinks(shell: string, businessSetupComplete = false): { label: string; href: string }[] {
   if (shell === 'business') {
     return [
       { label: 'My 100 list', href: '/portal/clients' },
+      { label: 'My network', href: '/portal/network' },
       { label: 'My business profile', href: '/portal/business' },
       { label: 'My materials', href: '/materials/mine' },
-      { label: 'Setup steps', href: '/portal/setup' },
+      // Setup drops out of the shortcuts once there is nothing left to finish.
+      ...(businessSetupComplete ? [] : [{ label: 'Setup steps', href: '/portal/setup' }]),
     ]
   }
   if (shell === 'consumer') {
@@ -152,6 +154,7 @@ function getActionCenterContent(shell: string, pathname: string) {
       items: [
         { label: 'Open my next business step', href: '/dashboard' },
         { label: 'Open my 100 list', href: '/portal/clients' },
+        { label: 'See my network', href: '/portal/network' },
         { label: 'Check my business profile', href: '/portal/business' },
       ],
     }
@@ -196,12 +199,14 @@ interface TopbarProps {
   profile: Profile
   sidebarCollapsed: boolean
   onOpenMobileNav: () => void
+  /** Business shell: retires the Setup shortcut once every setup step is finished. */
+  businessSetupComplete?: boolean
 }
 
-export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarProps) {
+export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav, businessSetupComplete = false }: TopbarProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const access = getStakeholderAccess(profile)
+  const access = getStakeholderAccess(profile, { businessSetupComplete })
   const searchPlaceholder = access.searchPlaceholder
   const [searchValue, setSearchValue] = React.useState('')
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
@@ -214,7 +219,10 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav }: TopbarPro
     () => getActionCenterContent(access.shell, pathname),
     [access.shell, pathname]
   )
-  const quickLinks = React.useMemo(() => getQuickLinks(access.shell), [access.shell])
+  const quickLinks = React.useMemo(
+    () => getQuickLinks(access.shell, businessSetupComplete),
+    [access.shell, businessSetupComplete],
+  )
 
   React.useEffect(() => {
     const prev = readHistory()

@@ -138,85 +138,99 @@ export function BusinessActivityPage() {
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Invites sent" value={invitedCount} />
-        <MetricCard label="Customers joined" value={joinedCount} />
-        <MetricCard label="Conversion rate" value={`${conversionRate}%`} />
-        <MetricCard label="Added today" value={todayAdds} />
+        <MetricCard href="/portal/clients" label="Invites sent" value={invitedCount} hint="Follow up from your 100 list" />
+        <MetricCard href="/portal/network#joined-customers" label="Customers joined" value={joinedCount} hint="See who joined your team" />
+        <MetricCard href="/portal/clients" label="Conversion rate" value={`${conversionRate}%`} hint="Invites that turned into joins" />
+        <MetricCard href="/portal/clients" label="Added today" value={todayAdds} hint="Keep adding in small batches" />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[0.9fr,1.1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Activation Progress</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Status</p>
-                <p className="mt-2 text-2xl font-semibold text-surface-900">
-                  {activationStatus === 'active' ? 'Active' : activationStatus === 'in_progress' ? 'In Progress' : 'Not Started'}
-                </p>
-              </div>
-              <Badge variant={activationStatus === 'active' ? 'success' : activationStatus === 'in_progress' ? 'info' : 'warning'}>
-                {milestone.label}
-              </Badge>
-            </div>
-            <div className="h-3 overflow-hidden rounded-full bg-surface-100">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-amber-500 via-brand-500 to-lime-500"
-                style={{ width: `${Math.min(100, Math.round((contacts.length / 100) * 100))}%` }}
-              />
-            </div>
-            <p className="text-sm text-surface-600">{milestone.description}</p>
-            <Link href="/portal/business" className="inline-flex items-center gap-2 text-sm font-medium text-brand-700">
-              Review business profile <ArrowRight className="h-4 w-4" />
-            </Link>
-          </CardContent>
-        </Card>
+      {/* Progress to 100 is owned by the 100 list. Here it is one compact line
+          that links there — no second progress bar. */}
+      <Link
+        href="/portal/clients"
+        aria-label={`Progress to 100: ${contacts.length} of 100 added, ${milestone.label}. Open my 100 list.`}
+        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-200 bg-white px-5 py-4 shadow-sm transition-colors hover:border-surface-300 hover:bg-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+      >
+        <div>
+          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Progress to 100</p>
+          <p className="mt-1 text-lg font-semibold text-surface-900">
+            {contacts.length} / 100 added
+            <span className="ml-2 text-sm font-normal text-surface-500">
+              {activationStatus === 'active' ? 'Active' : activationStatus === 'in_progress' ? 'In progress' : 'Not started'}
+            </span>
+          </p>
+        </div>
+        <span className="flex items-center gap-2">
+          <Badge variant={activationStatus === 'active' ? 'success' : activationStatus === 'in_progress' ? 'info' : 'warning'}>
+            {milestone.label}
+          </Badge>
+          <ArrowRight className="h-4 w-4 text-surface-400" />
+        </span>
+      </Link>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {timeline.length === 0 ? (
-              <p className="text-sm text-surface-500">Your recent activity will appear here as you build your list.</p>
-            ) : (
-              <div className="space-y-3">
-                {timeline.slice(0, 12).map((item) => (
-                  <div key={item.id} className="flex items-start justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        {item.tone === 'success' ? (
-                          <CheckCircle2 className="h-4 w-4 text-success-600" />
-                        ) : (
-                          <BarChart3 className="h-4 w-4 text-brand-500" />
-                        )}
-                        <p className="text-sm font-semibold text-surface-900">{item.label}</p>
-                      </div>
-                      <p className="mt-1 text-xs text-surface-500">{item.detail}</p>
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {timeline.length === 0 ? (
+            <p className="text-sm text-surface-500">Your recent activity will appear here as you build your list.</p>
+          ) : (
+            <div className="space-y-3">
+              {timeline.slice(0, 20).map((item) => (
+                <Link
+                  key={item.id}
+                  href="/portal/clients"
+                  aria-label={`${item.label}. ${item.detail}. Open my 100 list.`}
+                  className="flex items-start justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors hover:border-surface-300 hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      {item.tone === 'success' ? (
+                        <CheckCircle2 className="h-4 w-4 text-success-600" />
+                      ) : (
+                        <BarChart3 className="h-4 w-4 text-brand-500" />
+                      )}
+                      <p className="text-sm font-semibold text-surface-900">{item.label}</p>
                     </div>
-                    <Badge variant={item.tone === 'success' ? 'success' : item.tone === 'info' ? 'info' : 'default'}>
-                      {formatDateTime(item.at)}
-                    </Badge>
+                    <p className="mt-1 text-xs text-surface-500">{item.detail}</p>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  <Badge variant={item.tone === 'success' ? 'success' : item.tone === 'info' ? 'info' : 'default'}>
+                    {formatDateTime(item.at)}
+                  </Badge>
+                </Link>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-function MetricCard({ label, value }: { label: string; value: React.ReactNode }) {
+function MetricCard({
+  href,
+  label,
+  value,
+  hint,
+}: {
+  href: string
+  label: string
+  value: React.ReactNode
+  hint: string
+}) {
   return (
-    <Card>
-      <CardContent className="space-y-2 p-5">
-        <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-        <p className="text-3xl font-bold text-surface-900">{value}</p>
-      </CardContent>
-    </Card>
+    <Link
+      href={href}
+      aria-label={`${label}: ${value}. ${hint}`}
+      className="group block rounded-2xl border border-surface-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+    >
+      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
+      <p className="mt-2 text-3xl font-bold text-surface-900">{value}</p>
+      <p className="mt-2 flex items-center gap-1 text-sm text-surface-500">
+        {hint}
+        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+      </p>
+    </Link>
   )
 }

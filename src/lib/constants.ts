@@ -93,6 +93,7 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'Setup', href: '/portal/setup', icon: 'Rocket', description: 'Complete your business setup' },
     { label: 'My Business', href: '/portal/business', icon: 'Store', description: 'Update your business profile' },
     { label: 'My 100 List', href: '/portal/clients', icon: 'Users', description: 'Build your supporter list' },
+    { label: 'My Network', href: '/portal/network', icon: 'Network', description: 'See your downline and who joined' },
     { label: 'Grow with Other Businesses', href: '/portal/grow', icon: 'Megaphone', description: 'Invite nearby businesses' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Customer-facing materials only' },
     { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', description: 'Browse and add templates' },

@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { ArrowRight, Building2, Heart, Loader2, Store, Users, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -216,10 +215,10 @@ export function BusinessProfilePage() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <InfoCard label="Launch phase" value={launchPhaseLabel(launchPhase)} detail="Progress through setup, customer capture, and going live." icon={<Building2 className="h-5 w-5" />} />
-        <InfoCard label="Customer capture offer" value={captureOffer.value_label || captureOffer.headline} detail="Used to get your first 100 customers." icon={<Users className="h-5 w-5" />} />
-        <InfoCard label="LocalVIP cashback" value={formatCashbackLabel(cashbackOffer.cashback_percent)} detail="Used to generate ongoing sales." icon={<Wallet className="h-5 w-5" />} />
-        <InfoCard label="Linked cause or school" value={linkedCause?.name || 'Customer chooses later'} detail={linkedCause ? 'This legacy link stays internal.' : 'Businesses do not choose the cause in setup.'} icon={<Heart className="h-5 w-5" />} />
+        <InfoCard href="/portal/setup" label="Launch phase" value={launchPhaseLabel(launchPhase)} detail="Open your setup path." icon={<Building2 className="h-5 w-5" />} />
+        <InfoCard href="/portal/setup?step=capture" label="Customer capture offer" value={captureOffer.value_label || captureOffer.headline} detail="Edit the offer that collects your first 100." icon={<Users className="h-5 w-5" />} />
+        <InfoCard href="/portal/setup?step=cashback" label="LocalVIP cashback" value={formatCashbackLabel(cashbackOffer.cashback_percent)} detail="Change the ongoing customer reward." icon={<Wallet className="h-5 w-5" />} />
+        <InfoCard href="/portal/setup?step=cashback" label="Linked cause or school" value={linkedCause?.name || 'Customer chooses later'} detail="Pick the cause your business champions." icon={<Heart className="h-5 w-5" />} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
@@ -291,22 +290,6 @@ export function BusinessProfilePage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>What to do next</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-                <p className="text-sm font-semibold text-surface-900">Recommended order</p>
-                <p className="mt-1 text-sm text-surface-600">
-                  Follow these in order if you want the clearest path forward.
-                </p>
-              </div>
-              <ActionLink href="/portal/setup" step="Step 1" title="Finish setup details" description="Review branding, your capture offer, cashback, and activation settings." />
-              <ActionLink href="/portal/clients" step="Step 2" title="Build your My 100 List" description="Add the first customers and supporters who are most likely to join quickly." />
-              <ActionLink href="/portal/grow" step="Step 3" title="Grow through nearby businesses" description="Share the program with other local businesses once your own basics are ready." />
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -320,53 +303,36 @@ export function BusinessProfilePage() {
 }
 
 function InfoCard({
+  href,
   label,
   value,
   detail,
   icon,
 }: {
+  /** Where this detail is edited — every card here opens the step that owns it. */
+  href: string
   label: string
   value: React.ReactNode
   detail: string
   icon: React.ReactNode
 }) {
   return (
-    <Card>
-      <CardContent className="space-y-3 p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-            <p className="mt-2 text-2xl font-bold text-surface-900">{value}</p>
-          </div>
-          <div className="rounded-2xl bg-surface-100 p-3 text-surface-600">{icon}</div>
+    <Link
+      href={href}
+      aria-label={`${label}: ${typeof value === 'string' ? value : ''}. ${detail}`}
+      className="group block rounded-2xl border border-surface-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
+          <p className="mt-2 text-2xl font-bold text-surface-900">{value}</p>
         </div>
-        <p className="text-sm text-surface-500">{detail}</p>
-      </CardContent>
-    </Card>
-  )
-}
-
-function ActionLink({
-  href,
-  step,
-  title,
-  description,
-}: {
-  href: string
-  step: string
-  title: string
-  description: string
-}) {
-  return (
-    <Link href={href} className="flex items-start justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors hover:border-surface-300 hover:bg-surface-0">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">{step}</p>
-        <p className="text-sm font-semibold text-surface-900">{title}</p>
-        <p className="mt-1 text-xs text-surface-500">{description}</p>
+        <span className="rounded-2xl bg-surface-100 p-3 text-surface-600">{icon}</span>
       </div>
-      <Button variant="ghost" size="icon" className="shrink-0">
-        <ArrowRight className="h-4 w-4" />
-      </Button>
+      <p className="mt-3 flex items-center gap-1 text-sm text-surface-500">
+        {detail}
+        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+      </p>
     </Link>
   )
 }

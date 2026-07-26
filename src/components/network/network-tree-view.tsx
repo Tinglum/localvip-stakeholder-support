@@ -130,9 +130,36 @@ interface NetworkTreeViewProps {
   fetchUrl?: string
   /** Plain-language label for the node type, e.g. "business" or "cause". */
   nodeLabel?: string
+  /**
+   * Endpoint that returns `{ available, detail }` for one member. When set, an
+   * expanded member row enriches itself with contact and referral detail. Rows
+   * stay expandable without it — they just show what the tree already knows.
+   */
+  buildNodeDetailUrl?: (nodeId: string) => string
 }
 
-export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: NetworkTreeViewProps) {
+interface NodeDetailResponse {
+  available?: boolean
+  detail?: {
+    name?: string
+    accountTypeName?: string | null
+    contact?: {
+      email?: string | null
+      phone?: string | null
+      city?: string | null
+      state?: string | null
+    } | null
+    status?: { joinedAt?: string | null } | null
+    network?: {
+      referralCode?: string | null
+      directReferralCount?: number | null
+      networkDepth?: number | null
+      referrer?: { name?: string | null } | null
+    } | null
+  } | null
+}
+
+export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node', buildNodeDetailUrl }: NetworkTreeViewProps) {
   const [data, setData] = React.useState<NetworkResponse | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -141,6 +168,7 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
   const [startDate, setStartDate] = React.useState('')
   const [endDate, setEndDate] = React.useState('')
   const [expandedLevels, setExpandedLevels] = React.useState<Record<number, boolean>>({})
+  const [openNodeId, setOpenNodeId] = React.useState<string | null>(null)
 
   const url = React.useMemo(() => {
     let nextUrl: string | null = null
@@ -285,6 +313,10 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
       })
       .sort((a, b) => a.level - b.level || b.spend - a.spend)
   }, [decoratedNodes, normalizedQuery])
+
+  const toggleNode = React.useCallback((rowId: string) => {
+    setOpenNodeId((current) => (current === rowId ? null : rowId))
+  }, [])
 
   const toggleLevel = (level: number) => {
     setExpandedLevels((prev) => ({ ...prev, [level]: !prev[level] }))
@@ -469,7 +501,15 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
                     ) : (
                       <div className="space-y-2">
                         {searchResults.slice(0, 50).map((node) => (
-                          <MemberRow key={`search-${node.id}`} node={node} showLevel />
+                          <MemberRow
+                            key={`search-${node.id}`}
+                            rowId={`search-${node.id}`}
+                            node={node}
+                            showLevel
+                            open={openNodeId === `search-${node.id}`}
+                            onToggle={toggleNode}
+                            buildNodeDetailUrl={buildNodeDetailUrl}
+                          />
                         ))}
                       </div>
                     )}
@@ -540,7 +580,14 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node' }: Net
                     {isExpanded && !isEmpty ? (
                       <div className="space-y-2 bg-surface-0 p-3">
                         {group.members.map((node) => (
-                          <MemberRow key={`level-${group.level}-${node.id}`} node={node} />
+                          <MemberRow
+                            key={`level-${group.level}-${node.id}`}
+                            rowId={`level-${group.level}-${node.id}`}
+                            node={node}
+                            open={openNodeId === `level-${group.level}-${node.id}`}
+                            onToggle={toggleNode}
+                            buildNodeDetailUrl={buildNodeDetailUrl}
+                          />
                         ))}
                       </div>
                     ) : null}
@@ -584,10 +631,39 @@ function SummaryCard({
   )
 }
 
-function MemberRow({ node, showLevel = false }: { node: DecoratedNode; showLevel?: boolean }) {
+function MemberRow({
+  node,
+  rowId,
+  showLevel = false,
+  open = false,
+  onToggle,
+  buildNodeDetailUrl,
+}: {
+  node: DecoratedNode
+  /** Unique per rendered row — the same person can appear in search and in a level. */
+  rowId: string
+  showLevel?: boolean
+  open?: boolean
+  onToggle?: (rowId: string) => void
+  buildNodeDetailUrl?: (nodeId: string) => string
+}) {
+  const panelId = `network-node-${rowId}`
+
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 bg-surface-50 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-3">
+    <div className="overflow-hidden rounded-xl border border-surface-200 bg-surface-50">
+      <button
+        type="button"
+        onClick={() => onToggle?.(rowId)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={`${open ? 'Hide' : 'Show'} details for ${node.name || 'this member'}`}
+        className={cn(
+          'flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors',
+          'hover:bg-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1',
+          open && 'bg-surface-100',
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700">
           <UserCircle2 className="h-5 w-5" />
         </div>
@@ -625,10 +701,97 @@ function MemberRow({ node, showLevel = false }: { node: DecoratedNode; showLevel
           </div>
         </div>
       </div>
-      <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold text-success-600">{formatCurrency(node.spend)}</p>
-        <p className="text-[11px] uppercase tracking-wide text-surface-400">spent</p>
-      </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <div className="text-right">
+            <p className="text-sm font-semibold text-success-600">{formatCurrency(node.spend)}</p>
+            <p className="text-[11px] uppercase tracking-wide text-surface-400">spent</p>
+          </div>
+          {open ? (
+            <ChevronDown className="h-4 w-4 text-surface-400" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-surface-400" />
+          )}
+        </div>
+      </button>
+      {open ? (
+        <div id={panelId} className="border-t border-surface-200 bg-surface-0 px-4 py-3">
+          <MemberDetail node={node} buildNodeDetailUrl={buildNodeDetailUrl} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * What one member looks like up close. The tree already knows level, location,
+ * join date and spend; the optional detail endpoint fills in contact and
+ * referral facts on top of that.
+ */
+function MemberDetail({
+  node,
+  buildNodeDetailUrl,
+}: {
+  node: DecoratedNode
+  buildNodeDetailUrl?: (nodeId: string) => string
+}) {
+  const nodeId = String(node.id)
+  const [detail, setDetail] = React.useState<NodeDetailResponse['detail'] | null>(null)
+  const [status, setStatus] = React.useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
+
+  React.useEffect(() => {
+    if (!buildNodeDetailUrl) return
+    let cancelled = false
+    setStatus('loading')
+
+    fetch(buildNodeDetailUrl(nodeId), { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: NodeDetailResponse | null) => {
+        if (cancelled) return
+        if (json?.available && json.detail) {
+          setDetail(json.detail)
+          setStatus('ready')
+          return
+        }
+        setStatus('unavailable')
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('unavailable')
+      })
+
+    return () => { cancelled = true }
+  }, [buildNodeDetailUrl, nodeId])
+
+  const facts: Array<{ label: string; value: string }> = [
+    { label: 'Level', value: `Level ${node.level}` },
+    { label: 'Tracked spend', value: formatCurrency(node.spend) },
+    ...(node.location ? [{ label: 'Location', value: node.location }] : []),
+    ...(node.joinedAt ? [{ label: 'Joined', value: formatDate(node.joinedAt) }] : []),
+    ...(detail?.network?.referrer?.name ? [{ label: 'Referred by', value: detail.network.referrer.name }] : []),
+    ...(typeof detail?.network?.directReferralCount === 'number'
+      ? [{ label: 'Direct referrals', value: formatNumber(detail.network.directReferralCount) }]
+      : []),
+    ...(detail?.contact?.email ? [{ label: 'Email', value: detail.contact.email }] : []),
+    ...(detail?.contact?.phone ? [{ label: 'Phone', value: detail.contact.phone }] : []),
+  ]
+
+  return (
+    <div className="space-y-3">
+      <dl className="grid gap-3 sm:grid-cols-2">
+        {facts.map((fact) => (
+          <div key={fact.label} className="rounded-xl border border-surface-200 bg-surface-50 px-3 py-2">
+            <dt className="text-[11px] uppercase tracking-[0.16em] text-surface-500">{fact.label}</dt>
+            <dd className="mt-1 truncate text-sm font-medium text-surface-900">{fact.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {status === 'loading' ? (
+        <p className="text-xs text-surface-500">Loading the rest of this member&apos;s details...</p>
+      ) : null}
+      {status === 'unavailable' ? (
+        <p className="text-xs text-surface-500">
+          Contact details for this member aren&apos;t available to your business account.
+        </p>
+      ) : null}
     </div>
   )
 }

@@ -177,17 +177,27 @@ function GrowthStat({
   label,
   value,
   hint,
+  href,
 }: {
   label: string
   value: string
   hint: string
+  /** Where this number is owned. Every stat here has a home tab to open. */
+  href: string
 }) {
   return (
-    <div className="rounded-2xl border border-surface-200 bg-white px-5 py-4 shadow-sm">
+    <Link
+      href={href}
+      aria-label={`${label}: ${value}. ${hint}`}
+      className="group block rounded-2xl border border-surface-200 bg-white px-5 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+    >
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-surface-950">{value}</p>
-      <p className="mt-2 text-sm leading-6 text-surface-500">{hint}</p>
-    </div>
+      <p className="mt-2 flex items-start gap-1 text-sm leading-6 text-surface-500">
+        {hint}
+        <ArrowRight className="mt-1 h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" />
+      </p>
+    </Link>
   )
 }
 
@@ -562,7 +572,7 @@ export function BusinessGrowPage() {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+      <div className="grid gap-6">
         <Card className="overflow-hidden border-surface-200">
           <CardContent className="space-y-4 bg-[linear-gradient(135deg,_rgba(245,158,11,0.12),_rgba(255,255,255,0.98)_42%,_rgba(16,185,129,0.12)_100%)] px-6 py-6">
             <div className="space-y-2">
@@ -593,43 +603,23 @@ export function BusinessGrowPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Helpful shortcuts</CardTitle>
-            <CardDescription>Use these if you need a quick supporting task before inviting another business.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <QuickGrowLink
-              href="/dashboard"
-              title="Check my next business step"
-              description="Go back to the business dashboard if you want the simplest next action."
-            />
-            <QuickGrowLink
-              href="/portal/business"
-              title="Review my business profile"
-              description="Make sure your description and offer are easy to explain before reaching out."
-            />
-            <QuickGrowLink
-              href="/materials/mine"
-              title="Open my business materials"
-              description="Use support materials if you want extra examples, scripts, or share assets."
-            />
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <GrowthStat
+          href="/portal/business"
           label="Current capture offer"
           value={captureOffer?.value_label || captureOffer?.headline || 'Offer not set'}
-          hint="This is the simple offer you can mention when explaining how your business is already building momentum."
+          hint="Review or change it on your business profile."
         />
         <GrowthStat
+          href="/portal/clients"
           label="Customers collected"
           value={`${joinedCount}`}
-          hint="This gives you an easy real-world number to mention when another business asks how things are going."
+          hint="Your 100 list owns this number — open it to keep it moving."
         />
         <GrowthStat
+          href="/portal/activity"
           label="CRM invites tracked"
           value={`${trackedCrmCount}`}
           hint={`${newLeadCount} of these created brand-new business leads for follow-up.`}
@@ -1158,25 +1148,3 @@ function SimpleStepCard({
   )
 }
 
-function QuickGrowLink({
-  href,
-  title,
-  description,
-}: {
-  href: string
-  title: string
-  description: string
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex items-start justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors hover:bg-white"
-    >
-      <div>
-        <p className="text-sm font-semibold text-surface-900">{title}</p>
-        <p className="mt-1 text-sm leading-6 text-surface-500">{description}</p>
-      </div>
-      <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-surface-400" />
-    </Link>
-  )
-}

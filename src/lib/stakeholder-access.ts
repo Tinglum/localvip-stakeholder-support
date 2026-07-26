@@ -61,11 +61,15 @@ const BUSINESS_NAV_ITEMS: NavItem[] = [
   { label: 'Setup', href: '/portal/setup', icon: 'Rocket', minLevel: 0 },
   { label: 'My Business', href: '/portal/business', icon: 'Store', minLevel: 0 },
   { label: 'My 100 List', href: '/portal/clients', icon: 'Users', minLevel: 0 },
+  { label: 'My Network', href: '/portal/network', icon: 'Network', minLevel: 0 },
   { label: 'Grow with Other Businesses', href: '/portal/grow', icon: 'Megaphone', minLevel: 0 },
   { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', minLevel: 0 },
   { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
   { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', minLevel: 0 },
 ]
+
+/** Setup is a finite job — once it's done the nav item retires (the route stays reachable). */
+export const BUSINESS_SETUP_NAV_HREF = '/portal/setup'
 
 const CONSUMER_NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
@@ -357,10 +361,17 @@ function getSearchPlaceholder(shell: StakeholderShell) {
   }
 }
 
-function getNavItems(shell: StakeholderShell) {
+export interface StakeholderAccessOptions {
+  /** Business shell only: drop the Setup item once every setup step is finished. */
+  businessSetupComplete?: boolean
+}
+
+function getNavItems(shell: StakeholderShell, options?: StakeholderAccessOptions) {
   switch (shell) {
     case 'business':
-      return BUSINESS_NAV_ITEMS
+      return options?.businessSetupComplete
+        ? BUSINESS_NAV_ITEMS.filter((item) => item.href !== BUSINESS_SETUP_NAV_HREF)
+        : BUSINESS_NAV_ITEMS
     case 'consumer':
       return CONSUMER_NAV_ITEMS
     case 'field':
@@ -376,7 +387,7 @@ function getNavItems(shell: StakeholderShell) {
   }
 }
 
-export function getStakeholderAccess(profile: Profile): StakeholderAccess {
+export function getStakeholderAccess(profile: Profile, options?: StakeholderAccessOptions): StakeholderAccess {
   const shell = getStakeholderShell(profile)
   const subtype = deriveSubtype(profile)
 
@@ -386,7 +397,7 @@ export function getStakeholderAccess(profile: Profile): StakeholderAccess {
     label: getRoleLabel(shell, subtype),
     themeRole: getPersistedRoleForShell(shell, subtype),
     searchPlaceholder: getSearchPlaceholder(shell),
-    navItems: getNavItems(shell),
+    navItems: getNavItems(shell, options),
     fallbackPath: '/dashboard',
   }
 }
@@ -411,6 +422,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
       '/portal/setup',
       '/portal/business',
       '/portal/clients',
+      '/portal/network',
       '/portal/grow',
       '/portal/templates',
       '/portal/activity',

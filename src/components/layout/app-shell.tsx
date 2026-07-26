@@ -8,6 +8,7 @@ import { ImpersonationBanner } from './impersonation-banner'
 import { useImpersonation } from '@/lib/impersonation-context'
 import { cn } from '@/lib/utils'
 import { canAccessPath, getStakeholderAccess } from '@/lib/stakeholder-access'
+import { useBusinessSetupStatus } from '@/lib/business-setup-status'
 import type { Profile } from '@/lib/types/database'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { BugReporter } from '@/components/bug-center/bug-reporter'
@@ -25,6 +26,10 @@ export function AppShell({ profile, children }: AppShellProps) {
   const access = getStakeholderAccess(profile)
   const { active: impersonating } = useImpersonation()
   const blockedPath = !canAccessPath(profile, pathname)
+  // Setup is a finite job: once every step is done the nav item retires shell-wide.
+  // Resolved once here so the sidebar and topbar don't each refetch it.
+  const { loading: setupLoading, state: setupState } = useBusinessSetupStatus(profile)
+  const businessSetupComplete = !setupLoading && setupState.isComplete
 
   React.useEffect(() => {
     if (blockedPath) {
@@ -47,6 +52,7 @@ export function AppShell({ profile, children }: AppShellProps) {
         brand={profile.brand_context}
         collapsed={collapsed}
         onToggle={() => setCollapsed(c => !c)}
+        businessSetupComplete={businessSetupComplete}
       />
       <Dialog open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <DialogContent className="left-0 top-0 h-full w-auto max-w-none translate-x-0 translate-y-0 rounded-none border-r border-surface-200 p-0 sm:max-w-none">
@@ -57,6 +63,7 @@ export function AppShell({ profile, children }: AppShellProps) {
             onToggle={() => {}}
             mobile
             onNavigate={() => setMobileNavOpen(false)}
+            businessSetupComplete={businessSetupComplete}
           />
         </DialogContent>
       </Dialog>
@@ -64,6 +71,7 @@ export function AppShell({ profile, children }: AppShellProps) {
         profile={profile}
         sidebarCollapsed={collapsed}
         onOpenMobileNav={() => setMobileNavOpen(true)}
+        businessSetupComplete={businessSetupComplete}
       />
       <main
         className={cn(
