@@ -65,8 +65,9 @@ function buildQueryString(filters?: Record<string, string | number | boolean | n
 
 function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
   const crmStatus = typeof b.crmStatus === 'string' ? b.crmStatus : null
+  const crmStage = typeof b.crmStage === 'string' ? b.crmStage : null
   const isPendingLiveReview = crmStatus === 'pending_live_review'
-  const isLive = crmStatus === 'live' || b.active === true
+  const isLive = crmStatus === 'live' || crmStage === 'live'
   const metadata = {
     qaId: b.id,
     qaBusinessId: b.id,
@@ -91,7 +92,7 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
     owner_user_id: b.ownerUserId == null ? null : String(b.ownerUserId),
     city_id: null,
     brand: 'localvip',
-    stage: ((b.crmStage as Business['stage']) || (isLive ? 'live' : 'lead')),
+    stage: ((crmStage as Business['stage']) || (isLive ? 'live' : 'lead')),
     status: (crmStatus as Business['status']) || (b.active ? 'active' : 'inactive'),
     // Route QA filenames through same-origin proxies so setup previews and
     // completion state can rehydrate after a page reload.

@@ -260,7 +260,10 @@ export default function BusinessDetailPage() {
   }, [biz, crmWriteId, readOnly, refetchBusinessDetail, updateBusiness])
 
   const isPendingLiveReview = String(biz?.status || '') === 'pending_live_review'
-  const isLive = biz?.stage === 'live' || String(biz?.status || '') === 'live' || qaBusiness?.active === true
+  const isLive = !isPendingLiveReview && (
+    String(biz?.status || '') === 'live'
+    || (biz?.stage === 'live' && qaBusiness?.active !== false)
+  )
 
   const handlePublishLive = React.useCallback(async () => {
     if (!crmWriteId || !isAdmin || publishing) return
