@@ -95,6 +95,29 @@ interface GenerationTemplateSummary {
   libraryFolder: string
 }
 
+interface BusinessEngagementAssets {
+  customerCapture?: {
+    captureCode?: string | null
+    captureUrl?: string | null
+    qrCode?: {
+      id?: string | null
+      targetUrl?: string | null
+      qrImageUrl?: string | null
+      logoUrl?: string | null
+    } | null
+  } | null
+  networkReferral?: {
+    networkReferralCode?: string | null
+    networkReferralUrl?: string | null
+    qrCode?: {
+      id?: string | null
+      targetUrl?: string | null
+      qrImageUrl?: string | null
+      logoUrl?: string | null
+    } | null
+  } | null
+}
+
 function stepVariant(step: BusinessExecutionStepSummary) {
   if (step.state === 'completed') return 'success' as const
   if (step.state === 'active' && step.readyToComplete) return 'info' as const
@@ -126,7 +149,10 @@ export function BusinessExecutionOverview({
   const queryBusinessId = qaBusinessId !== null ? String(qaBusinessId) : (localBusinessId || biz.id)
   const localStateEnabled = !localState
   const { data: hookProfiles } = useProfiles({ enabled: localStateEnabled })
-  const { data: hookGeneratedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({ stakeholder_id: EMPTY_UUID }, { enabled: localStateEnabled })
+  const { data: hookGeneratedMaterials, refetch: refetchGenerated } = useGeneratedMaterials(
+    { business_id: queryBusinessId },
+    { enabled: localStateEnabled },
+  )
   const generatedMaterials = localState?.generatedMaterials ?? hookGeneratedMaterials
   const { data: hookAdminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: EMPTY_UUID }, { enabled: localStateEnabled })
   const adminTasks = localState?.adminTasks ?? hookAdminTasks
@@ -144,7 +170,7 @@ export function BusinessExecutionOverview({
       (localState?.business as { referral_code?: string | null } | null | undefined)?.referral_code
       || (biz as { referral_code?: string | null } | null)?.referral_code
       || ''
-    return rc ? ({ referral_code: rc, connection_code: rc } as unknown as StakeholderCode) : null
+    return rc ? ({ referral_code: rc, connection_code: null } as unknown as StakeholderCode) : null
   }, [biz, localState?.business])
   const { data: hookFlows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'business', entity_id: queryBusinessId }, { enabled: localStateEnabled })
   const flows = localState?.flows ?? hookFlows
@@ -173,25 +199,6 @@ export function BusinessExecutionOverview({
     ? 'generated'
     : task?.status || 'idle'
   const joinedCount = contacts.filter((item) => item.list_status === 'joined' || !!item.joined_at).length
-  const executionSteps = computeBusinessExecutionSteps({
-    business: biz,
-    steps,
-    codes,
-    generatedMaterials,
-    qrCodes,
-    offers,
-    outreachCount: outreach.length,
-  })
-  const nextActions = getBusinessNextActions({
-    business: biz,
-    steps: executionSteps,
-    codes,
-    generatedMaterials,
-    qrCodes,
-    offers,
-    joinedCount,
-    openTaskCount: 0,
-  })
 
   const [importPasteValue, setImportPasteValue] = React.useState('')
   const [importError, setImportError] = React.useState<string | null>(null)
@@ -229,6 +236,9 @@ export function BusinessExecutionOverview({
   const logoInputRef = React.useRef<HTMLInputElement>(null)
   const coverInputRef = React.useRef<HTMLInputElement>(null)
   const writeBusinessId = localBusinessId || queryBusinessId
+  const [engagementAssets, setEngagementAssets] = React.useState<BusinessEngagementAssets | null>(null)
+  const [engagementAssetStatus, setEngagementAssetStatus] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [engagementAssetError, setEngagementAssetError] = React.useState<string | null>(null)
 
   const qaBranchReferralUrl = (workspaceBusiness as { branch_referral_url?: string | null }).branch_referral_url || ''
 
@@ -273,6 +283,68 @@ export function BusinessExecutionOverview({
     if (id) return getBusinessJoinUrl(slugify(`${name}-${id}`))
     return qaBranchReferralUrl || ''
   }, [workspaceBusiness.external_id, workspaceBusiness.name, queryBusinessId, qaBranchReferralUrl])
+
+  const captureCode = engagementAssets?.customerCapture?.captureCode
+    || joinUrl.split('/').filter(Boolean).pop()
+    || ''
+  const captureUrl = engagementAssets?.customerCapture?.captureUrl || joinUrl
+  const networkReferralCode = engagementAssets?.networkReferral?.networkReferralCode || referralCode
+  const networkReferralUrl = engagementAssets?.networkReferral?.networkReferralUrl || joinLocalVipLink
+
+  const refreshEngagementAssets = React.useCallback(async () => {
+    if (!writeBusinessId) return
+    setEngagementAssetStatus('loading')
+    setEngagementAssetError(null)
+    try {
+      const response = await fetch(`/api/crm/businesses/${writeBusinessId}/execution`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ensure_engagement_assets' }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Assets could not be loaded.')
+      setEngagementAssets(body as BusinessEngagementAssets)
+      setEngagementAssetStatus('ready')
+      refetchQrCodes({ silent: true })
+    } catch (error) {
+      setEngagementAssetStatus('error')
+      setEngagementAssetError(error instanceof Error ? error.message : 'Assets could not be loaded.')
+    }
+  }, [refetchQrCodes, writeBusinessId])
+
+  React.useEffect(() => {
+    void refreshEngagementAssets()
+  }, [refreshEngagementAssets])
+
+  const executionAssets = {
+    captureCode,
+    captureUrl,
+    captureQrReady: Boolean(engagementAssets?.customerCapture?.qrCode || qrCodes.some((item) => item.metadata?.purpose === 'business_capture')),
+    networkReferralCode,
+    networkReferralUrl,
+    networkQrReady: Boolean(engagementAssets?.networkReferral?.qrCode || qrCodes.some((item) => item.metadata?.purpose === 'business_network_referral')),
+  }
+  const executionSteps = computeBusinessExecutionSteps({
+    business: biz,
+    steps,
+    codes,
+    generatedMaterials,
+    qrCodes,
+    offers,
+    outreachCount: outreach.length,
+    assets: executionAssets,
+  })
+  const nextActions = getBusinessNextActions({
+    business: biz,
+    steps: executionSteps,
+    codes,
+    generatedMaterials,
+    qrCodes,
+    offers,
+    joinedCount,
+    openTaskCount: 0,
+    assets: executionAssets,
+  })
 
   /** Stub: no longer imports from stakeholder codes */
   async function handleImportFromLink() {
@@ -396,12 +468,21 @@ export function BusinessExecutionOverview({
     // Stakeholder codes removed for QA backend compliance
   }
 
-  async function handleGenerateMaterials() {
+  async function handleGenerateMaterials(assetKind: 'customer_capture' | 'network_referral' = 'customer_capture') {
     setEngineBusy('generate')
     setEngineMessage(null)
     setEngineError(null)
-    await fireGenerationBackground(setEngineMessage, setEngineError)
-    setEngineBusy(null)
+    try {
+      await callExecutionAction({ action: 'generate_materials', assetKind })
+      setEngineMessage(assetKind === 'customer_capture'
+        ? 'Customer capture material generated.'
+        : 'Network referral material generated.')
+      refetchGenerated({ silent: true })
+    } catch (error) {
+      setEngineError(error instanceof Error ? error.message : 'Material generation failed.')
+    } finally {
+      setEngineBusy(null)
+    }
   }
 
   async function handleCompleteStep(stepId: string) {
@@ -483,11 +564,15 @@ export function BusinessExecutionOverview({
     refetchOutreach({ silent: true })
   }
 
-  async function handleRegenerateAll() {
+  async function handleRegenerateAll(assetKind: 'customer_capture' | 'network_referral' = 'customer_capture') {
     setRegenBusy(true)
     setRegenMessage(null)
     try {
-      await fireGenerationBackground(setRegenMessage, setEngineError)
+      await callExecutionAction({ action: 'regenerate_all', assetKind })
+      setRegenMessage(assetKind === 'customer_capture'
+        ? 'Customer capture materials regenerated.'
+        : 'Network referral materials regenerated.')
+      refetchGenerated({ silent: true })
     } catch (error) {
       setRegenMessage(error instanceof Error ? error.message : 'Regeneration failed.')
     } finally {
@@ -795,33 +880,33 @@ export function BusinessExecutionOverview({
                 <CardContent className="space-y-4">
                   <div className="grid gap-3 rounded-xl border border-surface-200 bg-surface-50/60 p-3 sm:grid-cols-3">
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Referral code</p>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">100-list capture code</p>
                       <div className="mt-1 flex items-center gap-1">
-                        <code className="text-sm font-semibold text-surface-900">{referralCode || '—'}</code>
-                        {referralCode ? (
-                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(referralCode, 'Referral code copied')}>
+                        <code className="text-sm font-semibold text-surface-900">{captureCode || '-'}</code>
+                        {captureCode ? (
+                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(captureCode, 'Capture code copied')}>
                             <Copy className="h-3 w-3" />
                           </Button>
                         ) : null}
                       </div>
                     </div>
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Connection code</p>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">100-list capture link</p>
                       <div className="mt-1 flex items-center gap-1">
-                        <code className="text-sm font-semibold text-surface-900">{codes?.connection_code || '—'}</code>
-                        {codes?.connection_code ? (
-                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(String(codes?.connection_code || ''), 'Connection code copied')}>
+                        <code className="flex-1 truncate text-xs text-surface-700">{captureUrl || '-'}</code>
+                        {captureUrl ? (
+                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(captureUrl, 'Capture link copied')}>
                             <Copy className="h-3 w-3" />
                           </Button>
                         ) : null}
                       </div>
                     </div>
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Join link</p>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-surface-500">Network referral link</p>
                       <div className="mt-1 flex items-center gap-1">
-                        <code className="flex-1 truncate text-xs text-surface-700">{joinLocalVipLink || '—'}</code>
-                        {joinLocalVipLink ? (
-                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(joinLocalVipLink, 'Join link copied')}>
+                        <code className="flex-1 truncate text-xs text-surface-700">{networkReferralUrl || '-'}</code>
+                        {networkReferralUrl ? (
+                          <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => void copyToClipboard(networkReferralUrl, 'Network referral link copied')}>
                             <Copy className="h-3 w-3" />
                           </Button>
                         ) : null}
@@ -836,13 +921,17 @@ export function BusinessExecutionOverview({
                   {engineError ? <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{engineError}</div> : null}
                   {engineMessage ? <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{engineMessage}</div> : null}
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null}>
+                    <Button variant="outline" onClick={() => void handleGenerateMaterials('customer_capture')} disabled={engineBusy !== null}>
                       {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                      Generate materials
+                      Generate capture material
                     </Button>
-                    <Button variant="outline" onClick={() => void handleRegenerateAll()} disabled={regenBusy || engineBusy !== null}>
+                    <Button variant="outline" onClick={() => void handleGenerateMaterials('network_referral')} disabled={engineBusy !== null || !networkReferralUrl}>
+                      {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                      Generate network material
+                    </Button>
+                    <Button variant="outline" onClick={() => void handleRegenerateAll('customer_capture')} disabled={regenBusy || engineBusy !== null}>
                       {regenBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                      Regenerate all
+                      Regenerate materials
                     </Button>
                   </div>
                   {regenMessage ? (
@@ -1232,25 +1321,17 @@ export function BusinessExecutionOverview({
         onOpenChange={(open) => !open && setLifecycleModal(null)}
         generatedMaterials={generatedMaterials}
         qrCodes={qrCodes}
-        engagementAssets={{
-          customerCapture: {
-            captureCode: joinUrl.split('/').filter(Boolean).pop() || null,
-            captureUrl: joinUrl || null,
-            qrCode: null,
-          },
-          networkReferral: {
-            networkReferralCode: codes?.referral_code || null,
-            networkReferralUrl: null,
-            qrCode: null,
-          },
-        }}
+        engagementAssets={engagementAssets}
+        assetStatus={engagementAssetStatus}
+        assetError={engagementAssetError}
+        onEnsureAssets={refreshEngagementAssets}
         engineBusy={engineBusy}
         regenBusy={regenBusy}
         saving={stepBusyId !== null}
         blocker={executionSteps.find((s) => s.key === 'materials_qr')?.blocker ?? null}
         readyToComplete={executionSteps.find((s) => s.key === 'materials_qr')?.readyToComplete ?? false}
-        onGenerateMaterials={async () => handleGenerateMaterials()}
-        onRegenerateAll={async () => handleRegenerateAll()}
+        onGenerateMaterials={handleGenerateMaterials}
+        onRegenerateAll={handleRegenerateAll}
         onCompleteStep={() => {
           const step = executionSteps.find((s) => s.key === 'materials_qr')
           if (step) void handleCompleteStep(step.step.id)

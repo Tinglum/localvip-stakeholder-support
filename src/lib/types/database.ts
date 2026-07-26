@@ -523,6 +523,8 @@ export interface MaterialTemplate {
 export interface GeneratedMaterial {
   id: string
   stakeholder_id: string
+  business_id?: string | null
+  cause_id?: string | null
   template_id: string
   material_id: string | null
   generated_file_url: string | null

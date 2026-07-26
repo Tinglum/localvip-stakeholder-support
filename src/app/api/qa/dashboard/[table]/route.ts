@@ -82,7 +82,7 @@ export async function GET(
     return NextResponse.json(shaped ?? [])
   } catch (error) {
     if (error instanceof QaApiError) {
-      if (table === 'stakeholder_assignments') {
+      if (table === 'stakeholder_assignments' || table === 'generated_materials') {
         return NextResponse.json(
           { error: error.message },
           { status: error.status, headers: { 'x-qa-error': error.message.substring(0, 200) } },
