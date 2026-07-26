@@ -1,6 +1,8 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { CheckSquare, Plus, Clock, AlertCircle, Loader2 } from 'lucide-react'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
@@ -72,6 +74,13 @@ function SearchableSelect({ options, value, onChange, placeholder }: {
 
 export default function TasksPage() {
   const { profile } = useAuth()
+  const searchParams = useSearchParams()
+  const businessId = searchParams.get('businessId')?.trim() || ''
+  const openNewTask = searchParams.get('action') === 'new'
+  const requestedReturnTo = searchParams.get('returnTo')?.trim() || ''
+  const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//')
+    ? requestedReturnTo
+    : ''
   const [addOpen, setAddOpen] = React.useState(false)
   const [filters, setFilters] = React.useState<Record<string, string>>({})
   const [submitting, setSubmitting] = React.useState(false)
@@ -86,8 +95,14 @@ export default function TasksPage() {
   const [entityType, setEntityType] = React.useState<'business' | 'cause' | 'contact' | ''>('')
   const [entityId, setEntityId] = React.useState('')
 
+  const taskFilters = React.useMemo(
+    () => businessId
+      ? { ...filters, entity_type: 'business', entity_id: businessId }
+      : filters,
+    [businessId, filters]
+  )
   const { data: tasks, loading, error, refetch } = useTasks(
-    Object.keys(filters).length > 0 ? filters : undefined
+    Object.keys(taskFilters).length > 0 ? taskFilters : undefined
   )
   const { insert } = useTaskInsert()
   const { update } = useTaskUpdate()
@@ -113,6 +128,11 @@ export default function TasksPage() {
     return map
   }, [businesses, causes, contacts])
 
+  const focusedBusiness = React.useMemo(
+    () => businesses.find(business => business.id === businessId),
+    [businesses, businessId]
+  )
+
   // Dropdown options
   const profileOptions = React.useMemo(
     () => profiles.map(p => ({ value: p.id, label: p.full_name })),
@@ -133,9 +153,25 @@ export default function TasksPage() {
     setStatus('pending')
     setDueDate('')
     setAssignedTo('')
-    setEntityType('')
-    setEntityId('')
+    setEntityType(businessId ? 'business' : '')
+    setEntityId(businessId)
   }
+
+  const openAddTask = () => {
+    if (businessId) {
+      setEntityType('business')
+      setEntityId(businessId)
+    }
+    setAddOpen(true)
+  }
+
+  React.useEffect(() => {
+    if (businessId) {
+      setEntityType('business')
+      setEntityId(businessId)
+    }
+    if (openNewTask) setAddOpen(true)
+  }, [businessId, openNewTask])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -238,8 +274,24 @@ export default function TasksPage() {
       <PageHeader
         title="Tasks"
         description="Action items across all stakeholders and onboarding flows. Nothing falls through the cracks."
-        actions={<Button onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" /> Add Task</Button>}
+        actions={<Button onClick={openAddTask}><Plus className="h-4 w-4" /> Add Task</Button>}
       />
+
+      {(businessId || returnTo) && (
+        <div className="flex flex-col gap-2 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            {businessId ? (
+              <>
+                <p className="font-semibold">Focused on {focusedBusiness?.name || `business ${businessId}`}</p>
+                <p className="text-brand-700">Showing only tasks linked to this business.</p>
+              </>
+            ) : (
+              <p className="font-semibold">Focused task context</p>
+            )}
+          </div>
+          {returnTo && <Link href={returnTo} className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900">Return to onboarding</Link>}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-700">
@@ -258,7 +310,7 @@ export default function TasksPage() {
         ]}
         activeFilters={filters}
         onFilterChange={(k, v) => setFilters(p => ({ ...p, [k]: v }))}
-        emptyState={<EmptyState icon={<CheckSquare className="h-8 w-8" />} title="No tasks yet" description="Create a task to track follow-ups and action items." action={{ label: 'Add Task', onClick: () => setAddOpen(true) }} />}
+        emptyState={<EmptyState icon={<CheckSquare className="h-8 w-8" />} title="No tasks yet" description="Create a task to track follow-ups and action items." action={{ label: 'Add Task', onClick: openAddTask }} />}
       />
 
       <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm() }}>

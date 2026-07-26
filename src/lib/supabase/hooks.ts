@@ -735,7 +735,12 @@ export function useOutreachScriptInsert() { return useQaInsert<OutreachScript>('
 export function useOutreachScriptUpdate() { return useQaUpdate<OutreachScript>('outreach_scripts') }
 
 export function useProfiles(options?: UseQueryOptions) {
-  return useQaQuery<Profile>('profiles', { orderBy: 'full_name', orderAsc: true, enabled: options?.enabled })
+  return useQaQuery<Profile>('profiles', {
+    filters: { pageSize: 250 },
+    orderBy: 'full_name',
+    orderAsc: true,
+    enabled: options?.enabled,
+  })
 }
 export function useProfileUpdate() { return useQaUpdate<Profile>('profiles') }
 

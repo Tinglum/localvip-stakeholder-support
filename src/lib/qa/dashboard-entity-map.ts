@@ -31,6 +31,7 @@ export type QaEntityKey =
   | 'business_referrals'
   | 'city_access_requests'
   | 'template_rules'
+  | 'stakeholder_assignments'
   | 'deals'
 
 export interface QaEntityConfig {
@@ -74,6 +75,7 @@ export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
   business_referrals: { endpoint: '/api/dashboard/v1/BusinessReferral', listWrapperKey: 'items' },
   city_access_requests: { endpoint: '/api/dashboard/v1/CityAccessRequest', listWrapperKey: 'items' },
   template_rules: { endpoint: '/api/dashboard/v1/TemplateRule', listWrapperKey: 'items' },
+  stakeholder_assignments: { endpoint: '/api/dashboard/v1/StakeholderAssignment', listWrapperKey: 'items' },
 }
 
 /**
@@ -281,6 +283,10 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
   template_rules: {
     created_by: 'CreatedByUserId',
   },
+  stakeholder_assignments: {
+    stakeholder_id: 'StakeholderUserId',
+    assigned_by: 'AssignedByUserId',
+  },
   // organizations + admin_tasks: plain snake↔camel conversion is sufficient.
 }
 
@@ -296,6 +302,8 @@ const ID_FIELDS_REQUIRING_LONG = new Set([
   'causeAccountId',
   'assignedToUserId',
   'createdByUserId',
+  'stakeholderUserId',
+  'assignedByUserId',
   'performedByUserId',
   'campaignId',
   'cityId',
