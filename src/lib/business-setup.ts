@@ -1,18 +1,12 @@
 /**
- * BUSINESS SETUP — single source of truth
- * ───────────────────────────────────────
- * Every setup task a business owner has to finish lives here: the step list, the
- * per-step completion rule, the completed count, and whether setup is done.
+ * BUSINESS SETUP - single source of truth.
  *
- * Two callers, one rule set:
- *   - `/portal/setup` (the wizard) evaluates DRAFT signals from its own inputs so
- *     completion updates as the owner types.
- *   - Everything else (nav gating, dashboard summary) evaluates SAVED signals
- *     built from the business record, its offers, and its contacts.
+ * This checklist contains only the requirements a business must finish before
+ * requesting a live review. Growth work such as building the 100 list, inviting
+ * customers, and sharing QR codes belongs elsewhere in the portal.
  */
 
-import { getBusinessJoinCaptureData } from '@/lib/business-join'
-import { getBusinessPortalData, getContactListStatus } from '@/lib/business-portal'
+import { getBusinessPortalData } from '@/lib/business-portal'
 import type { Business, Contact, Offer } from '@/lib/types/database'
 
 export type BusinessSetupStepKey =
@@ -20,37 +14,20 @@ export type BusinessSetupStepKey =
   | 'branding'
   | 'capture'
   | 'cashback'
-  | 'list'
-  | 'invite'
-  | 'qr'
+  | 'stripe'
   | 'activate'
-
-/**
- * `config` steps are edited inside the wizard itself. `action` steps are done on
- * another page (the 100 list) and are linked out to from the wizard.
- */
-export type BusinessSetupStepKind = 'config' | 'action'
 
 export interface BusinessSetupStep {
   key: BusinessSetupStepKey
-  kind: BusinessSetupStepKind
   label: string
   description: string
-  /** Plain-language reason, shown to owners who need the "why". */
   why: string
   time: string
-  /** Where an `action` step is completed. Config steps stay in the wizard. */
-  href?: string
-  ctaLabel?: string
 }
-
-/** The invite target that counts the "invite people you know" step as done. */
-export const BUSINESS_SETUP_INVITE_TARGET = 10
 
 export const BUSINESS_SETUP_STEPS: BusinessSetupStep[] = [
   {
     key: 'profile',
-    kind: 'config',
     label: 'Business Profile',
     description: 'Tell us the basics customers need to understand your business.',
     why: 'A clear profile helps customers quickly understand what you offer.',
@@ -58,75 +35,43 @@ export const BUSINESS_SETUP_STEPS: BusinessSetupStep[] = [
   },
   {
     key: 'branding',
-    kind: 'config',
     label: 'Branding',
-    description: 'Add a logo and cover image for your business-facing pages.',
-    why: 'Your logo and cover are what people recognise on your join page and QR.',
+    description: 'Add a logo and cover image for your customer-facing pages.',
+    why: 'Your logo and cover are what people recognise on your LocalVIP page.',
     time: '5 minutes',
   },
   {
     key: 'capture',
-    kind: 'config',
     label: '100-List Offer',
-    description: 'Create the pre-launch offer used only to collect your first 100 customers.',
+    description: 'Create the pre-launch offer used to collect your first 100 customers.',
     why: 'A simple, specific offer is what makes people say yes on the spot.',
     time: '5 minutes',
   },
   {
     key: 'cashback',
-    kind: 'config',
-    label: 'LocalVIP Cashback',
-    description: 'Set the live cashback customers will receive through LocalVIP.',
-    why: 'This is the ongoing reward that brings customers back after launch.',
+    label: 'Cashback & Cause',
+    description: 'Set your live cashback and choose the cause your business supports.',
+    why: 'This defines the customer reward and community impact attached to each purchase.',
     time: '3 minutes',
   },
   {
-    key: 'list',
-    kind: 'action',
-    label: 'Start your 100 list',
-    description: 'Add the first people who already know your business.',
-    why: 'This is how you build your first 100 supporters without cold outreach.',
+    key: 'stripe',
+    label: 'Stripe Payments',
+    description: 'Connect Stripe so LocalVIP can securely send customer payments to you.',
+    why: 'A verified Stripe account is required before your business can receive LocalVIP payments.',
     time: '5 to 10 minutes',
-    href: '/portal/clients',
-    ctaLabel: 'Open my 100 list',
-  },
-  {
-    key: 'invite',
-    kind: 'action',
-    label: 'Invite people you already know',
-    description: `Mark people as invited as you text, call, or talk to them. ${BUSINESS_SETUP_INVITE_TARGET} invites completes this step.`,
-    why: 'Simple follow-up is what turns your list into real joins.',
-    time: '10 minutes',
-    href: '/portal/clients',
-    ctaLabel: 'Start inviting',
-  },
-  {
-    key: 'qr',
-    kind: 'action',
-    label: 'Share your join QR code',
-    description: 'Put your QR where customers naturally pause, and ask them to scan it.',
-    why: 'A visible QR code makes it easy for customers to join on the spot.',
-    time: '2 minutes',
-    href: '/portal/clients',
-    ctaLabel: 'Open QR tools',
   },
   {
     key: 'activate',
-    kind: 'config',
-    label: 'Activate',
+    label: 'Go Live',
     description: 'Review your setup and submit it for LocalVIP go-live approval.',
-    why: 'This is the point where your setup turns into steady, repeatable growth.',
+    why: 'LocalVIP performs one final check before customers can use your deals.',
     time: 'A few minutes',
   },
 ]
 
-export const BUSINESS_SETUP_CONFIG_STEPS = BUSINESS_SETUP_STEPS.filter((step) => step.kind === 'config')
-export const BUSINESS_SETUP_ACTION_STEPS = BUSINESS_SETUP_STEPS.filter((step) => step.kind === 'action')
+export const BUSINESS_SETUP_CONFIG_STEPS = BUSINESS_SETUP_STEPS
 
-/**
- * Everything the completion rules need. The wizard fills this from its live
- * inputs; every other caller fills it from saved records.
- */
 export interface BusinessSetupSignals {
   name: string
   description: string
@@ -136,12 +81,10 @@ export interface BusinessSetupSignals {
   captureDescription: string
   captureValue: string
   cashbackPercent: number
-  /** The 10% default is a suggestion — this is true once a rate was really chosen. */
   cashbackChosen: boolean
   supportedCauseId: string | null
-  contactsCount: number
-  invitedCount: number
-  joinReady: boolean
+  stripeConnected: boolean
+  liveReviewSubmitted: boolean
 }
 
 export interface BusinessSetupStepState extends BusinessSetupStep {
@@ -151,16 +94,11 @@ export interface BusinessSetupStepState extends BusinessSetupStep {
 export interface BusinessSetupState {
   steps: BusinessSetupStepState[]
   configSteps: BusinessSetupStepState[]
-  actionSteps: BusinessSetupStepState[]
   completedCount: number
   totalSteps: number
-  /** Progress across the whole checklist, 0 to 1. */
   ratio: number
-  /** True once every step — config and action — is finished. */
   isComplete: boolean
-  /** True once the four editable steps are filled in and go-live can be submitted. */
   readyToActivate: boolean
-  /** The first unfinished step, or null when there is nothing left. */
   nextStep: BusinessSetupStepState | null
 }
 
@@ -170,13 +108,10 @@ function isFilled(value: string | null | undefined) {
 
 export function isBusinessSetupStepComplete(key: BusinessSetupStepKey, signals: BusinessSetupSignals): boolean {
   switch (key) {
-    // The two customer-facing details every business page needs today.
     case 'profile':
       return isFilled(signals.name) && isFilled(signals.description)
     case 'branding':
       return !!signals.logoUrl && !!signals.coverUrl
-    // The capture offer isn't ready until headline, description and short value
-    // label are all written.
     case 'capture':
       return isFilled(signals.captureHeadline) && isFilled(signals.captureDescription) && isFilled(signals.captureValue)
     case 'cashback':
@@ -186,55 +121,51 @@ export function isBusinessSetupStepComplete(key: BusinessSetupStepKey, signals: 
         && signals.cashbackChosen
         && !!signals.supportedCauseId
       )
-    case 'list':
-      return signals.contactsCount > 0
-    case 'invite':
-      return signals.invitedCount >= BUSINESS_SETUP_INVITE_TARGET
-    case 'qr':
-      return signals.joinReady
-    // Activation is unlocked by the four editable steps. It cannot depend on
-    // launch_phase, which QA does not persist.
+    case 'stripe':
+      return signals.stripeConnected
     case 'activate':
-      return (
-        isBusinessSetupStepComplete('profile', signals)
-        && isBusinessSetupStepComplete('branding', signals)
-        && isBusinessSetupStepComplete('capture', signals)
-        && isBusinessSetupStepComplete('cashback', signals)
-      )
+      return signals.liveReviewSubmitted
     default:
       return false
   }
 }
 
+function hasCompletedLiveReviewRequirements(signals: BusinessSetupSignals) {
+  return (
+    isBusinessSetupStepComplete('profile', signals)
+    && isBusinessSetupStepComplete('branding', signals)
+    && isBusinessSetupStepComplete('capture', signals)
+    && isBusinessSetupStepComplete('cashback', signals)
+    && isBusinessSetupStepComplete('stripe', signals)
+  )
+}
+
 export function getBusinessSetupState(signals: BusinessSetupSignals): BusinessSetupState {
-  const steps: BusinessSetupStepState[] = BUSINESS_SETUP_STEPS.map((step) => ({
+  const steps = BUSINESS_SETUP_STEPS.map((step) => ({
     ...step,
     complete: isBusinessSetupStepComplete(step.key, signals),
   }))
-
   const completedCount = steps.filter((step) => step.complete).length
-  const readyToActivate = isBusinessSetupStepComplete('activate', signals)
 
   return {
     steps,
-    configSteps: steps.filter((step) => step.kind === 'config'),
-    actionSteps: steps.filter((step) => step.kind === 'action'),
+    configSteps: steps,
     completedCount,
     totalSteps: steps.length,
     ratio: completedCount / steps.length,
     isComplete: completedCount === steps.length,
-    readyToActivate,
+    readyToActivate: hasCompletedLiveReviewRequirements(signals),
     nextStep: steps.find((step) => !step.complete) || null,
   }
 }
 
-/** Saved-record signals — what the nav, the dashboard, and the "all set" state read. */
+/** Saved-record signals used by navigation, the dashboard, and the wizard. */
 export function getBusinessSetupSignals(input: {
   business: Business | null
   offers: Offer[]
   contacts: Contact[]
 }): BusinessSetupSignals {
-  const { business, offers, contacts } = input
+  const { business, offers } = input
 
   if (!business) {
     return {
@@ -248,9 +179,8 @@ export function getBusinessSetupSignals(input: {
       cashbackPercent: 0,
       cashbackChosen: false,
       supportedCauseId: null,
-      contactsCount: 0,
-      invitedCount: 0,
-      joinReady: false,
+      stripeConnected: false,
+      liveReviewSubmitted: false,
     }
   }
 
@@ -263,7 +193,7 @@ export function getBusinessSetupSignals(input: {
       : typeof portal.cashback_percent === 'number'
         ? portal.cashback_percent
         : 0
-  const joinCapture = getBusinessJoinCaptureData(business)
+  const status = String(business.status || '')
 
   return {
     name: business.name || '',
@@ -276,8 +206,7 @@ export function getBusinessSetupSignals(input: {
     cashbackPercent: savedCashbackPercent,
     cashbackChosen: !!cashback || typeof portal.cashback_percent === 'number',
     supportedCauseId: business.linked_cause_id || null,
-    contactsCount: contacts.length,
-    invitedCount: contacts.filter((contact) => getContactListStatus(contact) !== 'added').length,
-    joinReady: !!(joinCapture.join_url || joinCapture.qr_code_id),
+    stripeConnected: business.stripe_onboarding_complete === true,
+    liveReviewSubmitted: status === 'pending_live_review' || status === 'live' || business.stage === 'live',
   }
 }

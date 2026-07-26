@@ -109,6 +109,7 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
       : null,
     launch_phase: isPendingLiveReview ? 'ready_to_go_live' : isLive ? 'live' : null,
     activation_status: isLive ? 'active' : isPendingLiveReview ? 'in_progress' : null,
+    stripe_onboarding_complete: typeof b.hasStripeOnboarding === 'boolean' ? b.hasStripeOnboarding : null,
     metadata,
     created_at: (b.createdDate as string) || new Date().toISOString(),
     updated_at: (b.updatedDate as string) || new Date().toISOString(),

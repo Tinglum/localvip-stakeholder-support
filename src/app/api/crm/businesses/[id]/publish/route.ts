@@ -35,7 +35,11 @@ export async function POST(
 
   try {
     const detailResponse = await fetchQaApi(`/api/dashboard/v1/Business/${qaBusinessId}`)
-    const detail = await parseQaResponse<{ active?: boolean; crmStatus?: string | null }>(
+    const detail = await parseQaResponse<{
+      active?: boolean
+      crmStatus?: string | null
+      hasStripeOnboarding?: boolean
+    }>(
       detailResponse,
       'Failed to verify the business review state.',
     )
@@ -48,6 +52,12 @@ export async function POST(
     if (detail.crmStatus !== 'pending_live_review') {
       return NextResponse.json(
         { error: 'This business has not submitted a live-review request.' },
+        { status: 409 },
+      )
+    }
+    if (detail.hasStripeOnboarding !== true) {
+      return NextResponse.json(
+        { error: 'Stripe onboarding must be complete before this business can go live.' },
         { status: 409 },
       )
     }

@@ -120,6 +120,18 @@ export async function PUT(
     }
 
     const body = await request.json().catch(() => ({})) as Record<string, unknown>
+    const metadata = body.metadata && typeof body.metadata === 'object'
+      ? body.metadata as Record<string, unknown>
+      : null
+    const isSubmittingForLiveReview =
+      body.launch_phase === 'ready_to_go_live'
+      || metadata?.portal_activation_review_state === 'pending'
+    if (isSubmittingForLiveReview && business.hasStripeOnboarding !== true) {
+      return NextResponse.json(
+        { error: 'Complete Stripe onboarding before submitting for live review.' },
+        { status: 409 },
+      )
+    }
 
     // CRM pipeline annotations (stage, status, linked cause, campaign, duplicate)
     // are persisted via the dedicated /crm endpoint on the QA Account, not the
@@ -143,9 +155,6 @@ export async function PUT(
     // into a CRM status that both the business and super-admin can read.
     const launchPhase = body.launch_phase
     const activationStatus = body.activation_status
-    const metadata = body.metadata && typeof body.metadata === 'object'
-      ? body.metadata as Record<string, unknown>
-      : null
     if (
       launchPhase === 'ready_to_go_live'
       || metadata?.portal_activation_review_state === 'pending'

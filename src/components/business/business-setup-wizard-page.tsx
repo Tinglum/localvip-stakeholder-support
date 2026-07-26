@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowRight, CheckCircle2, Image as ImageIcon, Loader2, PartyPopper, QrCode, Rocket, Send, Store, Tag, Users, Wallet } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Image as ImageIcon, Loader2, PartyPopper, RefreshCw, Rocket, Store, Tag, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,11 +13,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
 import { resolveBusinessOffer } from '@/lib/offers'
-import { getBusinessJoinCaptureData } from '@/lib/business-join'
 import {
   getBusinessLaunchPhase,
   getBusinessPortalData,
-  getContactListStatus,
   resolveScopedBusiness,
 } from '@/lib/business-portal'
 import {
@@ -38,17 +36,16 @@ import {
 
 /** The steps that are actually edited on this page. The full checklist — these
  *  plus the do-it-on-another-page tasks — lives in `@/lib/business-setup`. */
-type StepKey = Extract<BusinessSetupStepKey, 'profile' | 'branding' | 'capture' | 'cashback' | 'activate'>
+type StepKey = BusinessSetupStepKey
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+type StripeState = 'loading' | 'complete' | 'needed' | 'error'
 
 const STEP_ICONS: Record<BusinessSetupStepKey, React.ReactNode> = {
   profile: <Store className="h-4 w-4" />,
   branding: <ImageIcon className="h-4 w-4" />,
   capture: <Tag className="h-4 w-4" />,
   cashback: <Wallet className="h-4 w-4" />,
-  list: <Users className="h-4 w-4" />,
-  invite: <Send className="h-4 w-4" />,
-  qr: <QrCode className="h-4 w-4" />,
+  stripe: <CreditCard className="h-4 w-4" />,
   activate: <Rocket className="h-4 w-4" />,
 }
 
@@ -115,6 +112,10 @@ export function BusinessSetupWizardPage() {
   const [cashbackPercent, setCashbackPercent] = React.useState(10)
   const [cashbackTouched, setCashbackTouched] = React.useState(false)
   const [activating, setActivating] = React.useState(false)
+  const [stripeState, setStripeState] = React.useState<StripeState>('loading')
+  const [stripeUrl, setStripeUrl] = React.useState<string | null>(null)
+  const [stripeRefreshKey, setStripeRefreshKey] = React.useState(0)
+  const [openingStripe, setOpeningStripe] = React.useState(false)
   const [captureOfferId, setCaptureOfferId] = React.useState<string | null>(null)
   const [cashbackOfferId, setCashbackOfferId] = React.useState<string | null>(null)
   // The cause this business supports. Auto-attached as the first cause to every
@@ -156,6 +157,33 @@ export function BusinessSetupWizardPage() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  React.useEffect(() => {
+    if (!business) return
+
+    let cancelled = false
+    setStripeState('loading')
+    fetch('/api/business-portal/stripe-onboarding', { cache: 'no-store' })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({})) as {
+          error?: string
+          isOnboardingComplete?: boolean
+          onboardingUrl?: string | null
+        }
+        if (!response.ok || result.error) throw new Error(result.error || 'Stripe status could not be loaded.')
+        if (cancelled) return
+
+        setStripeUrl(typeof result.onboardingUrl === 'string' ? result.onboardingUrl : null)
+        setStripeState(result.isOnboardingComplete ? 'complete' : 'needed')
+      })
+      .catch(() => {
+        if (!cancelled) setStripeState('error')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [business, stripeRefreshKey])
 
   React.useEffect(() => {
     if (!business) return
@@ -444,9 +472,11 @@ export function BusinessSetupWizardPage() {
     cashbackPercent,
     cashbackChosen: cashbackTouched || !!cashbackOfferId,
     supportedCauseId,
-    contactsCount: contacts.length,
-    invitedCount: contacts.filter((contact) => getContactListStatus(contact) !== 'added').length,
-    joinReady: !!(getBusinessJoinCaptureData(business).join_url || getBusinessJoinCaptureData(business).qr_code_id),
+    stripeConnected: stripeState === 'complete',
+    liveReviewSubmitted:
+      String(business.status || '') === 'pending_live_review'
+      || String(business.status || '') === 'live'
+      || business.stage === 'live',
   }
   const setupState = getBusinessSetupState(signals)
   const stepCompletion = new Map(setupState.steps.map((step) => [step.key, step.complete]))
@@ -454,6 +484,7 @@ export function BusinessSetupWizardPage() {
   const completeBranding = !!stepCompletion.get('branding')
   const completeCapture = !!stepCompletion.get('capture')
   const completeCashback = !!stepCompletion.get('cashback')
+  const completeStripe = !!stepCompletion.get('stripe')
   const readyToActivate = setupState.readyToActivate
   const completedStepsCount = setupState.completedCount
   const completionRatio = setupState.ratio
@@ -538,14 +569,13 @@ export function BusinessSetupWizardPage() {
             <div className="space-y-2">
               <h2 className="text-2xl font-semibold text-surface-950">You&apos;re all set</h2>
               <p className="max-w-2xl text-sm leading-6 text-surface-600">
-                Your profile, branding, offers, cashback, and 100-list groundwork are all complete. From here the work is
-                growth: keep your list moving and watch your network.
+                Your profile, branding, offers, cashback, cause, and Stripe connection are complete. Your live-review request has been submitted.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Button asChild>
-                <Link href="/portal/clients">
-                  Open my 100 list
+                <Link href="/portal/business">
+                  Open My Business
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -566,7 +596,7 @@ export function BusinessSetupWizardPage() {
     <div className="space-y-8">
       <PageHeader
         title="Business Setup"
-        description="Finish your profile, create your pre-launch customer capture offer, set your live cashback, and unlock your 100 List."
+        description="Complete each requirement in order, connect payments, then submit your business for live review."
         actions={
           <div className="flex items-center gap-2 text-sm text-surface-500">
             {saveState === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : saveState === 'saved' ? <CheckCircle2 className="h-4 w-4 text-success-600" /> : null}
@@ -575,183 +605,72 @@ export function BusinessSetupWizardPage() {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[320px,1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Setup Flow</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Progress</p>
-                  <p className="text-sm font-semibold text-surface-950">
-                    {completedStepsCount} of {setupState.totalSteps} setup steps finished
-                  </p>
-                  <p className="text-xs leading-5 text-surface-500">
-                    Completed steps stay available, so you can reopen them any time to review or change them.
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white px-3 py-2 text-right shadow-sm ring-1 ring-surface-200">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-surface-400">Complete</p>
-                  <p className="text-lg font-semibold text-surface-950">{Math.round(completionRatio * 100)}%</p>
-                </div>
-              </div>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface-200">
+      <Card className="overflow-hidden border-surface-200">
+        <CardContent className="p-0">
+          <div className="flex flex-col gap-4 border-b border-surface-200 bg-surface-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Setup progress</p>
+              <p className="mt-1 text-sm font-semibold text-surface-950">
+                {completedStepsCount} of {setupState.totalSteps} steps complete
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="h-2 w-36 overflow-hidden rounded-full bg-surface-200 sm:w-52">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-success-500 to-brand-500 transition-all"
-                  style={{ width: `${Math.max(completionRatio * 100, completedStepsCount ? 12 : 0)}%` }}
+                  style={{ width: `${completionRatio * 100}%` }}
                 />
               </div>
+              <span className="text-sm font-semibold text-surface-700">{Math.round(completionRatio * 100)}%</span>
             </div>
-            {STEPS.map((item, index) => {
-              const complete = getStepCompletion(item.key)
-              const isActive = step === item.key
-              const previousIncomplete = STEPS.slice(0, index).some((previousStep) => !getStepCompletion(previousStep.key))
-              const isLocked = !complete && !isActive && previousIncomplete
+          </div>
 
-              const cardClass = complete
-                ? isActive
-                  ? 'border-success-400 bg-success-50 shadow-[0_0_0_1px_rgba(34,197,94,0.08)]'
-                  : 'border-success-200 bg-white hover:border-success-300'
-                : isActive
-                  ? 'border-brand-500 bg-brand-50 shadow-[0_0_0_1px_rgba(59,130,246,0.08)]'
-                  : isLocked
-                    ? 'border-surface-200 bg-surface-50'
-                    : 'border-surface-200 bg-white hover:border-surface-300'
+          <div className="overflow-x-auto">
+            <div className="grid min-w-[820px] grid-cols-6">
+              {STEPS.map((item, index) => {
+                const complete = getStepCompletion(item.key)
+                const isActive = step === item.key
+                const previousIncomplete = STEPS.slice(0, index).some((previousStep) => !getStepCompletion(previousStep.key))
+                const isLocked = !complete && !isActive && previousIncomplete
 
-              const badgeClass = complete
-                ? 'border-success-200 bg-success-100 text-success-800'
-                : isActive
-                  ? 'border-brand-200 bg-brand-100 text-brand-800'
-                  : isLocked
-                    ? 'border-surface-200 bg-surface-100 text-surface-500'
-                    : 'border-amber-200 bg-amber-100 text-amber-800'
-
-              const markerClass = complete
-                ? 'border-success-600 bg-success-600 text-white'
-                : isActive
-                  ? 'border-brand-500 bg-brand-500 text-white'
-                  : isLocked
-                    ? 'border-surface-300 bg-white text-surface-400'
-                    : 'border-surface-300 bg-white text-surface-700'
-
-              const helperCopy = complete
-                ? 'Finished and saved'
-                : isActive
-                  ? 'Open now'
-                  : isLocked
-                    ? 'Complete the step above first'
-                    : 'Up next'
-
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setStep(item.key)}
-                  className={`w-full rounded-2xl border px-4 py-4 text-left transition-all ${cardClass}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex flex-col items-center pt-0.5">
-                      <span className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold shadow-sm ${markerClass}`}>
-                        {complete ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
-                      </span>
-                      {index < STEPS.length - 1 ? (
-                        <span className={`mt-2 h-10 w-px ${complete ? 'bg-success-200' : 'bg-surface-200'}`} />
-                      ) : null}
-                    </div>
-
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className={`flex items-center gap-2 text-sm font-semibold ${complete ? 'text-success-950' : 'text-surface-950'}`}>
-                            <span className={complete ? 'text-success-700' : isActive ? 'text-brand-700' : 'text-surface-500'}>
-                              {item.icon}
-                            </span>
-                            <span>{item.label}</span>
-                          </div>
-                          <p className="text-xs leading-5 text-surface-500">{item.description}</p>
-                        </div>
-                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${badgeClass}`}>
-                          {complete ? 'Done' : isActive ? 'Current' : isLocked ? 'Locked' : 'Next'}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 text-xs">
-                        <span className={complete ? 'font-medium text-success-700' : isActive ? 'font-medium text-brand-700' : 'text-surface-500'}>
-                          {helperCopy}
-                        </span>
-                        {complete ? (
-                          <span className="inline-flex items-center gap-1 text-success-700">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Reopen anytime
-                          </span>
-                        ) : isActive ? (
-                          <span className="inline-flex items-center gap-1 text-brand-700">
-                            Continue below
-                            <ArrowRight className="h-3.5 w-3.5" />
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-            {saveError && <p className="text-sm text-danger-600">{saveError}</p>}
-
-            {/* The rest of setup happens on your 100 list, not in this form.
-                These are the only place those tasks are listed. */}
-            <div className="space-y-3 border-t border-surface-200 pt-5">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Out in the real world</p>
-                <p className="text-xs leading-5 text-surface-500">
-                  These finish on your 100 list. They count towards your setup too.
-                </p>
-              </div>
-              {setupState.actionSteps.map((item) => (
-                <Link
-                  key={item.key}
-                  href={item.href || '/portal/clients'}
-                  className={`block rounded-2xl border px-4 py-3 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 ${
-                    item.complete
-                      ? 'border-success-200 bg-white hover:border-success-300'
-                      : 'border-surface-200 bg-white hover:border-surface-300'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold shadow-sm ${
-                      item.complete ? 'border-success-600 bg-success-600 text-white' : 'border-surface-300 bg-white text-surface-700'
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    disabled={isLocked}
+                    onClick={() => setStep(item.key)}
+                    className={`relative flex min-h-28 flex-col items-center justify-center gap-2 border-r border-surface-200 px-3 py-4 text-center transition-colors last:border-r-0 ${
+                      isActive
+                        ? 'bg-brand-50 text-brand-800'
+                        : complete
+                          ? 'bg-white text-success-800 hover:bg-success-50'
+                          : 'bg-white text-surface-400'
+                    } ${isLocked ? 'cursor-not-allowed opacity-60' : 'hover:bg-surface-50'}`}
+                  >
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-full border-2 ${
+                      complete
+                        ? 'border-success-600 bg-success-600 text-white'
+                        : isActive
+                          ? 'border-brand-600 bg-brand-600 text-white'
+                          : 'border-surface-300 bg-white'
                     }`}>
-                      {item.complete ? <CheckCircle2 className="h-4 w-4" /> : STEP_ICONS[item.key]}
+                      {complete ? <CheckCircle2 className="h-4 w-4" /> : item.icon}
                     </span>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className={`text-sm font-semibold ${item.complete ? 'text-success-950' : 'text-surface-950'}`}>
-                          {item.label}
-                        </p>
-                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                          item.complete
-                            ? 'border-success-200 bg-success-100 text-success-800'
-                            : 'border-amber-200 bg-amber-100 text-amber-800'
-                        }`}>
-                          {item.complete ? 'Done' : 'To do'}
-                        </span>
-                      </div>
-                      <p className="text-xs leading-5 text-surface-500">{item.description}</p>
-                      <p className="inline-flex items-center gap-1 text-xs font-medium text-brand-700">
-                        {item.ctaLabel || 'Open'}
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-              ))}
+                    <span className="text-sm font-semibold">{item.label}</span>
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
+                      {complete ? 'Complete' : isActive ? `Step ${index + 1}` : isLocked ? 'Locked' : 'Next'}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="space-y-6">
+      {saveError ? <p className="text-sm text-danger-600">{saveError}</p> : null}
+
+      <div className="space-y-6">
           <Card className="border-surface-200 bg-gradient-to-r from-white via-surface-50 to-white">
             <CardContent className="flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-1.5">
@@ -779,7 +698,7 @@ export function BusinessSetupWizardPage() {
           </Card>
 
           {step === 'profile' && (
-            <Card>
+            <Card className="min-h-[58vh]">
               <CardHeader>
                 <CardTitle>Business Profile</CardTitle>
               </CardHeader>
@@ -826,7 +745,7 @@ export function BusinessSetupWizardPage() {
           )}
 
           {step === 'branding' && (
-            <Card>
+            <Card className="min-h-[58vh]">
               <CardHeader>
                 <CardTitle>Branding</CardTitle>
               </CardHeader>
@@ -884,7 +803,7 @@ export function BusinessSetupWizardPage() {
           )}
 
           {step === 'capture' && (
-            <Card>
+            <Card className="min-h-[58vh]">
               <CardHeader>
                 <CardTitle>Customer Capture Offer (Pre-launch)</CardTitle>
               </CardHeader>
@@ -949,7 +868,7 @@ export function BusinessSetupWizardPage() {
           )}
 
           {step === 'cashback' && (
-            <Card>
+            <Card className="min-h-[58vh]">
               <CardHeader>
                 <CardTitle>LocalVIP Cashback (Live)</CardTitle>
               </CardHeader>
@@ -1016,17 +935,127 @@ export function BusinessSetupWizardPage() {
             </Card>
           )}
 
+          {step === 'stripe' && (
+            <Card className="min-h-[58vh]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-brand-600" />
+                  Connect Stripe Payments
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="max-w-3xl">
+                  <p className="text-base leading-7 text-surface-700">
+                    LocalVIP uses Stripe to securely process customer payments and send your share directly to your business bank account.
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-surface-500">
+                    Stripe verifies the business and payout details. LocalVIP never stores your bank credentials.
+                  </p>
+                </div>
+
+                {stripeState === 'loading' ? (
+                  <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-5 py-5 text-sm text-surface-600">
+                    <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+                    Checking your Stripe connection...
+                  </div>
+                ) : null}
+
+                {stripeState === 'complete' ? (
+                  <div className="rounded-2xl border border-success-300 bg-success-50 px-5 py-6">
+                    <div className="flex items-start gap-4">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-success-600 text-white">
+                        <CheckCircle2 className="h-6 w-6" />
+                      </span>
+                      <div>
+                        <p className="text-lg font-semibold text-success-950">Stripe is connected</p>
+                        <p className="mt-1 text-sm leading-6 text-success-800">
+                          Your business can receive LocalVIP customer payments. This requirement is complete.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {stripeState === 'needed' ? (
+                  <div className="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-6">
+                    <div className="flex items-start gap-4">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+                        <CreditCard className="h-6 w-6" />
+                      </span>
+                      <div>
+                        <p className="text-lg font-semibold text-amber-950">Stripe setup is required</p>
+                        <p className="mt-1 text-sm leading-6 text-amber-800">
+                          Finish Stripe&apos;s secure onboarding before submitting your business for live review.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {stripeState === 'error' ? (
+                  <div className="rounded-2xl border border-red-300 bg-red-50 px-5 py-6">
+                    <div className="flex items-start gap-4">
+                      <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-red-600" />
+                      <div>
+                        <p className="font-semibold text-red-950">Stripe status could not be checked</p>
+                        <p className="mt-1 text-sm leading-6 text-red-800">
+                          Try again before continuing. Go Live remains locked until QA confirms the connection.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {stripeState === 'needed' ? (
+                    <Button
+                      onClick={() => {
+                        if (!stripeUrl) return
+                        setOpeningStripe(true)
+                        window.location.href = stripeUrl
+                      }}
+                      disabled={!stripeUrl || openingStripe}
+                      className="h-12 px-6 text-base font-semibold"
+                    >
+                      {openingStripe ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                      {openingStripe ? 'Opening Stripe...' : 'Complete Stripe setup'}
+                    </Button>
+                  ) : null}
+                  {stripeState === 'complete' ? (
+                    <Button
+                      onClick={() => setStep('activate')}
+                      className="h-12 px-6 text-base font-semibold"
+                    >
+                      Continue to Go Live
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                  {stripeState === 'needed' || stripeState === 'error' ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => setStripeRefreshKey((value) => value + 1)}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Check status again
+                    </Button>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {step === 'activate' && (
-            <Card>
+            <Card className="min-h-[58vh]">
               <CardHeader>
                 <CardTitle>Submit for Live Review</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   <StatusPill label="Profile" ready={completeProfile} onOpen={() => setStep('profile')} />
                   <StatusPill label="Branding" ready={completeBranding} onOpen={() => setStep('branding')} />
                   <StatusPill label="100-List Offer" ready={completeCapture} onOpen={() => setStep('capture')} />
                   <StatusPill label="Cashback" ready={completeCashback} onOpen={() => setStep('cashback')} />
+                  <StatusPill label="Stripe" ready={completeStripe} onOpen={() => setStep('stripe')} />
                 </div>
                 <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
                   <p className="text-sm font-semibold text-surface-900">What unlocks next</p>
@@ -1059,7 +1088,6 @@ export function BusinessSetupWizardPage() {
             </Card>
           )}
         </div>
-      </div>
     </div>
   )
 }

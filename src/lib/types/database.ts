@@ -392,6 +392,7 @@ export interface Business {
   products_services?: string[] | null
   activation_status?: BusinessActivationStatus | null
   launch_phase?: BusinessLaunchPhase | null
+  stripe_onboarding_complete?: boolean | null
   status: EntityStatus
   metadata: Record<string, unknown> | null
   created_at: string

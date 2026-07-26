@@ -27,7 +27,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { StripeSetupCard } from '@/components/business/stripe-setup-card'
 import { StripeFinancialCard } from '@/components/business/stripe-financial-card'
 import { useAuth } from '@/lib/auth/context'
 import {
@@ -127,7 +126,7 @@ export function BusinessDashboardPage() {
   const setup = getBusinessSetupState(getBusinessSetupSignals({ business, offers, contacts }))
   const nextStep = setup.nextStep
   const nextStepHref = nextStep
-    ? nextStep.href || `/portal/setup?step=${nextStep.key}`
+    ? `/portal/setup?step=${nextStep.key}`
     : '/portal/network'
 
   const launchLabel =
@@ -150,10 +149,6 @@ export function BusinessDashboardPage() {
           </Badge>
         }
       />
-
-      {/* First step: connect Stripe so the business can actually get paid.
-          Hidden automatically once onboarding is complete. */}
-      <StripeSetupCard />
 
       <Card className="overflow-hidden border-surface-200">
         <div className="bg-[linear-gradient(135deg,_rgba(245,158,11,0.15),_rgba(255,255,255,0.96)_38%,_rgba(132,204,22,0.16)_100%)] px-6 py-6">
@@ -186,7 +181,7 @@ export function BusinessDashboardPage() {
 
               <Button asChild size="lg">
                 <Link href={nextStepHref}>
-                  {nextStep?.ctaLabel || (nextStep ? 'Open this step' : 'See my network')}
+                  {nextStep ? 'Open this step' : 'See my network'}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
