@@ -1230,20 +1230,27 @@ export function BusinessExecutionOverview({
       <MaterialsQrModal
         open={lifecycleModal === 'materials_qr'}
         onOpenChange={(open) => !open && setLifecycleModal(null)}
-        codes={codes}
         generatedMaterials={generatedMaterials}
         qrCodes={qrCodes}
-        joinUrl={joinUrl}
+        engagementAssets={{
+          customerCapture: {
+            captureCode: joinUrl.split('/').filter(Boolean).pop() || null,
+            captureUrl: joinUrl || null,
+            qrCode: null,
+          },
+          networkReferral: {
+            networkReferralCode: codes?.referral_code || null,
+            networkReferralUrl: null,
+            qrCode: null,
+          },
+        }}
         engineBusy={engineBusy}
         regenBusy={regenBusy}
         saving={stepBusyId !== null}
         blocker={executionSteps.find((s) => s.key === 'materials_qr')?.blocker ?? null}
         readyToComplete={executionSteps.find((s) => s.key === 'materials_qr')?.readyToComplete ?? false}
-        onSaveCodes={async () => {
-          // Stakeholder codes removed for QA backend compliance
-        }}
-        onGenerateMaterials={handleGenerateMaterials}
-        onRegenerateAll={handleRegenerateAll}
+        onGenerateMaterials={async () => handleGenerateMaterials()}
+        onRegenerateAll={async () => handleRegenerateAll()}
         onCompleteStep={() => {
           const step = executionSteps.find((s) => s.key === 'materials_qr')
           if (step) void handleCompleteStep(step.step.id)
@@ -1256,18 +1263,16 @@ export function BusinessExecutionOverview({
         onOpenChange={(open) => !open && setLifecycleModal(null)}
         biz={biz}
         captureOffer={captureOffer}
-        cashbackOffer={cashbackOffer}
         joinedCount={joinedCount}
         generatedCount={generatedCount}
         qrCount={qrCodes.length}
         saving={offerSaving || updateLoading}
         blocker={executionSteps.find((s) => s.key === 'launch_decision')?.blocker ?? null}
         readyToComplete={executionSteps.find((s) => s.key === 'launch_decision')?.readyToComplete ?? false}
-        onSaveOffers={async ({ headline, description, valueLabel, cashbackPercent: cp }) => {
+        onSaveOffers={async ({ headline, description, valueLabel }) => {
           setCaptureHeadline(headline)
           setCaptureDescription(description)
           setCaptureValue(valueLabel)
-          setCashbackPercent(cp)
           await handleSaveOffers()
         }}
         onCompleteStep={() => {

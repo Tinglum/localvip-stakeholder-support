@@ -103,8 +103,8 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
   const ownerUserId = b.ownerUserId ?? b.primaryUserId
   const durableOwnerId = durableId(ownerUserId)
   const campaignId = durableId(b.crmCampaignId)
-  const referralCode = nonEmptyString(b.referralCode)
-  const branchReferralUrl = nonEmptyString(b.branchReferralUrl)
+  const networkReferralCode = nonEmptyString(b.referralCode)
+  const networkReferralUrl = nonEmptyString(b.branchReferralUrl)
   const joinSlug = slugify(`${String(b.name || 'business')}-${String(b.id)}`) || `business-${String(b.id)}`
   const businessJoinUrl = getBusinessJoinUrl(joinSlug)
   const qrState = {
@@ -118,15 +118,14 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
     qaId: b.id,
     qaBusinessId: b.id,
     headline: b.headline,
-    referralCode,
-    connectionCode: referralCode,
-    branchReferralUrl,
+    networkReferralCode,
+    networkReferralUrl,
     businessJoinUrl,
     qrState,
     customer_capture: {
       join_slug: joinSlug,
       join_url: businessJoinUrl,
-      short_code: referralCode,
+      capture_code: joinSlug,
       qr_code_id: qrState.id,
     },
     portal_activation_review_state: isPendingLiveReview ? 'pending' : isLive ? 'approved' : null,

@@ -38,6 +38,11 @@ export interface BusinessJoinResource {
   offerDescription: string
   offerValue: string | null
   supportLabel: string
+  /** Stable pre-launch customer-capture identity. Same value as joinSlug. */
+  captureCode?: string
+  /** LocalVIP network identity. Never used for the customer capture page. */
+  networkReferralCode?: string | null
+  networkReferralUrl?: string | null
   /** The LocalVIP network (node) referral link — branch.io deep link. Distinct
    * from joinUrl (the 100-list customer page). Optional; QA businesses have it. */
   appReferralUrl?: string | null
@@ -265,6 +270,7 @@ export function buildBusinessJoinResource(
     offerDescription: options.captureOffer?.description || getBusinessJoinOfferDescription(business),
     offerValue: options.captureOffer?.valueLabel || getBusinessJoinOfferValue(business),
     supportLabel: getBusinessSupportLabel(business, options.linkedCauseName),
+    captureCode: options.joinSlug,
   }
 }
 

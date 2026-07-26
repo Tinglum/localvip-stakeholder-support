@@ -56,12 +56,20 @@ export function computeBusinessExecutionSteps(input: {
   qrCodes: QrCode[]
   offers: Offer[]
   outreachCount: number
+  assets?: {
+    captureCode?: string | null
+    captureUrl?: string | null
+    captureQrReady?: boolean
+    networkReferralCode?: string | null
+    networkReferralUrl?: string | null
+    networkQrReady?: boolean
+  }
 }) {
   const orderedSteps = [...input.steps].sort((left, right) => left.sort_order - right.sort_order)
   const captureOffer = resolveBusinessOffer(input.business, input.offers, 'capture')
-  const cashbackOffer = resolveBusinessOffer(input.business, input.offers, 'cashback')
   const generatedCount = input.generatedMaterials.filter((item) => item.generation_status === 'generated' && !!item.generated_file_url).length
   const qrReady = Boolean(input.business.linked_qr_code_id || input.qrCodes.length > 0)
+  const captureQrReady = input.assets?.captureQrReady ?? qrReady
 
   return orderedSteps.map<BusinessExecutionStepSummary>((step, index) => {
     const key = getBusinessExecutionStepKey(step, index)
@@ -78,17 +86,15 @@ export function computeBusinessExecutionSteps(input: {
       case 'owner_conversation':
         break
       case 'materials_qr':
-        if (!input.codes?.referral_code || !input.codes?.connection_code) {
-          blocker = 'Save the referral code and connection code first.'
-        } else if (!qrReady) {
-          blocker = 'Generate or link a QR code first.'
+        if (input.assets && !input.assets.captureUrl) {
+          blocker = 'Create the customer capture link first.'
+        } else if (!captureQrReady) {
+          blocker = 'Generate the customer capture QR first.'
         }
         break
       case 'launch_decision':
         if (!captureOffer.headline?.trim()) {
           blocker = 'Set the 100-list capture offer first.'
-        } else if (typeof cashbackOffer.cashback_percent !== 'number' || cashbackOffer.cashback_percent < 5 || cashbackOffer.cashback_percent > 25) {
-          blocker = 'Set a valid cashback offer first.'
         }
         break
       default:
@@ -151,12 +157,15 @@ export function getBusinessNextActions(input: {
   offers: Offer[]
   joinedCount: number
   openTaskCount: number
+  assets?: {
+    captureUrl?: string | null
+    captureQrReady?: boolean
+  }
 }): BusinessNextAction[] {
   const actions: BusinessNextAction[] = []
   const seen = new Set<string>()
   const nextStep = input.steps.find((step) => step.state === 'active')
   const captureOffer = resolveBusinessOffer(input.business, input.offers, 'capture')
-  const cashbackOffer = resolveBusinessOffer(input.business, input.offers, 'cashback')
 
   function add(text: string, tab: string) {
     if (!seen.has(text)) {
@@ -172,24 +181,20 @@ export function getBusinessNextActions(input: {
     )
   }
 
-  if (!input.codes?.referral_code || !input.codes?.connection_code) {
-    add('Add referral and connection codes so QR and materials can be generated.', 'codes')
+  if (input.assets && !input.assets.captureUrl) {
+    add('Create the customer capture link before making customer-facing materials.', 'codes')
   }
 
   if (input.generatedMaterials.filter((item) => item.generation_status === 'generated').length === 0) {
     add('Generate the first materials so launch assets are ready.', 'codes')
   }
 
-  if (input.qrCodes.length === 0) {
-    add('Create or link a QR code for customer capture.', 'codes')
+  if ((input.assets && !input.assets.captureQrReady) || (!input.assets && input.qrCodes.length === 0)) {
+    add('Create the customer capture QR code.', 'codes')
   }
 
   if (!captureOffer.headline?.trim()) {
     add('Set the customer capture offer customers see before launch.', 'offers')
-  }
-
-  if (typeof cashbackOffer.cashback_percent !== 'number' || cashbackOffer.cashback_percent < 5 || cashbackOffer.cashback_percent > 25) {
-    add('Set the LocalVIP cashback percentage so launch can move forward.', 'offers')
   }
 
   if (input.joinedCount < 100) {
@@ -234,14 +239,21 @@ export function computeBusinessOnboardingChecklist(input: {
   hasLinkedCause: boolean
   hasLogo: boolean
   hasCoverPhoto: boolean
+  assets?: {
+    captureCode?: string | null
+    captureUrl?: string | null
+    captureQrReady?: boolean
+    networkReferralCode?: string | null
+    networkReferralUrl?: string | null
+    networkQrReady?: boolean
+  }
 }): OnboardingChecklist {
   const base = `/crm/businesses/${input.business.id}`
   const captureOffer = resolveBusinessOffer(input.business, input.offers, 'capture')
-  const cashbackOffer = resolveBusinessOffer(input.business, input.offers, 'cashback')
   const generatedCount = input.generatedMaterials.filter(
     (m) => m.generation_status === 'generated' && !!m.generated_file_url,
   ).length
-  const qrReady = Boolean(input.business.linked_qr_code_id || input.qrCodes.length > 0)
+  const qrReady = input.assets?.captureQrReady ?? Boolean(input.business.linked_qr_code_id || input.qrCodes.length > 0)
   const stepsComplete = input.steps.filter((s) => s.is_completed).length
 
   const items: OnboardingChecklistItem[] = [
@@ -255,12 +267,12 @@ export function computeBusinessOnboardingChecklist(input: {
     { id: 'cause', label: 'Cause or school linked', met: input.hasLinkedCause, href: base, tab: 'overview' },
     { id: 'first_outreach', label: 'First outreach logged', met: input.outreachCount >= 1, href: base, tab: 'outreach' },
     { id: 'owner_convo', label: 'Owner conversation (3+ touches)', met: input.outreachCount >= 3, href: base, tab: 'outreach' },
-    { id: 'referral_code', label: 'Referral code saved', met: !!input.codes?.referral_code, href: base, tab: 'codes' },
-    { id: 'connection_code', label: 'Connection code saved', met: !!input.codes?.connection_code, href: base, tab: 'codes' },
-    { id: 'qr', label: 'QR code generated', met: qrReady, href: base, tab: 'codes' },
+    { id: 'capture_link', label: 'Customer capture link ready', met: !!input.assets?.captureUrl, href: base, tab: 'codes' },
+    { id: 'network_referral', label: 'Network referral ready', met: !!input.assets?.networkReferralCode && !!input.assets?.networkReferralUrl, href: base, tab: 'codes' },
+    { id: 'qr', label: 'Customer capture QR generated', met: qrReady, href: base, tab: 'codes' },
     { id: 'materials', label: 'Materials generated', met: generatedCount > 0, href: base, tab: 'codes' },
     { id: 'capture_offer', label: 'Customer capture offer set', met: !!captureOffer.headline?.trim(), href: base, tab: 'offers' },
-    { id: 'cashback', label: 'Cashback percentage configured', met: typeof cashbackOffer.cashback_percent === 'number' && cashbackOffer.cashback_percent >= 5 && cashbackOffer.cashback_percent <= 25, href: base, tab: 'offers' },
+    { id: 'network_qr', label: 'Network referral QR generated', met: !!input.assets?.networkQrReady, href: base, tab: 'codes' },
     { id: 'logo', label: 'Logo uploaded', met: input.hasLogo, href: base, tab: 'codes' },
     { id: 'cover', label: 'Cover photo uploaded', met: input.hasCoverPhoto, href: base, tab: 'codes' },
     { id: 'task_done', label: 'At least one task completed', met: input.completedTaskCount > 0, href: base, tab: 'tasks' },

@@ -103,29 +103,32 @@ type QaBusinessReadiness = {
   loading: boolean
   error: string | null
 }
-type ReferralAssetsResult = {
-  codes?: {
-    referralCode?: string | null
-    connectionCode?: string | null
-    joinUrl?: string | null
-    referral_code?: string | null
-    connection_code?: string | null
-    join_url?: string | null
+type EngagementAssetsResult = {
+  customerCapture?: {
+    captureCode?: string | null
+    captureUrl?: string | null
+    qrCode?: {
+      id?: string | null
+      targetUrl?: string | null
+      qrImageUrl?: string | null
+      logoUrl?: string | null
+    } | null
   } | null
-  qrCode?: {
-    id?: string | null
-    targetUrl?: string | null
-    qrImageUrl?: string | null
-    logoUrl?: string | null
-    destination_url?: string | null
-    redirect_url?: string | null
+  networkReferral?: {
+    networkReferralCode?: string | null
+    networkReferralUrl?: string | null
+    qrCode?: {
+      id?: string | null
+      targetUrl?: string | null
+      qrImageUrl?: string | null
+      logoUrl?: string | null
+    } | null
   } | null
-  joinUrl?: string | null
 }
-type ReferralAssetProvisioning = {
+type EngagementAssetProvisioning = {
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string | null
-  result: ReferralAssetsResult | null
+  result: EngagementAssetsResult | null
 }
 
 const businessTheme = getEntityTheme('business')
@@ -138,11 +141,9 @@ const REQUIRED_CHECKLIST_IDS = new Set([
   'city',
   'owner',
   'cause',
-  'referral_code',
-  'connection_code',
+  'capture_link',
   'qr',
   'capture_offer',
-  'cashback',
   'logo',
 ])
 
@@ -152,6 +153,8 @@ const OPTIONAL_CHECKLIST_IDS = new Set([
   'first_outreach',
   'owner_convo',
   'materials',
+  'network_referral',
+  'network_qr',
   'task_done',
   'cover',
   'all_steps',
@@ -586,30 +589,37 @@ export default function BusinessOnboardingPage() {
     const stakeholder = stakeholderByBusiness.get(business.id) || null
     const stakeholderCodesForBusiness = stakeholder ? codesByStakeholder.get(stakeholder.id) || null : null
     const businessMetadata = (business.metadata as Record<string, unknown> | null) || {}
-    const directReferralCode = typeof businessMetadata.referralCode === 'string'
-      ? businessMetadata.referralCode.trim()
-      : ''
-    const directConnectionCode = typeof businessMetadata.connectionCode === 'string'
-      ? businessMetadata.connectionCode.trim()
-      : directReferralCode
-    const directJoinUrl = typeof businessMetadata.businessJoinUrl === 'string'
-      ? businessMetadata.businessJoinUrl.trim()
-      : ''
-    const codes = stakeholderCodesForBusiness || (directReferralCode
-      ? {
-          id: `qa-business-${business.id}`,
-          stakeholder_id: `qa-business-${business.id}`,
-          referral_code: directReferralCode,
-          connection_code: directConnectionCode || directReferralCode,
-          join_url: directJoinUrl || null,
-          created_at: business.created_at,
-          updated_at: business.updated_at,
-        }
-      : null)
+    // QA business records have explicit capture and network fields. Do not
+    // synthesize legacy stakeholder codes by copying one value into another.
+    const codes = stakeholderCodesForBusiness || null
     const generated = stakeholder ? generatedByStakeholder.get(stakeholder.id) || [] : []
     const generatedReady = generated.filter((item) => item.generation_status === 'generated')
     const businessOffers = offersByBusiness.get(business.id) || []
     const businessQrCodes = qrByBusiness.get(business.id) || []
+    const captureMetadata = businessMetadata.customer_capture
+    const captureRecord = captureMetadata && typeof captureMetadata === 'object'
+      ? captureMetadata as Record<string, unknown>
+      : {}
+    const captureCode = typeof captureRecord.join_slug === 'string' ? captureRecord.join_slug : null
+    const captureUrl = typeof captureRecord.join_url === 'string'
+      ? captureRecord.join_url
+      : typeof businessMetadata.businessJoinUrl === 'string'
+        ? businessMetadata.businessJoinUrl
+        : null
+    const networkReferralCode = typeof businessMetadata.networkReferralCode === 'string'
+      ? businessMetadata.networkReferralCode
+      : null
+    const networkReferralUrl = typeof businessMetadata.networkReferralUrl === 'string'
+      ? businessMetadata.networkReferralUrl
+      : null
+    const engagementAssets = {
+      captureCode,
+      captureUrl,
+      captureQrReady: businessQrCodes.some((qr) => qr.metadata?.purpose === 'business_capture'),
+      networkReferralCode,
+      networkReferralUrl,
+      networkQrReady: businessQrCodes.some((qr) => qr.metadata?.purpose === 'business_network_referral'),
+    }
     const activationReview = getBusinessPortalActivationReview(business)
     const businessSteps = computeBusinessExecutionSteps({
       business,
@@ -619,6 +629,7 @@ export default function BusinessOnboardingPage() {
       qrCodes: businessQrCodes,
       offers: businessOffers,
       outreachCount: (outreachByBusiness.get(business.id) || []).length,
+      assets: engagementAssets,
     })
     const checklist = computeBusinessOnboardingChecklist({
       business,
@@ -634,6 +645,7 @@ export default function BusinessOnboardingPage() {
       hasLinkedCause: !!business.linked_cause_id,
       hasLogo: !!business.logo_url,
       hasCoverPhoto: !!business.cover_photo_url,
+      assets: engagementAssets,
     })
     const owner = business.owner_id ? profileMap.get(business.owner_id) : null
     const helperAssignments = (assignmentsByBusiness.get(business.id) || [])
@@ -676,7 +688,6 @@ export default function BusinessOnboardingPage() {
     const logoUrl = business.logo_url || null
     const coverPhotoUrl = business.cover_photo_url || null
     const captureOffer = businessOffers.find((offer) => offer.offer_type === 'capture') || null
-    const cashbackOffer = businessOffers.find((offer) => offer.offer_type === 'cashback') || null
     const qrGeneratorHref = `/qr/generator?businessId=${business.id}&returnTo=${encodeURIComponent(`/onboarding/business?businessId=${business.id}`)}`
 
     return {
@@ -697,13 +708,13 @@ export default function BusinessOnboardingPage() {
       latestOutreach,
       nextFollowUp,
       dueTask,
-      codesReady: !!codes?.join_url,
-      joinUrl: codes?.join_url || null,
+      codesReady: !!captureUrl,
+      joinUrl: captureUrl,
+      engagementAssets,
       generatedCount: generatedReady.length,
       qrCount: businessQrCodes.length,
       taskStatus: adminTask?.status || null,
       captureOffer,
-      cashbackOffer,
       qrGeneratorHref,
       qrCodes: businessQrCodes,
       logoUrl,
@@ -1203,13 +1214,14 @@ function getBusinessChecklistSection(itemId: string): BusinessModalSection {
     case 'first_outreach':
     case 'owner_convo':
       return 'outreach'
-    case 'referral_code':
-    case 'connection_code':
+    case 'capture_link':
+    case 'network_referral':
+    case 'network_qr':
     case 'qr':
     case 'materials':
       return 'codes'
     case 'capture_offer':
-    case 'cashback':
+    case 'live_offer':
       return 'offers'
     case 'task_done':
       return 'tasks'
@@ -1238,17 +1250,19 @@ function getChecklistItemGuidance(itemId: string) {
       return { action: 'Log outreach', detail: 'Record the first call, email, message, or visit.' }
     case 'owner_convo':
       return { action: 'Log another touch', detail: 'Record outreach until three owner touches are complete.' }
-    case 'referral_code':
-    case 'connection_code':
-      return { action: 'Open Materials & QR', detail: 'Check the automatically assigned codes and current generation actions.' }
+    case 'capture_link':
+      return { action: 'Open customer capture', detail: 'Create or review the link and QR used to build the 100-list.' }
+    case 'network_referral':
+    case 'network_qr':
+      return { action: 'Open network referral', detail: 'Review the QA referral code and Branch link used to grow the LocalVIP network.' }
     case 'qr':
-      return { action: 'Open QR generator', detail: 'Create or review this business-specific branded referral QR code.' }
+      return { action: 'Open customer capture QR', detail: 'Create or review the QR that opens the 100-list capture page.' }
     case 'materials':
       return { action: 'Generate materials', detail: 'Create the ready-to-share launch materials.' }
     case 'capture_offer':
       return { action: 'Set capture offer', detail: 'Create the offer used to build the first customer list.' }
-    case 'cashback':
-      return { action: 'Set cashback', detail: 'Choose the live cashback percentage customers receive.' }
+    case 'live_offer':
+      return { action: 'Manage live offers', detail: 'Set live LocalVIP cashback offers separately from pre-launch capture.' }
     case 'logo':
     case 'cover':
       return { action: 'Upload branding', detail: 'Upload the image used on the business profile and materials.' }
@@ -1684,10 +1698,9 @@ function BusinessDetailModal({
     nextFollowUp,
     dueTask,
     captureOffer,
-    cashbackOffer,
     qrGeneratorHref,
     qrCodes: businessQrCodes,
-    codes,
+    engagementAssets,
     activationReview,
     pendingLiveReview,
   } = detail
@@ -1725,7 +1738,7 @@ function BusinessDetailModal({
   const [regenBusy, setRegenBusy] = React.useState(false)
   const [modalActionMessage, setModalActionMessage] = React.useState<string | null>(null)
   const [modalActionError, setModalActionError] = React.useState<string | null>(null)
-  const [referralAssetProvisioning, setReferralAssetProvisioning] = React.useState<ReferralAssetProvisioning>({
+  const [engagementAssetProvisioning, setEngagementAssetProvisioning] = React.useState<EngagementAssetProvisioning>({
     status: 'idle',
     error: null,
     result: null,
@@ -1747,11 +1760,7 @@ function BusinessDetailModal({
     ? Math.round((requiredCompletedCount / requiredChecklist.length) * 100)
     : 0
   const progressColors = getProgressColor(requiredPercent)
-  const provisionedJoinUrl =
-    referralAssetProvisioning.result?.joinUrl
-    || referralAssetProvisioning.result?.codes?.joinUrl
-    || referralAssetProvisioning.result?.codes?.join_url
-    || null
+  const provisionedJoinUrl = engagementAssetProvisioning.result?.customerCapture?.captureUrl || null
   const effectiveJoinUrl = joinUrl || provisionedJoinUrl
 
   const setSectionRef = React.useCallback((section: BusinessModalSection) => {
@@ -1846,41 +1855,41 @@ function BusinessDetailModal({
     return payload
   }, [business.id])
 
-  const ensureReferralAssets = React.useCallback(async () => {
-    setReferralAssetProvisioning((current) => ({
+  const ensureEngagementAssets = React.useCallback(async () => {
+    setEngagementAssetProvisioning((current) => ({
       status: 'loading',
       error: null,
       result: current.result,
     }))
     try {
-      const payload = await callExecutionAction({ action: 'ensure_referral_assets' }) as ReferralAssetsResult
-      setReferralAssetProvisioning({
+      const payload = await callExecutionAction({ action: 'ensure_engagement_assets' }) as EngagementAssetsResult
+      setEngagementAssetProvisioning({
         status: 'ready',
         error: null,
         result: payload,
       })
       refreshExecutionBoardsRef.current()
     } catch (error) {
-      setReferralAssetProvisioning((current) => ({
+      setEngagementAssetProvisioning((current) => ({
         status: 'error',
-        error: error instanceof Error ? error.message : 'Referral assets could not be prepared.',
+        error: error instanceof Error ? error.message : 'Customer capture or network assets could not be prepared.',
         result: current.result,
       }))
     }
   }, [callExecutionAction])
 
   React.useEffect(() => {
-    setReferralAssetProvisioning({ status: 'idle', error: null, result: null })
-    void ensureReferralAssets()
-  }, [business.id, ensureReferralAssets])
+    setEngagementAssetProvisioning({ status: 'idle', error: null, result: null })
+    void ensureEngagementAssets()
+  }, [business.id, ensureEngagementAssets])
 
-  async function handleGenerateMaterials() {
+  async function handleGenerateMaterials(assetKind: 'customer_capture' | 'network_referral') {
     setEngineBusy('generate')
     setModalActionMessage(null)
     setModalActionError(null)
     try {
-      await callExecutionAction({ action: 'generate_materials' })
-      setModalActionMessage('Materials generation started.')
+      await callExecutionAction({ action: 'generate_materials', assetKind })
+      setModalActionMessage(assetKind === 'customer_capture' ? 'Customer capture materials generation started.' : 'Network referral materials generation started.')
       onStageChanged()
     } catch (error) {
       setModalActionError(error instanceof Error ? error.message : 'Materials could not be generated.')
@@ -1889,13 +1898,13 @@ function BusinessDetailModal({
     }
   }
 
-  async function handleRegenerateAll() {
+  async function handleRegenerateAll(assetKind: 'customer_capture' | 'network_referral') {
     setRegenBusy(true)
     setModalActionMessage(null)
     setModalActionError(null)
     try {
-      await callExecutionAction({ action: 'regenerate_all' })
-      setModalActionMessage('Materials regeneration started.')
+      await callExecutionAction({ action: 'regenerate_all', assetKind })
+      setModalActionMessage(assetKind === 'customer_capture' ? 'Customer capture materials regeneration started.' : 'Network referral materials regeneration started.')
       onStageChanged()
     } catch (error) {
       setModalActionError(error instanceof Error ? error.message : 'Materials could not be regenerated.')
@@ -1904,7 +1913,7 @@ function BusinessDetailModal({
     }
   }
 
-  async function handleSaveOffers(data: { headline: string; description: string; valueLabel: string; cashbackPercent: number }) {
+  async function handleSaveOffers(data: { headline: string; description: string; valueLabel: string }) {
     setModalActionMessage(null)
     setModalActionError(null)
     try {
@@ -1921,29 +1930,10 @@ function BusinessDetailModal({
         ends_at: null,
         metadata: { source: 'business_onboarding' },
       }
-      const cashbackPayload: Partial<Offer> = {
-        business_id: business.id,
-        offer_type: 'cashback',
-        status: 'active',
-        headline: 'Standard LocalVIP Cashback',
-        description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
-        value_type: 'cashback_percent',
-        value_label: `${data.cashbackPercent}% cashback`,
-        cashback_percent: data.cashbackPercent,
-        starts_at: null,
-        ends_at: null,
-        metadata: { source: 'business_onboarding' },
-      }
-
       if (captureOffer?.id) await updateOffer(captureOffer.id, capturePayload)
       else if (!await insertOffer(capturePayload)) throw new Error('The customer capture offer could not be saved.')
-      if (cashbackOffer?.id) {
-        if (!await updateOffer(cashbackOffer.id, cashbackPayload)) throw new Error('The cashback offer could not be saved.')
-      } else if (!await insertOffer(cashbackPayload)) {
-        throw new Error('The cashback offer could not be saved.')
-      }
 
-      setModalActionMessage('Offer settings saved.')
+      setModalActionMessage('Customer capture offer saved.')
       onStageChanged()
     } catch (error) {
       setModalActionError(error instanceof Error ? error.message : 'Offer settings could not be saved.')
@@ -2082,7 +2072,7 @@ function BusinessDetailModal({
       blockers.push({
         id: 'customer_preview',
         label: 'Customer preview not ready',
-        detail: 'Referral/connection codes are needed before the public join page can be previewed.',
+        detail: 'The customer capture link is needed before the public join page can be previewed.',
         onClick: () => setLifecycleModal('materials_qr'),
       })
     }
@@ -2534,14 +2524,14 @@ function BusinessDetailModal({
               <ReadinessTile
                 icon={<Eye className="h-4 w-4" />}
                 label="Customer preview"
-                value={effectiveJoinUrl ? 'Ready' : referralAssetProvisioning.status === 'loading' ? 'Creating assets...' : 'Needs assets'}
+                value={effectiveJoinUrl ? 'Ready' : engagementAssetProvisioning.status === 'loading' ? 'Creating assets...' : 'Needs assets'}
                 tone={effectiveJoinUrl ? 'success' : 'warning'}
-                actionLabel={effectiveJoinUrl ? 'Preview page' : referralAssetProvisioning.status === 'error' ? 'Retry creation' : 'Review assets'}
+                actionLabel={effectiveJoinUrl ? 'Preview page' : engagementAssetProvisioning.status === 'error' ? 'Retry creation' : 'Review customer capture'}
                 href={effectiveJoinUrl || undefined}
                 onClick={!effectiveJoinUrl
                   ? () => {
                       setLifecycleModal('materials_qr')
-                      if (referralAssetProvisioning.status === 'error') void ensureReferralAssets()
+                      if (engagementAssetProvisioning.status === 'error') void ensureEngagementAssets()
                     }
                   : undefined}
                 external={!!effectiveJoinUrl}
@@ -2790,27 +2780,27 @@ function BusinessDetailModal({
             <div className="mt-2 space-y-1">
               <ActionableDetailButton
                 label={
-                  referralAssetProvisioning.status === 'loading'
-                    ? 'Automatic referral assets: Creating...'
-                    : referralAssetProvisioning.status === 'error'
-                      ? 'Automatic referral assets: Retry required'
-                      : referralAssetProvisioning.status === 'ready'
-                        ? 'Automatic referral assets: Ready'
-                        : 'Automatic referral assets: Waiting'
+                  engagementAssetProvisioning.status === 'loading'
+                    ? 'Customer capture + network assets: Creating...'
+                    : engagementAssetProvisioning.status === 'error'
+                      ? 'Customer capture + network assets: Retry required'
+                      : engagementAssetProvisioning.status === 'ready'
+                        ? 'Customer capture + network assets: Ready'
+                        : 'Customer capture + network assets: Waiting'
                 }
                 onClick={() => {
                   setLifecycleModal('materials_qr')
-                  if (referralAssetProvisioning.status === 'error') void ensureReferralAssets()
+                  if (engagementAssetProvisioning.status === 'error') void ensureEngagementAssets()
                 }}
               />
-              <ActionableDetailButton label={`Referral: ${codes?.referral_code || 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
-              <ActionableDetailButton label={`Connection: ${codes?.connection_code || 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`100-list capture link: ${effectiveJoinUrl ? 'Ready' : 'Missing'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`Network referral: ${engagementAssets.networkReferralUrl ? 'Ready' : 'Unavailable'}`} onClick={() => setLifecycleModal('materials_qr')} />
               <ActionableDetailButton label={`Join page: ${effectiveJoinUrl ? 'Ready' : 'Waiting on assets'}`} onClick={() => setLifecycleModal('materials_qr')} />
               <ActionableDetailButton
                 label={`QR: ${qrCount > 0
                   ? `${qrCount} ready`
-                  : referralAssetProvisioning.result?.qrCode
-                    ? 'Canonical QR ready'
+                  : engagementAssetProvisioning.result?.customerCapture?.qrCode
+                    ? 'Capture QR ready'
                     : 'Missing'}`}
                 onClick={() => setLifecycleModal('materials_qr')}
               />
@@ -2838,15 +2828,15 @@ function BusinessDetailModal({
             </div>
           </div>
           <div ref={setSectionRef('offers')} className={cn('rounded-xl border border-surface-200 bg-surface-50 p-3 transition-shadow', getSectionHighlight(activeSection, 'offers'))}>
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">100-List Offer & Cashback</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Customer List Capture</p>
             <div className="mt-2 space-y-1">
               <ActionableDetailButton label={`100-list offer: ${captureOffer?.headline || 'Missing'}`} onClick={() => setLifecycleModal('launch_decision')} />
-              <ActionableDetailButton label={`Cashback: ${cashbackOffer?.cashback_percent ? `${cashbackOffer.cashback_percent}% ready` : 'Missing'}`} onClick={() => setLifecycleModal('launch_decision')} />
+              <ActionableDetailButton label="Live LocalVIP offers: Manage separately" href="/portal/business" />
               <ActionableDetailButton
                 label={`Cause: ${linkedCause?.name || 'Not linked'}`}
                 onClick={() => setChecklistEditorMode('relationships')}
               />
-              <ActionableDetailButton label={`Status: ${codesReady ? 'Capture ready' : 'Needs codes'}`} onClick={() => setLifecycleModal('materials_qr')} />
+              <ActionableDetailButton label={`Status: ${codesReady ? 'Capture ready' : 'Needs capture link'}`} onClick={() => setLifecycleModal('materials_qr')} />
             </div>
           </div>
         </div>
@@ -2872,7 +2862,7 @@ function BusinessDetailModal({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => void handleRegenerateAll()}
+                  onClick={() => void handleRegenerateAll('customer_capture')}
                   disabled={regenBusy}
                   className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -2880,13 +2870,13 @@ function BusinessDetailModal({
                 </button>
               )
             )) : (
-              <Button size="sm" variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null}>
+              <Button size="sm" variant="outline" onClick={() => void handleGenerateMaterials('customer_capture')} disabled={engineBusy !== null}>
                 {engineBusy === 'generate' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
                 Generate materials
               </Button>
             )}
             {generated.length > 0 ? (
-              <Button size="sm" variant="outline" onClick={() => void handleRegenerateAll()} disabled={regenBusy}>
+              <Button size="sm" variant="outline" onClick={() => void handleRegenerateAll('customer_capture')} disabled={regenBusy}>
                 {regenBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
                 Regenerate all
               </Button>
@@ -2994,19 +2984,17 @@ function BusinessDetailModal({
       <MaterialsQrModal
         open={lifecycleModal === 'materials_qr'}
         onOpenChange={(v) => !v && setLifecycleModal(null)}
-        codes={codes}
         generatedMaterials={generatedAll || generated}
         qrCodes={businessQrCodes || []}
-        joinUrl={effectiveJoinUrl}
-        referralAssets={referralAssetProvisioning.result}
-        assetStatus={referralAssetProvisioning.status}
-        assetError={referralAssetProvisioning.error}
+        engagementAssets={engagementAssetProvisioning.result}
+        assetStatus={engagementAssetProvisioning.status}
+        assetError={engagementAssetProvisioning.error}
         engineBusy={engineBusy}
         regenBusy={regenBusy}
         saving={engineBusy !== null || regenBusy}
         blocker={businessSteps.find((s: any) => s.key === 'materials_qr')?.blocker ?? null}
         readyToComplete={businessSteps.find((s: any) => s.key === 'materials_qr')?.readyToComplete ?? false}
-        onEnsureAssets={ensureReferralAssets}
+        onEnsureAssets={ensureEngagementAssets}
         onGenerateMaterials={handleGenerateMaterials}
         onRegenerateAll={handleRegenerateAll}
         onCompleteStep={() => {
@@ -3021,7 +3009,6 @@ function BusinessDetailModal({
         onOpenChange={(v) => !v && setLifecycleModal(null)}
         biz={business}
         captureOffer={captureOffer || { headline: '', description: null, value_label: null, cashback_percent: null }}
-        cashbackOffer={cashbackOffer || { headline: '', description: null, value_label: null, cashback_percent: null }}
         joinedCount={joinedCount}
         generatedCount={generatedCount}
         qrCount={qrCount}

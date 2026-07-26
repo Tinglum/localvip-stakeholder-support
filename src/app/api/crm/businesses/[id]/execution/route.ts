@@ -20,7 +20,7 @@ import { computeBusinessExecutionSteps, computeBusinessStageFromSteps } from '@/
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { getQaAccountIdFromLocal } from '@/lib/server/qa-dashboard-shared'
-import { ensureQaBusinessReferralAssets } from '@/lib/server/qa-business-stakeholders'
+import { ensureQaBusinessEngagementAssets } from '@/lib/server/qa-business-stakeholders'
 import type { Business, OnboardingFlow, OnboardingStep, Profile, QrCode, Stakeholder, StakeholderCode } from '@/lib/types/database'
 
 export const runtime = 'nodejs'
@@ -34,9 +34,10 @@ const actionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('generate_materials'),
+    assetKind: z.enum(['customer_capture', 'network_referral']),
   }),
   z.object({
-    action: z.literal('ensure_referral_assets'),
+    action: z.literal('ensure_engagement_assets'),
   }),
   z.object({
     action: z.literal('list_generation_templates'),
@@ -44,6 +45,7 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('generate_template'),
     templateId: z.string().uuid('A template is required.'),
+    assetKind: z.enum(['customer_capture', 'network_referral']),
   }),
   z.object({
     action: z.literal('complete_step'),
@@ -51,6 +53,7 @@ const actionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('regenerate_all'),
+    assetKind: z.enum(['customer_capture', 'network_referral']),
   }),
   z.object({
     action: z.literal('restore_version'),
@@ -215,24 +218,17 @@ async function handleQaAction(
   action: z.infer<typeof actionSchema>,
 ): Promise<NextResponse> {
   try {
-    if (action.action === 'ensure_referral_assets') {
-      const referralAssets = await ensureQaBusinessReferralAssets(businessId)
+    if (action.action === 'ensure_engagement_assets') {
+      const assets = await ensureQaBusinessEngagementAssets(businessId)
       return NextResponse.json({
         success: true,
-        codes: referralAssets.codes,
-        qrCode: referralAssets.qrCode,
-        joinUrl: referralAssets.codes.joinUrl,
+        customerCapture: assets.customerCapture,
+        networkReferral: assets.networkReferral,
       })
     }
 
     if (action.action === 'save_codes') {
-      const referralAssets = await ensureQaBusinessReferralAssets(businessId)
-      return NextResponse.json({
-        success: true,
-        codes: referralAssets.codes,
-        qrCode: referralAssets.qrCode,
-        message: 'QA business codes are assigned automatically from the business referral code.',
-      })
+      return NextResponse.json({ error: 'QA businesses use separate automatic capture and network assets.' }, { status: 409 })
     }
 
     if (action.action === 'list_generation_templates') {
@@ -259,7 +255,26 @@ async function handleQaAction(
       // Scope by business account, not stakeholder: the stakeholder model was removed
       // from the backend, and GeneratedMaterial requires BusinessAccountId/
       // CauseAccountId — a stakeholder-only payload is rejected with 400.
-      const payload: Record<string, unknown> = { businessAccountId: Number(businessId) }
+      const assets = await ensureQaBusinessEngagementAssets(businessId)
+      const selectedQr = action.assetKind === 'customer_capture'
+        ? assets.customerCapture.qrCode
+        : assets.networkReferral.qrCode
+      if (!selectedQr?.id) {
+        return NextResponse.json(
+          { error: action.assetKind === 'customer_capture' ? 'Customer capture QR is not ready.' : 'Network referral QR is not ready.' },
+          { status: 409 },
+        )
+      }
+
+      const payload: Record<string, unknown> = {
+        businessAccountId: Number(businessId),
+        qrCodeId: Number(selectedQr.id),
+        qrContent: selectedQr.targetUrl,
+        metadata: {
+          assetKind: action.assetKind,
+          qrPurpose: action.assetKind === 'customer_capture' ? 'business_capture' : 'business_network_referral',
+        },
+      }
       if (action.action === 'generate_template') payload.templateId = action.templateId
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
         method: 'POST',
@@ -397,13 +412,25 @@ export async function POST(
       return NextResponse.json({ success: true, result })
     }
 
-    if (parsed.data.action === 'ensure_referral_assets') {
+    if (parsed.data.action === 'ensure_engagement_assets') {
       const result = await ensureStakeholderCodesAndQrCode(
         context.supabase,
         context.stakeholder.id,
         context.localProfileId,
       )
-      return NextResponse.json({ success: true, ...result })
+      return NextResponse.json({
+        success: true,
+        customerCapture: {
+          captureCode: result.codes.connection_code,
+          captureUrl: result.joinUrl,
+          qrCode: result.qrCode,
+        },
+        networkReferral: {
+          networkReferralCode: result.codes.referral_code,
+          networkReferralUrl: null,
+          qrCode: null,
+        },
+      })
     }
 
     if (parsed.data.action === 'list_generation_templates') {

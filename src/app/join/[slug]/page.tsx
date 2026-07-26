@@ -34,7 +34,7 @@ async function resolveQaBusinessJoin(slug: string): Promise<QaJoinData | null> {
       entity?: { id?: number | string; name?: string; headline?: string | null; imageUrl?: string | null }
       offer?: { headline?: string | null; description?: string | null; value?: string | null }
     }>(res, '')
-    if (json?.kind !== 'business' || !json.entity?.name) return null
+    if (json?.kind !== 'business_capture' || !json.entity?.name) return null
 
     // Only use an absolute logo URL here. The QA logo proxy route is auth-gated,
     // so on this PUBLIC page a bare storage filename can't be fetched — fall back

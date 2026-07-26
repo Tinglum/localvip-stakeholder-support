@@ -33,7 +33,8 @@ import { BRANDS } from '@/lib/constants'
 import { exportPdfWithQrPlacements } from '@/lib/materials/pdf-export'
 import { getQrPlacements } from '@/lib/materials/qr-placement'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
-import { generateShortCode } from '@/lib/utils'
+import { generateShortCode, slugify } from '@/lib/utils'
+import { getBusinessJoinUrl } from '@/lib/business-join'
 import {
   generateStyledQR, generateQRSVG, downloadDataURL, downloadSVG,
   destinationToString,
@@ -312,11 +313,16 @@ export default function QRGeneratorPage() {
       .catch(() => { if (!cancelled) setQaBizDetail(null) })
     return () => { cancelled = true }
   }, [sourceBusinessId])
-  const sourceBizReferralCode =
-    (typeof qaBizDetail?.referralCode === 'string' ? (qaBizDetail.referralCode as string) : '')
-    || (typeof qaBizDetail?.referral_code === 'string' ? (qaBizDetail.referral_code as string) : '')
-    || (sourceBusiness as { referral_code?: string | null } | null)?.referral_code
-    || ''
+  const sourceCaptureCode = React.useMemo(() => {
+    if (!sourceBusiness) return ''
+    const metadata = (sourceBusiness.metadata as Record<string, unknown> | null) || {}
+    const capture = metadata.customer_capture
+    if (capture && typeof capture === 'object' && typeof (capture as Record<string, unknown>).join_slug === 'string') {
+      return (capture as Record<string, unknown>).join_slug as string
+    }
+    return slugify(`${sourceBusiness.name}-${sourceBusiness.id}`) || `business-${sourceBusiness.id}`
+  }, [sourceBusiness])
+  const sourceCaptureUrl = sourceCaptureCode ? getBusinessJoinUrl(sourceCaptureCode) : ''
   const sourceBizLogo =
     (typeof qaBizDetail?.logo_url === 'string' ? (qaBizDetail.logo_url as string) : '')
     || (typeof qaBizDetail?.imageUrl === 'string' && /^https?:\/\//i.test(qaBizDetail.imageUrl as string)
@@ -341,7 +347,7 @@ export default function QRGeneratorPage() {
       return qrCodesData.find((item) => item.id === sourceBusiness.linked_qr_code_id) || null
     }
     if (sourceBusinessId) {
-      return qrCodesData.find((item) => item.business_id === sourceBusinessId) || null
+      return qrCodesData.find((item) => item.business_id === sourceBusinessId && item.metadata?.purpose === 'business_capture') || null
     }
     if (sourceCauseId) {
       return qrCodesData.find((item) => item.cause_id === sourceCauseId) || null
@@ -523,16 +529,14 @@ export default function QRGeneratorPage() {
   // source business detail loads (fresh QR only — never overrides a loaded
   // existing QR or a value the user already entered).
   React.useEffect(() => {
-    if (sourceExistingQr || !sourceBizReferralCode) return
-    const webappBase = (process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com').replace(/\/$/, '')
-    const referralUrl = `${webappBase}/auth/signup?ref=${encodeURIComponent(sourceBizReferralCode)}`
+    if (sourceExistingQr || !sourceCaptureUrl) return
     setDestType('url')
-    setDestination((current) => (current.type === 'url' && current.url ? current : { type: 'url', url: referralUrl }))
-    setFrameText((current) => current || `Referral: ${sourceBizReferralCode}`)
+    setDestination((current) => (current.type === 'url' && current.url ? current : { type: 'url', url: sourceCaptureUrl }))
+    setFrameText((current) => current || 'JOIN OUR 100 LIST')
     if (/^https?:\/\//i.test(sourceBizLogo)) {
       setLogoPreviewUrl((current) => current || sourceBizLogo)
     }
-  }, [sourceBizReferralCode, sourceBizLogo, sourceExistingQr])
+  }, [sourceCaptureUrl, sourceBizLogo, sourceExistingQr])
 
   // Resolve encoded data
   const encodedData = React.useMemo(() => {
@@ -617,7 +621,7 @@ export default function QRGeneratorPage() {
       const redirectUrl = `https://localvip.com/q/${code}`
       const selectedBusiness = resolvedBusinessId
       const selectedCause = resolvedCauseId
-      const entityType = selectedBusiness ? 'business' : selectedCause ? 'cause' : null
+      const entityType = selectedBusiness ? 'business_capture' : selectedCause ? 'cause' : null
       const entityId = selectedBusiness || selectedCause
 
       const savedQr = await insertQrCode({
@@ -643,6 +647,9 @@ export default function QRGeneratorPage() {
         collection_id: selectedTemplateCollectionId,
         destination_preset: null,
         metadata: {
+          purpose: selectedBusiness ? 'business_capture' : selectedCause ? 'cause_support' : null,
+          capture_code: selectedBusiness ? sourceCaptureCode : null,
+          capture_url: selectedBusiness ? sourceCaptureUrl : null,
           dot_style: dotStyle,
           corner_style: cornerStyle,
           gradient_type: gradientType,

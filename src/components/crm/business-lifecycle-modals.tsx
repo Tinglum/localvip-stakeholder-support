@@ -419,35 +419,39 @@ export function OwnerConversationModal({
 export interface MaterialsQrModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  codes: StakeholderCode | null
   generatedMaterials: GeneratedMaterial[]
   qrCodes: QrCodeType[]
-  joinUrl: string
-  referralAssets?: {
-    codes?: {
-      referralCode?: string | null
-      connectionCode?: string | null
-      joinUrl?: string | null
-      referral_code?: string | null
-      connection_code?: string | null
-      join_url?: string | null
+  engagementAssets?: {
+    customerCapture?: {
+      captureCode?: string | null
+      captureUrl?: string | null
+      qrCode?: {
+        id?: string | null
+        targetUrl?: string | null
+        qrImageUrl?: string | null
+        logoUrl?: string | null
+        destination_url?: string | null
+        redirect_url?: string | null
+      } | null
     } | null
-    qrCode?: {
-      id?: string | null
-      targetUrl?: string | null
-      qrImageUrl?: string | null
-      logoUrl?: string | null
-      destination_url?: string | null
-      redirect_url?: string | null
+    networkReferral?: {
+      networkReferralCode?: string | null
+      networkReferralUrl?: string | null
+      qrCode?: {
+        id?: string | null
+        targetUrl?: string | null
+        qrImageUrl?: string | null
+        logoUrl?: string | null
+        destination_url?: string | null
+        redirect_url?: string | null
+      } | null
     } | null
-    joinUrl?: string | null
   } | null
   assetStatus?: 'idle' | 'loading' | 'ready' | 'error'
   assetError?: string | null
   onEnsureAssets?: () => Promise<void>
-  onSaveCodes?: (referralCode: string, connectionCode: string) => Promise<void>
-  onGenerateMaterials: () => Promise<void>
-  onRegenerateAll: () => Promise<void>
+  onGenerateMaterials: (assetKind: 'customer_capture' | 'network_referral') => Promise<void>
+  onRegenerateAll: (assetKind: 'customer_capture' | 'network_referral') => Promise<void>
   onCompleteStep?: () => void
   readyToComplete: boolean
   saving: boolean
@@ -459,11 +463,9 @@ export interface MaterialsQrModalProps {
 export function MaterialsQrModal({
   open,
   onOpenChange,
-  codes,
   generatedMaterials,
   qrCodes,
-  joinUrl,
-  referralAssets = null,
+  engagementAssets = null,
   assetStatus = 'idle',
   assetError = null,
   onEnsureAssets,
@@ -483,24 +485,13 @@ export function MaterialsQrModal({
 
   const generated = generatedMaterials.filter((m) => m.generation_status === 'generated' && m.generated_file_url && m.is_active !== false && !m.is_outdated)
   const failed = generatedMaterials.filter((m) => m.generation_status === 'failed')
-  const referralCode =
-    codes?.referral_code
-    || referralAssets?.codes?.referralCode
-    || referralAssets?.codes?.referral_code
-    || ''
-  const connectionCode =
-    codes?.connection_code
-    || referralAssets?.codes?.connectionCode
-    || referralAssets?.codes?.connection_code
-    || ''
-  const effectiveJoinUrl =
-    joinUrl
-    || referralAssets?.joinUrl
-    || referralAssets?.codes?.joinUrl
-    || referralAssets?.codes?.join_url
-    || ''
-  const storedCanonicalQr = qrCodes.find((qr) => qr.metadata?.purpose === 'business_referral') || qrCodes[0] || null
-  const canonicalQr = referralAssets?.qrCode || null
+  const captureCode = engagementAssets?.customerCapture?.captureCode || ''
+  const effectiveJoinUrl = engagementAssets?.customerCapture?.captureUrl || ''
+  const networkReferralCode = engagementAssets?.networkReferral?.networkReferralCode || ''
+  const networkReferralUrl = engagementAssets?.networkReferral?.networkReferralUrl || ''
+  const storedCanonicalQr = qrCodes.find((qr) => qr.metadata?.purpose === 'business_capture') || null
+  const canonicalQr = engagementAssets?.customerCapture?.qrCode || null
+  const networkQr = engagementAssets?.networkReferral?.qrCode || null
   const qrImageUrl = canonicalQr?.qrImageUrl || null
   const canonicalQrMetadata = storedCanonicalQr?.metadata || {}
   const canonicalQrAppearance =
@@ -583,11 +574,11 @@ export function MaterialsQrModal({
 
   function downloadQr() {
     if (!clientQrPreviewUrl) return
-    const safeCode = (referralCode || storedCanonicalQr?.short_code || 'business')
+    const safeCode = (captureCode || storedCanonicalQr?.short_code || 'business')
       .replace(/[^a-z0-9_-]+/gi, '-')
       .replace(/^-+|-+$/g, '')
       .toLowerCase()
-    downloadDataURL(clientQrPreviewUrl, `${safeCode || 'business'}-referral-qr.png`)
+    downloadDataURL(clientQrPreviewUrl, `${safeCode || 'business'}-capture-qr.png`)
   }
 
   return (
@@ -602,70 +593,58 @@ export function MaterialsQrModal({
 
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Referral code" value={referralCode || 'Creating'} ok={!!referralCode} />
-            <Stat label="Connection code" value={connectionCode || 'Creating'} ok={!!connectionCode} />
+            <Stat label="Capture link" value={effectiveJoinUrl ? 'Ready' : 'Creating'} ok={!!effectiveJoinUrl} />
+            <Stat label="Network referral" value={networkReferralUrl ? 'Ready' : 'Unavailable'} ok={!!networkReferralUrl} />
             <Stat label="Generated" value={`${generated.length} files`} ok={generated.length > 0} />
-            <Stat label="Referral QR" value={canonicalQr || storedCanonicalQr ? 'Ready' : 'Creating'} ok={!!(canonicalQr || storedCanonicalQr)} />
+            <Stat label="Capture QR" value={canonicalQr || storedCanonicalQr ? 'Ready' : 'Creating'} ok={!!(canonicalQr || storedCanonicalQr)} />
           </div>
 
           {blocker && <Blocker text={blocker} />}
           {assetStatus === 'loading' && (
             <div className="flex items-center gap-2.5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800" role="status">
               <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-              Creating or checking the business referral code and branded QR code...
+              Preparing the separate customer-capture and network-referral assets...
             </div>
           )}
           {assetStatus === 'ready' && (
-            <SuccessBanner text="Automatic referral assets are ready. Existing codes and QR records were reused." />
+            <SuccessBanner text="Customer capture and network referral assets are ready." />
           )}
           {assetStatus === 'error' && (
             <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-800" role="alert">
-              <p className="font-semibold">Referral assets could not be prepared.</p>
-              <p className="mt-1">{assetError || 'Try the referral asset action again.'}</p>
+              <p className="font-semibold">Engagement assets could not be prepared.</p>
+              <p className="mt-1">{assetError || 'Try the asset action again.'}</p>
             </div>
           )}
 
-          {/* Codes */}
-          <div className="space-y-3 rounded-xl border border-surface-200 bg-surface-50 p-4">
+          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-surface-900">Automatic referral assets</p>
+                <p className="text-sm font-semibold text-surface-900">Customer list capture</p>
                 <p className="mt-1 text-xs text-surface-500">
-                  LocalVIP assigns both codes and one canonical branded QR automatically. Running this action again safely reuses existing assets.
+                  This link and QR only collect details for this business&apos;s pre-launch 100-list. They never register a LocalVIP network referral.
                 </p>
               </div>
               <Button
-                variant={assetStatus === 'error' || !referralCode || !connectionCode ? 'default' : 'outline'}
+                variant={assetStatus === 'error' || !captureCode || !effectiveJoinUrl ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => void onEnsureAssets?.()}
                 disabled={assetStatus === 'loading' || !onEnsureAssets}
               >
                 {assetStatus === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                {assetStatus === 'error' ? 'Retry referral assets' : referralCode && connectionCode ? 'Refresh referral assets' : 'Create referral assets'}
+                {assetStatus === 'error' ? 'Retry assets' : captureCode && effectiveJoinUrl ? 'Refresh capture assets' : 'Create capture assets'}
               </Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-surface-600">Referral code</label>
-                <Input value={referralCode} readOnly placeholder="Assigned automatically" />
+                <label className="text-xs font-medium text-surface-600">Capture code</label>
+                <Input value={captureCode} readOnly placeholder="Created from the business join slug" />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-surface-600">Connection code</label>
-                <Input value={connectionCode} readOnly placeholder="Assigned automatically" />
+                <label className="text-xs font-medium text-surface-600">Capture URL</label>
+                <Input value={effectiveJoinUrl} readOnly placeholder="Creating capture URL" className="text-xs" />
               </div>
             </div>
-            {effectiveJoinUrl && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-surface-600">Join URL</label>
-                <div className="flex gap-2">
-                  <Input value={effectiveJoinUrl} readOnly className="text-xs" />
-                  <Button variant="outline" size="sm" onClick={copyUrl}>
-                    <Copy className="h-3.5 w-3.5" />
-                    {copied ? 'Copied!' : 'Copy'}
-                  </Button>
-                </div>
-              </div>
-            )}
+            {effectiveJoinUrl && <Button variant="outline" size="sm" onClick={copyUrl}><Copy className="h-3.5 w-3.5" />{copied ? 'Copied!' : 'Copy capture URL'}</Button>}
           </div>
 
           <div className="rounded-xl border border-surface-200 bg-white p-4">
@@ -674,14 +653,14 @@ export function MaterialsQrModal({
                 className="flex h-36 w-36 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-surface-200 bg-surface-50 bg-contain bg-center bg-no-repeat"
                 style={displayedQrImageUrl ? { backgroundImage: `url("${displayedQrImageUrl}")` } : undefined}
                 role="img"
-                aria-label={displayedQrImageUrl ? 'Canonical business referral QR code preview' : 'QR code preview unavailable'}
+                aria-label={displayedQrImageUrl ? 'Customer capture QR code preview' : 'QR code preview unavailable'}
               >
                 {qrPreviewLoading
                   ? <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
                   : !displayedQrImageUrl && <QrCode className="h-16 w-16 text-surface-300" />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-surface-900">Canonical business referral QR</p>
+                <p className="text-sm font-semibold text-surface-900">Customer capture QR</p>
                 <p className="mt-1 text-xs text-surface-500">
                   The QR uses high error correction, rounded styling, and the business logo centered in the downloadable image.
                 </p>
@@ -703,7 +682,7 @@ export function MaterialsQrModal({
                   {qrTrackingUrl && (
                     <a href={qrTrackingUrl} target="_blank" rel="noopener noreferrer">
                       <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4" /> Test referral link
+                        <ExternalLink className="h-4 w-4" /> Test capture link
                       </Button>
                     </a>
                   )}
@@ -712,14 +691,40 @@ export function MaterialsQrModal({
             </div>
           </div>
 
+          <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50 p-4">
+            <div>
+              <p className="text-sm font-semibold text-surface-900">Grow the LocalVIP network</p>
+              <p className="mt-1 text-xs leading-5 text-surface-600">
+                This is for registering consumers, businesses, and causes under this business&apos;s network. It is separate from the 100-list capture link above.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-surface-600">Network referral code</label>
+                <Input value={networkReferralCode} readOnly placeholder="Waiting for QA owner referral code" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-surface-600">Network referral URL</label>
+                <Input value={networkReferralUrl} readOnly placeholder="Waiting for QA Branch URL" className="text-xs" />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {networkReferralUrl && <a href={networkReferralUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm"><ExternalLink className="h-4 w-4" /> Test network link</Button></a>}
+              {networkQr?.qrImageUrl && <a href={networkQr.qrImageUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm"><QrCode className="h-4 w-4" /> Open network QR</Button></a>}
+              <Button variant="outline" size="sm" onClick={() => void onGenerateMaterials('network_referral')} disabled={engineBusy !== null || !networkQr}>
+                <Sparkles className="h-4 w-4" /> Generate network materials
+              </Button>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => void onGenerateMaterials()} disabled={engineBusy !== null || !connectionCode}>
+            <Button onClick={() => void onGenerateMaterials('customer_capture')} disabled={engineBusy !== null || !effectiveJoinUrl}>
               {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Generate materials
+              Generate capture materials
             </Button>
-            <Button variant="outline" onClick={() => void onRegenerateAll()} disabled={regenBusy || engineBusy !== null || generated.length === 0}>
+            <Button variant="outline" onClick={() => void onRegenerateAll('customer_capture')} disabled={regenBusy || engineBusy !== null || generated.length === 0}>
               {regenBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Regenerate materials
+              Regenerate capture materials
             </Button>
           </div>
 
@@ -780,11 +785,10 @@ export interface LaunchDecisionModalProps {
   onOpenChange: (open: boolean) => void
   biz: Business
   captureOffer: { headline: string; description: string | null; value_label: string | null; cashback_percent: number | null }
-  cashbackOffer: { headline: string; description: string | null; value_label: string | null; cashback_percent: number | null }
   joinedCount: number
   generatedCount: number
   qrCount: number
-  onSaveOffers: (data: { headline: string; description: string; valueLabel: string; cashbackPercent: number }) => Promise<void>
+  onSaveOffers: (data: { headline: string; description: string; valueLabel: string }) => Promise<void>
   onCompleteStep?: () => void
   readyToComplete: boolean
   saving: boolean
@@ -796,7 +800,6 @@ export function LaunchDecisionModal({
   onOpenChange,
   biz,
   captureOffer,
-  cashbackOffer,
   joinedCount,
   generatedCount,
   qrCount,
@@ -809,7 +812,6 @@ export function LaunchDecisionModal({
   const [headline, setHeadline] = React.useState(captureOffer.headline || '')
   const [description, setDescription] = React.useState(captureOffer.description || '')
   const [valueLabel, setValueLabel] = React.useState(captureOffer.value_label || '')
-  const [cashback, setCashback] = React.useState(cashbackOffer.cashback_percent ?? 10)
   const [offerSaved, setOfferSaved] = React.useState(false)
   const [localSaving, setLocalSaving] = React.useState(false)
 
@@ -818,18 +820,15 @@ export function LaunchDecisionModal({
       setHeadline(captureOffer.headline || '')
       setDescription(captureOffer.description || '')
       setValueLabel(captureOffer.value_label || '')
-      setCashback(cashbackOffer.cashback_percent ?? 10)
       setOfferSaved(false)
     }
-  }, [open, captureOffer, cashbackOffer])
+  }, [open, captureOffer])
 
   const captureReady = !!headline.trim()
-  const cashbackReady = cashback >= 5 && cashback <= 25
   const listProgress = Math.min(100, Math.round((joinedCount / 100) * 100))
 
   const checklist = [
     { label: 'Capture offer set', done: captureReady },
-    { label: 'Cashback 5–25%', done: cashbackReady },
     { label: 'Materials generated', done: generatedCount > 0 },
     { label: 'QR code linked', done: qrCount > 0 },
     { label: '100-list growing', done: joinedCount > 0 },
@@ -839,7 +838,7 @@ export function LaunchDecisionModal({
     setLocalSaving(true)
     setOfferSaved(false)
     try {
-      await onSaveOffers({ headline, description, valueLabel, cashbackPercent: cashback })
+      await onSaveOffers({ headline, description, valueLabel })
       setOfferSaved(true)
     } finally {
       setLocalSaving(false)
@@ -907,20 +906,18 @@ export function LaunchDecisionModal({
               </div>
             </div>
 
-            <div className="space-y-3 rounded-xl border border-surface-200 bg-surface-50 p-4">
-              <p className="text-sm font-semibold text-surface-900">Cashback</p>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-surface-600">Cashback percent (5–25%)</label>
-                <Input type="number" min={5} max={25} value={cashback} onChange={(e) => setCashback(Number(e.target.value || 10))} />
-              </div>
-              <div className="flex items-center gap-3">
-                <div className={`text-3xl font-bold ${cashbackReady ? 'text-success-600' : 'text-warning-600'}`}>{cashback}%</div>
-                <Badge variant={cashbackReady ? 'success' : 'warning'}>{cashbackReady ? 'Valid range' : 'Out of range'}</Badge>
-              </div>
+            <div className="space-y-3 rounded-xl border border-brand-200 bg-brand-50 p-4">
+              <p className="text-sm font-semibold text-surface-900">Live LocalVIP offers</p>
+              <p className="text-sm leading-6 text-surface-600">
+                Cashback, dates, times, and availability are managed as scheduled live deals. They are not part of this pre-launch customer-capture offer.
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <Stat label="Launch phase" value={biz.launch_phase || 'setup'} />
                 <Stat label="Status" value={biz.activation_status || 'inactive'} />
               </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/portal/business">Manage live offers</Link>
+              </Button>
             </div>
           </div>
 

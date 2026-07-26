@@ -89,7 +89,7 @@ export async function POST(
     const resolveRes = await fetchQaPublicApi(`/api/dashboard/v1/PublicJoin/resolve/${encodeURIComponent(params.slug)}`)
     if (resolveRes.ok) {
       const json = await parseQaResponse<{ kind?: string; entity?: { id: number | string; name: string } }>(resolveRes, '')
-      if (json?.kind === 'business' && json.entity) {
+      if (json?.kind === 'business_capture' && json.entity) {
         const captureRes = await fetchQaPublicApi(`/api/dashboard/v1/PublicJoin/capture/${encodeURIComponent(params.slug)}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
