@@ -82,6 +82,12 @@ export async function GET(
     return NextResponse.json(shaped ?? [])
   } catch (error) {
     if (error instanceof QaApiError) {
+      if (table === 'stakeholder_assignments') {
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status, headers: { 'x-qa-error': error.message.substring(0, 200) } },
+        )
+      }
       // Backend returned an error — surface as empty list to keep pages functional
       // but log via status header for debugging
       return NextResponse.json([], {
