@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
 import { getQaAccountIdFromLocal } from '@/lib/server/qa-dashboard-shared'
+import { parseStripeOnboardingStatus } from '@/lib/stripe-onboarding'
 
 function parseQaId(value: string) {
   const candidate = value.startsWith('qa-') ? value.slice(3) : value
@@ -38,7 +39,6 @@ export async function POST(
     const detail = await parseQaResponse<{
       active?: boolean
       crmStatus?: string | null
-      hasStripeOnboarding?: boolean
     }>(
       detailResponse,
       'Failed to verify the business review state.',
@@ -55,7 +55,10 @@ export async function POST(
         { status: 409 },
       )
     }
-    if (detail.hasStripeOnboarding !== true) {
+    const stripeResponse = await fetchQaApi(`/api/dashboard/v1/StripeConnect/business/${qaBusinessId}`)
+    const stripePayload = await parseQaResponse<unknown>(stripeResponse, 'Failed to verify Stripe readiness.')
+    const stripeStatus = parseStripeOnboardingStatus(stripePayload)
+    if (stripeStatus?.status !== 'complete') {
       return NextResponse.json(
         { error: 'Stripe onboarding must be complete before this business can go live.' },
         { status: 409 },
@@ -89,9 +92,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, qaBusinessId, business })
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'The business could not be published.' },
-      { status: 502 },
-    )
+    console.error('[crm business publish] failed', { businessId: params.id, error })
+    return NextResponse.json({ error: 'The business could not be published.' }, { status: 502 })
   }
 }

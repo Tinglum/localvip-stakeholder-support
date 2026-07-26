@@ -34,6 +34,7 @@ export interface QaDashboardAccountSummary {
   createdDate: string
   active: boolean
   hasStripeOnboarding?: boolean | null
+  ownerUserId?: number | null
   category?: string | null
   crmStage?: string | null
   crmStatus?: string | null

@@ -5,6 +5,7 @@ import { parseQaRouteId, qaRouteErrorResponse, requireQaRouteAccess } from '@/li
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { canAccessQaBusinessRecord, normalizeQaBusinessSetupPayload } from '@/lib/server/qa-business-access'
 import { getQaAccountIdFromLocal } from '@/lib/server/qa-dashboard-shared'
+import { parseStripeOnboardingStatus } from '@/lib/stripe-onboarding'
 
 function buildLocalBusinessPatch(body: Record<string, unknown>) {
   const patch: Record<string, unknown> = {}
@@ -126,11 +127,24 @@ export async function PUT(
     const isSubmittingForLiveReview =
       body.launch_phase === 'ready_to_go_live'
       || metadata?.portal_activation_review_state === 'pending'
-    if (isSubmittingForLiveReview && business.hasStripeOnboarding !== true) {
-      return NextResponse.json(
-        { error: 'Complete Stripe onboarding before submitting for live review.' },
-        { status: 409 },
-      )
+    if (isSubmittingForLiveReview) {
+      try {
+        const stripeResponse = await fetchQaApi(`/api/dashboard/v1/StripeConnect/business/${qaBusinessId}`)
+        const stripePayload = await parseQaResponse<unknown>(stripeResponse, 'Stripe status could not be verified.')
+        const stripeStatus = parseStripeOnboardingStatus(stripePayload)
+        if (stripeStatus?.status !== 'complete') {
+          return NextResponse.json(
+            { error: 'Complete Stripe onboarding before submitting for live review.' },
+            { status: 409 },
+          )
+        }
+      } catch (error) {
+        console.error('[qa business] Stripe live status check failed', { qaBusinessId, error })
+        return NextResponse.json(
+          { error: 'Stripe status could not be verified. Try again.' },
+          { status: 502 },
+        )
+      }
     }
 
     // CRM pipeline annotations (stage, status, linked cause, campaign, duplicate)

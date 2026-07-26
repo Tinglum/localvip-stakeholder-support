@@ -7,7 +7,7 @@ import {
   ArrowLeft, Phone, Mail, Globe, MapPin, Clock,
   AlertTriangle, Copy, Key, MessageSquare, CheckSquare, StickyNote, QrCode as QrCodeIcon,
   FileText, Send, Plus, ExternalLink, MoreHorizontal, User,
-  Check, CheckCircle2, ChevronDown, Loader2, Rocket,
+  Check, CheckCircle2, ChevronDown, CreditCard, Loader2, RefreshCw, Rocket,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -49,6 +49,13 @@ import {
   useCampaigns,
 } from '@/lib/supabase/hooks'
 import type { CrmBusiness, QaBusinessDetail } from '@/lib/crm-api'
+import {
+  parseStripeOnboardingStatus,
+  stripeRequirementLabels,
+  stripeStatusLabel,
+  stripeStatusSummary,
+  type StripeOnboardingStatus,
+} from '@/lib/stripe-onboarding'
 import type {
   Business,
   Campaign,
@@ -702,7 +709,10 @@ export default function BusinessDetailPage() {
       {/* Tab Content */}
       {activeTab === 'overview' && (
         readOnly ? (
-          <ReadOnlyBusinessOverview biz={biz} qaBusiness={qaBusiness} />
+          <div className="space-y-6">
+            <StripeAdminCard businessId={crmWriteId || id} isAdmin={isAdmin} />
+            <ReadOnlyBusinessOverview biz={biz} qaBusiness={qaBusiness} />
+          </div>
         ) : localStateLoading && !preferQaWorkspace ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
@@ -710,6 +720,7 @@ export default function BusinessDetailPage() {
           </div>
         ) : (
           <div className="space-y-6">
+            <StripeAdminCard businessId={crmWriteId || id} isAdmin={isAdmin} />
             <BusinessExecutionOverview
               biz={biz}
               localBusinessId={localBusinessId}
@@ -985,6 +996,118 @@ export default function BusinessDetailPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+function StripeAdminCard({ businessId, isAdmin }: { businessId: string; isAdmin: boolean }) {
+  const [status, setStatus] = React.useState<StripeOnboardingStatus | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+  const [reminderState, setReminderState] = React.useState<'idle' | 'sending' | 'sent'>('idle')
+  const [reminderRecipient, setReminderRecipient] = React.useState<string | null>(null)
+  const [reminderSentAt, setReminderSentAt] = React.useState<string | null>(null)
+  const [reminderError, setReminderError] = React.useState<string | null>(null)
+
+  const refresh = React.useCallback(async () => {
+    if (!isAdmin) return
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/crm/businesses/${encodeURIComponent(businessId)}/stripe-onboarding`, { cache: 'no-store' })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok || body.error) throw new Error(body.error || 'Stripe status could not be loaded.')
+      const parsed = parseStripeOnboardingStatus(body)
+      if (!parsed) throw new Error('Stripe returned an invalid status response.')
+      setStatus(parsed)
+    } catch (value) {
+      setStatus(null)
+      setError(value instanceof Error ? value.message : 'Stripe status could not be loaded.')
+    } finally {
+      setLoading(false)
+    }
+  }, [businessId, isAdmin])
+
+  React.useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  if (!isAdmin) return null
+
+  async function sendReminder() {
+    setReminderState('sending')
+    setReminderError(null)
+    try {
+      const response = await fetch(`/api/crm/businesses/${encodeURIComponent(businessId)}/stripe-onboarding/reminder`, { method: 'POST' })
+      const body = await response.json().catch(() => ({})) as { error?: string; sent?: boolean; recipient?: string | null; sentAtUtc?: string | null; status?: string | null }
+      if (!response.ok || body.sent !== true) throw new Error(body.error || 'Stripe reminder could not be sent.')
+      setReminderRecipient(body.recipient || null)
+      setReminderSentAt(body.sentAtUtc || null)
+      setReminderState('sent')
+      await refresh()
+    } catch (value) {
+      setReminderState('idle')
+      setReminderError(value instanceof Error ? value.message : 'Stripe reminder could not be sent.')
+    }
+  }
+
+  const requirements = status ? stripeRequirementLabels(status) : []
+
+  return (
+    <Card id="stripe" className="border-indigo-200 bg-indigo-50/50">
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base text-indigo-950">
+            <CreditCard className="h-4 w-4 text-indigo-600" />
+            Stripe onboarding
+          </CardTitle>
+          <p className="mt-1 text-sm text-indigo-800">Live readiness from Stripe, separate from SEND TO LIVE.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading && !status ? <p className="text-sm text-surface-600">Checking Stripe...</p> : null}
+        {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p> : null}
+        {status ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={status.status === 'complete' ? 'success' : status.status === 'restricted' ? 'danger' : 'warning'}>
+                {stripeStatusLabel(status.status)}
+              </Badge>
+              <span className="text-sm text-surface-600">
+                Payments: {status.canAcceptPayments ? 'ready' : 'not ready'} · Payouts: {status.canReceivePayouts ? 'ready' : 'not ready'}
+              </span>
+            </div>
+            <p className="text-sm text-surface-700">{stripeStatusSummary(status)}</p>
+            {status.nextAction ? <p className="text-sm font-medium text-surface-800">Next action: {status.nextAction}</p> : null}
+            {requirements.length > 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Missing or overdue</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-amber-900">
+                  {requirements.map(item => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-surface-500">
+              <span>Owner: {status.ownerEmail || 'Stripe owner email not available'}</span>
+              <span>Last checked: {status.checkedAtUtc ? formatDateTime(status.checkedAtUtc) : 'just now'}</span>
+            </div>
+            {status.status !== 'complete' ? (
+              <div className="flex flex-wrap items-center gap-3 border-t border-indigo-200 pt-4">
+                <Button onClick={() => void sendReminder()} disabled={reminderState === 'sending'}>
+                  {reminderState === 'sending' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                  {reminderState === 'sending' ? 'Sending...' : 'EMAIL STRIPE SETUP LINK'}
+                </Button>
+                {reminderState === 'sent' ? <span className="text-sm text-success-700">Sent to {reminderRecipient || 'the verified business owner'}{reminderSentAt ? ` at ${formatDateTime(reminderSentAt)}` : ''}.</span> : null}
+                {reminderError ? <span className="text-sm text-danger-700">{reminderError}</span> : null}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </CardContent>
+    </Card>
   )
 }
 

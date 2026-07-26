@@ -25,6 +25,13 @@ import {
   type BusinessSetupSignals,
 } from '@/lib/business-setup'
 import {
+  parseStripeOnboardingStatus,
+  stripeRequirementLabels,
+  stripeStatusLabel,
+  stripeStatusSummary,
+  type StripeOnboardingStatus,
+} from '@/lib/stripe-onboarding'
+import {
   useBusinesses,
   useBusinessUpdate,
   useContacts,
@@ -38,7 +45,6 @@ import {
  *  plus the do-it-on-another-page tasks — lives in `@/lib/business-setup`. */
 type StepKey = BusinessSetupStepKey
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
-type StripeState = 'loading' | 'complete' | 'needed' | 'error'
 
 const STEP_ICONS: Record<BusinessSetupStepKey, React.ReactNode> = {
   profile: <Store className="h-4 w-4" />,
@@ -112,8 +118,9 @@ export function BusinessSetupWizardPage() {
   const [cashbackPercent, setCashbackPercent] = React.useState(10)
   const [cashbackTouched, setCashbackTouched] = React.useState(false)
   const [activating, setActivating] = React.useState(false)
-  const [stripeState, setStripeState] = React.useState<StripeState>('loading')
-  const [stripeUrl, setStripeUrl] = React.useState<string | null>(null)
+  const [stripeStatus, setStripeStatus] = React.useState<StripeOnboardingStatus | null>(null)
+  const [stripeLoading, setStripeLoading] = React.useState(true)
+  const [stripeError, setStripeError] = React.useState<string | null>(null)
   const [stripeRefreshKey, setStripeRefreshKey] = React.useState(0)
   const [openingStripe, setOpeningStripe] = React.useState(false)
   const [captureOfferId, setCaptureOfferId] = React.useState<string | null>(null)
@@ -158,32 +165,82 @@ export function BusinessSetupWizardPage() {
     return () => { cancelled = true }
   }, [])
 
-  React.useEffect(() => {
-    if (!business) return
-
-    let cancelled = false
-    setStripeState('loading')
-    fetch('/api/business-portal/stripe-onboarding', { cache: 'no-store' })
-      .then(async (response) => {
-        const result = await response.json().catch(() => ({})) as {
-          error?: string
-          isOnboardingComplete?: boolean
-          onboardingUrl?: string | null
-        }
-        if (!response.ok || result.error) throw new Error(result.error || 'Stripe status could not be loaded.')
-        if (cancelled) return
-
-        setStripeUrl(typeof result.onboardingUrl === 'string' ? result.onboardingUrl : null)
-        setStripeState(result.isOnboardingComplete ? 'complete' : 'needed')
-      })
-      .catch(() => {
-        if (!cancelled) setStripeState('error')
-      })
-
-    return () => {
-      cancelled = true
+  const refreshStripeStatus = React.useCallback(async (): Promise<StripeOnboardingStatus | null> => {
+    if (!business) return null
+    const businessId = business.id
+    if (!businessId) {
+      setStripeStatus(null)
+      setStripeError('This business is not linked to a QA business account.')
+      setStripeLoading(false)
+      return null
     }
-  }, [business, stripeRefreshKey])
+    setStripeLoading(true)
+    setStripeError(null)
+    try {
+      const query = `?businessId=${encodeURIComponent(businessId)}`
+      const response = await fetch(`/api/business-portal/stripe-onboarding${query}`, { cache: 'no-store' })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || result.error) throw new Error(result.error || 'Stripe status could not be loaded.')
+      const parsed = parseStripeOnboardingStatus(result)
+      if (!parsed) throw new Error('Stripe returned an invalid status response.')
+      setStripeStatus(parsed)
+      return parsed
+    } catch (error) {
+      setStripeStatus(null)
+      setStripeError(error instanceof Error ? error.message : 'Stripe status could not be loaded.')
+      return null
+    } finally {
+      setStripeLoading(false)
+    }
+  }, [business])
+
+  React.useEffect(() => {
+    void refreshStripeStatus()
+  }, [refreshStripeStatus, stripeRefreshKey])
+
+  React.useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshStripeStatus()
+    }
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('pageshow', refreshWhenVisible)
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('pageshow', refreshWhenVisible)
+    }
+  }, [refreshStripeStatus])
+
+  const openStripeOnboarding = React.useCallback(async () => {
+    if (!business) return
+    const businessId = business.id
+    if (!businessId) {
+      setStripeError('This business is not linked to a QA business account.')
+      return
+    }
+    setOpeningStripe(true)
+    setStripeError(null)
+    try {
+      const response = await fetch(`/api/business-portal/stripe-onboarding?businessId=${encodeURIComponent(businessId)}`, { method: 'POST' })
+      const result = await response.json().catch(() => ({})) as { onboardingUrl?: string; error?: string }
+      if (response.status === 409) {
+        const refreshedStatus = await refreshStripeStatus()
+        if (refreshedStatus?.status === 'complete') {
+          setStripeError(null)
+          setStep('activate')
+          return
+        }
+        throw new Error('Stripe onboarding cannot be opened for this account yet.')
+      }
+      if (!response.ok || !result.onboardingUrl) throw new Error(result.error || 'Stripe onboarding could not be opened.')
+      window.location.assign(result.onboardingUrl)
+    } catch (error) {
+      setStripeError(error instanceof Error ? error.message : 'Stripe onboarding could not be opened.')
+    } finally {
+      setOpeningStripe(false)
+    }
+  }, [business, refreshStripeStatus])
 
   React.useEffect(() => {
     if (!business) return
@@ -472,7 +529,7 @@ export function BusinessSetupWizardPage() {
     cashbackPercent,
     cashbackChosen: cashbackTouched || !!cashbackOfferId,
     supportedCauseId,
-    stripeConnected: stripeState === 'complete',
+    stripeConnected: stripeStatus?.status === 'complete',
     liveReviewSubmitted:
       String(business.status || '') === 'pending_live_review'
       || String(business.status || '') === 'live'
@@ -501,6 +558,7 @@ export function BusinessSetupWizardPage() {
   const captureDescriptionMissing = !captureDescription.trim()
   const captureValueMissing = !captureValue.trim()
   const cashbackMissing = !(cashbackTouched || !!cashbackOfferId)
+  const stripeRequirements = stripeStatus ? stripeRequirementLabels(stripeStatus) : []
 
   function getStepCompletion(key: StepKey) {
     return !!stepCompletion.get(key)
@@ -953,14 +1011,14 @@ export function BusinessSetupWizardPage() {
                   </p>
                 </div>
 
-                {stripeState === 'loading' ? (
+                {stripeLoading ? (
                   <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-5 py-5 text-sm text-surface-600">
                     <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
                     Checking your Stripe connection...
                   </div>
                 ) : null}
 
-                {stripeState === 'complete' ? (
+                {!stripeLoading && stripeStatus?.status === 'complete' ? (
                   <div className="rounded-2xl border border-success-300 bg-success-50 px-5 py-6">
                     <div className="flex items-start gap-4">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-success-600 text-white">
@@ -976,30 +1034,37 @@ export function BusinessSetupWizardPage() {
                   </div>
                 ) : null}
 
-                {stripeState === 'needed' ? (
-                  <div className="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-6">
+                {!stripeLoading && stripeStatus && stripeStatus.status !== 'complete' ? (
+                  <div className={`rounded-2xl border px-5 py-6 ${stripeStatus.status === 'restricted' ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}`}>
                     <div className="flex items-start gap-4">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
-                        <CreditCard className="h-6 w-6" />
+                      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white ${stripeStatus.status === 'restricted' ? 'bg-red-600' : 'bg-amber-500'}`}>
+                        {stripeStatus.status === 'restricted' ? <AlertTriangle className="h-6 w-6" /> : <CreditCard className="h-6 w-6" />}
                       </span>
                       <div>
-                        <p className="text-lg font-semibold text-amber-950">Stripe setup is required</p>
-                        <p className="mt-1 text-sm leading-6 text-amber-800">
-                          Finish Stripe&apos;s secure onboarding before submitting your business for live review.
-                        </p>
+                        <p className={`text-lg font-semibold ${stripeStatus.status === 'restricted' ? 'text-red-950' : 'text-amber-950'}`}>{stripeStatusLabel(stripeStatus.status)}</p>
+                        <p className={`mt-1 text-sm leading-6 ${stripeStatus.status === 'restricted' ? 'text-red-800' : 'text-amber-800'}`}>{stripeStatusSummary(stripeStatus)}</p>
+                        {stripeStatus.nextAction ? <p className="mt-3 text-sm font-medium text-surface-800">Next: {stripeStatus.nextAction}</p> : null}
+                        {stripeRequirements.length > 0 ? (
+                          <div className="mt-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-surface-600">Still needed</p>
+                            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-surface-700">
+                              {stripeRequirements.map(item => <li key={item}>{item}</li>)}
+                            </ul>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
                 ) : null}
 
-                {stripeState === 'error' ? (
+                {stripeError ? (
                   <div className="rounded-2xl border border-red-300 bg-red-50 px-5 py-6">
                     <div className="flex items-start gap-4">
                       <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-red-600" />
                       <div>
                         <p className="font-semibold text-red-950">Stripe status could not be checked</p>
                         <p className="mt-1 text-sm leading-6 text-red-800">
-                          Try again before continuing. Go Live remains locked until QA confirms the connection.
+                          {stripeError} Go Live remains locked until QA confirms the connection.
                         </p>
                       </div>
                     </div>
@@ -1007,21 +1072,17 @@ export function BusinessSetupWizardPage() {
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-3">
-                  {stripeState === 'needed' ? (
+                  {!stripeLoading && stripeStatus?.status !== 'complete' ? (
                     <Button
-                      onClick={() => {
-                        if (!stripeUrl) return
-                        setOpeningStripe(true)
-                        window.location.href = stripeUrl
-                      }}
-                      disabled={!stripeUrl || openingStripe}
+                      onClick={() => void openStripeOnboarding()}
+                      disabled={openingStripe}
                       className="h-12 px-6 text-base font-semibold"
                     >
                       {openingStripe ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
                       {openingStripe ? 'Opening Stripe...' : 'Complete Stripe setup'}
                     </Button>
                   ) : null}
-                  {stripeState === 'complete' ? (
+                  {!stripeLoading && stripeStatus?.status === 'complete' ? (
                     <Button
                       onClick={() => setStep('activate')}
                       className="h-12 px-6 text-base font-semibold"
@@ -1030,10 +1091,11 @@ export function BusinessSetupWizardPage() {
                       <ArrowRight className="h-4 w-4" />
                     </Button>
                   ) : null}
-                  {stripeState === 'needed' || stripeState === 'error' ? (
+                  {stripeError || (!stripeLoading && stripeStatus?.status !== 'complete') ? (
                     <Button
                       variant="outline"
-                      onClick={() => setStripeRefreshKey((value) => value + 1)}
+                      onClick={() => setStripeRefreshKey(value => value + 1)}
+                      disabled={stripeLoading}
                     >
                       <RefreshCw className="h-4 w-4" />
                       Check status again

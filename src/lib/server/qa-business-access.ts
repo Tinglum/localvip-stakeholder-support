@@ -8,11 +8,15 @@ function normalizeEmail(value: string | null | undefined) {
   return trimmed || null
 }
 
-function getEmailDomain(value: string | null | undefined) {
-  const email = normalizeEmail(value)
-  if (!email) return null
-  const [, domain] = email.split('@')
-  return domain || null
+function getQaUserId(profile: Profile) {
+  const metadata = profile.metadata as Record<string, unknown> | null
+  const claims = metadata?.qa_claims && typeof metadata.qa_claims === 'object'
+    ? metadata.qa_claims as Record<string, unknown>
+    : null
+  const candidate = metadata?.qa_subject ?? metadata?.qa_user_id ?? claims?.sub
+  if (typeof candidate !== 'string' && typeof candidate !== 'number') return null
+  const parsed = Number(candidate)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
 export function canAccessQaBusinessRecord(
@@ -24,12 +28,13 @@ export function canAccessQaBusinessRecord(
 
   const userEmail = normalizeEmail(profile.email)
   const ownerEmail = normalizeEmail(business.ownerEmail)
-  if (!userEmail || !ownerEmail) return false
-  if (userEmail === ownerEmail) return true
+  if (userEmail && ownerEmail && userEmail === ownerEmail) return true
 
-  const userDomain = getEmailDomain(userEmail)
-  const ownerDomain = getEmailDomain(ownerEmail)
-  return !!userDomain && !!ownerDomain && userDomain === ownerDomain
+  const userQaId = getQaUserId(profile)
+  return userQaId !== null
+    && business.ownerUserId !== null
+    && business.ownerUserId !== undefined
+    && userQaId === business.ownerUserId
 }
 
 export function filterQaBusinessesForAccess(
