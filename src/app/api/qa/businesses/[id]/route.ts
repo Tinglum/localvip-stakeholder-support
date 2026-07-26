@@ -145,6 +145,18 @@ export async function PUT(
           { status: 502 },
         )
       }
+
+      // Explicit onboarding completion is the gate for pending_live_review.
+      // This is business-scoped on QA so legacy businesses without a local
+      // dashboard flow cannot bypass the same completion contract.
+      const onboardingCompletionResponse = await fetchQaApi(
+        `/api/dashboard/v1/Onboarding/business/${qaBusinessId}/complete`,
+        { method: 'PATCH' },
+      )
+      await parseQaResponse(
+        onboardingCompletionResponse,
+        'Onboarding could not be completed. Finish the setup requirements and try again.',
+      )
     }
 
     // CRM pipeline annotations (stage, status, linked cause, campaign, duplicate)

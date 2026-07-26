@@ -11,25 +11,38 @@ type SetupState = 'loading' | 'complete' | 'needed' | 'error'
 // has a completed Stripe Connect account it cannot receive customer payments, so
 // this surfaces onboarding prominently at the top of the dashboard and sends the
 // owner straight into Stripe's hosted onboarding.
-export function StripeSetupCard() {
+export function StripeSetupCard({ businessId }: { businessId: string }) {
   const [state, setState] = React.useState<SetupState>('loading')
-  const [url, setUrl] = React.useState<string | null>(null)
   const [starting, setStarting] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     let cancelled = false
-    fetch('/api/business-portal/stripe-onboarding', { cache: 'no-store' })
+    fetch(`/api/business-portal/stripe-onboarding?businessId=${encodeURIComponent(businessId)}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return
-        if (d?.error) { setState('error'); return }
-        if (d?.isOnboardingComplete) { setState('complete'); return }
-        setUrl(typeof d?.onboardingUrl === 'string' ? d.onboardingUrl : null)
+        if (d?.error) { setError(d.error); setState('error'); return }
+        if (d?.status === 'complete') { setState('complete'); return }
         setState('needed')
       })
-      .catch(() => { if (!cancelled) setState('error') })
+      .catch(() => { if (!cancelled) { setError('Could not load Stripe setup right now.'); setState('error') } })
     return () => { cancelled = true }
-  }, [])
+  }, [businessId])
+
+  async function startStripeSetup() {
+    setStarting(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/business-portal/stripe-onboarding?businessId=${encodeURIComponent(businessId)}`, { method: 'POST' })
+      const payload = await response.json().catch(() => ({})) as { onboardingUrl?: string; error?: string }
+      if (!response.ok || !payload.onboardingUrl) throw new Error(payload.error || 'Stripe setup could not be started.')
+      window.location.assign(payload.onboardingUrl)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Stripe setup could not be started.')
+      setStarting(false)
+    }
+  }
 
   // Hidden while checking and once payments are connected — it's only a gate.
   if (state === 'loading' || state === 'complete') return null
@@ -49,12 +62,12 @@ export function StripeSetupCard() {
         {state === 'error' ? (
           <div className="flex items-center gap-2 text-sm text-warning-800">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            Couldn&apos;t load Stripe setup right now. Refresh the page to try again.
+            {error || "Couldn't load Stripe setup right now. Refresh the page to try again."}
           </div>
         ) : (
           <Button
-            onClick={() => { if (url) { setStarting(true); window.location.href = url } }}
-            disabled={!url || starting}
+            onClick={() => void startStripeSetup()}
+            disabled={starting}
           >
             {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
             Start Stripe setup

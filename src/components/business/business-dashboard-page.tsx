@@ -39,7 +39,7 @@ import {
   getContactListStatus,
   resolveScopedBusiness,
 } from '@/lib/business-portal'
-import { getBusinessSetupSignals, getBusinessSetupState } from '@/lib/business-setup'
+import { useBusinessSetupStatus } from '@/lib/business-setup-status'
 import { useBusinesses, useContacts, useOffers } from '@/lib/supabase/hooks'
 import { cn, formatDateTime, formatNumber } from '@/lib/utils'
 import type { Contact } from '@/lib/types/database'
@@ -72,6 +72,7 @@ export function BusinessDashboardPage() {
   )
   const { data: contacts, loading: contactsLoading, refetch } = useContacts(contactFilters)
   const { data: offers } = useOffers({ business_id: business?.id || '__none__' })
+  const { state: liveSetupState } = useBusinessSetupStatus(profile)
 
   const qaAccountId = getBusinessQaAccountId(business)
   const networkSize = useNetworkSize(qaAccountId)
@@ -123,11 +124,13 @@ export function BusinessDashboardPage() {
 
   // The one next action comes from the shared setup checklist, so the dashboard
   // and /portal/setup can never disagree about what is left to do.
-  const setup = getBusinessSetupState(getBusinessSetupSignals({ business, offers, contacts }))
+  const setup = liveSetupState
   const nextStep = setup.nextStep
   const nextStepHref = nextStep
     ? `/portal/setup?step=${nextStep.key}`
     : '/portal/network'
+  const explicitlyOnboarded = String(business.status || '') === 'pending_live_review'
+    || String(business.status || '') === 'live'
 
   const launchLabel =
     launchPhase === 'capturing_100'
@@ -144,9 +147,17 @@ export function BusinessDashboardPage() {
         title={`Welcome, ${business.name}`}
         description="A quick read on where your business stands. Open any card to work on it."
         actions={
-          <Badge variant={getActivationTone(activationStatus)} dot>
-            {getActivationLabel(activationStatus)}
-          </Badge>
+          explicitlyOnboarded ? (
+            <Badge variant={getActivationTone(activationStatus)} dot>
+              {getActivationLabel(activationStatus)}
+            </Badge>
+          ) : (
+            <Link href={nextStepHref}>
+              <Badge variant="danger" dot className="cursor-pointer px-3 py-1.5 hover:bg-red-100">
+                ONBOARDING
+              </Badge>
+            </Link>
+          )
         }
       />
 

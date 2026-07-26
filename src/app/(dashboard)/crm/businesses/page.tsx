@@ -57,6 +57,11 @@ interface BusinessRow extends CrmBusinessListItem {
   stripeState: 'complete' | 'incomplete' | 'unknown'
 }
 
+function hasExplicitOnboardingCompletion(item: BusinessRow) {
+  return item.status === ('pending_live_review' as BusinessRow['status'])
+    || item.status === ('live' as BusinessRow['status'])
+}
+
 function relativeTime(dateStr: string): string {
   const now = new Date()
   const date = new Date(dateStr)
@@ -382,6 +387,23 @@ export default function BusinessesPage() {
             </Badge>
           )}
         </button>
+      ),
+    },
+    {
+      key: 'onboardingStatus',
+      header: 'Onboarding',
+      render: item => hasExplicitOnboardingCompletion(item) ? (
+        <Badge variant={item.status === ('live' as BusinessRow['status']) ? 'success' : 'info'} dot>
+          {item.status === ('live' as BusinessRow['status']) ? 'Ready / Live' : 'Ready for review'}
+        </Badge>
+      ) : (
+        <Link
+          href={`/onboarding/business?businessId=${encodeURIComponent(String(item.qaBusinessId || item.rowId))}`}
+          onClick={(event) => event.stopPropagation()}
+          title="Open business onboarding setup"
+        >
+          <Badge variant="danger" dot className="cursor-pointer hover:bg-red-100">ONBOARDING</Badge>
+        </Link>
       ),
     },
     {

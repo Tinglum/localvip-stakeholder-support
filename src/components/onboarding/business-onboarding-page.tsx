@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   AlertTriangle,
@@ -190,6 +191,8 @@ function StageChanger({
 
 export default function BusinessOnboardingPage() {
   const { profile } = useAuth()
+  const searchParams = useSearchParams()
+  const requestedBusinessId = searchParams.get('businessId')
   const isFieldUser = getStakeholderShell(profile) === 'field'
 
   const { data: businesses, loading, error, refetch } = useBusinesses()
@@ -216,6 +219,21 @@ export default function BusinessOnboardingPage() {
   const [quickFilter, setQuickFilter] = React.useState<QuickFilter>('all')
   const [selectedBusinessId, setSelectedBusinessId] = React.useState<string | null>(null)
   const [selectedInitialModal, setSelectedInitialModal] = React.useState<BusinessLifecycleModalKey | null>(null)
+
+  React.useEffect(() => {
+    if (!requestedBusinessId || businesses.length === 0) return
+    const normalizedRequestedId = requestedBusinessId.replace(/^qa-/, '')
+    const target = businesses.find((business) => {
+      if (business.id === requestedBusinessId || business.id === normalizedRequestedId) return true
+      if (business.external_id === normalizedRequestedId) return true
+      const metadata = business.metadata as Record<string, unknown> | null
+      return String(metadata?.qaBusinessId ?? metadata?.qaAccountId ?? '') === normalizedRequestedId
+    })
+    if (target) {
+      setSelectedInitialModal(null)
+      setSelectedBusinessId(target.id)
+    }
+  }, [businesses, requestedBusinessId])
 
   // ── Lookup maps ───────────────────────────────────────────────
   const cityMap = React.useMemo(() => new Map(cities.map(city => [city.id, city])), [cities])
@@ -1447,7 +1465,7 @@ function BusinessDetailModal({
     }
   }
 
-  function openChecklistTarget(itemId: string) {
+  const openChecklistTarget = React.useCallback((itemId: string) => {
     const section = getBusinessChecklistSection(itemId)
     if (section === 'profile') {
       setLifecycleModal('initial_connection')
@@ -1466,7 +1484,7 @@ function BusinessDetailModal({
       return
     }
     jumpToSection(section)
-  }
+  }, [jumpToSection])
 
   const goLiveBlockers = React.useMemo(() => {
     const blockers: Array<{ id: string; label: string; detail: string; onClick: () => void }> = checklist.items
@@ -1497,7 +1515,7 @@ function BusinessDetailModal({
     }
 
     return blockers
-  }, [checklist.items, joinUrl, qaReadiness.error, qaReadiness.stripeOnboarded, jumpToSection])
+  }, [checklist.items, joinUrl, qaReadiness.error, qaReadiness.stripeOnboarded, jumpToSection, openChecklistTarget])
 
   const activityTimeline = React.useMemo(() => {
     const items: Array<{ id: string; label: string; detail: string; at: string | null; tone: 'success' | 'warning' | 'default' }> = []

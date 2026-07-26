@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Image as ImageIcon, Loader2, PartyPopper, RefreshCw, Rocket, Store, Tag, Wallet } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Image as ImageIcon, Loader2, RefreshCw, Rocket, Store, Tag, Wallet } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -98,7 +98,6 @@ export function BusinessSetupWizardPage() {
   const [step, setStep] = React.useState<StepKey>(initialStep)
   // A `?step=` link means the owner asked for a specific step — always honour it,
   // even after setup is finished.
-  const [reviewing, setReviewing] = React.useState(() => isStepKey(searchParams.get('step')))
   const [saveState, setSaveState] = React.useState<SaveState>('idle')
   const [saveError, setSaveError] = React.useState<string | null>(null)
   const [stepValidation, setStepValidation] = React.useState<Partial<Record<StepKey, boolean>>>({})
@@ -118,6 +117,7 @@ export function BusinessSetupWizardPage() {
   const [cashbackPercent, setCashbackPercent] = React.useState(10)
   const [cashbackTouched, setCashbackTouched] = React.useState(false)
   const [activating, setActivating] = React.useState(false)
+  const [completionAttempted, setCompletionAttempted] = React.useState(false)
   const [stripeStatus, setStripeStatus] = React.useState<StripeOnboardingStatus | null>(null)
   const [stripeLoading, setStripeLoading] = React.useState(true)
   const [stripeError, setStripeError] = React.useState<string | null>(null)
@@ -129,6 +129,8 @@ export function BusinessSetupWizardPage() {
   // customer who joins through this business's referral link.
   const [supportedCauseId, setSupportedCauseId] = React.useState<string | null>(null)
   const [causeOptions, setCauseOptions] = React.useState<Array<{ id: string; name: string }>>([])
+  const [causeError, setCauseError] = React.useState<string | null>(null)
+  const [causeRetryKey, setCauseRetryKey] = React.useState(0)
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const snapshotRef = React.useRef('')
   // Identity of the record currently seeded into the inputs. We only re-seed when
@@ -150,8 +152,12 @@ export function BusinessSetupWizardPage() {
   // Load the cause list so the business can pick the cause it supports.
   React.useEffect(() => {
     let cancelled = false
+    setCauseError(null)
     fetch('/api/qa/nonprofits')
-      .then(res => (res.ok ? res.json() : []))
+      .then(res => {
+        if (!res.ok) throw new Error('Cause request failed')
+        return res.json()
+      })
       .then((items: Array<{ id: number; name: string }>) => {
         if (cancelled || !Array.isArray(items)) return
         setCauseOptions(
@@ -161,9 +167,11 @@ export function BusinessSetupWizardPage() {
             .sort((a, b) => a.name.localeCompare(b.name)),
         )
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setCauseError('Causes could not be loaded. Try again.')
+      })
     return () => { cancelled = true }
-  }, [])
+  }, [causeRetryKey])
 
   const refreshStripeStatus = React.useCallback(async (): Promise<StripeOnboardingStatus | null> => {
     if (!business) return null
@@ -304,9 +312,8 @@ export function BusinessSetupWizardPage() {
         formData.append('mediaType', 'logo')
         const uploadResponse = await fetch(`/api/crm/businesses/${business.id}/media`, { method: 'POST', body: formData })
         const uploadResult = await uploadResponse.json().catch(() => ({}))
-        if (uploadResponse.ok && uploadResult.fileUrl) {
-          nextLogoUrl = uploadResult.fileUrl
-        }
+        if (!uploadResponse.ok || !uploadResult.fileUrl) throw new Error(uploadResult.error || 'The logo could not be uploaded.')
+        nextLogoUrl = uploadResult.fileUrl
         setLogoFile(null)
       }
 
@@ -316,9 +323,8 @@ export function BusinessSetupWizardPage() {
         formData.append('mediaType', 'cover_photo')
         const uploadResponse = await fetch(`/api/crm/businesses/${business.id}/media`, { method: 'POST', body: formData })
         const uploadResult = await uploadResponse.json().catch(() => ({}))
-        if (uploadResponse.ok && uploadResult.fileUrl) {
-          nextCoverUrl = uploadResult.fileUrl
-        }
+        if (!uploadResponse.ok || !uploadResult.fileUrl) throw new Error(uploadResult.error || 'The cover image could not be uploaded.')
+        nextCoverUrl = uploadResult.fileUrl
         setCoverFile(null)
       }
 
@@ -559,6 +565,8 @@ export function BusinessSetupWizardPage() {
   const captureValueMissing = !captureValue.trim()
   const cashbackMissing = !(cashbackTouched || !!cashbackOfferId)
   const stripeRequirements = stripeStatus ? stripeRequirementLabels(stripeStatus) : []
+  const missingSetupSteps = setupState.steps.filter((item) => item.key !== 'activate' && !item.complete)
+  const firstMissingSetupStep = missingSetupSteps[0] || null
 
   function getStepCompletion(key: StepKey) {
     return !!stepCompletion.get(key)
@@ -585,6 +593,16 @@ export function BusinessSetupWizardPage() {
   }
 
   async function activatePortal() {
+    if (!readyToActivate) {
+      setCompletionAttempted(true)
+      setStepValidation((current) => ({
+        ...current,
+        ...Object.fromEntries(missingSetupSteps.map((item) => [item.key, true])),
+      }))
+      if (firstMissingSetupStep) setStep(firstMissingSetupStep.key)
+      return
+    }
+
     setActivating(true)
     try {
       const requestedAt = new Date().toISOString()
@@ -609,56 +627,26 @@ export function BusinessSetupWizardPage() {
     }
   }
 
-  // Nothing left to do: setup retires itself. The route stays reachable by
-  // direct URL (and from the "review it anyway" button) so this is never a dead
-  // end, but the wizard doesn't nag a business that has already finished.
-  if (setupState.isComplete && !reviewing) {
-    return (
-      <div className="space-y-8">
-        <PageHeader
-          title="Business Setup"
-          description="Every setup step is finished."
-        />
-        <Card className="border-success-200 bg-success-50/60">
-          <CardContent className="flex flex-col gap-5 px-6 py-8">
-            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-success-600 text-white">
-              <PartyPopper className="h-6 w-6" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold text-surface-950">You&apos;re all set</h2>
-              <p className="max-w-2xl text-sm leading-6 text-surface-600">
-                Your profile, branding, offers, cashback, cause, and Stripe connection are complete. Your live-review request has been submitted.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button asChild>
-                <Link href="/portal/business">
-                  Open My Business
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href="/portal/network">See my network</Link>
-              </Button>
-              <Button variant="ghost" onClick={() => setReviewing(true)}>
-                Review my setup anyway
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-8">
       <PageHeader
         title="Business Setup"
-        description="Complete each requirement in order, connect payments, then submit your business for live review."
+        description="Open any step, finish the requirements, then complete onboarding for live review."
         actions={
-          <div className="flex items-center gap-2 text-sm text-surface-500">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Button
+              type="button"
+              onClick={() => void activatePortal()}
+              disabled={activating}
+              className={readyToActivate ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-600 text-white hover:bg-red-700'}
+            >
+              {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : readyToActivate ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+              {activating ? 'Completing...' : 'COMPLETE ONBOARDING'}
+            </Button>
+            <div className="flex items-center gap-2 text-sm text-surface-500">
             {saveState === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : saveState === 'saved' ? <CheckCircle2 className="h-4 w-4 text-success-600" /> : null}
             <span>{saveState === 'saving' ? 'Saving changes...' : saveState === 'saved' ? 'All changes saved' : saveState === 'error' ? 'Autosave failed' : 'Changes save automatically'}</span>
+            </div>
           </div>
         }
       />
@@ -688,14 +676,10 @@ export function BusinessSetupWizardPage() {
               {STEPS.map((item, index) => {
                 const complete = getStepCompletion(item.key)
                 const isActive = step === item.key
-                const previousIncomplete = STEPS.slice(0, index).some((previousStep) => !getStepCompletion(previousStep.key))
-                const isLocked = !complete && !isActive && previousIncomplete
-
                 return (
                   <button
                     key={item.key}
                     type="button"
-                    disabled={isLocked}
                     onClick={() => setStep(item.key)}
                     className={`relative flex min-h-28 flex-col items-center justify-center gap-2 border-r border-surface-200 px-3 py-4 text-center transition-colors last:border-r-0 ${
                       isActive
@@ -703,7 +687,7 @@ export function BusinessSetupWizardPage() {
                         : complete
                           ? 'bg-white text-success-800 hover:bg-success-50'
                           : 'bg-white text-surface-400'
-                    } ${isLocked ? 'cursor-not-allowed opacity-60' : 'hover:bg-surface-50'}`}
+                    } hover:bg-surface-50`}
                   >
                     <span className={`flex h-9 w-9 items-center justify-center rounded-full border-2 ${
                       complete
@@ -716,7 +700,7 @@ export function BusinessSetupWizardPage() {
                     </span>
                     <span className="text-sm font-semibold">{item.label}</span>
                     <span className="text-[11px] font-medium uppercase tracking-[0.12em]">
-                      {complete ? 'Complete' : isActive ? `Step ${index + 1}` : isLocked ? 'Locked' : 'Next'}
+                      {complete ? 'Complete' : isActive ? `Step ${index + 1}` : 'Open step'}
                     </span>
                   </button>
                 )
@@ -727,6 +711,28 @@ export function BusinessSetupWizardPage() {
       </Card>
 
       {saveError ? <p className="text-sm text-danger-600">{saveError}</p> : null}
+
+      {completionAttempted && missingSetupSteps.length > 0 ? (
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-950">Finish these steps before onboarding is complete</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {missingSetupSteps.map((item) => (
+              <Button
+                key={item.key}
+                type="button"
+                variant="outline"
+                onClick={() => setStep(item.key)}
+                className="border-red-300 bg-white text-red-800 hover:bg-red-100"
+              >
+                {item.label}
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="space-y-6">
           <Card className="border-surface-200 bg-gradient-to-r from-white via-surface-50 to-white">
@@ -980,6 +986,14 @@ export function BusinessSetupWizardPage() {
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
+                  {causeError ? (
+                    <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      <span>{causeError}</span>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setCauseRetryKey((value) => value + 1)}>
+                        Try again
+                      </Button>
+                    </div>
+                  ) : null}
                   {showCashbackValidation && !supportedCauseId ? <RequiredFieldHint /> : null}
                 </div>
 
@@ -1126,7 +1140,7 @@ export function BusinessSetupWizardPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => void activatePortal()} disabled={!readyToActivate || activating}>
+                  <Button onClick={() => void activatePortal()} disabled={activating}>
                     {activating ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1188,5 +1202,6 @@ function isStepKey(value: string | null): value is StepKey {
     || value === 'branding'
     || value === 'capture'
     || value === 'cashback'
+    || value === 'stripe'
     || value === 'activate'
 }

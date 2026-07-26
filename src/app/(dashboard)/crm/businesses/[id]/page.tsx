@@ -113,7 +113,7 @@ const OUTREACH_TYPES: { value: OutreachType; label: string }[] = [
 ]
 
 const STAGE_OPTIONS: OnboardingStage[] = [
-  'lead', 'contacted', 'interested', 'in_progress', 'onboarded', 'live', 'paused', 'declined',
+  'lead', 'contacted', 'interested', 'in_progress', 'paused', 'declined',
 ]
 
 // ─── Component ──────────────────────────────────────────────
@@ -236,7 +236,6 @@ export default function BusinessDetailPage() {
       { label: 'Sales tax', value: biz.sales_tax !== null && biz.sales_tax !== undefined ? String(biz.sales_tax) : null },
       { label: 'Tax ID', value: biz.tax_id },
       { label: 'Time zone', value: biz.time_zone },
-      { label: 'Stripe onboarding', value: biz.stripe_onboarding_complete === null || biz.stripe_onboarding_complete === undefined ? null : biz.stripe_onboarding_complete ? 'Complete' : 'Not complete' },
       { label: 'QA status', value: biz.active === null || biz.active === undefined ? null : biz.active ? 'Active' : 'Inactive' },
     ]
   }, [biz, qaLinkedBusinessId])
@@ -269,7 +268,7 @@ export default function BusinessDetailPage() {
   const isPendingLiveReview = String(biz?.status || '') === 'pending_live_review'
   const isLive = !isPendingLiveReview && (
     String(biz?.status || '') === 'live'
-    || (biz?.stage === 'live' && qaBusiness?.active !== false)
+    || (biz?.stage === 'live' && qaBusiness?.active === true)
   )
 
   const handlePublishLive = React.useCallback(async () => {
@@ -399,7 +398,9 @@ export default function BusinessDetailPage() {
   const qrGeneratorHref = localStateBusinessId
     ? `/qr/generator?businessId=${localStateBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
     : '/qr/generator'
-  const portalSetupHref = `/portal/setup?businessId=${encodeURIComponent(String(localBusinessId || businessResponse?.qaBusinessId || id))}`
+  const adminOnboardingHref = `/onboarding/business?businessId=${encodeURIComponent(String(localBusinessId || businessResponse?.qaBusinessId || id))}`
+  const onboardingComplete = isPendingLiveReview || isLive
+  const onboardingHref = adminOnboardingHref
   const customerPreviewHref = biz.branch_referral_url || qaBusiness?.branchReferralUrl || null
 
   return (
@@ -468,6 +469,13 @@ export default function BusinessDetailPage() {
         ]}
         actions={
           <div className="flex items-center gap-3">
+            {!onboardingComplete ? (
+              <Link href={onboardingHref}>
+                <Badge variant="danger" dot className="cursor-pointer px-3 py-1.5 text-sm hover:bg-red-100">
+                  ONBOARDING
+                </Badge>
+              </Link>
+            ) : null}
             {isAdmin && isLive ? (
               <Button size="sm" disabled className="bg-emerald-600 text-white opacity-100">
                 <CheckCircle2 className="h-4 w-4" />
@@ -539,9 +547,9 @@ export default function BusinessDetailPage() {
       <div className="flex flex-wrap items-center gap-2">
         {!readOnly ? (
           <>
-            <Link href={portalSetupHref}>
+            <Link href={adminOnboardingHref}>
               <Button variant="outline" size="sm">
-                <ExternalLink className="h-3.5 w-3.5" /> Portal Setup
+                <ExternalLink className="h-3.5 w-3.5" /> Onboarding workspace
               </Button>
             </Link>
             {customerPreviewHref ? (
@@ -609,7 +617,7 @@ export default function BusinessDetailPage() {
                 <p className="text-xs text-surface-400">{biz.owner_email || 'QA owner email not provided'}</p>
               </div>
             ) : (
-              <Link href={portalSetupHref} className="text-sm font-semibold text-amber-700 transition-colors hover:text-amber-800">
+              <Link href={adminOnboardingHref} className="text-sm font-semibold text-amber-700 transition-colors hover:text-amber-800">
                 Assign owner in setup
               </Link>
             )}
@@ -628,7 +636,7 @@ export default function BusinessDetailPage() {
                 {[biz.city_name, biz.state].filter(Boolean).join(', ')}
               </p>
             ) : (
-              <Link href={portalSetupHref} className="text-sm font-semibold text-amber-700 transition-colors hover:text-amber-800">
+              <Link href={adminOnboardingHref} className="text-sm font-semibold text-amber-700 transition-colors hover:text-amber-800">
                 Add city in setup
               </Link>
             )}
@@ -1133,7 +1141,6 @@ function QaBusinessSnapshot({ qaBusiness }: { qaBusiness: QaBusinessDetail }) {
     { label: 'Sales tax', value: qaBusiness.salesTax !== null ? String(qaBusiness.salesTax) : null },
     { label: 'Tax ID', value: qaBusiness.taxId },
     { label: 'Time zone', value: qaBusiness.timeZone },
-    { label: 'Stripe onboarding', value: qaBusiness.hasStripeOnboarding ? 'Complete' : 'Not complete' },
     { label: 'Image URL', value: qaBusiness.imageUrl },
     { label: 'Created', value: formatDateTime(qaBusiness.createdDate) },
   ].filter(item => item.value)
