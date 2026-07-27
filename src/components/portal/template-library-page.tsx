@@ -31,6 +31,7 @@ interface PortalQr {
   targetUrl: string | null
   code: string | null
   qrImageUrl: string | null
+  purpose: string | null
 }
 
 interface PortalQrTemplate {
@@ -41,7 +42,7 @@ interface PortalQrTemplate {
   logo: 'business' | 'none'
 }
 
-// The "default" choice = let the backend stamp the business's default join QR.
+// The "default" choice is the business's standard LocalVIP network-referral QR.
 // A `tpl:<id>` choice selects an admin style template.
 type QrChoice = 'default' | 'new' | string
 
@@ -172,7 +173,13 @@ function TemplateGenerateDialog({
   const [generating, setGenerating] = React.useState(false)
   const [genError, setGenError] = React.useState<string | null>(null)
   // Dynamic business details + the QR preview built from them.
-  const [ctx, setCtx] = React.useState<{ joinUrl: string; logoUrl: string; name: string } | null>(null)
+  const [ctx, setCtx] = React.useState<{
+    joinUrl: string
+    logoUrl: string
+    name: string
+    referralCode: string
+    standardQrId: string | number | null
+  } | null>(null)
   const [logoOn, setLogoOn] = React.useState(true)
   const [preview, setPreview] = React.useState('')
   const [previewBusy, setPreviewBusy] = React.useState(false)
@@ -199,7 +206,18 @@ function TemplateGenerateDialog({
     // Resolve the business's dynamic join link + logo for the QR.
     fetch('/api/portal/qr-context', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j && !j.error) { setCtx({ joinUrl: j.joinUrl || '', logoUrl: j.logoUrl || '', name: j.name || '' }); setLogoOn(!!j.logoUrl) } })
+      .then((j) => {
+        if (j && !j.error) {
+          setCtx({
+            joinUrl: j.networkReferralUrl || j.joinUrl || '',
+            logoUrl: j.logoUrl || '',
+            name: j.name || '',
+            referralCode: j.referralCode || '',
+            standardQrId: j.standardQrId || null,
+          })
+          setLogoOn(!!j.logoUrl)
+        }
+      })
       .catch(() => {})
     // Admin-defined styled QR templates (auto-filled from the business).
     fetch('/api/portal/qr-templates', { cache: 'no-store' })
@@ -216,15 +234,22 @@ function TemplateGenerateDialog({
 
   // The destination the selected QR will encode.
   const activeLink = React.useMemo(() => {
-    if (activeTpl) return ctx?.joinUrl || '' // style templates bind link -> business join
+    if (activeTpl) return ctx?.joinUrl || '' // Styles bind to the standard business network link.
     if (choice === 'default') return ctx?.joinUrl || ''
     if (choice === 'new') return newUrl.trim() || ctx?.joinUrl || ''
     const q = qrCodes.find((x) => String(x.id) === choice)
     return q?.targetUrl || q?.code || ''
   }, [activeTpl, choice, ctx, newUrl, qrCodes])
+  const activePurpose = React.useMemo(() => {
+    if (choice === 'default' || activeTpl) return 'business_network_referral'
+    if (choice === 'new') return 'business_custom'
+    return qrCodes.find((item) => String(item.id) === choice)?.purpose || 'business_custom'
+  }, [activeTpl, choice, qrCodes])
 
   // Logo: a style template carries its own logo binding; otherwise the toggle.
-  const logoSrc = activeTpl
+  const logoSrc = choice === 'default'
+    ? (ctx?.logoUrl || undefined)
+    : activeTpl
     ? (activeTpl.logo === 'business' && ctx?.logoUrl ? ctx.logoUrl : undefined)
     : (logoOn && ctx?.logoUrl ? ctx.logoUrl : undefined)
 
@@ -275,7 +300,9 @@ function TemplateGenerateDialog({
     try {
       const payload: Record<string, unknown> = { templateId: String(template.id) }
 
-      if (choice === 'new') {
+      if (choice === 'default' && ctx?.standardQrId != null) {
+        payload.qrCodeId = ctx.standardQrId
+      } else if (choice === 'new') {
         if (!newUrl.trim()) throw new Error('Enter a destination URL for the new QR code.')
         const cRes = await fetch('/api/portal/qrcodes', {
           method: 'POST',
@@ -291,6 +318,7 @@ function TemplateGenerateDialog({
         payload.qrCodeId = choice
       }
       if (activeLink) payload.qrContent = activeLink
+      payload.qrPurpose = activePurpose
 
       // Render the styled QR (with the business logo) and stamp that exact image.
       try {
@@ -366,7 +394,11 @@ function TemplateGenerateDialog({
                   <p className="break-words text-xs text-surface-700">{activeLink || '—'}</p>
                 </div>
               </div>
-              {ctx?.logoUrl && (
+              {choice === 'default' && ctx?.logoUrl ? (
+                <p className="mt-3 text-xs font-medium text-success-700">
+                  Your business logo is included in the standard QR.
+                </p>
+              ) : ctx?.logoUrl && (
                 <label className="mt-3 flex items-center gap-2 text-sm text-surface-700">
                   <input type="checkbox" checked={logoOn} onChange={(e) => setLogoOn(e.target.checked)} className="h-4 w-4 accent-brand-600" />
                   Place my logo in the middle
@@ -378,8 +410,10 @@ function TemplateGenerateDialog({
               <QrOption
                 active={choice === 'default'}
                 onClick={() => setChoice('default')}
-                title="My join link (dynamic)"
-                subtitle={ctx?.joinUrl || "Your business's join link"}
+                title="Standard network referral QR"
+                subtitle={ctx?.joinUrl
+                  ? `${ctx.name || 'Your business'}${ctx.referralCode ? ` · Code ${ctx.referralCode}` : ''} · ${ctx.joinUrl}`
+                  : "Your business's LocalVIP network referral link"}
               />
 
               {qrLoading && (
@@ -395,7 +429,7 @@ function TemplateGenerateDialog({
                   active={choice === String(q.id)}
                   onClick={() => setChoice(String(q.id))}
                   title={q.name}
-                  subtitle={q.targetUrl || q.code || ''}
+                  subtitle={`${q.purpose === 'business_capture' ? 'Customer capture' : 'Custom business QR'} · ${q.targetUrl || q.code || ''}`}
                 />
               ))}
 
@@ -408,7 +442,7 @@ function TemplateGenerateDialog({
                   active={choice === `tpl:${t.id}`}
                   onClick={() => setChoice(`tpl:${t.id}`)}
                   title={t.name}
-                  subtitle={`Your join link${t.logo === 'business' ? ' + your logo' : ''}, styled`}
+                  subtitle={`Your network referral link${t.logo === 'business' ? ' + your logo' : ''}, styled`}
                   icon={<QrCode className="h-4 w-4" />}
                 />
               ))}

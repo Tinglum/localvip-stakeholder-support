@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { resolvePortalBusinessId } from '@/lib/server/portal-business'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
+import { ensureQaBusinessEngagementAssets } from '@/lib/server/qa-business-stakeholders'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,15 +17,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Could not resolve your business account.' }, { status: 400 })
   }
   try {
-    const res = await fetchQaApi(`/api/dashboard/v1/Business/${businessId}`)
-    const b = (await parseQaResponse<Record<string, unknown>>(res, 'Could not load business.')) || {}
-
-    const shared = typeof b.sharedURL === 'string' ? b.sharedURL.trim() : ''
-    const code = typeof b.referralCode === 'string' ? b.referralCode.trim() : ''
-    let joinUrl = ''
-    if (shared && /^https?:\/\//i.test(shared)) joinUrl = shared
-    else if (code) joinUrl = `https://my.localvip.com/auth/signup?ref=${code}`
-    else if (shared) joinUrl = shared
+    const assets = await ensureQaBusinessEngagementAssets(String(businessId))
+    const b = assets.business as unknown as Record<string, unknown>
+    const code = assets.networkReferral.networkReferralCode || ''
+    const networkUrl = assets.networkReferral.networkReferralUrl
+      || (code ? `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(code)}` : '')
 
     // The logo lives on the QA host under /uploads; route it through the same-
     // origin proxy so the client can draw it onto a <canvas> without tainting it.
@@ -35,8 +31,10 @@ export async function GET() {
     return NextResponse.json({
       businessId,
       name: String(b.name || ''),
-      joinUrl,
+      joinUrl: networkUrl,
+      networkReferralUrl: networkUrl,
       referralCode: code,
+      standardQrId: assets.networkReferral.qrCode?.id || null,
       logoUrl,
       phone: typeof b.ownerPhone === 'string' ? b.ownerPhone : '',
     })

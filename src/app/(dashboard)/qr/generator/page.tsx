@@ -290,6 +290,7 @@ export default function QRGeneratorPage() {
   const causeOptions = React.useMemo(() => causesData.map(c => ({ value: c.id, label: c.name })), [causesData])
   const sourceBusinessId = searchParams.get('businessId')
   const sourceCauseId = searchParams.get('causeId')
+  const sourceQrId = searchParams.get('qrId')
   const sourceBusiness = React.useMemo(
     () => (sourceBusinessId ? businessesData.find((item) => item.id === sourceBusinessId) || null : null),
     [businessesData, sourceBusinessId],
@@ -343,17 +344,18 @@ export default function QRGeneratorPage() {
     return '/qr/mine'
   }, [searchParams, sourceBusinessId, sourceCauseId])
   const sourceExistingQr = React.useMemo<QrCodeRecord | null>(() => {
-    if (sourceBusiness?.linked_qr_code_id) {
-      return qrCodesData.find((item) => item.id === sourceBusiness.linked_qr_code_id) || null
-    }
-    if (sourceBusinessId) {
-      return qrCodesData.find((item) => item.business_id === sourceBusinessId && item.metadata?.purpose === 'business_capture') || null
-    }
-    if (sourceCauseId) {
-      return qrCodesData.find((item) => item.cause_id === sourceCauseId) || null
-    }
-    return null
-  }, [qrCodesData, sourceBusiness, sourceBusinessId, sourceCauseId])
+    if (!sourceQrId) return null
+    return qrCodesData.find((item) => {
+      if (item.id !== sourceQrId) return false
+      if (sourceBusinessId) {
+        return String(item.entity_id || item.business_id || item.metadata?.business_id || '') === sourceBusinessId
+      }
+      if (sourceCauseId) {
+        return String(item.entity_id || item.cause_id || '') === sourceCauseId
+      }
+      return true
+    }) || null
+  }, [qrCodesData, sourceBusinessId, sourceCauseId, sourceQrId])
   // Materials with QR placement zones
   const materialsWithQrZone = React.useMemo(() =>
     materialsData.filter(m => {
@@ -525,7 +527,7 @@ export default function QRGeneratorPage() {
     sourceExistingQr,
   ])
 
-  // Embed the business's node-referral link + logo + referral code once the
+  // Start a fresh custom business QR from its customer-capture link and logo.
   // source business detail loads (fresh QR only — never overrides a loaded
   // existing QR or a value the user already entered).
   React.useEffect(() => {
@@ -585,8 +587,8 @@ export default function QRGeneratorPage() {
     // The QA backend requires every QR code to be attached to an entity
     // (EntityType + EntityId). Resolve it from the selected business/cause or
     // the source entity passed in via URL params before doing any work.
-    const resolvedBusinessId = business || sourceBusiness?.id || null
-    const resolvedCauseId = cause || sourceCause?.id || null
+    const resolvedBusinessId = sourceBusiness?.id || business || null
+    const resolvedCauseId = sourceBusiness ? null : (sourceCause?.id || cause || null)
     if (!resolvedBusinessId && !resolvedCauseId) {
       setFormError('Select a business or cause to attach this QR code to before generating.')
       return
@@ -621,7 +623,7 @@ export default function QRGeneratorPage() {
       const redirectUrl = `https://localvip.com/q/${code}`
       const selectedBusiness = resolvedBusinessId
       const selectedCause = resolvedCauseId
-      const entityType = selectedBusiness ? 'business_capture' : selectedCause ? 'cause' : null
+      const entityType = selectedBusiness ? 'business_custom' : selectedCause ? 'cause' : null
       const entityId = selectedBusiness || selectedCause
 
       const savedQr = await insertQrCode({
@@ -647,7 +649,8 @@ export default function QRGeneratorPage() {
         collection_id: selectedTemplateCollectionId,
         destination_preset: null,
         metadata: {
-          purpose: selectedBusiness ? 'business_capture' : selectedCause ? 'cause_support' : null,
+          purpose: selectedBusiness ? 'business_custom' : selectedCause ? 'cause_support' : null,
+          business_id: selectedBusiness,
           capture_code: selectedBusiness ? sourceCaptureCode : null,
           capture_url: selectedBusiness ? sourceCaptureUrl : null,
           dot_style: dotStyle,
@@ -1548,7 +1551,7 @@ export default function QRGeneratorPage() {
                     <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-surface-700">
                       <Building2 className="h-3.5 w-3.5 text-surface-400" /> Business
                     </label>
-                    <Select value={business} onValueChange={setBusiness}>
+                    <Select value={business} onValueChange={setBusiness} disabled={!!sourceBusiness}>
                       <SelectTrigger><SelectValue placeholder="Select business..." /></SelectTrigger>
                       <SelectContent>{businessOptions.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}</SelectContent>
                     </Select>
@@ -1557,12 +1560,17 @@ export default function QRGeneratorPage() {
                     <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-surface-700">
                       <Heart className="h-3.5 w-3.5 text-surface-400" /> Cause
                     </label>
-                    <Select value={cause} onValueChange={setCause}>
+                    <Select value={cause} onValueChange={setCause} disabled={!!sourceBusiness || !!sourceCause}>
                       <SelectTrigger><SelectValue placeholder="Select cause..." /></SelectTrigger>
                       <SelectContent>{causeOptions.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                 </div>
+                {sourceBusiness && (
+                  <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-700">
+                    This QR is locked to <span className="font-semibold">{sourceBusiness.name}</span> and will appear only in that business&apos;s material generator.
+                  </div>
+                )}
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-surface-700">Tags</label>
                   <Input placeholder="e.g. flyer, spring, downtown (comma separated)" value={tags} onChange={(e) => setTags(e.target.value)} />

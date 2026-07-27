@@ -16,7 +16,12 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json()
   let { stakeholderId, templateId, businessId } = body as { stakeholderId?: string; templateId?: string; businessId?: string }
-  const { qrContent, qrCodeId, qrImageBase64 } = body as { qrContent?: string; qrCodeId?: number | string; qrImageBase64?: string }
+  const { qrContent, qrCodeId, qrImageBase64, qrPurpose } = body as {
+    qrContent?: string
+    qrCodeId?: number | string
+    qrImageBase64?: string
+    qrPurpose?: string
+  }
 
   // For the QA path the business is resolved from the session below, so only the
   // templateId is required up front.
@@ -55,6 +60,13 @@ export async function POST(request: NextRequest) {
       if (qrCodeId != null && String(qrCodeId).trim()) payload.qrCodeId = Number(qrCodeId)
       // A client-rendered styled QR (with the business logo) to stamp as-is.
       if (typeof qrImageBase64 === 'string' && qrImageBase64.trim()) payload.qrImageBase64 = qrImageBase64
+      payload.metadata = {
+        business_id: businessId || null,
+        cause_id: causeId || null,
+        qr_code_id: qrCodeId == null ? null : String(qrCodeId),
+        qr_purpose: typeof qrPurpose === 'string' ? qrPurpose : null,
+        qr_target_url: typeof qrContent === 'string' ? qrContent.trim() : null,
+      }
       const res = await fetchQaApi('/api/dashboard/v1/GeneratedMaterial', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

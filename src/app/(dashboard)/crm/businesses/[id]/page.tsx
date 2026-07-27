@@ -387,9 +387,12 @@ export default function BusinessDetailPage() {
         { key: 'qr' as const, label: 'QR Codes' },
         { key: 'materials' as const, label: 'Materials' },
       ]
-  const qrGeneratorHref = localStateBusinessId
-    ? `/qr/generator?businessId=${localStateBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
+  const qrGeneratorHref = qaLinkedBusinessId
+    ? `/qr/generator?businessId=${qaLinkedBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
     : '/qr/generator'
+  const qrManageHref = linkedQr
+    ? `${qrGeneratorHref}${qrGeneratorHref.includes('?') ? '&' : '?'}qrId=${encodeURIComponent(linkedQr.id)}`
+    : qrGeneratorHref
   const adminOnboardingHref = `/onboarding/business?businessId=${encodeURIComponent(String(localBusinessId || businessResponse?.qaBusinessId || id))}`
   const onboardingComplete = isPendingLiveReview || isLive
   const onboardingHref = adminOnboardingHref
@@ -856,7 +859,7 @@ export default function BusinessDetailPage() {
                   <a href={linkedQr.redirect_url} target="_blank" rel="noopener noreferrer">
                     <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open Redirect</Button>
                   </a>
-                  <Link href={qrGeneratorHref}>
+                  <Link href={qrManageHref}>
                     <Button size="sm"><QrCodeIcon className="h-3.5 w-3.5" /> Manage QR</Button>
                   </Link>
                 </div>

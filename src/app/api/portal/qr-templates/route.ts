@@ -8,7 +8,8 @@ export const dynamic = 'force-dynamic'
 // `template_kind: 'layout_template'`). Each carries the QR look (colors, dot
 // style, gradient, frame) plus field bindings telling us to fill the link with
 // the business's join link and (optionally) drop the business's logo in the
-// center. The business portal lists these so a business can generate a material
+// center. The business portal binds these to the standard network-referral link
+// so a business can generate a material
 // with a polished, on-brand QR auto-filled from its own details.
 export async function GET() {
   const session = await getAuthenticatedSession()
@@ -35,7 +36,7 @@ export async function GET() {
           id: r.id,
           name: String(r.name || 'QR template'),
           layout,
-          // Default to business join + business logo when bindings are absent.
+          // Default to business network link + business logo when bindings are absent.
           link: bindings.link === 'fixed' ? 'fixed' : 'business_join',
           logo: bindings.logo === 'none' ? 'none' : 'business',
         }
