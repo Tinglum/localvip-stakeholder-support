@@ -42,10 +42,10 @@ export const BUSINESS_SETUP_STEPS: BusinessSetupStep[] = [
   },
   {
     key: 'capture',
-    label: '100-List Offer',
-    description: 'Create the pre-launch offer used to collect your first 100 customers.',
-    why: 'A simple, specific offer is what makes people say yes on the spot.',
-    time: '5 minutes',
+    label: 'Build Your 100 List',
+    description: 'Tell us if you want LocalVIP to help build your first customer audience.',
+    why: 'Starting with an audience gives your launch momentum from day one.',
+    time: '1 minute',
   },
   {
     key: 'cashback',
@@ -81,6 +81,7 @@ export interface BusinessSetupSignals {
   captureHeadline: string
   captureDescription: string
   captureValue: string
+  hundredListInterest: 'interested' | 'not_now' | null
   cashbackPercent: number
   cashbackChosen: boolean
   supportedCauseId: string | null
@@ -114,7 +115,7 @@ export function isBusinessSetupStepComplete(key: BusinessSetupStepKey, signals: 
     case 'branding':
       return !!signals.logoUrl && !!signals.coverUrl
     case 'capture':
-      return isFilled(signals.captureHeadline) && isFilled(signals.captureDescription) && isFilled(signals.captureValue)
+      return signals.hundredListInterest === 'interested' || signals.hundredListInterest === 'not_now'
     case 'cashback':
       return (
         signals.cashbackPercent >= 5
@@ -178,6 +179,7 @@ export function getBusinessSetupSignals(input: {
       captureHeadline: '',
       captureDescription: '',
       captureValue: '',
+      hundredListInterest: null,
       cashbackPercent: 0,
       cashbackChosen: false,
       supportedCauseId: null,
@@ -206,6 +208,12 @@ export function getBusinessSetupSignals(input: {
     captureHeadline: capture?.headline || portal.capture_offer_title || portal.offer_title || '',
     captureDescription: capture?.description || portal.capture_offer_description || portal.offer_description || '',
     captureValue: capture?.value_label || portal.capture_offer_value || portal.offer_value || '',
+    hundredListInterest:
+      portal.hundred_list_interest === 'interested' || portal.hundred_list_interest === 'not_now'
+        ? portal.hundred_list_interest
+        : capture
+          ? 'interested'
+          : null,
     cashbackPercent: savedCashbackPercent,
     cashbackChosen: !!cashback || typeof portal.cashback_percent === 'number',
     supportedCauseId: business.linked_cause_id || null,

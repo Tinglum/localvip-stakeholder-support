@@ -136,6 +136,13 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
       capture_code: joinSlug,
       qr_code_id: qrState.id,
     },
+    hundred_list_interest: b.hundredListInterest ?? null,
+    hundred_list_interest_recorded_at: b.hundredListInterestRecordedAt ?? null,
+    hundred_list_activation_status: b.hundredListActivationStatus ?? null,
+    hundred_list_setup_started_at: b.hundredListSetupStartedAt ?? null,
+    hundred_list_setup_started_by: b.hundredListSetupStartedBy ?? null,
+    hundred_list_activated_at: b.hundredListActivatedAt ?? null,
+    hundred_list_activated_by: b.hundredListActivatedBy ?? null,
     portal_activation_review_state: isPendingLiveReview ? 'pending' : isLive ? 'approved' : null,
   }
 

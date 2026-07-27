@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Image as ImageIcon, Loader2, Plus, RefreshCw, Rocket, Search, Store, Tag, Wallet, X } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Image as ImageIcon, Loader2, Plus, RefreshCw, Rocket, Search, Store, Tag, Users, Wallet, X } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -113,6 +113,7 @@ type SetupSnapshotInput = {
   captureHeadline: string
   captureDescription: string
   captureValue: string
+  hundredListInterest: 'interested' | 'not_now' | null
   cashbackPercent: number
   supportedCauseId: string | null
 }
@@ -131,6 +132,7 @@ function serializeSetupSnapshot(input: SetupSnapshotInput) {
     captureHeadline: input.captureHeadline,
     captureDescription: input.captureDescription,
     captureValue: input.captureValue,
+    hundredListInterest: input.hundredListInterest,
     cashbackPercent: input.cashbackPercent,
     supportedCauseId: input.supportedCauseId,
   })
@@ -182,6 +184,7 @@ export function BusinessSetupWizardPage() {
   const [captureHeadline, setCaptureHeadline] = React.useState('')
   const [captureDescription, setCaptureDescription] = React.useState('')
   const [captureValue, setCaptureValue] = React.useState('')
+  const [hundredListInterest, setHundredListInterest] = React.useState<'interested' | 'not_now' | null>(null)
   const [cashbackPercent, setCashbackPercent] = React.useState(10)
   const [cashbackTouched, setCashbackTouched] = React.useState(false)
   const [activating, setActivating] = React.useState(false)
@@ -351,6 +354,13 @@ export function BusinessSetupWizardPage() {
     setCaptureHeadline(captureOffer?.headline || '')
     setCaptureDescription(captureOffer?.description || '')
     setCaptureValue(captureOffer?.value_label || '')
+    setHundredListInterest(
+      portal.hundred_list_interest === 'interested' || portal.hundred_list_interest === 'not_now'
+        ? portal.hundred_list_interest
+        : captureOffer?.id
+          ? 'interested'
+          : null,
+    )
     setCashbackPercent(cashbackOffer?.cashback_percent || 10)
     setCaptureOfferId(captureOffer?.id || null)
     setCashbackOfferId(cashbackOffer?.id || null)
@@ -368,10 +378,16 @@ export function BusinessSetupWizardPage() {
       captureHeadline: captureOffer?.headline || '',
       captureDescription: captureOffer?.description || '',
       captureValue: captureOffer?.value_label || '',
+      hundredListInterest:
+        portal.hundred_list_interest === 'interested' || portal.hundred_list_interest === 'not_now'
+          ? portal.hundred_list_interest
+          : captureOffer?.id
+            ? 'interested'
+            : null,
       cashbackPercent: cashbackOffer?.cashback_percent || 10,
       supportedCauseId: business.linked_cause_id || null,
     })
-  }, [business, cashbackOffer?.cashback_percent, cashbackOffer?.id, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.logo_url, portal.products_services])
+  }, [business, cashbackOffer?.cashback_percent, cashbackOffer?.id, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.hundred_list_interest, portal.logo_url, portal.products_services])
 
   const persistChanges = React.useCallback(async (options?: {
     businessPatch?: Record<string, unknown>
@@ -417,6 +433,17 @@ export function BusinessSetupWizardPage() {
         capture_offer_title: captureHeadline,
         capture_offer_description: captureDescription,
         capture_offer_value: captureValue,
+        hundred_list_interest: hundredListInterest || undefined,
+        hundred_list_interest_recorded_at: hundredListInterest
+          ? portal.hundred_list_interest_recorded_at || new Date().toISOString()
+          : undefined,
+        hundred_list_activation_status: hundredListInterest === 'interested'
+          ? portal.hundred_list_activation_status === 'active' || portal.hundred_list_activation_status === 'in_setup'
+            ? portal.hundred_list_activation_status
+            : 'requested'
+          : hundredListInterest === 'not_now'
+            ? 'not_requested'
+            : undefined,
         offer_title: captureHeadline,
         offer_description: captureDescription,
         offer_value: captureValue,
@@ -513,6 +540,7 @@ export function BusinessSetupWizardPage() {
         captureHeadline,
         captureDescription,
         captureValue,
+        hundredListInterest,
         cashbackPercent,
         supportedCauseId,
       })
@@ -531,6 +559,7 @@ export function BusinessSetupWizardPage() {
     business,
     captureDescription,
     captureHeadline,
+    hundredListInterest,
     captureOfferId,
     captureValue,
     cashbackOfferId,
@@ -569,6 +598,7 @@ export function BusinessSetupWizardPage() {
       captureHeadline,
       captureDescription,
       captureValue,
+      hundredListInterest,
       cashbackPercent,
       supportedCauseId,
     })
@@ -583,7 +613,7 @@ export function BusinessSetupWizardPage() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, cashbackPercent, categoryId, coverFile, coverUrl, description, keywords, logoFile, logoUrl, name, persistChanges, supportedCauseId])
+  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, cashbackPercent, categoryId, coverFile, coverUrl, description, hundredListInterest, keywords, logoFile, logoUrl, name, persistChanges, supportedCauseId])
 
   if (businessLoading) {
     return (
@@ -618,6 +648,7 @@ export function BusinessSetupWizardPage() {
     captureHeadline,
     captureDescription,
     captureValue,
+    hundredListInterest,
     cashbackPercent,
     cashbackChosen: cashbackTouched || !!cashbackOfferId,
     supportedCauseId,
@@ -647,6 +678,7 @@ export function BusinessSetupWizardPage() {
   const profileDescriptionMissing = !description.trim()
   const brandingLogoMissing = !(logoUrl || logoFile)
   const brandingCoverMissing = !(coverUrl || coverFile)
+  const hundredListChoiceMissing = hundredListInterest === null
   const captureHeadlineMissing = !captureHeadline.trim()
   const captureDescriptionMissing = !captureDescription.trim()
   const captureValueMissing = !captureValue.trim()
@@ -1115,21 +1147,66 @@ export function BusinessSetupWizardPage() {
           )}
 
           {step === 'capture' && (
-            <Card className="min-h-[58vh]">
-              <CardHeader>
-                <CardTitle>Customer Capture Offer (Pre-launch)</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  <p className="font-semibold text-amber-900">This is the offer people get when they join your list before launch.</p>
-                  <p className="mt-2 leading-6">
-                    Customers will see this after they scan your QR code. Make it simple, specific, and easy to say yes to right away, like a free cookie with purchase, a free coffee, a free soda, or a small discount.
-                  </p>
-                  <p className="mt-2 leading-6">
-                    The job of this offer is to help you collect your first 100 customers before you go live. This is separate from your LocalVIP cashback offer.
+            <Card className="min-h-[58vh] overflow-hidden">
+              <CardContent className="space-y-7 p-6 md:p-10">
+                <div className="mx-auto max-w-3xl text-center">
+                  <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-brand-600 text-white shadow-lg shadow-brand-200">
+                    <Users className="h-7 w-7" />
+                  </span>
+                  <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-brand-600">Your launch audience</p>
+                  <h2 className="mt-2 text-3xl font-bold tracking-tight text-surface-950">Want to build your first 100 customers?</h2>
+                  <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-surface-600">
+                    LocalVIP can help turn local interest into a ready-to-reach customer list. You get a shareable signup experience, a QR code, and a simple launch offer that gives people a reason to join early.
                   </p>
                 </div>
-                <div>
+
+                <div className="mx-auto grid max-w-4xl gap-4 md:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setHundredListInterest('interested')}
+                    className={`rounded-3xl border-2 p-6 text-left transition ${
+                      hundredListInterest === 'interested'
+                        ? 'border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-100'
+                        : 'border-surface-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-lg font-bold text-surface-950">Yes, help me build my 100 List</p>
+                        <p className="mt-2 text-sm leading-6 text-surface-600">Flag this for the LocalVIP team so we can activate your customer-capture tools and help you start building momentum.</p>
+                      </div>
+                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${hundredListInterest === 'interested' ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-surface-300'}`}>
+                        {hundredListInterest === 'interested' ? <CheckCircle2 className="h-4 w-4" /> : null}
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHundredListInterest('not_now')}
+                    className={`rounded-3xl border-2 p-6 text-left transition ${
+                      hundredListInterest === 'not_now'
+                        ? 'border-surface-500 bg-surface-100'
+                        : 'border-surface-200 bg-white hover:border-surface-400 hover:bg-surface-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-lg font-bold text-surface-950">Not right now</p>
+                        <p className="mt-2 text-sm leading-6 text-surface-600">No problem. You can turn it on later from your business portal when you are ready to grow your list.</p>
+                      </div>
+                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${hundredListInterest === 'not_now' ? 'border-surface-600 bg-surface-600 text-white' : 'border-surface-300'}`}>
+                        {hundredListInterest === 'not_now' ? <CheckCircle2 className="h-4 w-4" /> : null}
+                      </span>
+                    </div>
+                  </button>
+                </div>
+
+                {showCaptureValidation && hundredListChoiceMissing ? (
+                  <p className="text-center text-sm font-medium text-red-600">Choose one option to continue.</p>
+                ) : null}
+
+                <div className="hidden">
                   <FieldLabel required>Offer headline</FieldLabel>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
                     This is the first line customers notice. Keep it short, clear, and specific, like “Free cookie with any coffee.”
@@ -1142,7 +1219,7 @@ export function BusinessSetupWizardPage() {
                   />
                   {showCaptureValidation && captureHeadlineMissing ? <RequiredFieldHint /> : null}
                 </div>
-                <div>
+                <div className="hidden">
                   <FieldLabel required>Offer description</FieldLabel>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
                     Explain exactly what they get and any simple condition that comes with it, like “with purchase” or “one per customer.” This is the fuller explanation under the headline.
@@ -1156,7 +1233,7 @@ export function BusinessSetupWizardPage() {
                   />
                   {showCaptureValidation && captureDescriptionMissing ? <RequiredFieldHint /> : null}
                 </div>
-                <div>
+                <div className="hidden">
                   <FieldLabel required>Offer value label</FieldLabel>
                   <p className="mb-2 text-sm leading-6 text-surface-500">
                     This is the shorter version we use in tighter spaces, like QR cards, badges, and smaller materials. Keep it compact and easy to scan quickly.
@@ -1171,7 +1248,7 @@ export function BusinessSetupWizardPage() {
                 </div>
                 <div className="flex justify-end">
                   <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('capture')}>
-                    Save and next
+                    Save choice and continue
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -1393,7 +1470,7 @@ export function BusinessSetupWizardPage() {
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   <StatusPill label="Profile" ready={completeProfile} onOpen={() => setStep('profile')} />
                   <StatusPill label="Branding" ready={completeBranding} onOpen={() => setStep('branding')} />
-                  <StatusPill label="100-List Offer" ready={completeCapture} onOpen={() => setStep('capture')} />
+                  <StatusPill label="100 List choice" ready={completeCapture} onOpen={() => setStep('capture')} />
                   <StatusPill label="Cashback" ready={completeCashback} onOpen={() => setStep('cashback')} />
                   <StatusPill label="Stripe" ready={completeStripe} onOpen={() => setStep('stripe')} />
                 </div>

@@ -80,6 +80,13 @@ export interface QaBusinessDetail extends QaDashboardAccountDetail {
   avgTicket?: string | null
   productsServices?: string | null
   qrAppearance?: string | null
+  hundredListInterest?: 'interested' | 'not_now' | null
+  hundredListInterestRecordedAt?: string | null
+  hundredListActivationStatus?: 'requested' | 'in_setup' | 'active' | 'not_requested' | null
+  hundredListSetupStartedAt?: string | null
+  hundredListSetupStartedBy?: string | null
+  hundredListActivatedAt?: string | null
+  hundredListActivatedBy?: string | null
 }
 
 export type QaCauseListItem = QaDashboardAccountSummary

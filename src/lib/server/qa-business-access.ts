@@ -156,6 +156,38 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'products_services':
         assign('productsServices', Array.isArray(value) ? value.join(', ') : value)
         break
+      case 'hundredListInterest':
+      case 'hundred_list_interest':
+        assign('hundredListInterest', value)
+        break
+      case 'hundredListInterestRecordedAt':
+      case 'hundred_list_interest_recorded_at':
+        assign('hundredListInterestRecordedAt', value)
+        break
+      case 'hundredListActivationStatus':
+      case 'hundred_list_activation_status':
+        assign('hundredListActivationStatus', value)
+        break
+      case 'hundredListSetupStartedAt':
+      case 'hundred_list_setup_started_at':
+        assign('hundredListSetupStartedAt', value)
+        break
+      case 'hundredListSetupStartedBy':
+      case 'hundred_list_setup_started_by': {
+        const userId = numericId(value)
+        if (userId !== null) assign('hundredListSetupStartedBy', userId)
+        break
+      }
+      case 'hundredListActivatedAt':
+      case 'hundred_list_activated_at':
+        assign('hundredListActivatedAt', value)
+        break
+      case 'hundredListActivatedBy':
+      case 'hundred_list_activated_by': {
+        const userId = numericId(value)
+        if (userId !== null) assign('hundredListActivatedBy', userId)
+        break
+      }
       case 'metadata':
       case 'stage':
       case 'launch_phase':

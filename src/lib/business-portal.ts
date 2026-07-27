@@ -27,6 +27,9 @@ export interface BusinessPortalData {
   capture_offer_title?: string
   capture_offer_description?: string
   capture_offer_value?: string
+  hundred_list_interest?: 'interested' | 'not_now'
+  hundred_list_interest_recorded_at?: string
+  hundred_list_activation_status?: 'requested' | 'in_setup' | 'active' | 'not_requested'
   cashback_offer_title?: string
   cashback_offer_description?: string
   cashback_offer_value?: string
@@ -245,13 +248,12 @@ export function getBusinessLaunchPhase(business: Business, contacts: Contact[]):
 
   const data = getBusinessPortalData(business)
   const hasProfile = !!business.name && !!business.category && !!(business.public_description || data.description)
-  const hasCaptureOffer = !!(data.capture_offer_title || data.offer_title)
   const hasCashback = !!data.cashback_percent || !!data.cashback_offer_title
 
-  if (!hasProfile || !hasCaptureOffer || !hasCashback) return 'setup'
-  if (contacts.length >= 100) return business.stage === 'live' ? 'live' : 'ready_to_go_live'
+  if (!hasProfile || !hasCashback) return 'setup'
   if (business.stage === 'live') return 'live'
-  return 'capturing_100'
+  if (data.hundred_list_interest === 'interested' && contacts.length < 100) return 'capturing_100'
+  return 'ready_to_go_live'
 }
 
 export function getContactDisplayName(contact: Contact): string {

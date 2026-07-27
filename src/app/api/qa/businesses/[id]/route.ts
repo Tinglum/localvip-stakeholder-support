@@ -148,6 +148,15 @@ export async function PUT(
     const metadata = body.metadata && typeof body.metadata === 'object'
       ? body.metadata as Record<string, unknown>
       : null
+    const hundredListMetadataKeys = [
+      'hundred_list_interest',
+      'hundred_list_interest_recorded_at',
+      'hundred_list_activation_status',
+      'hundred_list_setup_started_at',
+      'hundred_list_setup_started_by',
+      'hundred_list_activated_at',
+      'hundred_list_activated_by',
+    ] as const
     const isSubmittingForLiveReview =
       body.launch_phase === 'ready_to_go_live'
       || metadata?.portal_activation_review_state === 'pending'
@@ -198,6 +207,12 @@ export async function PUT(
     for (const [key, value] of Object.entries(body)) {
       if (key in crmKeyMap) crmPayload[crmKeyMap[key]] = value
       else normalizedBody[key] = value
+    }
+    if (metadata) {
+      for (const key of hundredListMetadataKeys) {
+        if (key in metadata) normalizedBody[key] = metadata[key]
+      }
+      delete normalizedBody.metadata
     }
 
     // QA's Account CRM fields are the durable source of truth for live review.

@@ -59,7 +59,19 @@ export function mergeBusinessRecord(
   const idToString = (value: number | null | undefined) =>
     value === null || value === undefined ? null : String(value)
   const metadata = qaApi
-    ? { ...baseMetadata, qaApi, qaAccountId: qaBusiness?.id ?? null, qaBusinessId: qaBusiness?.id ?? null }
+    ? {
+        ...baseMetadata,
+        qaApi,
+        qaAccountId: qaBusiness?.id ?? null,
+        qaBusinessId: qaBusiness?.id ?? null,
+        hundred_list_interest: qaCrm?.hundredListInterest ?? baseMetadata.hundred_list_interest ?? null,
+        hundred_list_interest_recorded_at: qaCrm?.hundredListInterestRecordedAt ?? baseMetadata.hundred_list_interest_recorded_at ?? null,
+        hundred_list_activation_status: qaCrm?.hundredListActivationStatus ?? baseMetadata.hundred_list_activation_status ?? null,
+        hundred_list_setup_started_at: qaCrm?.hundredListSetupStartedAt ?? baseMetadata.hundred_list_setup_started_at ?? null,
+        hundred_list_setup_started_by: qaCrm?.hundredListSetupStartedBy ?? baseMetadata.hundred_list_setup_started_by ?? null,
+        hundred_list_activated_at: qaCrm?.hundredListActivatedAt ?? baseMetadata.hundred_list_activated_at ?? null,
+        hundred_list_activated_by: qaCrm?.hundredListActivatedBy ?? baseMetadata.hundred_list_activated_by ?? null,
+      }
     : baseMetadata
 
   return {

@@ -239,8 +239,27 @@ export function BusinessExecutionOverview({
   const [engagementAssets, setEngagementAssets] = React.useState<BusinessEngagementAssets | null>(null)
   const [engagementAssetStatus, setEngagementAssetStatus] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [engagementAssetError, setEngagementAssetError] = React.useState<string | null>(null)
+  const [hundredListBusy, setHundredListBusy] = React.useState(false)
 
   const qaBranchReferralUrl = (workspaceBusiness as { branch_referral_url?: string | null }).branch_referral_url || ''
+  const businessMetadata = (workspaceBusiness.metadata || {}) as Record<string, unknown>
+  const hundredListInterest = businessMetadata.hundred_list_interest === 'interested'
+    ? 'interested'
+    : businessMetadata.hundred_list_interest === 'not_now'
+      ? 'not_now'
+      : captureOffer.id
+        ? 'interested'
+        : null
+  const hundredListActivationStatus =
+    businessMetadata.hundred_list_activation_status === 'active'
+      ? 'active'
+      : businessMetadata.hundred_list_activation_status === 'in_setup'
+        ? 'in_setup'
+        : captureOffer.id
+          ? 'active'
+        : hundredListInterest === 'interested'
+          ? 'requested'
+          : 'not_requested'
 
   React.useEffect(() => {
     setCaptureHeadline(captureOffer.headline || '')
@@ -535,6 +554,14 @@ export function BusinessExecutionOverview({
 
       if (captureOffer.id) await updateOffer(captureOffer.id, capturePayload)
       else await insertOffer(capturePayload)
+      await updateBusiness(writeBusinessId, {
+        metadata: {
+          ...businessMetadata,
+          hundred_list_interest: 'interested',
+          hundred_list_activation_status: 'active',
+          hundred_list_activated_at: new Date().toISOString(),
+        },
+      })
       if (cashbackOffer.id) await updateOffer(cashbackOffer.id, cashbackPayload)
       else await insertOffer(cashbackPayload)
 
@@ -544,6 +571,31 @@ export function BusinessExecutionOverview({
       setOfferError(error instanceof Error ? error.message : 'Offer settings could not be saved.')
     } finally {
       setOfferSaving(false)
+    }
+  }
+
+  async function handleStartHundredListSetup() {
+    setHundredListBusy(true)
+    setEngineError(null)
+    try {
+      const saved = await updateBusiness(writeBusinessId, {
+        metadata: {
+          ...businessMetadata,
+          hundred_list_interest: 'interested',
+          hundred_list_activation_status: 'in_setup',
+          hundred_list_setup_started_at: new Date().toISOString(),
+        },
+      })
+      if (!saved) throw new Error('The 100 List request could not be updated.')
+      setActiveWorkspaceTab('offers')
+      await refetchExecution({ includeBusiness: true })
+      requestAnimationFrame(() => {
+        document.getElementById('offers')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    } catch (error) {
+      setEngineError(error instanceof Error ? error.message : 'The 100 List setup could not be opened.')
+    } finally {
+      setHundredListBusy(false)
     }
   }
 
@@ -675,10 +727,57 @@ export function BusinessExecutionOverview({
 
   return (
     <div className="flex flex-col gap-6">
+      {hundredListInterest === 'interested' ? (
+        <div className={`order-1 rounded-3xl border-2 p-5 md:p-6 ${
+          hundredListActivationStatus === 'active'
+            ? 'border-emerald-300 bg-emerald-50'
+            : hundredListActivationStatus === 'in_setup'
+              ? 'border-brand-300 bg-brand-50'
+              : 'border-amber-300 bg-gradient-to-r from-amber-50 to-white'
+        }`}>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-4">
+              <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white ${
+                hundredListActivationStatus === 'active' ? 'bg-emerald-600' : hundredListActivationStatus === 'in_setup' ? 'bg-brand-600' : 'bg-amber-500'
+              }`}>
+                {hundredListActivationStatus === 'active' ? <CheckCircle2 className="h-6 w-6" /> : <Users className="h-6 w-6" />}
+              </span>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">100 List request</p>
+                <h3 className="mt-1 text-xl font-bold text-surface-950">
+                  {hundredListActivationStatus === 'active'
+                    ? 'The 100 List is active'
+                    : hundredListActivationStatus === 'in_setup'
+                      ? 'The 100 List is being set up'
+                      : 'This business wants to build its first 100 customers'}
+                </h3>
+                <p className="mt-1 text-sm text-surface-600">
+                  {hundredListActivationStatus === 'active'
+                    ? 'Their customer-capture offer and tools are ready to use.'
+                    : 'Configure the signup offer, then save it to activate the customer-capture experience.'}
+                </p>
+              </div>
+            </div>
+            {hundredListActivationStatus !== 'active' ? (
+              <Button onClick={() => void handleStartHundredListSetup()} disabled={hundredListBusy || updateLoading} className="h-11 shrink-0 bg-emerald-600 px-5 font-semibold hover:bg-emerald-700">
+                {hundredListBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                {hundredListActivationStatus === 'in_setup' ? 'Continue setup' : 'Activate 100 List'}
+              </Button>
+            ) : (
+              <Badge variant="success">Active</Badge>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <div className="order-2 grid gap-4 lg:grid-cols-4">
         <StatusCard label="Onboarding" value={`${executionSteps.filter((item) => item.state === 'completed').length}/${executionSteps.length}`} ready={executionSteps.every((item) => item.state === 'completed')} />
         <StatusCard label="QR status" value={qrCodes.length > 0 ? 'Ready' : 'Missing'} ready={qrCodes.length > 0} />
-        <StatusCard label="100-list" value={`${joinedCount} / 100`} ready={joinedCount >= 100} />
+        <StatusCard
+          label="100 List"
+          value={hundredListActivationStatus === 'active' ? `${joinedCount} / 100` : hundredListInterest === 'interested' ? 'Requested' : 'Not requested'}
+          ready={hundredListActivationStatus === 'active'}
+        />
         <StatusCard label="Cashback" value={`${cashbackPercent}%`} ready={cashbackPercent >= 5 && cashbackPercent <= 25} />
       </div>
 
