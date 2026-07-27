@@ -14,6 +14,13 @@ function isMappedEntity(table: string): table is QaEntityKey {
   return table in QA_ENTITY_MAP
 }
 
+function safeErrorHeader(message: string) {
+  return message
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '')
+    .slice(0, 200)
+}
+
 function buildBackendSearch(table: QaEntityKey, request: NextRequest) {
   const aliases = FIELD_ALIASES[table] || {}
   const params = new URLSearchParams()
@@ -85,19 +92,19 @@ export async function GET(
       if (table === 'stakeholder_assignments' || table === 'generated_materials') {
         return NextResponse.json(
           { error: error.message },
-          { status: error.status, headers: { 'x-qa-error': error.message.substring(0, 200) } },
+          { status: error.status, headers: { 'x-qa-error': safeErrorHeader(error.message) } },
         )
       }
       // Backend returned an error — surface as empty list to keep pages functional
       // but log via status header for debugging
       return NextResponse.json([], {
-        headers: { 'x-qa-error': error.message.substring(0, 200) },
+        headers: { 'x-qa-error': safeErrorHeader(error.message) },
       })
     }
     const message = error instanceof Error ? error.message : `Failed to load ${table}.`
     return NextResponse.json(
       { error: message },
-      { status: 500, headers: { 'x-qa-error': message.substring(0, 200) } },
+      { status: 500, headers: { 'x-qa-error': safeErrorHeader(message) } },
     )
   }
 }

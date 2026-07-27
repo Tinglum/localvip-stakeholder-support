@@ -389,7 +389,6 @@ export function BusinessSetupWizardPage() {
         public_description: description || null,
         avg_ticket: avgTicket || null,
         products_services: splitProducts(products),
-        launch_phase: launchPhase === 'setup' ? 'setup' : business.launch_phase || null,
         logo_url: nextLogoUrl || null,
         cover_photo_url: nextCoverUrl || null,
         linked_cause_id: supportedCauseId,
