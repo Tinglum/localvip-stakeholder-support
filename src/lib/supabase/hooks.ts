@@ -13,6 +13,7 @@
 
 import * as React from 'react'
 import { getBusinessJoinUrl } from '@/lib/business-join'
+import { getBusinessCategoryById } from '@/lib/business-catalog'
 import { slugify } from '@/lib/utils'
 import type {
   Business, Cause, Contact, City, Campaign, Task, OutreachActivity, Profile, QrCode, Note, Material, Organization,
@@ -105,6 +106,13 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
   const campaignId = durableId(b.crmCampaignId)
   const networkReferralCode = nonEmptyString(b.referralCode)
   const networkReferralUrl = nonEmptyString(b.branchReferralUrl)
+  const rawBusinessType = b.businessType ?? b.business_type
+  const businessType = typeof rawBusinessType === 'number'
+    ? rawBusinessType
+    : typeof rawBusinessType === 'string' && /^\d+$/.test(rawBusinessType.trim())
+      ? Number(rawBusinessType)
+      : null
+  const canonicalCategory = getBusinessCategoryById(businessType)
   const joinSlug = slugify(`${String(b.name || 'business')}-${String(b.id)}`) || `business-${String(b.id)}`
   const businessJoinUrl = getBusinessJoinUrl(joinSlug)
   const qrState = {
@@ -137,7 +145,8 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
     email: (b.ownerEmail as string) || null,
     phone: (b.ownerPhone as string) || null,
     website: readQaWebsite(b.socialLinks),
-    category: (b.category as string) || null,
+    category: canonicalCategory?.label || (b.category as string) || null,
+    business_type: canonicalCategory?.id || null,
     public_description: (b.description as string) || null,
     address: (b.fullAddress as string) || (b.address1 as string) || null,
     city,

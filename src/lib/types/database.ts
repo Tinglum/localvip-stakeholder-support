@@ -372,6 +372,8 @@ export interface Business {
   address: string | null
   city_id: string | null
   category: string | null
+  /** Canonical QA BusinessType value used by consumer category filters. */
+  business_type?: number | null
   brand: Brand
   stage: OnboardingStage
   owner_id: string | null

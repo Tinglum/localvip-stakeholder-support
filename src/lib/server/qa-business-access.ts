@@ -137,6 +137,17 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
       case 'category':
         assign('category', value)
         break
+      case 'businessType':
+      case 'business_type': {
+        if (value === null || value === undefined || value === '') break
+        const businessType = Number(value)
+        if (Number.isInteger(businessType) && businessType >= 1 && businessType <= 6) {
+          assign('businessType', businessType)
+        } else {
+          unsupportedFields.push(key)
+        }
+        break
+      }
       case 'avgTicket':
       case 'avg_ticket':
         assign('avgTicket', value)

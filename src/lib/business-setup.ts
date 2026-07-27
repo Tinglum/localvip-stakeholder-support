@@ -74,6 +74,7 @@ export const BUSINESS_SETUP_CONFIG_STEPS = BUSINESS_SETUP_STEPS
 
 export interface BusinessSetupSignals {
   name: string
+  category: string
   description: string
   logoUrl: string | null
   coverUrl: string | null
@@ -109,7 +110,7 @@ function isFilled(value: string | null | undefined) {
 export function isBusinessSetupStepComplete(key: BusinessSetupStepKey, signals: BusinessSetupSignals): boolean {
   switch (key) {
     case 'profile':
-      return isFilled(signals.name) && isFilled(signals.description)
+      return isFilled(signals.name) && isFilled(signals.category) && isFilled(signals.description)
     case 'branding':
       return !!signals.logoUrl && !!signals.coverUrl
     case 'capture':
@@ -170,6 +171,7 @@ export function getBusinessSetupSignals(input: {
   if (!business) {
     return {
       name: '',
+      category: '',
       description: '',
       logoUrl: null,
       coverUrl: null,
@@ -197,6 +199,7 @@ export function getBusinessSetupSignals(input: {
 
   return {
     name: business.name || '',
+    category: business.category || '',
     description: business.public_description || portal.description || '',
     logoUrl: business.logo_url || portal.logo_url || null,
     coverUrl: business.cover_photo_url || portal.cover_photo_url || null,

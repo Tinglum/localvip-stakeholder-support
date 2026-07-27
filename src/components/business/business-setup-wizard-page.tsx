@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Image as ImageIcon, Loader2, RefreshCw, Rocket, Store, Tag, Wallet } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Image as ImageIcon, Loader2, Plus, RefreshCw, Rocket, Search, Store, Tag, Wallet, X } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -39,6 +39,12 @@ import {
   useOffers,
   useOfferUpdate,
 } from '@/lib/supabase/hooks'
+import {
+  BUSINESS_CATEGORIES,
+  getBusinessCategoryById,
+  getBusinessCategoryId,
+  getKeywordGroupsForCategory,
+} from '@/lib/business-catalog'
 // Client-side Supabase removed — media uploads now use the /api/crm/businesses/[id]/media route
 
 /** The steps that are actually edited on this page. The full checklist — these
@@ -63,19 +69,43 @@ const STEPS = BUSINESS_SETUP_CONFIG_STEPS.map((step) => ({
 }))
 const STEP_SEQUENCE: StepKey[] = STEPS.map((step) => step.key)
 
-function splitProducts(value: string) {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
+function normalizeKeywords(values: string[]) {
+  const seen = new Set<string>()
+  return values.reduce<string[]>((result, value) => {
+    const keyword = value.trim().replace(/\s+/g, ' ')
+    const key = keyword.toLocaleLowerCase()
+    if (!keyword || seen.has(key)) return result
+    seen.add(key)
+    result.push(keyword)
+    return result
+  }, [])
+}
+
+function parseKeywords(value: string[] | string | null | undefined) {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : []
+  return normalizeKeywords(values)
+}
+
+function readUsdInput(value: string | null | undefined) {
+  const parsed = Number(String(value || '').replace(/[$,\s]/g, ''))
+  return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : ''
+}
+
+function formatUsdForStorage(value: string) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(2) : null
 }
 
 type SetupSnapshotInput = {
   name: string
-  category: string
+  categoryId: string
   description: string
   avgTicket: string
-  products: string
+  keywords: string[]
   logoUrl: string | null
   coverUrl: string | null
   logoFileName: string | null
@@ -90,10 +120,10 @@ type SetupSnapshotInput = {
 function serializeSetupSnapshot(input: SetupSnapshotInput) {
   return JSON.stringify({
     name: input.name,
-    category: input.category,
+    categoryId: input.categoryId,
     description: input.description,
     avgTicket: input.avgTicket,
-    products: input.products,
+    keywords: normalizeKeywords(input.keywords),
     logoUrl: input.logoUrl,
     coverUrl: input.coverUrl,
     logoFile: input.logoFileName,
@@ -139,10 +169,12 @@ export function BusinessSetupWizardPage() {
   const [stepValidation, setStepValidation] = React.useState<Partial<Record<StepKey, boolean>>>({})
 
   const [name, setName] = React.useState('')
-  const [category, setCategory] = React.useState('')
+  const [categoryId, setCategoryId] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [avgTicket, setAvgTicket] = React.useState('')
-  const [products, setProducts] = React.useState('')
+  const [keywords, setKeywords] = React.useState<string[]>([])
+  const [keywordSearch, setKeywordSearch] = React.useState('')
+  const [customKeyword, setCustomKeyword] = React.useState('')
   const [logoUrl, setLogoUrl] = React.useState<string | null>(null)
   const [coverUrl, setCoverUrl] = React.useState<string | null>(null)
   const [logoFile, setLogoFile] = React.useState<File | null>(null)
@@ -172,6 +204,15 @@ export function BusinessSetupWizardPage() {
   // Identity of the record currently seeded into the inputs. We only re-seed when
   // this changes — see the seeding effect below.
   const seededKeyRef = React.useRef<string | null>(null)
+  const keywordGroups = React.useMemo(() => {
+    const query = keywordSearch.trim().toLocaleLowerCase()
+    return getKeywordGroupsForCategory(categoryId)
+      .map((group) => ({
+        ...group,
+        keywords: group.keywords.filter((keyword) => !query || keyword.toLocaleLowerCase().includes(query)),
+      }))
+      .filter((group) => group.keywords.length > 0)
+  }, [categoryId, keywordSearch])
 
   const portal = React.useMemo(
     () => (business ? getBusinessPortalData(business) : {}),
@@ -298,11 +339,13 @@ export function BusinessSetupWizardPage() {
     if (seededKeyRef.current === seedKey) return
     seededKeyRef.current = seedKey
 
+    const savedCategoryId = business.business_type || getBusinessCategoryId(business.category)
+
     setName(business.name || '')
-    setCategory(business.category || '')
+    setCategoryId(savedCategoryId ? String(savedCategoryId) : '')
     setDescription(business.public_description || portal.description || '')
-    setAvgTicket(business.avg_ticket || portal.avg_ticket || '')
-    setProducts((business.products_services || []).join(', '))
+    setAvgTicket(readUsdInput(business.avg_ticket || portal.avg_ticket || ''))
+    setKeywords(parseKeywords(business.products_services || portal.products_services))
     setLogoUrl(business.logo_url || portal.logo_url || null)
     setCoverUrl(business.cover_photo_url || portal.cover_photo_url || null)
     setCaptureHeadline(captureOffer?.headline || '')
@@ -314,10 +357,10 @@ export function BusinessSetupWizardPage() {
     setSupportedCauseId(business.linked_cause_id || null)
     snapshotRef.current = serializeSetupSnapshot({
       name: business.name || '',
-      category: business.category || '',
+      categoryId: savedCategoryId ? String(savedCategoryId) : '',
       description: business.public_description || portal.description || '',
-      avgTicket: business.avg_ticket || portal.avg_ticket || '',
-      products: (business.products_services || []).join(', '),
+      avgTicket: readUsdInput(business.avg_ticket || portal.avg_ticket || ''),
+      keywords: parseKeywords(business.products_services || portal.products_services),
       logoUrl: business.logo_url || portal.logo_url || null,
       coverUrl: business.cover_photo_url || portal.cover_photo_url || null,
       logoFileName: null,
@@ -328,7 +371,7 @@ export function BusinessSetupWizardPage() {
       cashbackPercent: cashbackOffer?.cashback_percent || 10,
       supportedCauseId: business.linked_cause_id || null,
     })
-  }, [business, cashbackOffer?.cashback_percent, cashbackOffer?.id, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.logo_url])
+  }, [business, cashbackOffer?.cashback_percent, cashbackOffer?.id, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.logo_url, portal.products_services])
 
   const persistChanges = React.useCallback(async (options?: {
     businessPatch?: Record<string, unknown>
@@ -385,10 +428,11 @@ export function BusinessSetupWizardPage() {
 
       const savedBusiness = await updateBusiness(business.id, {
         name,
-        category: category || null,
+        category: getBusinessCategoryById(categoryId)?.label || null,
+        business_type: getBusinessCategoryById(categoryId)?.id || null,
         public_description: description || null,
-        avg_ticket: avgTicket || null,
-        products_services: splitProducts(products),
+        avg_ticket: formatUsdForStorage(avgTicket),
+        products_services: normalizeKeywords(keywords),
         logo_url: nextLogoUrl || null,
         cover_photo_url: nextCoverUrl || null,
         linked_cause_id: supportedCauseId,
@@ -458,10 +502,10 @@ export function BusinessSetupWizardPage() {
       setCoverUrl(nextCoverUrl)
       snapshotRef.current = serializeSetupSnapshot({
         name,
-        category,
+        categoryId,
         description,
         avgTicket,
-        products,
+        keywords,
         logoUrl: nextLogoUrl,
         coverUrl: nextCoverUrl,
         logoFileName: null,
@@ -492,17 +536,16 @@ export function BusinessSetupWizardPage() {
     cashbackOfferId,
     cashbackPercent,
     cashbackTouched,
-    category,
+    categoryId,
     coverFile,
     coverUrl,
     description,
     insertOffer,
-    launchPhase,
     logoFile,
     logoUrl,
     name,
     portal,
-    products,
+    keywords,
     refetchBusinesses,
     refetchOffers,
     supportedCauseId,
@@ -515,10 +558,10 @@ export function BusinessSetupWizardPage() {
 
     const snapshot = serializeSetupSnapshot({
       name,
-      category,
+      categoryId,
       description,
       avgTicket,
-      products,
+      keywords,
       logoUrl,
       coverUrl,
       logoFileName: logoFile?.name || null,
@@ -540,7 +583,7 @@ export function BusinessSetupWizardPage() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, cashbackPercent, category, coverFile, coverUrl, description, logoFile, logoUrl, name, persistChanges, products, supportedCauseId])
+  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, cashbackPercent, categoryId, coverFile, coverUrl, description, keywords, logoFile, logoUrl, name, persistChanges, supportedCauseId])
 
   if (businessLoading) {
     return (
@@ -568,6 +611,7 @@ export function BusinessSetupWizardPage() {
   // from what the nav and the dashboard believe.
   const signals: BusinessSetupSignals = {
     name,
+    category: getBusinessCategoryById(categoryId)?.label || '',
     description,
     logoUrl: logoUrl || (logoFile ? logoFile.name : null),
     coverUrl: coverUrl || (coverFile ? coverFile.name : null),
@@ -599,6 +643,7 @@ export function BusinessSetupWizardPage() {
   const showCaptureValidation = !!stepValidation.capture
   const showCashbackValidation = !!stepValidation.cashback
   const profileNameMissing = !name.trim()
+  const profileCategoryMissing = !getBusinessCategoryById(categoryId)
   const profileDescriptionMissing = !description.trim()
   const brandingLogoMissing = !(logoUrl || logoFile)
   const brandingCoverMissing = !(coverUrl || coverFile)
@@ -619,6 +664,22 @@ export function BusinessSetupWizardPage() {
     const currentIndex = STEP_SEQUENCE.indexOf(key)
     if (currentIndex < 0 || currentIndex === STEP_SEQUENCE.length - 1) return null
     return STEP_SEQUENCE[currentIndex + 1]
+  }
+
+  function toggleKeyword(keyword: string) {
+    setKeywords((current) => {
+      const exists = current.some((value) => value.localeCompare(keyword, undefined, { sensitivity: 'accent' }) === 0)
+      return exists
+        ? current.filter((value) => value.localeCompare(keyword, undefined, { sensitivity: 'accent' }) !== 0)
+        : normalizeKeywords([...current, keyword])
+    })
+  }
+
+  function addCustomKeyword() {
+    const keyword = customKeyword.trim().replace(/\s+/g, ' ')
+    if (!keyword) return
+    setKeywords((current) => normalizeKeywords([...current, keyword]))
+    setCustomKeyword('')
   }
 
   async function handleSaveAndNext(key: StepKey) {
@@ -855,12 +916,39 @@ export function BusinessSetupWizardPage() {
                   {showProfileValidation && profileNameMissing ? <RequiredFieldHint /> : null}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
-                  <Input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Coffee shop, restaurant, salon..." />
+                  <FieldLabel required>Category</FieldLabel>
+                  <select
+                    value={categoryId}
+                    onChange={(event) => setCategoryId(event.target.value)}
+                    className={`h-10 w-full rounded-lg border bg-white px-3 text-sm text-surface-900 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${
+                      showProfileValidation && profileCategoryMissing ? 'border-red-500' : 'border-surface-300'
+                    }`}
+                    aria-invalid={showProfileValidation && profileCategoryMissing}
+                  >
+                    <option value="">Choose a category</option>
+                    {BUSINESS_CATEGORIES.map((item) => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </select>
+                  {showProfileValidation && profileCategoryMissing ? <RequiredFieldHint /> : null}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Average spend</label>
-                  <Input value={avgTicket} onChange={(event) => setAvgTicket(event.target.value)} placeholder="$12, $25, $60..." />
+                  <label className="mb-1.5 block text-sm font-medium text-surface-700" htmlFor="average-spend">Average spend per client</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-semibold text-surface-500">$</span>
+                    <Input
+                      id="average-spend"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={avgTicket}
+                      onChange={(event) => setAvgTicket(event.target.value)}
+                      placeholder="25.00"
+                      className="pl-7"
+                    />
+                  </div>
+                  <p className="mt-1.5 text-xs text-surface-500">Typical amount one client spends in USD.</p>
                 </div>
                 <div className="md:col-span-2">
                   <FieldLabel required>Description</FieldLabel>
@@ -873,8 +961,90 @@ export function BusinessSetupWizardPage() {
                   {showProfileValidation && profileDescriptionMissing ? <RequiredFieldHint /> : null}
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Products / services</label>
-                  <Input value={products} onChange={(event) => setProducts(event.target.value)} placeholder="Coffee, pastries, sandwiches" />
+                  <label className="mb-1.5 block text-sm font-medium text-surface-700" htmlFor="keyword-search">Keywords</label>
+                  <p className="mb-3 text-sm leading-6 text-surface-500">Choose words customers can use to find your business and what you offer.</p>
+
+                  {keywords.length > 0 ? (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {keywords.map((keyword) => (
+                        <span key={keyword} className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-sm font-medium text-brand-800">
+                          {keyword}
+                          <button
+                            type="button"
+                            onClick={() => toggleKeyword(keyword)}
+                            className="rounded-full p-0.5 text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                            aria-label={`Remove ${keyword}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="overflow-hidden rounded-xl border border-surface-200 bg-surface-50">
+                    <div className="border-b border-surface-200 bg-white p-3">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                        <Input
+                          id="keyword-search"
+                          value={keywordSearch}
+                          onChange={(event) => setKeywordSearch(event.target.value)}
+                          placeholder="Search keywords, such as pizza, Italian, massage..."
+                          className="pl-9"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-3">
+                      {keywordGroups.length > 0 ? keywordGroups.map((group) => (
+                        <div key={group.id} className="mb-4 last:mb-0">
+                          <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-surface-500">{group.label}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {group.keywords.map((keyword) => {
+                              const selected = keywords.some((value) => value.toLocaleLowerCase() === keyword.toLocaleLowerCase())
+                              return (
+                                <button
+                                  key={keyword}
+                                  type="button"
+                                  onClick={() => toggleKeyword(keyword)}
+                                  aria-pressed={selected}
+                                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                                    selected
+                                      ? 'border-brand-600 bg-brand-600 text-white'
+                                      : 'border-surface-300 bg-white text-surface-700 hover:border-brand-300 hover:bg-brand-50'
+                                  }`}
+                                >
+                                  {selected ? <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" /> : null}
+                                  {keyword}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )) : (
+                        <p className="py-4 text-center text-sm text-surface-500">No catalog keywords match that search.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      value={customKeyword}
+                      onChange={(event) => setCustomKeyword(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          addCustomKeyword()
+                        }
+                      }}
+                      placeholder="Add a custom keyword"
+                    />
+                    <Button type="button" variant="outline" onClick={addCustomKeyword} disabled={!customKeyword.trim()} className="shrink-0">
+                      <Plus className="h-4 w-4" />
+                      Add keyword
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-surface-500">New keywords are added to your business profile when you save.</p>
                 </div>
                 <div className="md:col-span-2 flex justify-end">
                   <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('profile')}>

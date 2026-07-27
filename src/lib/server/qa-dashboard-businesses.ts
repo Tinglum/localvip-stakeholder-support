@@ -10,6 +10,7 @@ import type {
   QaRegistrationResult,
 } from '@/lib/crm-api'
 import { QaApiError, fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
+import { getBusinessCategoryById } from '@/lib/business-catalog'
 import {
   buildQaBusinessLogoUrl,
   buildQaBusinessCoverUrl,
@@ -77,7 +78,8 @@ export function mergeBusinessRecord(
       qaFields.country,
     ]) || localBusiness?.address || null,
     city_id: localBusiness?.city_id || null,
-    category: qaCrm?.category || localBusiness?.category || null,
+    category: getBusinessCategoryById(qaBusiness?.businessType)?.label || qaCrm?.category || localBusiness?.category || null,
+    business_type: getBusinessCategoryById(qaBusiness?.businessType)?.id || localBusiness?.business_type || null,
     brand: localBusiness?.brand || 'localvip',
     stage: (qaCrm?.crmStage as Business['stage']) || localBusiness?.stage || 'lead',
     owner_id: localBusiness?.owner_id || null,

@@ -249,6 +249,7 @@ export function buildQaAccountFields(qaAccount: QaDashboardAccountSummary | QaDa
   return {
     ...base,
     qa_account_id: qaAccount.id,
+    qa_business_type: qaAccount.businessType ?? null,
     headline: qaAccount.headline,
     owner_name: qaAccount.ownerName,
     owner_email: qaAccount.ownerEmail,

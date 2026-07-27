@@ -35,6 +35,7 @@ export interface QaDashboardAccountSummary {
   active: boolean
   hasStripeOnboarding?: boolean | null
   ownerUserId?: number | null
+  businessType?: number | null
   category?: string | null
   crmStage?: string | null
   crmStatus?: string | null
@@ -74,6 +75,7 @@ export type QaBusinessListItem = QaDashboardAccountSummary
 export interface QaBusinessDetail extends QaDashboardAccountDetail {
   hasStripeOnboarding: boolean
   // Business profile fields now persisted on the QA Account.
+  businessType?: number | null
   category?: string | null
   avgTicket?: string | null
   productsServices?: string | null
