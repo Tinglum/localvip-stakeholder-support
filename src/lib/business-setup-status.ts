@@ -11,7 +11,7 @@ import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-po
 import { getBusinessSetupSignals, getBusinessSetupState, type BusinessSetupState } from '@/lib/business-setup'
 import { parseStripeOnboardingStatus } from '@/lib/stripe-onboarding'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
-import { useBusinesses, useContacts, useOffers } from '@/lib/supabase/hooks'
+import { useBusinesses, useContacts, useDeals, useOffers } from '@/lib/supabase/hooks'
 import type { Business, Profile } from '@/lib/types/database'
 
 export interface BusinessSetupStatus {
@@ -48,6 +48,10 @@ export function useBusinessSetupStatus(profile: Profile): BusinessSetupStatus {
     { business_id: scopeId },
     { enabled: isBusinessShell && !!business },
   )
+  const { data: deals, loading: dealsLoading } = useDeals(
+    { business_account_id: scopeId },
+    { enabled: isBusinessShell && !!business },
+  )
 
   const [stripeConnected, setStripeConnected] = React.useState<boolean | null>(null)
   React.useEffect(() => {
@@ -73,16 +77,16 @@ export function useBusinessSetupStatus(profile: Profile): BusinessSetupStatus {
 
   const state = React.useMemo(
     () => getBusinessSetupState({
-      ...getBusinessSetupSignals({ business, offers, contacts }),
+      ...getBusinessSetupSignals({ business, offers, contacts, deals }),
       // Cached account flags are display hints only. Readiness comes from the
       // current business-scoped Stripe status response above.
       stripeConnected: stripeConnected === true,
     }),
-    [business, contacts, offers, stripeConnected],
+    [business, contacts, deals, offers, stripeConnected],
   )
 
   return {
-    loading: isBusinessShell && (businessesLoading || (!!business && (contactsLoading || offersLoading || stripeConnected === null))),
+    loading: isBusinessShell && (businessesLoading || (!!business && (contactsLoading || dealsLoading || offersLoading || stripeConnected === null))),
     business,
     state,
   }

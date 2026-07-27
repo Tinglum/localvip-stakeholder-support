@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
+import { DealManager } from '@/components/crm/deal-manager'
 import { useAuth } from '@/lib/auth/context'
 import { resolveBusinessOffer } from '@/lib/offers'
 import {
@@ -35,6 +36,7 @@ import {
   useBusinesses,
   useBusinessUpdate,
   useContacts,
+  useDeals,
   useOfferInsert,
   useOffers,
   useOfferUpdate,
@@ -114,8 +116,6 @@ type SetupSnapshotInput = {
   captureDescription: string
   captureValue: string
   hundredListInterest: 'interested' | 'not_now' | null
-  cashbackPercent: number
-  supportedCauseId: string | null
 }
 
 function serializeSetupSnapshot(input: SetupSnapshotInput) {
@@ -133,8 +133,6 @@ function serializeSetupSnapshot(input: SetupSnapshotInput) {
     captureDescription: input.captureDescription,
     captureValue: input.captureValue,
     hundredListInterest: input.hundredListInterest,
-    cashbackPercent: input.cashbackPercent,
-    supportedCauseId: input.supportedCauseId,
   })
 }
 
@@ -155,6 +153,7 @@ export function BusinessSetupWizardPage() {
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
   const { data: contacts } = useContacts({ business_id: business?.id || '__none__' })
   const { data: offers, refetch: refetchOffers } = useOffers({ business_id: business?.id || '__none__' })
+  const { data: deals, refetch: refetchDeals } = useDeals({ business_account_id: business?.id || '__none__' })
   const { update: updateBusiness } = useBusinessUpdate()
   const { insert: insertOffer } = useOfferInsert()
   const { update: updateOffer } = useOfferUpdate()
@@ -185,8 +184,6 @@ export function BusinessSetupWizardPage() {
   const [captureDescription, setCaptureDescription] = React.useState('')
   const [captureValue, setCaptureValue] = React.useState('')
   const [hundredListInterest, setHundredListInterest] = React.useState<'interested' | 'not_now' | null>(null)
-  const [cashbackPercent, setCashbackPercent] = React.useState(10)
-  const [cashbackTouched, setCashbackTouched] = React.useState(false)
   const [activating, setActivating] = React.useState(false)
   const [completionAttempted, setCompletionAttempted] = React.useState(false)
   const [stripeStatus, setStripeStatus] = React.useState<StripeOnboardingStatus | null>(null)
@@ -195,13 +192,6 @@ export function BusinessSetupWizardPage() {
   const [stripeRefreshKey, setStripeRefreshKey] = React.useState(0)
   const [openingStripe, setOpeningStripe] = React.useState(false)
   const [captureOfferId, setCaptureOfferId] = React.useState<string | null>(null)
-  const [cashbackOfferId, setCashbackOfferId] = React.useState<string | null>(null)
-  // The cause this business supports. Auto-attached as the first cause to every
-  // customer who joins through this business's referral link.
-  const [supportedCauseId, setSupportedCauseId] = React.useState<string | null>(null)
-  const [causeOptions, setCauseOptions] = React.useState<Array<{ id: string; name: string }>>([])
-  const [causeError, setCauseError] = React.useState<string | null>(null)
-  const [causeRetryKey, setCauseRetryKey] = React.useState(0)
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const snapshotRef = React.useRef('')
   // Identity of the record currently seeded into the inputs. We only re-seed when
@@ -222,36 +212,11 @@ export function BusinessSetupWizardPage() {
     [business]
   )
   const captureOffer = business ? resolveBusinessOffer(business, offers, 'capture') : null
-  const cashbackOffer = business ? resolveBusinessOffer(business, offers, 'cashback') : null
   const launchPhase = business ? getBusinessLaunchPhase(business, contacts) : 'setup'
 
   React.useEffect(() => {
     setStep(initialStep)
   }, [initialStep])
-
-  // Load the cause list so the business can pick the cause it supports.
-  React.useEffect(() => {
-    let cancelled = false
-    setCauseError(null)
-    fetch('/api/qa/nonprofits')
-      .then(res => {
-        if (!res.ok) throw new Error('Cause request failed')
-        return res.json()
-      })
-      .then((items: Array<{ id: number; name: string }>) => {
-        if (cancelled || !Array.isArray(items)) return
-        setCauseOptions(
-          items
-            .filter(c => c && c.id != null && c.name)
-            .map(c => ({ id: String(c.id), name: c.name }))
-            .sort((a, b) => a.name.localeCompare(b.name)),
-        )
-      })
-      .catch(() => {
-        if (!cancelled) setCauseError('Causes could not be loaded. Try again.')
-      })
-    return () => { cancelled = true }
-  }, [causeRetryKey])
 
   const refreshStripeStatus = React.useCallback(async (): Promise<StripeOnboardingStatus | null> => {
     if (!business) return null
@@ -334,11 +299,11 @@ export function BusinessSetupWizardPage() {
     if (!business) return
 
     // Only re-seed the inputs when the underlying record IDENTITY changes — a
-    // different business, or the capture/cashback offers finishing their load.
+    // different business, or the capture offer finishing its load.
     // Re-seeding on every `business` object update (e.g. the one returned by our
     // own autosave) overwrites characters the user typed during the save
     // round-trip, which made typing feel staccato / jump backwards.
-    const seedKey = `${business.id}|${captureOffer?.id || ''}|${cashbackOffer?.id || ''}`
+    const seedKey = `${business.id}|${captureOffer?.id || ''}`
     if (seededKeyRef.current === seedKey) return
     seededKeyRef.current = seedKey
 
@@ -361,10 +326,7 @@ export function BusinessSetupWizardPage() {
           ? 'interested'
           : null,
     )
-    setCashbackPercent(cashbackOffer?.cashback_percent || 10)
     setCaptureOfferId(captureOffer?.id || null)
-    setCashbackOfferId(cashbackOffer?.id || null)
-    setSupportedCauseId(business.linked_cause_id || null)
     snapshotRef.current = serializeSetupSnapshot({
       name: business.name || '',
       categoryId: savedCategoryId ? String(savedCategoryId) : '',
@@ -384,15 +346,12 @@ export function BusinessSetupWizardPage() {
           : captureOffer?.id
             ? 'interested'
             : null,
-      cashbackPercent: cashbackOffer?.cashback_percent || 10,
-      supportedCauseId: business.linked_cause_id || null,
     })
-  }, [business, cashbackOffer?.cashback_percent, cashbackOffer?.id, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.hundred_list_interest, portal.logo_url, portal.products_services])
+  }, [business, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.hundred_list_interest, portal.logo_url, portal.products_services])
 
   const persistChanges = React.useCallback(async (options?: {
     businessPatch?: Record<string, unknown>
     metadataOverrides?: Record<string, unknown>
-    forceCashback?: boolean
   }): Promise<boolean> => {
     if (!business) return false
 
@@ -447,9 +406,6 @@ export function BusinessSetupWizardPage() {
         offer_title: captureHeadline,
         offer_description: captureDescription,
         offer_value: captureValue,
-        cashback_percent: cashbackPercent,
-        cashback_offer_title: 'Standard LocalVIP Cashback',
-        cashback_offer_description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
         ...(options?.metadataOverrides || {}),
       }
 
@@ -462,7 +418,6 @@ export function BusinessSetupWizardPage() {
         products_services: normalizeKeywords(keywords),
         logo_url: nextLogoUrl || null,
         cover_photo_url: nextCoverUrl || null,
-        linked_cause_id: supportedCauseId,
         metadata: nextMetadata as Record<string, unknown>,
         ...(options?.businessPatch || {}),
       })
@@ -496,34 +451,7 @@ export function BusinessSetupWizardPage() {
         }
       }
 
-      // Likewise, only write the cashback offer once the business has explicitly
-      // set a rate this session (or one already exists). The 10% default is a
-      // suggestion, not a completed choice.
-      let savedCashback: { id?: string } | null = null
-      if (options?.forceCashback || cashbackTouched || cashbackOfferId) {
-        const cashbackPayload = {
-          business_id: business.id,
-          offer_type: 'cashback' as const,
-          status: 'active' as const,
-          headline: 'Standard LocalVIP Cashback',
-          description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
-          value_type: 'cashback_percent',
-          value_label: `${cashbackPercent}% cashback`,
-          cashback_percent: cashbackPercent,
-          starts_at: null,
-          ends_at: null,
-          metadata: { source: 'business_setup' },
-        }
-        savedCashback = cashbackOfferId
-          ? await updateOffer(cashbackOfferId, cashbackPayload)
-          : await insertOffer(cashbackPayload)
-        if (!savedCashback) {
-          throw new Error('The cashback offer could not be saved.')
-        }
-      }
-
       if (savedCapture?.id) setCaptureOfferId(savedCapture.id)
-      if (savedCashback?.id) setCashbackOfferId(savedCashback.id)
 
       setLogoUrl(nextLogoUrl)
       setCoverUrl(nextCoverUrl)
@@ -541,8 +469,6 @@ export function BusinessSetupWizardPage() {
         captureDescription,
         captureValue,
         hundredListInterest,
-        cashbackPercent,
-        supportedCauseId,
       })
 
       setSaveState('saved')
@@ -562,9 +488,6 @@ export function BusinessSetupWizardPage() {
     hundredListInterest,
     captureOfferId,
     captureValue,
-    cashbackOfferId,
-    cashbackPercent,
-    cashbackTouched,
     categoryId,
     coverFile,
     coverUrl,
@@ -577,7 +500,6 @@ export function BusinessSetupWizardPage() {
     keywords,
     refetchBusinesses,
     refetchOffers,
-    supportedCauseId,
     updateBusiness,
     updateOffer,
   ])
@@ -599,8 +521,6 @@ export function BusinessSetupWizardPage() {
       captureDescription,
       captureValue,
       hundredListInterest,
-      cashbackPercent,
-      supportedCauseId,
     })
 
     if (!snapshotRef.current || snapshot === snapshotRef.current) return
@@ -613,7 +533,7 @@ export function BusinessSetupWizardPage() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, cashbackPercent, categoryId, coverFile, coverUrl, description, hundredListInterest, keywords, logoFile, logoUrl, name, persistChanges, supportedCauseId])
+  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, categoryId, coverFile, coverUrl, description, hundredListInterest, keywords, logoFile, logoUrl, name, persistChanges])
 
   if (businessLoading) {
     return (
@@ -649,9 +569,14 @@ export function BusinessSetupWizardPage() {
     captureDescription,
     captureValue,
     hundredListInterest,
-    cashbackPercent,
-    cashbackChosen: cashbackTouched || !!cashbackOfferId,
-    supportedCauseId,
+    dealConfigured: deals.some((deal) => {
+      const cashback = Number(deal.cash_back)
+      if (!Number.isFinite(cashback) || cashback < 1 || cashback > 36) return false
+      if (!deal.start_date || !deal.end_date) return false
+      const start = new Date(deal.start_date)
+      const end = new Date(deal.end_date)
+      return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start
+    }),
     stripeConnected: stripeStatus?.status === 'complete',
     liveReviewSubmitted:
       String(business.status || '') === 'pending_live_review'
@@ -672,7 +597,6 @@ export function BusinessSetupWizardPage() {
   const showProfileValidation = !!stepValidation.profile
   const showBrandingValidation = !!stepValidation.branding
   const showCaptureValidation = !!stepValidation.capture
-  const showCashbackValidation = !!stepValidation.cashback
   const profileNameMissing = !name.trim()
   const profileCategoryMissing = !getBusinessCategoryById(categoryId)
   const profileDescriptionMissing = !description.trim()
@@ -682,7 +606,6 @@ export function BusinessSetupWizardPage() {
   const captureHeadlineMissing = !captureHeadline.trim()
   const captureDescriptionMissing = !captureDescription.trim()
   const captureValueMissing = !captureValue.trim()
-  const cashbackMissing = !(cashbackTouched || !!cashbackOfferId)
   const stripeRequirements = stripeStatus ? stripeRequirementLabels(stripeStatus) : []
   const stripeOnboardingStarted = stripeStatus?.onboardingStarted === true
   const missingSetupSteps = setupState.steps.filter((item) => item.key !== 'activate' && !item.complete)
@@ -716,13 +639,10 @@ export function BusinessSetupWizardPage() {
 
   async function handleSaveAndNext(key: StepKey) {
     setStepValidation((current) => ({ ...current, [key]: true }))
-    const readyToSave = key === 'cashback'
-      ? cashbackPercent >= 5 && cashbackPercent <= 25 && !!supportedCauseId
-      : getStepCompletion(key)
+    const readyToSave = getStepCompletion(key)
     if (!readyToSave) return
 
-    if (key === 'cashback') setCashbackTouched(true)
-    const saved = await persistChanges({ forceCashback: key === 'cashback' })
+    const saved = key === 'cashback' ? true : await persistChanges()
     if (!saved) return
 
     const nextStep = getNextStep(key)
@@ -1257,79 +1177,28 @@ export function BusinessSetupWizardPage() {
           )}
 
           {step === 'cashback' && (
-            <Card className="min-h-[58vh]">
-              <CardHeader>
-                <CardTitle>LocalVIP Cashback (Live)</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-                  This is the percentage customers receive back when they shop with you through LocalVIP.
-                </div>
-                <div>
-                  <FieldLabel required>Cashback percentage</FieldLabel>
-                  {showCashbackValidation && cashbackMissing ? <RequiredFieldHint /> : null}
-                </div>
-                <div className={`rounded-2xl border bg-surface-50 px-4 py-4 ${showCashbackValidation && cashbackMissing ? 'border-red-400' : 'border-surface-200'}`}>
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-surface-500">Cashback</p>
-                      <p className="mt-2 text-4xl font-bold text-surface-900">{cashbackPercent}%</p>
-                    </div>
-                    <Badge variant="info">{cashbackPercent === 10 ? 'Recommended default' : cashbackPercent > 10 ? 'Faster growth potential' : 'Lower intro offer'}</Badge>
-                  </div>
-                  <input
-                    type="range"
-                    min={5}
-                    max={25}
-                    step={1}
-                    value={cashbackPercent}
-                    onChange={(event) => {
-                      setCashbackPercent(Number(event.target.value))
-                      setCashbackTouched(true)
-                    }}
-                    className="mt-5 w-full"
-                  />
-                  <div className="mt-2 flex justify-between text-xs text-surface-400">
-                    <span>5%</span>
-                    <span>10%</span>
-                    <span>25%</span>
-                  </div>
-                </div>
-
-                <div>
-                  <FieldLabel required>The cause you support</FieldLabel>
-                  <p className="mb-2 text-sm text-surface-500">
-                    Every customer who joins LocalVIP through your link automatically supports this cause first. You&apos;re picking the one cause you want to champion above all others.
-                  </p>
-                  <select
-                    value={supportedCauseId ?? ''}
-                    onChange={(event) => setSupportedCauseId(event.target.value || null)}
-                    className={`h-12 w-full rounded-xl border bg-surface-0 px-3 text-sm text-surface-900 ${showCashbackValidation && !supportedCauseId ? 'border-red-400' : 'border-surface-200'}`}
-                  >
-                    <option value="">Select a cause…</option>
-                    {causeOptions.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  {causeError ? (
-                    <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      <span>{causeError}</span>
-                      <Button type="button" variant="outline" size="sm" onClick={() => setCauseRetryKey((value) => value + 1)}>
-                        Try again
-                      </Button>
-                    </div>
-                  ) : null}
-                  {showCashbackValidation && !supportedCauseId ? <RequiredFieldHint /> : null}
-                </div>
-
-                <div className="flex justify-end">
-                  <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('cashback')}>
-                    Save and next
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="space-y-5">
+              <DealManager
+                businessAccountId={String(business.id)}
+                mode="setup"
+                onDealsChanged={() => refetchDeals({ silent: true })}
+              />
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-surface-200 bg-white px-5 py-4">
+                <p className="text-sm text-surface-600">
+                  {completeCashback
+                    ? 'Your LocalVIP deal is saved and ready for the next step.'
+                    : 'Save a cashback percentage and schedule before continuing.'}
+                </p>
+                <Button
+                  className="h-12 shrink-0 px-6 text-base font-semibold"
+                  disabled={!completeCashback}
+                  onClick={() => void handleSaveAndNext('cashback')}
+                >
+                  Continue to Stripe
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           )}
 
           {step === 'stripe' && (
@@ -1471,7 +1340,7 @@ export function BusinessSetupWizardPage() {
                   <StatusPill label="Profile" ready={completeProfile} onOpen={() => setStep('profile')} />
                   <StatusPill label="Branding" ready={completeBranding} onOpen={() => setStep('branding')} />
                   <StatusPill label="100 List choice" ready={completeCapture} onOpen={() => setStep('capture')} />
-                  <StatusPill label="Cashback" ready={completeCashback} onOpen={() => setStep('cashback')} />
+                  <StatusPill label="LocalVIP deal" ready={completeCashback} onOpen={() => setStep('cashback')} />
                   <StatusPill label="Stripe" ready={completeStripe} onOpen={() => setStep('stripe')} />
                 </div>
                 <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">

@@ -49,10 +49,10 @@ export const BUSINESS_SETUP_STEPS: BusinessSetupStep[] = [
   },
   {
     key: 'cashback',
-    label: 'Cashback & Cause',
-    description: 'Set your live cashback and choose the cause your business supports.',
-    why: 'This defines the customer reward and community impact attached to each purchase.',
-    time: '3 minutes',
+    label: 'LocalVIP Deal',
+    description: 'Choose the cashback percentage and schedule when your deal is available.',
+    why: 'Your deal brings customers in during the days and times when you want more business.',
+    time: '3 to 5 minutes',
   },
   {
     key: 'stripe',
@@ -82,9 +82,7 @@ export interface BusinessSetupSignals {
   captureDescription: string
   captureValue: string
   hundredListInterest: 'interested' | 'not_now' | null
-  cashbackPercent: number
-  cashbackChosen: boolean
-  supportedCauseId: string | null
+  dealConfigured: boolean
   stripeConnected: boolean
   liveReviewSubmitted: boolean
 }
@@ -117,12 +115,7 @@ export function isBusinessSetupStepComplete(key: BusinessSetupStepKey, signals: 
     case 'capture':
       return signals.hundredListInterest === 'interested' || signals.hundredListInterest === 'not_now'
     case 'cashback':
-      return (
-        signals.cashbackPercent >= 5
-        && signals.cashbackPercent <= 25
-        && signals.cashbackChosen
-        && !!signals.supportedCauseId
-      )
+      return signals.dealConfigured
     case 'stripe':
       return signals.stripeConnected
     case 'activate':
@@ -166,8 +159,13 @@ export function getBusinessSetupSignals(input: {
   business: Business | null
   offers: Offer[]
   contacts: Contact[]
+  deals?: Array<{
+    cash_back: number
+    start_date: string | null
+    end_date: string | null
+  }>
 }): BusinessSetupSignals {
-  const { business, offers } = input
+  const { business, offers, deals = [] } = input
 
   if (!business) {
     return {
@@ -180,9 +178,7 @@ export function getBusinessSetupSignals(input: {
       captureDescription: '',
       captureValue: '',
       hundredListInterest: null,
-      cashbackPercent: 0,
-      cashbackChosen: false,
-      supportedCauseId: null,
+      dealConfigured: false,
       stripeConnected: false,
       liveReviewSubmitted: false,
     }
@@ -190,14 +186,15 @@ export function getBusinessSetupSignals(input: {
 
   const portal = getBusinessPortalData(business)
   const capture = offers.find((offer) => offer.offer_type === 'capture') || null
-  const cashback = offers.find((offer) => offer.offer_type === 'cashback') || null
-  const savedCashbackPercent =
-    typeof cashback?.cashback_percent === 'number'
-      ? cashback.cashback_percent
-      : typeof portal.cashback_percent === 'number'
-        ? portal.cashback_percent
-        : 0
   const status = String(business.status || '')
+  const dealConfigured = deals.some((deal) => {
+    const cashback = Number(deal.cash_back)
+    if (!Number.isFinite(cashback) || cashback < 1 || cashback > 36) return false
+    if (!deal.start_date || !deal.end_date) return false
+    const start = new Date(deal.start_date)
+    const end = new Date(deal.end_date)
+    return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start
+  })
 
   return {
     name: business.name || '',
@@ -214,9 +211,7 @@ export function getBusinessSetupSignals(input: {
         : capture
           ? 'interested'
           : null,
-    cashbackPercent: savedCashbackPercent,
-    cashbackChosen: !!cashback || typeof portal.cashback_percent === 'number',
-    supportedCauseId: business.linked_cause_id || null,
+    dealConfigured,
     stripeConnected: business.stripe_onboarding_complete === true,
     liveReviewSubmitted: status === 'pending_live_review' || status === 'live' || business.stage === 'live',
   }

@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { useDealInsert, useDeals, useDealUpdate, type QaDealRow } from '@/lib/supabase/hooks'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -61,7 +60,6 @@ function endDateFromDuration(startDate: string, durationDays: number): string {
 interface DealForm {
   id: string | null
   cashBack: string
-  description: string
   active: boolean
   isRecurring: boolean
   days: boolean[]
@@ -75,7 +73,6 @@ interface DealForm {
 const emptyForm: DealForm = {
   id: null,
   cashBack: '10',
-  description: '',
   active: true,
   isRecurring: false,
   days: [false, true, true, true, true, true, false],
@@ -92,7 +89,6 @@ function dealToForm(deal: QaDealRow): DealForm {
   return {
     id: deal.id,
     cashBack: String(deal.cash_back ?? 10),
-    description: deal.description || '',
     active: !!deal.active,
     isRecurring: !!deal.is_recurring,
     days: maskToDays(deal.days_of_week_mask),
@@ -114,9 +110,6 @@ function validateDeal(form: DealForm): string[] {
   if (!Number.isFinite(cashback) || cashback < 1 || cashback > 36) {
     errors.push('Cashback must be between 1% and 36%.')
   }
-  if (!form.description.trim()) {
-    errors.push('Describe what customers receive with this offer.')
-  }
   if (!start) errors.push('Choose a valid start date.')
   if (!Number.isInteger(duration) || duration < 1) {
     errors.push('Duration must be at least 1 day.')
@@ -130,10 +123,10 @@ function validateDeal(form: DealForm): string[] {
     errors.push('Duration must match the selected start and end dates.')
   }
   if (form.isRecurring && !form.days.some(Boolean)) {
-    errors.push('Choose at least one weekday for a recurring offer.')
+    errors.push('Choose at least one weekday for a recurring deal.')
   }
   if (Boolean(form.startTime) !== Boolean(form.endTime)) {
-    errors.push('Add both a start time and an end time, or leave both blank for an all-day offer.')
+    errors.push('Add both a start time and an end time, or leave both blank for an all-day deal.')
   } else if (form.startTime && form.endTime) {
     const startMinutes = timeToMinutes(form.startTime)
     const endMinutes = timeToMinutes(form.endTime)
@@ -146,11 +139,13 @@ function validateDeal(form: DealForm): string[] {
 
 export interface DealManagerProps {
   businessAccountId: string
-  mode?: 'crm' | 'portal'
+  mode?: 'crm' | 'portal' | 'setup'
+  onDealsChanged?: () => void
 }
 
-export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProps) {
+export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }: DealManagerProps) {
   const isPortal = mode === 'portal'
+  const isSetup = mode === 'setup'
   const { data: deals, loading, error: loadError, refetch } = useDeals({
     business_account_id: businessAccountId,
   })
@@ -161,6 +156,17 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
   const [saving, setSaving] = React.useState(false)
   const [changingStatusId, setChangingStatusId] = React.useState<string | null>(null)
   const [errors, setErrors] = React.useState<string[]>([])
+  const setupAutoOpenAttempted = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!isSetup || loading || form || setupAutoOpenAttempted.current) return
+
+    setupAutoOpenAttempted.current = true
+    if ((deals || []).length === 0) {
+      setErrors([])
+      setForm({ ...emptyForm, days: [...emptyForm.days] })
+    }
+  }, [deals, form, isSetup, loading])
 
   function openNew() {
     setErrors([])
@@ -216,7 +222,7 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
       const payload: Partial<QaDealRow> = {
         business_account_id: businessAccountId,
         cash_back: Number(form.cashBack),
-        description: form.description.trim() || null,
+        description: `${Number(form.cashBack)}% cashback`,
         active: form.active,
         is_recurring: form.isRecurring,
         days_of_week_mask: form.isRecurring ? daysToMask(form.days) : null,
@@ -227,14 +233,15 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
       }
       const result = form.id ? await update(form.id, payload) : await insert(payload)
       if (!result) {
-        setErrors(['The offer could not be saved. Check that it does not overlap another active offer, then try again.'])
+        setErrors(['The deal could not be saved. Check that it does not overlap another active deal, then try again.'])
         return
       }
-      toast.success(form.id ? 'Offer updated' : 'Offer created')
+      toast.success(form.id ? 'Deal updated' : 'Deal created')
       setForm(null)
-      refetch()
+      void refetch()
+      onDealsChanged?.()
     } catch (error) {
-      setErrors([error instanceof Error ? error.message : 'The offer could not be saved. Please try again.'])
+      setErrors([error instanceof Error ? error.message : 'The deal could not be saved. Please try again.'])
     } finally {
       setSaving(false)
     }
@@ -259,13 +266,14 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
       if (!result) {
         setErrors([
           deal.active
-            ? 'This offer could not be deactivated. Please try again.'
-            : 'This offer could not be activated. Check that it does not overlap another active offer.',
+            ? 'This deal could not be deactivated. Please try again.'
+            : 'This deal could not be activated. Check that it does not overlap another active deal.',
         ])
         return
       }
-      toast.success(deal.active ? 'Offer deactivated' : 'Offer activated')
-      refetch()
+      toast.success(deal.active ? 'Deal deactivated' : 'Deal activated')
+      void refetch()
+      onDealsChanged?.()
     } finally {
       setChangingStatusId(null)
     }
@@ -283,7 +291,7 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
       const time = deal.daily_start_minutes != null && deal.daily_end_minutes != null
         ? `, ${minutesToTime(deal.daily_start_minutes)}-${minutesToTime(deal.daily_end_minutes)}`
         : ''
-      return `One-time offer: ${dateSummary}${time}`
+      return `One-time deal: ${dateSummary}${time}`
     }
 
     const days = maskToDays(deal.days_of_week_mask)
@@ -297,8 +305,8 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
   }
 
   return (
-    <Card className={isPortal ? 'overflow-hidden border-brand-200 shadow-sm' : undefined}>
-      <CardHeader className={isPortal ? 'border-b border-brand-100 bg-gradient-to-r from-brand-50 via-white to-success-50' : undefined}>
+    <Card className={isPortal || isSetup ? 'overflow-hidden border-brand-200 shadow-sm' : undefined}>
+      <CardHeader className={isPortal || isSetup ? 'border-b border-brand-100 bg-gradient-to-r from-brand-50 via-white to-success-50' : undefined}>
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
           <div className="max-w-3xl">
             <div className="mb-2 flex items-center gap-2 text-brand-700">
@@ -307,17 +315,19 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
                 {isPortal ? 'Bring customers in on your quieter days' : 'Customer deal'}
               </span>
             </div>
-            <CardTitle>{isPortal ? 'Your LocalVIP offers' : 'LocalVIP Deals'}</CardTitle>
+            <CardTitle>{isPortal ? 'Your LocalVIP deals' : isSetup ? 'Create your LocalVIP deal' : 'LocalVIP Deals'}</CardTitle>
             <p className="mt-2 text-sm leading-6 text-surface-600">
               {isPortal
-                ? 'Choose the cashback, dates, days, and times when customers can use each offer. You stay in control and can deactivate an offer whenever you need to.'
+                ? 'Choose the cashback, dates, days, and times when customers can use each deal. You stay in control and can deactivate a deal whenever you need to.'
+                : isSetup
+                  ? 'Choose your cashback percentage and exactly when customers can use the deal.'
                 : 'Create and schedule the cashback deals shown to customers. Overlapping active schedules are blocked.'}
             </p>
           </div>
           {!form ? (
             <Button onClick={openNew}>
               <Plus className="h-4 w-4" aria-hidden="true" />
-              Create offer
+              Create deal
             </Button>
           ) : null}
         </div>
@@ -329,16 +339,16 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <div>
                 <h3 className="text-lg font-semibold text-surface-900">
-                  {form.id ? 'Edit LocalVIP offer' : 'Create a LocalVIP offer'}
+                  {form.id ? 'Edit LocalVIP deal' : 'Create a LocalVIP deal'}
                 </h3>
-                <p className="text-sm text-surface-500">Set exactly when this offer is available to customers.</p>
+                <p className="text-sm text-surface-500">Set exactly when this deal is available to customers.</p>
               </div>
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-surface-200 bg-white px-3 py-2">
-                <span className="text-sm font-medium text-surface-700">Offer active</span>
+                <span className="text-sm font-medium text-surface-700">Deal active</span>
                 <input
                   type="checkbox"
                   role="switch"
-                  aria-label="Offer active"
+                  aria-label="Deal active"
                   aria-checked={form.active}
                   checked={form.active}
                   onChange={(event) => setForm({ ...form, active: event.target.checked })}
@@ -347,36 +357,33 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
               </label>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr),180px]">
-              <div>
-                <label htmlFor="deal-description" className="mb-1.5 block text-sm font-medium text-surface-700">
-                  What is the offer? <span className="text-danger-600">*</span>
-                </label>
-                <Textarea
-                  id="deal-description"
-                  rows={3}
-                  value={form.description}
-                  onChange={(event) => setForm({ ...form, description: event.target.value })}
-                  placeholder="Example: Enjoy lunch with 15% cashback on Tuesdays and Wednesdays."
-                />
-                <p className="mt-1 text-xs text-surface-500">Customers see this description with your offer.</p>
+            <div className="rounded-2xl border border-brand-200 bg-white p-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <label htmlFor="deal-cashback" className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
+                    Customer cashback
+                  </label>
+                  <p className="mt-1 text-4xl font-bold tracking-tight text-surface-900">
+                    {form.cashBack}<span className="text-2xl text-brand-600">%</span>
+                  </p>
+                </div>
+                <Badge variant="info">Set the reward customers receive</Badge>
               </div>
-              <div>
-                <label htmlFor="deal-cashback" className="mb-1.5 block text-sm font-medium text-surface-700">
-                  Cashback %
-                </label>
-                <Input
+              <input
                   id="deal-cashback"
-                  type="number"
-                  inputMode="decimal"
+                  type="range"
                   min={1}
                   max={36}
                   step={1}
                   value={form.cashBack}
                   onChange={(event) => setForm({ ...form, cashBack: event.target.value })}
                   aria-describedby="deal-cashback-help"
+                  className="mt-5 h-2 w-full cursor-pointer appearance-none rounded-full bg-surface-200 accent-brand-600"
                 />
-                <p id="deal-cashback-help" className="mt-1 text-xs text-surface-500">Choose 1% to 36%.</p>
+              <div id="deal-cashback-help" className="mt-2 flex justify-between text-xs text-surface-500">
+                <span>1%</span>
+                <span>Recommended: 10%</span>
+                <span>36%</span>
               </div>
             </div>
 
@@ -492,7 +499,7 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
                   <Input id="deal-end-time" type="time" value={form.endTime} onChange={(event) => setForm({ ...form, endTime: event.target.value })} />
                 </div>
               </div>
-              <p className="mt-2 text-xs text-surface-500">Leave both blank for an all-day offer. Times use the business&apos;s local timezone.</p>
+              <p className="mt-2 text-xs text-surface-500">Leave both blank for an all-day deal. Times use the business&apos;s local timezone.</p>
             </fieldset>
 
             {errors.length ? (
@@ -507,7 +514,7 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void save()} disabled={saving}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-                {form.id ? 'Save changes' : 'Create offer'}
+                {form.id ? 'Save changes' : 'Create deal'}
               </Button>
               <Button variant="outline" onClick={() => { setForm(null); setErrors([]) }} disabled={saving}>Cancel</Button>
             </div>
@@ -522,7 +529,7 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
 
         {loadError ? (
           <div role="alert" className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
-            Your offers could not be loaded. Please refresh the page and try again.
+            Your deals could not be loaded. Please refresh the page and try again.
           </div>
         ) : null}
 
@@ -530,15 +537,15 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
           {loading ? (
             <div className="flex items-center gap-2 py-6 text-sm text-surface-500">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Loading offers...
+              Loading deals...
             </div>
           ) : (deals || []).length === 0 ? (
             <div className="rounded-2xl border border-dashed border-surface-300 bg-surface-50 px-5 py-8 text-center">
-              <p className="font-semibold text-surface-900">No LocalVIP offers yet</p>
+              <p className="font-semibold text-surface-900">No LocalVIP deals yet</p>
               <p className="mx-auto mt-1 max-w-xl text-sm text-surface-500">
-                Create an offer for the days and times when you want more customers.
+                Create a deal for the days and times when you want more customers.
               </p>
-              {!form ? <Button className="mt-4" onClick={openNew}><Plus className="h-4 w-4" /> Create your first offer</Button> : null}
+              {!form ? <Button className="mt-4" onClick={openNew}><Plus className="h-4 w-4" /> Create your first deal</Button> : null}
             </div>
           ) : (
             (deals || []).map((deal) => (
@@ -550,9 +557,6 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
                       <Badge variant={deal.active ? 'success' : 'default'}>{deal.active ? 'Active' : 'Inactive'}</Badge>
                       <Badge variant="info">{deal.is_recurring ? 'Recurring weekly' : 'One-time'}</Badge>
                     </div>
-                    <p className="mt-2 text-sm font-medium text-surface-700">
-                      {deal.description || 'LocalVIP cashback offer'}
-                    </p>
                     <p className="mt-1 text-sm text-surface-500">{describeSchedule(deal)}</p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
@@ -565,7 +569,7 @@ export function DealManager({ businessAccountId, mode = 'crm' }: DealManagerProp
                       variant={deal.active ? 'outline' : 'success'}
                       onClick={() => void changeActiveStatus(deal)}
                       disabled={changingStatusId === deal.id}
-                      aria-label={`${deal.active ? 'Deactivate' : 'Activate'} ${Number(deal.cash_back)}% cashback offer`}
+                      aria-label={`${deal.active ? 'Deactivate' : 'Activate'} ${Number(deal.cash_back)}% cashback deal`}
                     >
                       {changingStatusId === deal.id
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
