@@ -16,6 +16,35 @@ import { getQrPlacements, qrPlacementMetadata, type QrPlacement } from '@/lib/ma
 import { useMaterialUpdate } from '@/lib/supabase/hooks'
 import type { Material } from '@/lib/types/database'
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+function samePlacements(left: QrPlacement[], right: QrPlacement[]) {
+  if (left.length !== right.length) return false
+  return left.every((placement, index) => {
+    const saved = right[index]
+    return saved
+      && placement.page === saved.page
+      && placement.x === saved.x
+      && placement.y === saved.y
+      && placement.size === saved.size
+  })
+}
+
 export function MaterialQrZonesDialog({
   material,
   open,
@@ -52,7 +81,13 @@ export function MaterialQrZonesDialog({
     })
 
     if (!result) {
-      setSaveError(error || 'QR zones could not be saved.')
+      setSaveError('QR zones could not be saved.')
+      return
+    }
+
+    const savedPlacements = getQrPlacements(result.metadata as Record<string, unknown> | null)
+    if (!samePlacements(placements, savedPlacements)) {
+      setSaveError('The saved QR position could not be verified. Please try again.')
       return
     }
 
@@ -60,21 +95,34 @@ export function MaterialQrZonesDialog({
     // business generates this template the QR is stamped where it was placed (the
     // template is keyed by its source design file = this material's file_url).
     try {
-      const fileUrl = material.file_url
-      if (fileUrl) {
-        const tplRes = await fetch('/api/qa/dashboard/material_templates?is_active=true', { cache: 'no-store' })
-        const tj = tplRes.ok ? await tplRes.json() : null
-        const items: Array<Record<string, unknown>> = Array.isArray(tj) ? tj : (tj?.items || [])
-        const match = items.find((t) => (t.sourcePath ?? t.source_path) === fileUrl)
-        if (match) {
-          await fetch(`/api/qa/dashboard/material_templates/${match.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ qr_position_json: JSON.stringify(qrPlacementMetadata(placements)) }),
-          })
+      const tplRes = await fetch('/api/qa/dashboard/material_templates?is_active=true', { cache: 'no-store' })
+      if (!tplRes.ok) throw new Error('Template list could not be loaded.')
+
+      const tj = await tplRes.json()
+      const items: Array<Record<string, unknown>> = Array.isArray(tj) ? tj : (tj?.items || [])
+      const match = items.find((template) => {
+        const sourcePath = template.sourcePath ?? template.source_path
+        const position = asRecord(template.qr_position ?? template.qr_position_json)
+        return sourcePath === material.file_url
+          || String(position?.source_material_id || '') === String(material.id)
+      })
+
+      if (match) {
+        const templatePlacement = {
+          source_material_id: material.id,
+          ...qrPlacementMetadata(placements),
         }
+        const syncResponse = await fetch(`/api/qa/dashboard/material_templates/${match.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ qr_position_json: JSON.stringify(templatePlacement) }),
+        })
+        if (!syncResponse.ok) throw new Error('Template position update failed.')
       }
-    } catch { /* the zone is saved on the material regardless */ }
+    } catch {
+      setSaveError('The material position was saved, but its generated-material template could not be synchronized.')
+      return
+    }
 
     onSaved()
     onOpenChange(false)

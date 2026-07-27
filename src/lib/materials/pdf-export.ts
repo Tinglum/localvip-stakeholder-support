@@ -1,4 +1,4 @@
-import type { QrPlacement } from '@/lib/materials/qr-placement'
+import { getQrRenderRect, type QrPlacement } from '@/lib/materials/qr-placement'
 
 let pdfModulePromise: Promise<any> | null = null
 
@@ -198,10 +198,14 @@ export async function exportPdfWithQrPlacements({
       placements
         .filter((placement) => placement.page === pageNumber)
         .forEach((placement) => {
-          const qrSize = (placement.size / 100) * canvas.width
-          const qrX = (placement.x / 100) * canvas.width - qrSize / 2
-          const qrY = (placement.y / 100) * canvas.height - qrSize / 2
-          context.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
+          const rect = getQrRenderRect(
+            placement,
+            canvas.width,
+            canvas.height,
+            qrImage.naturalWidth,
+            qrImage.naturalHeight,
+          )
+          context.drawImage(qrImage, rect.left, rect.top, rect.width, rect.height)
         })
 
       pages.push({

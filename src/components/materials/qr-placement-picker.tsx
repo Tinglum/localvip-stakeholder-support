@@ -13,12 +13,8 @@ import { cn } from '@/lib/utils'
 import { createQrPlacementId, type QrPlacement } from '@/lib/materials/qr-placement'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 
-// US-Letter portrait aspect (8.5 x 11). The placement zones are stored as
-// fractions of the page, and the backend stamps the QR at the same fraction of
-// the real PDF page — so what you place here lands there. Most templates are
-// Letter sell-sheets, so we size the backdrop to Letter for an accurate WYSIWYG.
-const LETTER_ASPECT = 8.5 / 11
-
+// Placements use the QR square's top-left corner. Size is always measured
+// against page width so the preview and every export path share one contract.
 function isPdfSource(src: string, mimeType?: string | null) {
   return mimeType === 'application/pdf'
     || mimeType?.includes('pdf')
@@ -50,32 +46,14 @@ export function QrPlacementPicker({
   const isPdf = isPdfSource(previewUrl, previewMimeType)
   const pageFrameRef = React.useRef<HTMLDivElement>(null)
   const sizeHostRef = React.useRef<HTMLDivElement>(null)
-  // PDF page count isn't probed (we render via the browser's native viewer, not
-  // pdf.js). Templates are single-page, so default to 1; image flyers are 1 too.
-  const pageCount = 1
+  const [pageCount, setPageCount] = React.useState(1)
   const [currentPage, setCurrentPage] = React.useState(1)
   const [activePlacementId, setActivePlacementId] = React.useState<string | null>(null)
   const [containerWidth, setContainerWidth] = React.useState(0)
   const [renderedSize, setRenderedSize] = React.useState({ width: 0, height: 0 })
   const [imageLoaded, setImageLoaded] = React.useState(false)
   const draggingIdRef = React.useRef<string | null>(null)
-
-  // Proxy the PDF through this origin and render it with the browser's native
-  // viewer (reliable everywhere, unlike pdf.js which needs a version-matched
-  // worker). Hide the toolbar/scrollbar so it reads as a flat backdrop.
-  const pdfFrameSrc = React.useMemo(() => {
-    if (!isPdf) return ''
-    const proxied = toProxiedMaterialUrl(previewUrl)
-    return proxied.includes('#') ? proxied : `${proxied}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`
-  }, [isPdf, previewUrl])
-
-  // For PDFs, size the placement frame to Letter aspect within the available
-  // width so the overlay coordinates map cleanly onto the page.
-  React.useEffect(() => {
-    if (!isPdf) return
-    const width = clamp(containerWidth - 48, 240, 460)
-    if (width > 0) setRenderedSize({ width, height: width / LETTER_ASPECT })
-  }, [isPdf, containerWidth])
+  const dragOffsetRef = React.useRef({ x: 0, y: 0 })
 
   const placementsOnCurrentPage = React.useMemo(
     () => placements.filter((placement) => placement.page === currentPage),
@@ -125,6 +103,11 @@ export function QrPlacementPicker({
     )
   }
 
+  function qrHeightPercent(size: number) {
+    if (!renderedSize.width || !renderedSize.height) return size
+    return (size * renderedSize.width) / renderedSize.height
+  }
+
   function removePlacement(id: string) {
     onChange(placements.filter((placement) => placement.id !== id))
     if (activePlacementId === id) {
@@ -136,9 +119,10 @@ export function QrPlacementPicker({
     if (!pageFrameRef.current || draggingIdRef.current) return
 
     const rect = pageFrameRef.current.getBoundingClientRect()
-    const x = ((event.clientX - rect.left) / rect.width) * 100
-    const y = ((event.clientY - rect.top) / rect.height) * 100
     const defaultSize = activePlacement?.size || 18
+    const qrHeight = qrHeightPercent(defaultSize)
+    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100 - defaultSize)
+    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100 - qrHeight)
 
     const nextPlacement: QrPlacement = {
       id: createQrPlacementId(),
@@ -154,6 +138,14 @@ export function QrPlacementPicker({
 
   function handlePlacementPointerDown(id: string, event: React.MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
+    const placement = placements.find((item) => item.id === id)
+    const pageRect = pageFrameRef.current?.getBoundingClientRect()
+    if (placement && pageRect) {
+      dragOffsetRef.current = {
+        x: ((event.clientX - pageRect.left) / pageRect.width) * 100 - placement.x,
+        y: ((event.clientY - pageRect.top) / pageRect.height) * 100 - placement.y,
+      }
+    }
     draggingIdRef.current = id
     setActivePlacementId(id)
   }
@@ -165,9 +157,17 @@ export function QrPlacementPicker({
     if (!currentPlacement) return
 
     const rect = pageFrameRef.current.getBoundingClientRect()
-    const half = currentPlacement.size / 2
-    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, half, 100 - half)
-    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, half, 100 - half)
+    const qrHeight = qrHeightPercent(currentPlacement.size)
+    const x = clamp(
+      ((event.clientX - rect.left) / rect.width) * 100 - dragOffsetRef.current.x,
+      0,
+      100 - currentPlacement.size,
+    )
+    const y = clamp(
+      ((event.clientY - rect.top) / rect.height) * 100 - dragOffsetRef.current.y,
+      0,
+      100 - qrHeight,
+    )
 
     updatePlacement(currentPlacement.id, {
       x: Math.round(x * 10) / 10,
@@ -239,12 +239,14 @@ export function QrPlacementPicker({
             >
               {isPdf ? (
                 <>
-                  {/* Native PDF backdrop — pointer-events off so clicks/drags
-                      land on the zone overlay, not the iframe. */}
-                  <iframe
-                    src={pdfFrameSrc}
-                    title="Material preview"
-                    className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-white"
+                  {/* Render the actual PDF page so the overlay has the same
+                      pixel origin and aspect ratio as exported output. */}
+                  <PdfPagePreview
+                    src={toProxiedMaterialUrl(previewUrl)}
+                    page={currentPage}
+                    width={clamp(containerWidth - 48, 240, 460)}
+                    onRenderedSize={setRenderedSize}
+                    onPageCount={setPageCount}
                   />
                   {showPdfBadge()}
                 </>
@@ -282,10 +284,10 @@ export function QrPlacementPicker({
                       : 'border-brand-400 bg-brand-500/10 hover:bg-brand-500/15',
                   )}
                   style={{
-                    left: `${placement.x - placement.size / 2}%`,
-                    top: `${placement.y - placement.size / 2}%`,
+                    left: `${placement.x}%`,
+                    top: `${placement.y}%`,
                     width: `${placement.size}%`,
-                    height: `${placement.size}%`,
+                    aspectRatio: '1 / 1',
                   }}
                 >
                   <QrCode className="h-6 w-6 text-brand-700 opacity-70" />
@@ -341,12 +343,12 @@ export function QrPlacementPicker({
               <Move className="h-3 w-3" />
               <span>
                 {activePlacement
-                  ? `X: ${activePlacement.x.toFixed(1)}% Y: ${activePlacement.y.toFixed(1)}%`
+                  ? `Left: ${activePlacement.x.toFixed(1)}% Top: ${activePlacement.y.toFixed(1)}%`
                   : 'Select a zone to adjust it'}
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-surface-500">Size:</label>
+              <label className="text-xs text-surface-500">QR width:</label>
               <input
                 type="range"
                 min={8}
@@ -355,7 +357,12 @@ export function QrPlacementPicker({
                 disabled={!activePlacement}
                 onChange={(event) => {
                   if (!activePlacement) return
-                  updatePlacement(activePlacement.id, { size: Number(event.target.value) })
+                  const nextSize = Number(event.target.value)
+                  updatePlacement(activePlacement.id, {
+                    size: nextSize,
+                    x: Math.min(activePlacement.x, 100 - nextSize),
+                    y: Math.min(activePlacement.y, 100 - qrHeightPercent(nextSize)),
+                  })
                 }}
                 className="h-1 flex-1 accent-brand-500 disabled:opacity-40"
               />
@@ -363,6 +370,9 @@ export function QrPlacementPicker({
                 {activePlacement ? `${activePlacement.size}%` : '--'}
               </span>
             </div>
+            <p className="text-xs text-surface-400">
+              Measured against page width. Any call-to-action stays centered below the QR square.
+            </p>
             {activePlacement && (
               <button
                 type="button"
@@ -404,6 +414,79 @@ export function QrPlacementPicker({
       </div>
     </div>
   )
+}
+
+function PdfPagePreview({
+  src,
+  page,
+  width,
+  onRenderedSize,
+  onPageCount,
+}: {
+  src: string
+  page: number
+  width: number
+  onRenderedSize: React.Dispatch<React.SetStateAction<{ width: number; height: number }>>
+  onPageCount: React.Dispatch<React.SetStateAction<number>>
+}) {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+
+  React.useEffect(() => {
+    if (!src || !width || !canvasRef.current) return
+
+    let cancelled = false
+    let loadingTask: { destroy: () => Promise<void>; promise: Promise<any> } | null = null
+    let renderTask: { cancel: () => void; promise: Promise<void> } | null = null
+
+    async function renderPdfPage() {
+      const response = await fetch(src)
+      if (!response.ok) throw new Error('The PDF preview could not be loaded.')
+
+      const pdfjs = await import('pdfjs-dist')
+      if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+      }
+
+      loadingTask = pdfjs.getDocument({ data: await response.arrayBuffer() })
+      const document = await loadingTask.promise
+      const safePage = clamp(page, 1, document.numPages)
+      const pdfPage = await document.getPage(safePage)
+      const baseViewport = pdfPage.getViewport({ scale: 1 })
+      const viewport = pdfPage.getViewport({ scale: width / baseViewport.width })
+      const canvas = canvasRef.current
+      if (!canvas || cancelled) return
+
+      canvas.width = Math.ceil(viewport.width)
+      canvas.height = Math.ceil(viewport.height)
+      canvas.style.width = `${viewport.width}px`
+      canvas.style.height = `${viewport.height}px`
+      const context = canvas.getContext('2d')
+      if (!context) return
+
+      const currentRenderTask = pdfPage.render({ canvasContext: context, viewport })
+      renderTask = currentRenderTask
+      await currentRenderTask.promise
+      if (!cancelled) {
+        onRenderedSize({ width: viewport.width, height: viewport.height })
+        onPageCount(document.numPages)
+      }
+    }
+
+    renderPdfPage().catch(() => {
+      if (!cancelled) {
+        onRenderedSize({ width, height: width / (8.5 / 11) })
+        onPageCount(1)
+      }
+    })
+
+    return () => {
+      cancelled = true
+      renderTask?.cancel()
+      void loadingTask?.destroy()
+    }
+  }, [onPageCount, onRenderedSize, page, src, width])
+
+  return <canvas ref={canvasRef} className="pointer-events-none block bg-white" />
 }
 
 function showPdfBadge() {

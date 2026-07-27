@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/select'
 import { BRANDS } from '@/lib/constants'
 import { exportPdfWithQrPlacements } from '@/lib/materials/pdf-export'
-import { getQrPlacements } from '@/lib/materials/qr-placement'
+import { getQrPlacements, getQrRenderRect } from '@/lib/materials/qr-placement'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { generateShortCode, slugify } from '@/lib/utils'
 import { getBusinessJoinUrl } from '@/lib/business-join'
@@ -835,11 +835,14 @@ export default function QRGeneratorPage() {
 
     ctx.drawImage(flyerImg, 0, 0)
     imagePlacements.forEach((placement) => {
-      const qrW = (placement.size / 100) * canvas.width
-      const qrH = qrW
-      const qrX = (placement.x / 100) * canvas.width - qrW / 2
-      const qrY = (placement.y / 100) * canvas.height - qrH / 2
-      ctx.drawImage(qrImg, qrX, qrY, qrW, qrH)
+      const rect = getQrRenderRect(
+        placement,
+        canvas.width,
+        canvas.height,
+        qrImg.naturalWidth,
+        qrImg.naturalHeight,
+      )
+      ctx.drawImage(qrImg, rect.left, rect.top, rect.width, rect.height)
     })
 
     const compositeUrl = canvas.toDataURL('image/png')

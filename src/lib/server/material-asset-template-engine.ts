@@ -5,7 +5,7 @@ import {
   getMaterialAutomationTemplateOutputFormat,
   materialSupportsAutomationTemplate,
 } from '@/lib/materials/automation-template'
-import { getQrPlacements, type QrPlacement } from '@/lib/materials/qr-placement'
+import { getQrPlacements, getQrRenderRect, type QrPlacement } from '@/lib/materials/qr-placement'
 import type {
   Material,
   MaterialTemplate,
@@ -227,10 +227,8 @@ async function renderImageSourceMaterial(
   placements
     .filter((p) => p.page === 1)
     .forEach((placement) => {
-      const qrSize = (placement.size / 100) * canvas.width
-      const qrX = (placement.x / 100) * canvas.width - qrSize / 2
-      const qrY = (placement.y / 100) * canvas.height - qrSize / 2
-      context.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
+      const rect = getQrRenderRect(placement, canvas.width, canvas.height, qrImage.width, qrImage.height)
+      context.drawImage(qrImage, rect.left, rect.top, rect.width, rect.height)
     })
 
   return new Uint8Array(canvas.toBuffer('image/png'))
@@ -257,16 +255,15 @@ async function renderPdfSourceMaterial(
 
     const pagePlacements = placements.filter((p) => p.page === pageNumber)
     for (const placement of pagePlacements) {
-      const qrSize = (placement.size / 100) * pageWidth
-      const qrX = (placement.x / 100) * pageWidth - qrSize / 2
+      const rect = getQrRenderRect(placement, pageWidth, pageHeight, qrImage.width, qrImage.height)
       // pdf-lib uses bottom-left origin, so flip Y
-      const qrY = pageHeight - ((placement.y / 100) * pageHeight) - qrSize / 2
+      const qrY = pageHeight - rect.top - rect.height
 
       page.drawImage(qrImage, {
-        x: qrX,
+        x: rect.left,
         y: qrY,
-        width: qrSize,
-        height: qrSize,
+        width: rect.width,
+        height: rect.height,
       })
     }
   }
