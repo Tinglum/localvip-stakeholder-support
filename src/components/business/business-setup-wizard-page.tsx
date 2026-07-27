@@ -119,7 +119,7 @@ export function BusinessSetupWizardPage() {
     }
     return filters
   }, [profile.business_id, profile.id])
-  const { data: businesses, loading: businessLoading } = useBusinesses(businessFilters)
+  const { data: businesses, loading: businessLoading, refetch: refetchBusinesses } = useBusinesses(businessFilters)
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
   const { data: contacts } = useContacts({ business_id: business?.id || '__none__' })
   const { data: offers, refetch: refetchOffers } = useOffers({ business_id: business?.id || '__none__' })
@@ -333,6 +333,7 @@ export function BusinessSetupWizardPage() {
   const persistChanges = React.useCallback(async (options?: {
     businessPatch?: Record<string, unknown>
     metadataOverrides?: Record<string, unknown>
+    forceCashback?: boolean
   }): Promise<boolean> => {
     if (!business) return false
 
@@ -429,7 +430,7 @@ export function BusinessSetupWizardPage() {
       // set a rate this session (or one already exists). The 10% default is a
       // suggestion, not a completed choice.
       let savedCashback: { id?: string } | null = null
-      if (cashbackTouched || cashbackOfferId) {
+      if (options?.forceCashback || cashbackTouched || cashbackOfferId) {
         const cashbackPayload = {
           business_id: business.id,
           offer_type: 'cashback' as const,
@@ -475,6 +476,7 @@ export function BusinessSetupWizardPage() {
 
       setSaveState('saved')
       refetchOffers({ silent: true })
+      refetchBusinesses({ silent: true })
       return true
     } catch (error) {
       setSaveState('error')
@@ -502,6 +504,7 @@ export function BusinessSetupWizardPage() {
     name,
     portal,
     products,
+    refetchBusinesses,
     refetchOffers,
     supportedCauseId,
     updateBusiness,
@@ -605,6 +608,7 @@ export function BusinessSetupWizardPage() {
   const captureValueMissing = !captureValue.trim()
   const cashbackMissing = !(cashbackTouched || !!cashbackOfferId)
   const stripeRequirements = stripeStatus ? stripeRequirementLabels(stripeStatus) : []
+  const stripeOnboardingStarted = stripeStatus?.onboardingStarted === true
   const missingSetupSteps = setupState.steps.filter((item) => item.key !== 'activate' && !item.complete)
   const firstMissingSetupStep = missingSetupSteps[0] || null
 
@@ -620,9 +624,13 @@ export function BusinessSetupWizardPage() {
 
   async function handleSaveAndNext(key: StepKey) {
     setStepValidation((current) => ({ ...current, [key]: true }))
-    if (!getStepCompletion(key)) return
+    const readyToSave = key === 'cashback'
+      ? cashbackPercent >= 5 && cashbackPercent <= 25 && !!supportedCauseId
+      : getStepCompletion(key)
+    if (!readyToSave) return
 
-    const saved = await persistChanges()
+    if (key === 'cashback') setCashbackTouched(true)
+    const saved = await persistChanges({ forceCashback: key === 'cashback' })
     if (!saved) return
 
     const nextStep = getNextStep(key)
@@ -1119,7 +1127,7 @@ export function BusinessSetupWizardPage() {
                   </div>
                 ) : null}
 
-                {!stripeLoading && stripeStatus && stripeStatus.status !== 'complete' ? (
+                {!stripeLoading && stripeStatus && stripeStatus.status !== 'complete' && stripeOnboardingStarted ? (
                   <div className={`rounded-2xl border px-5 py-6 ${stripeStatus.status === 'restricted' ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}`}>
                     <div className="flex items-start gap-4">
                       <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white ${stripeStatus.status === 'restricted' ? 'bg-red-600' : 'bg-amber-500'}`}>
@@ -1137,6 +1145,22 @@ export function BusinessSetupWizardPage() {
                             </ul>
                           </div>
                         ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!stripeLoading && stripeStatus && stripeStatus.status !== 'complete' && !stripeOnboardingStarted ? (
+                  <div className="rounded-2xl border border-brand-200 bg-brand-50 px-5 py-6">
+                    <div className="flex items-start gap-4">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
+                        <CreditCard className="h-6 w-6" />
+                      </span>
+                      <div>
+                        <p className="text-lg font-semibold text-surface-950">Connect Stripe to receive payments</p>
+                        <p className="mt-1 text-sm leading-6 text-surface-700">
+                          Start the secure Stripe setup when you are ready. We will show any remaining requirements after you begin.
+                        </p>
                       </div>
                     </div>
                   </div>

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { ArrowRight, CheckCircle2, Loader2, Plus, QrCode, RefreshCw, Sparkles } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -50,6 +51,7 @@ type QrChoice = 'default' | 'new' | string
 // which QR to embed (a saved business QR, the default join QR, or a brand-new
 // one), then generate — the finished material lands in the business's library.
 export function TemplateLibraryPage() {
+  const searchParams = useSearchParams()
   const [templates, setTemplates] = React.useState<PortalTemplate[]>([])
   const [loading, setLoading] = React.useState(true)
   const [doneIds, setDoneIds] = React.useState<Set<string>>(new Set())
@@ -71,6 +73,12 @@ export function TemplateLibraryPage() {
     }
   }, [])
   React.useEffect(() => { void load() }, [load])
+  React.useEffect(() => {
+    const requestedTemplateId = searchParams.get('generateTemplate')
+    if (!requestedTemplateId || templates.length === 0) return
+    const requested = templates.find((template) => String(template.id) === requestedTemplateId)
+    if (requested) setActive(requested)
+  }, [searchParams, templates])
 
   return (
     <div className="space-y-6">
@@ -144,6 +152,7 @@ export function TemplateLibraryPage() {
 
       <TemplateGenerateDialog
         template={active}
+        initialQrId={searchParams.get('qrId')}
         onClose={() => setActive(null)}
         onGenerated={(id) => {
           setDoneIds((prev) => new Set(prev).add(String(id)))
@@ -156,10 +165,12 @@ export function TemplateLibraryPage() {
 
 function TemplateGenerateDialog({
   template,
+  initialQrId,
   onClose,
   onGenerated,
 }: {
   template: PortalTemplate | null
+  initialQrId: string | null
   onClose: () => void
   onGenerated: (templateId: number | string) => void
 }) {
@@ -174,6 +185,7 @@ function TemplateGenerateDialog({
   const [genError, setGenError] = React.useState<string | null>(null)
   // Dynamic business details + the QR preview built from them.
   const [ctx, setCtx] = React.useState<{
+    businessId: string
     joinUrl: string
     logoUrl: string
     name: string
@@ -209,6 +221,7 @@ function TemplateGenerateDialog({
       .then((j) => {
         if (j && !j.error) {
           setCtx({
+            businessId: String(j.businessId || ''),
             joinUrl: j.networkReferralUrl || j.joinUrl || '',
             logoUrl: j.logoUrl || '',
             name: j.name || '',
@@ -225,6 +238,13 @@ function TemplateGenerateDialog({
       .then((j) => { if (j && Array.isArray(j.templates)) setQrTemplates(j.templates) })
       .catch(() => {})
   }, [open])
+
+  React.useEffect(() => {
+    if (!open || !initialQrId || qrLoading) return
+    if (qrCodes.some((qr) => String(qr.id) === initialQrId)) {
+      setChoice(initialQrId)
+    }
+  }, [initialQrId, open, qrCodes, qrLoading])
 
   // A selected admin style template (choice = `tpl:<id>`), if any.
   const activeTpl = React.useMemo(
@@ -447,13 +467,20 @@ function TemplateGenerateDialog({
                 />
               ))}
 
-              <QrOption
-                active={choice === 'new'}
-                onClick={() => setChoice('new')}
-                title="Create a new QR code"
-                subtitle="Point a fresh QR at any destination"
-                icon={<Plus className="h-4 w-4" />}
-              />
+              {template && ctx?.businessId && (
+                <Link
+                  href={`/qr/generator?businessId=${encodeURIComponent(ctx.businessId)}&returnTo=${encodeURIComponent(`/portal/templates?generateTemplate=${encodeURIComponent(String(template.id))}`)}`}
+                  className="flex w-full items-center gap-3 rounded-xl border border-brand-200 bg-brand-50/50 px-3 py-3 text-left transition-colors hover:bg-brand-50"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+                    <Plus className="h-4 w-4" />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold text-surface-900">Create a new business QR code</span>
+                    <span className="block text-xs text-surface-500">Open the full generator with this business, logo, and referral details prefilled</span>
+                  </span>
+                </Link>
+              )}
 
               {choice === 'new' && (
                 <div className="space-y-2 rounded-xl border border-brand-200 bg-brand-50/50 p-3">

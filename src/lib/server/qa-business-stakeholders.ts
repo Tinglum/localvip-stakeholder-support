@@ -269,6 +269,12 @@ export function ensureQaBusinessEngagementAssets(businessId: string) {
   if (active) return active
 
   const operation = (async () => {
+    const ensureRes = await fetchQaApi(
+      `/api/dashboard/v1/Business/${encodeURIComponent(businessId)}/ensure-referral-assets`,
+      { method: 'POST' },
+    )
+    await parseQaResponse<unknown>(ensureRes, 'Failed to prepare the business referral assets.')
+
     const businessRes = await fetchQaApi(`/api/dashboard/v1/Business/${encodeURIComponent(businessId)}`)
     const qaBusiness = await parseQaResponse<QaBusinessDetail>(businessRes, 'Failed to load business.')
     if (!qaBusiness) throw new Error('The QA business could not be loaded.')
@@ -287,12 +293,15 @@ export function ensureQaBusinessEngagementAssets(businessId: string) {
     })
 
     const networkReferralCode = getQaBusinessNetworkReferralCode(qaBusiness)
-    const networkReferralUrl = qaBusiness.branchReferralUrl?.trim() || null
+    const networkReferralUrl = qaBusiness.branchReferralUrl?.trim()
+      || (networkReferralCode
+        ? `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(networkReferralCode)}`
+        : null)
     const networkQr = networkReferralCode && networkReferralUrl
       ? await ensureQaBusinessQr(qaBusiness, {
           purpose: 'business_network_referral',
           name: `${qaBusiness.name} LocalVIP network QR`,
-          code: `network-${networkReferralCode}`,
+          code: `network-${qaBusiness.id}-${networkReferralCode}`,
           targetUrl: networkReferralUrl,
           metadata: {
             network_referral_code: networkReferralCode,

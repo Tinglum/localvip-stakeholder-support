@@ -453,6 +453,7 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
   const [loading, setLoading] = React.useState(options?.enabled ?? true)
   const [error, setError] = React.useState<string | null>(null)
   const [refetchKey, setRefetchKey] = React.useState(0)
+  const silentRefetchRef = React.useRef(false)
   const enabled = options?.enabled ?? true
   const filtersKey = JSON.stringify(filters || {})
 
@@ -460,7 +461,7 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
     if (!enabled) { setLoading(false); return }
     let cancelled = false
     async function run() {
-      setLoading(true)
+      if (!silentRefetchRef.current) setLoading(true)
       setError(null)
       try {
         const parsedFilters = JSON.parse(filtersKey) as Record<string, string>
@@ -468,7 +469,10 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
         const endpoint = /^\d+$/.test(scopedId)
           ? `/api/qa/businesses/${scopedId}`
           : `/api/qa/businesses${buildQueryString(parsedFilters)}`
-        const res = await fetch(endpoint, { cache: 'no-store' })
+        const res = await withTimeout(
+          fetch(endpoint, { cache: 'no-store' }),
+          'business onboarding load',
+        )
         if (!res.ok) throw new Error('Failed to load businesses.')
         const json = await res.json()
         const arr = Array.isArray(json) ? json : (json ? [json] : [])
@@ -478,14 +482,20 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed.')
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          silentRefetchRef.current = false
+        }
       }
     }
     run()
     return () => { cancelled = true }
   }, [filtersKey, enabled, refetchKey])
 
-  const refetch = React.useCallback((_opts?: { silent?: boolean }) => setRefetchKey((k) => k + 1), [])
+  const refetch = React.useCallback((opts?: { silent?: boolean }) => {
+    silentRefetchRef.current = !!opts?.silent
+    setRefetchKey((k) => k + 1)
+  }, [])
   return { data, loading, error, refetch }
 }
 export function useBusinessInsert() {
@@ -620,8 +630,11 @@ export function useContactInsert() { return useQaInsert<Contact>('contacts') }
 export function useContactUpdate() { return useQaUpdate<Contact>('contacts') }
 export function useContactDelete() { return useQaDelete('contacts') }
 
-export function useStakeholderAssignments(_filters?: Record<string, string>, _options?: UseQueryOptions) {
-  return useQaQuery<StakeholderAssignment>('stakeholder_assignments')
+export function useStakeholderAssignments(filters?: Record<string, string>, options?: UseQueryOptions) {
+  return useQaQuery<StakeholderAssignment>('stakeholder_assignments', {
+    filters,
+    enabled: options?.enabled,
+  })
 }
 export function useStakeholders(filters?: Record<string, string>, options?: UseQueryOptions) {
   return useQaQuery<Stakeholder>('stakeholders', { filters, orderBy: 'updated_at', enabled: options?.enabled })

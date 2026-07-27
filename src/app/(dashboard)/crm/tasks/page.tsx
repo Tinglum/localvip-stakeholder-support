@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDate } from '@/lib/utils'
-import { useTasks, useTaskInsert, useTaskUpdate, useProfiles, useBusinesses, useCauses, useContacts } from '@/lib/supabase/hooks'
+import { useTasks, useTaskInsert, useTaskUpdate, useProfiles, useBusinesses, useCauses, useContacts, useStakeholderAssignments } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
 import type { Task, TaskPriority, TaskStatus } from '@/lib/types/database'
 
@@ -112,6 +112,10 @@ export default function TasksPage() {
   const { data: businesses } = useBusinesses()
   const { data: causes } = useCauses()
   const { data: contacts } = useContacts()
+  const { data: businessAssignments } = useStakeholderAssignments(
+    businessId ? { entity_type: 'business', entity_id: businessId } : undefined,
+    { enabled: !!businessId },
+  )
 
   // Build lookup maps
   const profileMap = React.useMemo(() => {
@@ -135,8 +139,20 @@ export default function TasksPage() {
 
   // Dropdown options
   const profileOptions = React.useMemo(
-    () => profiles.map(p => ({ value: p.id, label: p.full_name })),
-    [profiles]
+    () => {
+      if (!businessId) return profiles.map(p => ({ value: p.id, label: p.full_name }))
+      const eligibleIds = new Set(
+        businessAssignments
+          .filter((assignment) => assignment.status === 'active')
+          .map((assignment) => assignment.stakeholder_id),
+      )
+      if (focusedBusiness?.owner_id) eligibleIds.add(focusedBusiness.owner_id)
+      if (profile.id) eligibleIds.add(profile.id)
+      return profiles
+        .filter((candidate) => eligibleIds.has(candidate.id))
+        .map((candidate) => ({ value: candidate.id, label: candidate.full_name }))
+    },
+    [businessAssignments, businessId, focusedBusiness?.owner_id, profile.id, profiles]
   )
 
   const entityOptions = React.useMemo(() => {
@@ -374,6 +390,7 @@ export default function TasksPage() {
                   <select
                     className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
                     value={entityType}
+                    disabled={!!businessId}
                     onChange={e => { setEntityType(e.target.value as typeof entityType); setEntityId('') }}
                   >
                     <option value="">None</option>
@@ -383,13 +400,18 @@ export default function TasksPage() {
                   </select>
                 </div>
                 <div>
-                  {entityType && (
+                  {entityType && !businessId && (
                     <SearchableSelect
                       options={entityOptions}
                       value={entityId}
                       onChange={setEntityId}
                       placeholder={`Search ${entityType}s...`}
                     />
+                  )}
+                  {businessId && (
+                    <div className="flex h-9 items-center rounded-lg border border-brand-200 bg-brand-50 px-3 text-sm font-medium text-brand-800">
+                      {focusedBusiness?.name || `Business ${businessId}`}
+                    </div>
                   )}
                 </div>
               </div>

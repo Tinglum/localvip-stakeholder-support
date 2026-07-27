@@ -260,7 +260,11 @@ export default function BusinessOnboardingPage() {
   const requestedBusinessId = searchParams.get('businessId')
   const isFieldUser = getStakeholderShell(profile) === 'field'
 
-  const { data: businesses, loading, error, refetch } = useBusinesses()
+  const requestedQaBusinessId = requestedBusinessId?.replace(/^qa-/, '') || ''
+  const businessQuery = /^\d+$/.test(requestedQaBusinessId)
+    ? { id: requestedQaBusinessId }
+    : undefined
+  const { data: businesses, loading, error, refetch } = useBusinesses(businessQuery)
   const { data: cities } = useCities()
   const { data: causes } = useCauses()
   const { data: campaigns } = useCampaigns()

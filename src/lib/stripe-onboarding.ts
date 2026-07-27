@@ -11,6 +11,7 @@ export interface StripeOnboardingStatus {
   businessName?: string | null
   ownerEmail?: string | null
   hasStripeAccount: boolean
+  onboardingStarted: boolean
   stripeAccountId?: string | null
   status: StripeOnboardingStatusName
   isOnboardingComplete: boolean
@@ -52,6 +53,7 @@ export function parseStripeOnboardingStatus(value: unknown): StripeOnboardingSta
     businessName: asString(record.businessName),
     ownerEmail: asString(record.ownerEmail),
     hasStripeAccount: record.hasStripeAccount === true,
+    onboardingStarted: record.onboardingStarted === true || record.detailsSubmitted === true,
     stripeAccountId: asString(record.stripeAccountId),
     status,
     isOnboardingComplete: status === 'complete',

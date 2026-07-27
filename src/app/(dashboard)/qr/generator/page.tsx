@@ -676,6 +676,11 @@ export default function QRGeneratorPage() {
       }
 
       setGenerated(true)
+      if (searchParams.get('returnTo')?.startsWith('/')) {
+        const returnUrl = new URL(sourceReturnHref, window.location.origin)
+        returnUrl.searchParams.set('qrId', savedQr.id)
+        window.location.assign(`${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`)
+      }
     } catch (err) {
       console.error('QR generation failed:', err)
     } finally {
