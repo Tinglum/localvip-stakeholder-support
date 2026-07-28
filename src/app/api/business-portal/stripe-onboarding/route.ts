@@ -15,6 +15,12 @@ function getBusinessId(request: Request) {
   return parseQaBusinessId(new URL(request.url).searchParams.get('businessId'))
 }
 
+function getQaError(payload: unknown, fallback: string) {
+  if (!payload || typeof payload !== 'object') return fallback
+  const error = (payload as Record<string, unknown>).error
+  return typeof error === 'string' && error.trim() ? error.trim() : fallback
+}
+
 async function requireQaSession() {
   const session = await getAuthenticatedSession()
   if (!session) return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) }
@@ -36,7 +42,10 @@ export async function GET(request: Request) {
     const contentType = response.headers.get('content-type') || ''
     const payload = contentType.includes('json') ? await response.json().catch(() => ({})) : {}
     if (!response.ok) {
-      return NextResponse.json({ error: 'Stripe onboarding is unavailable right now.' }, { status: 502 })
+      return NextResponse.json(
+        { error: getQaError(payload, 'Stripe onboarding is unavailable right now.') },
+        { status: response.status >= 400 && response.status < 500 ? response.status : 502 },
+      )
     }
 
     const status = parseStripeOnboardingStatus(payload)
@@ -65,7 +74,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: response.status === 409
           ? 'Stripe onboarding cannot be started for this account.'
-          : 'A Stripe onboarding link could not be created.' },
+          : getQaError(payload, 'A Stripe onboarding link could not be created.') },
         { status },
       )
     }

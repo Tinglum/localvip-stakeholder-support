@@ -15,6 +15,7 @@ import { DealManager } from '@/components/crm/deal-manager'
 import { useAuth } from '@/lib/auth/context'
 import { resolveBusinessOffer } from '@/lib/offers'
 import {
+  getBusinessQaAccountId,
   getBusinessLaunchPhase,
   getBusinessPortalData,
   resolveScopedBusiness,
@@ -211,6 +212,7 @@ export function BusinessSetupWizardPage() {
     () => (business ? getBusinessPortalData(business) : {}),
     [business]
   )
+  const qaBusinessId = React.useMemo(() => getBusinessQaAccountId(business), [business])
   const captureOffer = business ? resolveBusinessOffer(business, offers, 'capture') : null
   const launchPhase = business ? getBusinessLaunchPhase(business, contacts) : 'setup'
 
@@ -220,8 +222,7 @@ export function BusinessSetupWizardPage() {
 
   const refreshStripeStatus = React.useCallback(async (): Promise<StripeOnboardingStatus | null> => {
     if (!business) return null
-    const businessId = business.id
-    if (!businessId) {
+    if (!qaBusinessId) {
       setStripeStatus(null)
       setStripeError('This business is not linked to a QA business account.')
       setStripeLoading(false)
@@ -230,7 +231,7 @@ export function BusinessSetupWizardPage() {
     setStripeLoading(true)
     setStripeError(null)
     try {
-      const query = `?businessId=${encodeURIComponent(businessId)}`
+      const query = `?businessId=${encodeURIComponent(qaBusinessId)}`
       const response = await fetch(`/api/business-portal/stripe-onboarding${query}`, { cache: 'no-store' })
       const result = await response.json().catch(() => ({}))
       if (!response.ok || result.error) throw new Error(result.error || 'Stripe status could not be loaded.')
@@ -245,7 +246,7 @@ export function BusinessSetupWizardPage() {
     } finally {
       setStripeLoading(false)
     }
-  }, [business])
+  }, [business, qaBusinessId])
 
   React.useEffect(() => {
     void refreshStripeStatus()
@@ -267,15 +268,14 @@ export function BusinessSetupWizardPage() {
 
   const openStripeOnboarding = React.useCallback(async () => {
     if (!business) return
-    const businessId = business.id
-    if (!businessId) {
+    if (!qaBusinessId) {
       setStripeError('This business is not linked to a QA business account.')
       return
     }
     setOpeningStripe(true)
     setStripeError(null)
     try {
-      const response = await fetch(`/api/business-portal/stripe-onboarding?businessId=${encodeURIComponent(businessId)}`, { method: 'POST' })
+      const response = await fetch(`/api/business-portal/stripe-onboarding?businessId=${encodeURIComponent(qaBusinessId)}`, { method: 'POST' })
       const result = await response.json().catch(() => ({})) as { onboardingUrl?: string; error?: string }
       if (response.status === 409) {
         const refreshedStatus = await refreshStripeStatus()
@@ -293,7 +293,7 @@ export function BusinessSetupWizardPage() {
     } finally {
       setOpeningStripe(false)
     }
-  }, [business, refreshStripeStatus])
+  }, [business, qaBusinessId, refreshStripeStatus])
 
   React.useEffect(() => {
     if (!business) return
