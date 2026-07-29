@@ -8,6 +8,7 @@ import {
   Smartphone, Loader2, CheckCircle, AlertCircle, TrendingUp, ArrowRight, Copy, RefreshCw,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
+import { OpenInWebappButton } from '@/components/crm/open-in-webapp-button'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -290,6 +291,11 @@ export default function ConsumerDetailPage() {
           >
             View as user
           </Button>
+          <OpenInWebappButton
+            userId={c.id}
+            userName={fullName}
+            stakeholderType="Consumer"
+          />
           <Button size="sm" onClick={() => setSupportOpen(true)}>Edit/support profile</Button>
         </div>
       </div>

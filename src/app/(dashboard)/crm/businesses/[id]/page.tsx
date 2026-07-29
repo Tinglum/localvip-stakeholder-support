@@ -25,6 +25,7 @@ import { ProgressSteps } from '@/components/ui/progress-steps'
 import { BusinessExecutionOverview } from '@/components/crm/business-execution-overview'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { RealLogInAsButton } from '@/components/crm/real-log-in-as-button'
+import { OpenInWebappButton } from '@/components/crm/open-in-webapp-button'
 import { QaImportedFieldsPanel, QaUniversalBacklogTable, type QaImportedFact } from '@/components/crm/qa-linking-panels'
 import {
   Select,
@@ -620,6 +621,11 @@ export default function BusinessDetailPage() {
                   backend user id (the token-minting path) — owner?.id is a derived
                   UUID, so only the QA owner id is passed. */}
               <RealLogInAsButton
+                userId={biz.owner_user_id || null}
+                userName={owner?.full_name || biz.owner_name || biz.name}
+                stakeholderType="Business"
+              />
+              <OpenInWebappButton
                 userId={biz.owner_user_id || null}
                 userName={owner?.full_name || biz.owner_name || biz.name}
                 stakeholderType="Business"

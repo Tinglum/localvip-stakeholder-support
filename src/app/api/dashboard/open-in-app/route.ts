@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic'
 
 const WEBAPP_URL = (process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com').replace(/\/+$/, '')
 
-// Admin: "Open in app as this customer". Mints a genuine, short-lived QA token
-// for the target user (SysAdmin-gated on the backend) and returns a my.localvip.com
+// Admin: open the webapp as a customer, business owner, or cause owner. Mints a
+// genuine, short-lived QA token (SysAdmin-gated on the backend) and returns a my.localvip.com
 // handoff URL. The token rides in the URL FRAGMENT so it never hits a server log
 // or Referer header; the webapp verifies it (JWKS) before establishing a session.
 export async function POST(request: NextRequest) {
@@ -38,6 +38,6 @@ export async function POST(request: NextRequest) {
     if (error instanceof QaApiError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    return NextResponse.json({ error: 'Could not open the app as this customer.' }, { status: 500 })
+    return NextResponse.json({ error: 'Could not open the webapp as this user.' }, { status: 500 })
   }
 }
