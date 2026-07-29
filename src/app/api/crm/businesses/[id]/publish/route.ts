@@ -17,6 +17,11 @@ type QaOffer = {
   cashback_percent?: number | string | null
 }
 
+type QaDeal = {
+  cashBack?: number | string | null
+  cash_back?: number | string | null
+}
+
 function parseQaId(value: string) {
   const candidate = value.startsWith('qa-') ? value.slice(3) : value
   return /^\d+$/.test(candidate) ? Number(candidate) : null
@@ -99,16 +104,21 @@ export async function POST(
     const offers = asItems<QaOffer>(offersPayload)
     const captureOffer = offers.find((offer) => getOfferType(offer) === 'capture')
     const cashbackOffer = offers.find((offer) => getOfferType(offer) === 'cashback')
-    const cashbackValue = Number(
+    const dealsResponse = await fetchQaApi(`/api/dashboard/v1/Deal?businessAccountId=${qaBusinessId}`)
+    const dealsPayload = await parseQaResponse<unknown>(dealsResponse, 'Failed to verify business deals.')
+    const cashbackValues = asItems<QaDeal>(dealsPayload).map((deal) => Number(deal.cashBack ?? deal.cash_back))
+    const legacyCashbackValue = Number(
       cashbackOffer?.cashbackPercent
-      ?? cashbackOffer?.cashback_percent
-      ?? cashbackOffer?.discountValue
-      ?? cashbackOffer?.discount_value,
+        ?? cashbackOffer?.cashback_percent
+        ?? cashbackOffer?.discountValue
+        ?? cashbackOffer?.discount_value,
     )
+    const hasValidCashback = cashbackValues.some((value) => Number.isFinite(value) && value >= 5 && value <= 25)
+      || (Number.isFinite(legacyCashbackValue) && legacyCashbackValue >= 5 && legacyCashbackValue <= 25)
     if (!captureOffer || !(captureOffer.headline || captureOffer.title)?.trim()) {
       missingProfileItems.push('customer capture offer')
     }
-    if (!Number.isFinite(cashbackValue) || cashbackValue < 5 || cashbackValue > 25) {
+    if (!hasValidCashback) {
       missingProfileItems.push('cashback percentage')
     }
     if (missingProfileItems.length > 0) {
