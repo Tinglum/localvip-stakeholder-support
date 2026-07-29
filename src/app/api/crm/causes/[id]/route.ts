@@ -28,7 +28,7 @@ function buildCauseCreatePayload(
 ) {
   return {
     name: qaCause.name,
-    type: 'nonprofit' as const,
+    type: /school|pta|booster/i.test(qaCause.category || '') ? ('school' as const) : ('nonprofit' as const),
     organization_id: null,
     website: null,
     email: qaCause.ownerEmail || null,
@@ -102,6 +102,9 @@ function buildCauseQaSyncPatch(
 ) {
   return {
     name: qaCause.name,
+    type: /school|pta|booster/i.test(qaCause.category || '')
+      ? ('school' as const)
+      : localCause?.type || ('nonprofit' as const),
     email: qaCause.ownerEmail || localCause?.email || null,
     phone: qaCause.ownerPhone || localCause?.phone || null,
     address:
@@ -302,7 +305,9 @@ export async function GET(
     }
   }
 
-  const detail = buildCrmCauseDetail(localCause, qaCause, qaError)
+  // A local workflow sync failure must not make a successfully loaded QA record
+  // look broken. QA remains the source of truth for the cause identity.
+  const detail = buildCrmCauseDetail(localCause, qaCause, qaCause ? null : qaError)
   if (!detail) {
     const status = qaError && !/not found/i.test(qaError) ? 502 : 404
     return NextResponse.json(

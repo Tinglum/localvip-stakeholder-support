@@ -191,12 +191,17 @@ export default function CauseDetailPage() {
   // ── Derived data ──
   const profileMap = React.useMemo(() => new Map(profiles.map(p => [p.id, p])), [profiles])
   const city = cause?.city_id ? cities.find(c => c.id === cause.city_id) || null : null
+  const qaCityLabel = [causeResponse?.qaCause?.city, causeResponse?.qaCause?.state]
+    .filter(Boolean)
+    .join(', ')
+  const locationLabel = city ? `${city.name}, ${city.state}` : qaCityLabel || 'Location not added'
   const campaign = cause?.campaign_id ? campaigns.find(c => c.id === cause.campaign_id) || null : null
   const linkedBusinesses = React.useMemo(() =>
     allBusinesses.filter(b => b.linked_cause_id === causeId),
     [allBusinesses, causeId],
   )
   const isSchool = cause?.type === 'school'
+    || /school|pta|booster/i.test(causeResponse?.qaCause?.category || '')
   const entityLabel = isSchool ? 'School' : 'Cause'
 
   // ── Owner resolution (fallback chain: cause.owner_id → assignment) ──
@@ -663,23 +668,12 @@ export default function CauseDetailPage() {
         </div>
       )}
 
-      {detailQaError && (
+      {detailQaError && !causeResponse?.qaCause && (
         <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
           <div>
             <p className="font-medium">QA nonprofit sync warning</p>
             <p className="mt-1 text-xs text-warning-700">{detailQaError}</p>
-          </div>
-        </div>
-      )}
-      {qaLinkedCauseId && (
-        <div className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
-          <div>
-            <p className="font-medium">QA-linked cause record</p>
-            <p className="mt-1 text-xs text-sky-800">
-              Blue cards on this page are imported live from the QA server every time this cause is opened. Dashboard launch work like codes, tasks, notes, outreach, materials, and QR stays local until QA supports those domains.
-            </p>
           </div>
         </div>
       )}
@@ -707,14 +701,14 @@ export default function CauseDetailPage() {
       {/* ── Header ── */}
       <PageHeader
         title={cause.name}
-        description={`${entityLabel} mobilization dashboard \u2022 ${city ? `${city.name}, ${city.state}` : 'No city linked'}`}
+        description={`${entityLabel} mobilization dashboard \u2022 ${locationLabel}`}
         breadcrumb={[
           { label: 'CRM', href: '/crm/causes' },
           { label: isSchool ? 'Schools' : 'Causes', href: '/crm/causes' },
           { label: cause.name },
         ]}
         actions={(
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="relative">
               <Button variant="outline" size="sm" onClick={() => setStageDropdownOpen(!stageDropdownOpen)}>
                 <Badge variant={STAGE_VARIANT[cause.stage]} dot className="mr-1">{ONBOARDING_STAGES[cause.stage].label}</Badge>
@@ -743,7 +737,7 @@ export default function CauseDetailPage() {
             </Button>
             <LogInAsButton
               userId={owner?.id || null}
-              userName={owner?.full_name || cause.name}
+              userName={owner?.full_name || causeResponse?.qaCause?.ownerName || cause.name}
               stakeholderType={isSchool ? 'School Leader' : 'Cause Leader'}
             />
             <OpenInWebappButton
@@ -769,7 +763,9 @@ export default function CauseDetailPage() {
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Owner</p>
               <Pencil className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />
             </div>
-            <p className="mt-1 text-sm font-semibold text-surface-900 truncate">{owner?.full_name || 'Unassigned'}</p>
+            <p className="mt-1 text-sm font-semibold text-surface-900 truncate">
+              {owner?.full_name || causeResponse?.qaCause?.ownerName || 'Owner not added'}
+            </p>
           </CardContent>
         </Card>
         <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('initial_connection')}>
@@ -778,7 +774,7 @@ export default function CauseDetailPage() {
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">City</p>
               <Pencil className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />
             </div>
-            <p className="mt-1 text-sm font-semibold text-surface-900 truncate">{city ? `${city.name}, ${city.state}` : 'No city'}</p>
+            <p className="mt-1 text-sm font-semibold text-surface-900 truncate">{locationLabel}</p>
           </CardContent>
         </Card>
         <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('activation_decision')}>
@@ -791,10 +787,10 @@ export default function CauseDetailPage() {
               <div className="flex-1 h-2 rounded-full bg-surface-100 overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all ${readiness.percent >= 75 ? 'bg-success-500' : readiness.percent >= 40 ? 'bg-warning-500' : 'bg-surface-300'}`}
-                  style={{ width: `${readiness.percent}%` }}
+                  style={{ width: `${cause.stage === 'live' ? 100 : readiness.percent}%` }}
                 />
               </div>
-              <span className="text-sm font-bold text-surface-900">{readiness.percent}%</span>
+              <span className="text-sm font-bold text-surface-900">{cause.stage === 'live' ? 100 : readiness.percent}%</span>
             </div>
           </CardContent>
         </Card>
