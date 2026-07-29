@@ -61,6 +61,7 @@ export interface QaDashboardAccountDetail extends QaDashboardAccountSummary {
   branchReferralUrl?: string | null
   /** Numeric backend user id of the business/cause owner (earliest AccountUser). */
   ownerUserId?: number | null
+  contributingBusinessCount?: number
   // Dashboard CRM pipeline annotations, now stored on the QA Account so the CRM
   // works on any QA business/cause without a Supabase row.
   crmStage?: string | null

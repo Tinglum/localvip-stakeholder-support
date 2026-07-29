@@ -200,6 +200,10 @@ export default function CauseDetailPage() {
     allBusinesses.filter(b => b.linked_cause_id === causeId),
     [allBusinesses, causeId],
   )
+  const contributingBusinessCount = Math.max(
+    linkedBusinesses.length,
+    causeResponse?.qaCause?.contributingBusinessCount || 0,
+  )
   const isSchool = cause?.type === 'school'
     || /school|pta|booster/i.test(causeResponse?.qaCause?.category || '')
   const entityLabel = isSchool ? 'School' : 'Cause'
@@ -830,7 +834,7 @@ export default function CauseDetailPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatusCard label="Activation" value={`${completedStepCount}/${executionSteps.length}`} ready={executionSteps.every(s => s.state === 'completed')} onClick={() => setLifecycleModal('activation_decision')} />
             <StatusCard label="QR Assets" value={causeQrCodes.length > 0 ? 'Ready' : 'Missing'} ready={causeQrCodes.length > 0} onClick={() => setLifecycleModal('materials_qr')} />
-            <StatusCard label="Businesses" value={`${linkedBusinesses.length}`} ready={linkedBusinesses.length > 0} onClick={() => setActiveTab('businesses')} />
+            <StatusCard label="Contributing Businesses" value={`${contributingBusinessCount}`} ready={contributingBusinessCount > 0} onClick={() => setActiveTab('businesses')} />
             <StatusCard label="Materials" value={`${generatedCount} ready`} ready={generatedCount > 0} onClick={() => setActiveTab('materials')} />
           </div>
 
