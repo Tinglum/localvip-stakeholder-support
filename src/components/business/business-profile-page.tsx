@@ -18,7 +18,7 @@ import {
   resolveScopedBusiness,
 } from '@/lib/business-portal'
 import { formatCashbackLabel, resolveBusinessOffer } from '@/lib/offers'
-import { useBusinesses, useBusinessUpdate, useCauses, useContacts, useOffers } from '@/lib/supabase/hooks'
+import { useBusinesses, useBusinessUpdate, useCauses, useContacts, useDeals, useOffers } from '@/lib/supabase/hooks'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -40,6 +40,7 @@ export function BusinessProfilePage() {
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
   const { data: contacts } = useContacts({ business_id: business?.id || '__none__' })
   const { data: offers } = useOffers({ business_id: business?.id || '__none__' })
+  const { data: deals, refetch: refetchDeals } = useDeals({ business_account_id: business?.id || '__none__' })
   const { data: causes } = useCauses()
   const { update } = useBusinessUpdate()
 
@@ -168,7 +169,9 @@ export function BusinessProfilePage() {
   }
 
   const captureOffer = resolveBusinessOffer(business, offers, 'capture')
-  const cashbackOffer = resolveBusinessOffer(business, offers, 'cashback')
+  const cashbackDeal = deals.find((deal) => deal.active) || deals[0] || null
+  const cashbackValue = cashbackDeal ? Number(cashbackDeal.cash_back) : NaN
+  const cashbackLabel = Number.isFinite(cashbackValue) ? formatCashbackLabel(cashbackValue) : 'No deal configured'
   const launchPhase = getBusinessLaunchPhase(business, contacts)
   const activationTone = getActivationTone(business.activation_status || (launchPhase === 'setup' ? 'not_started' : launchPhase === 'live' || launchPhase === 'ready_to_go_live' ? 'active' : 'in_progress'))
   const activationLabel = getActivationLabel(business.activation_status || (launchPhase === 'setup' ? 'not_started' : launchPhase === 'live' || launchPhase === 'ready_to_go_live' ? 'active' : 'in_progress'))
@@ -218,11 +221,11 @@ export function BusinessProfilePage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <InfoCard href="/portal/setup" label="Launch phase" value={launchPhaseLabel(launchPhase)} detail="Open your setup path." icon={<Building2 className="h-5 w-5" />} />
         <InfoCard href="/portal/setup?step=capture" label="Customer capture offer" value={captureOffer.value_label || captureOffer.headline} detail="Edit the offer that collects your first 100." icon={<Users className="h-5 w-5" />} />
-        <InfoCard href="/portal/setup?step=cashback" label="LocalVIP cashback" value={formatCashbackLabel(cashbackOffer.cashback_percent)} detail="Change the ongoing customer reward." icon={<Wallet className="h-5 w-5" />} />
+        <InfoCard href="/portal/setup?step=cashback" label="LocalVIP deal" value={cashbackLabel} detail="Change the scheduled customer reward." icon={<Wallet className="h-5 w-5" />} />
         <InfoCard href="/portal/setup?step=cashback" label="Linked cause or school" value={linkedCause?.name || 'Customer chooses later'} detail="Pick the cause your business champions." icon={<Heart className="h-5 w-5" />} />
       </div>
 
-      <DealManager businessAccountId={String(business.id)} mode="portal" />
+      <DealManager businessAccountId={String(business.id)} mode="portal" onDealsChanged={() => refetchDeals({ silent: true })} />
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
         <Card>
@@ -285,10 +288,10 @@ export function BusinessProfilePage() {
                 <p className="mt-2 text-xs text-amber-800">Use this to get people interested before you are fully live.</p>
               </div>
               <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-brand-700">LocalVIP Cashback (Live)</p>
-                <p className="mt-2 text-lg font-semibold text-surface-900">{formatCashbackLabel(cashbackOffer.cashback_percent)}</p>
-                <p className="mt-2 text-sm leading-6 text-surface-600">{cashbackOffer.description}</p>
-                <p className="mt-2 text-xs text-brand-800">Use this to bring customers back again after launch.</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-brand-700">LocalVIP Deal</p>
+                <p className="mt-2 text-lg font-semibold text-surface-900">{cashbackLabel}</p>
+                <p className="mt-2 text-sm leading-6 text-surface-600">The percentage and schedule come from your LocalVIP deal.</p>
+                <p className="mt-2 text-xs text-brand-800">Use the deal editor above to control when customers can shop and earn cashback.</p>
               </div>
             </CardContent>
           </Card>

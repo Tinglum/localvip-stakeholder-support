@@ -33,6 +33,7 @@ import {
   useBusinessReferrals,
   useCities,
   useContacts,
+  useDeals,
   useOffers,
 } from '@/lib/supabase/hooks'
 import {
@@ -244,6 +245,7 @@ export function BusinessGrowPage() {
   const business = React.useMemo(() => resolveScopedBusiness(profile, ownedBusinesses), [ownedBusinesses, profile])
   const { data: referrals, refetch } = useBusinessReferrals({ source_business_id: business?.id || '__none__' })
   const { data: sourceOffers } = useOffers({ business_id: business?.id || '__none__' })
+  const { data: sourceDeals } = useDeals({ business_account_id: business?.id || '__none__' })
   const { data: sourceContacts } = useContacts({ business_id: business?.id || '__none__' })
 
   const [candidates, setCandidates] = React.useState<BusinessReferralCandidate[]>([])
@@ -281,9 +283,11 @@ export function BusinessGrowPage() {
     business ? resolveBusinessOffer(business, sourceOffers, 'capture') : null
   ), [business, sourceOffers])
 
-  const cashbackOffer = React.useMemo(() => (
-    business ? resolveBusinessOffer(business, sourceOffers, 'cashback') : null
-  ), [business, sourceOffers])
+  const cashbackPercent = React.useMemo(() => {
+    const deal = sourceDeals.find((item) => item.active) || sourceDeals[0]
+    const value = Number(deal?.cash_back)
+    return Number.isFinite(value) ? value : null
+  }, [sourceDeals])
 
   const joinedCount = React.useMemo(
     () => sourceContacts.filter((contact) => contact.list_status === 'joined' || !!contact.joined_at).length,
@@ -360,7 +364,7 @@ export function BusinessGrowPage() {
       sourceBusinessCategory: business.category,
       sourceCity: cityName,
       sourceCaptureOffer: getOfferReference(captureOffer),
-      sourceCashbackPercent: cashbackOffer?.cashback_percent || null,
+      sourceCashbackPercent: cashbackPercent,
       sourceJoinedCount: joinedCount,
       targetBusinessName,
       targetBusinessCategory: targetCategory,
@@ -375,7 +379,7 @@ export function BusinessGrowPage() {
   }, [
     business,
     captureOffer,
-    cashbackOffer?.cashback_percent,
+    cashbackPercent,
     channel,
     cityName,
     crmTarget?.city_label,

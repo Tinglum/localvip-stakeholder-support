@@ -23,15 +23,12 @@ export interface BusinessPortalData {
   community_impact_total?: number
   transactions_count?: number
   linked_cause_name?: string
-  cashback_percent?: number
   capture_offer_title?: string
   capture_offer_description?: string
   capture_offer_value?: string
   hundred_list_interest?: 'interested' | 'not_now'
   hundred_list_interest_recorded_at?: string
   hundred_list_activation_status?: 'requested' | 'in_setup' | 'active' | 'not_requested'
-  cashback_offer_title?: string
-  cashback_offer_description?: string
   cashback_offer_value?: string
   portal_activation_review_state?: 'pending' | 'approved'
   portal_activation_requested_at?: string
@@ -236,21 +233,12 @@ export function getBusinessOfferTitle(business: Business): string {
   return data.capture_offer_title || data.offer_title || 'Join our list and get access to exclusive offers'
 }
 
-export function getBusinessCashbackPercent(business: Business): number {
-  const data = getBusinessPortalData(business)
-  const percent = Number(data.cashback_percent || 10)
-  if (Number.isNaN(percent)) return 10
-  return Math.min(25, Math.max(5, percent))
-}
-
 export function getBusinessLaunchPhase(business: Business, contacts: Contact[]): BusinessLaunchPhase {
   if (business.launch_phase) return business.launch_phase
 
   const data = getBusinessPortalData(business)
   const hasProfile = !!business.name && !!business.category && !!(business.public_description || data.description)
-  const hasCashback = !!data.cashback_percent || !!data.cashback_offer_title
-
-  if (!hasProfile || !hasCashback) return 'setup'
+  if (!hasProfile) return 'setup'
   if (business.stage === 'live') return 'live'
   if (data.hundred_list_interest === 'interested' && contacts.length < 100) return 'capturing_100'
   return 'ready_to_go_live'

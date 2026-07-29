@@ -10,6 +10,8 @@ import {
   sanitizeFilenamePart,
   toDisplayUrl,
 } from '@/lib/material-engine'
+import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
+import { getBusinessQaAccountId } from '@/lib/business-portal'
 import { resolveBusinessOffer } from '@/lib/offers'
 import { sanitizeStakeholderCodeValue } from '@/lib/stakeholder-codes'
 import {
@@ -278,6 +280,37 @@ export async function ensureAutomatedStakeholderMaterials(
     referralCode: defaultCodes.referralCode,
     connectionCode: defaultCodes.connectionCode,
   })
+}
+
+type QaDealForMaterials = {
+  active?: boolean | null
+  isActive?: boolean | null
+  cashBack?: number | string | null
+  cash_back?: number | string | null
+}
+
+function asQaItems<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[]
+  if (value && typeof value === 'object' && Array.isArray((value as { items?: unknown }).items)) {
+    return (value as { items: T[] }).items
+  }
+  return []
+}
+
+async function getQaDealCashbackLabel(business: Business | null) {
+  const qaBusinessId = getBusinessQaAccountId(business)
+  if (!qaBusinessId) return null
+
+  try {
+    const response = await fetchQaApi(`/api/dashboard/v1/Deal?businessAccountId=${encodeURIComponent(qaBusinessId)}`)
+    const payload = await parseQaResponse<unknown>(response, 'Failed to load the business deal.')
+    const deals = asQaItems<QaDealForMaterials>(payload)
+    const deal = deals.find((item) => item.active === true || item.isActive === true) || deals[0]
+    const value = Number(deal?.cashBack ?? deal?.cash_back)
+    return Number.isFinite(value) && value >= 1 && value <= 36 ? `${value}% cashback` : null
+  } catch {
+    return null
+  }
 }
 
 export async function ensureStakeholderCodesAndQrCode(
@@ -1269,7 +1302,7 @@ async function buildStakeholderMaterialContext(
 
   const offers = business ? await getOffersForBusiness(supabase, business.id) : []
   const captureOffer = business ? resolveBusinessOffer(business, offers, 'capture') : null
-  const cashbackOffer = business ? resolveBusinessOffer(business, offers, 'cashback') : null
+  const cashbackLabel = await getQaDealCashbackLabel(business)
   const brand = (business?.brand || cause?.brand || profile?.brand_context || 'localvip') as 'localvip' | 'hato'
   const ownerName = profile?.full_name || business?.name || cause?.name || stakeholder.name
   const cityName = city?.name || 'your city'
@@ -1292,7 +1325,7 @@ async function buildStakeholderMaterialContext(
     captureOfferHeadline: captureOffer?.headline || `Join ${stakeholder.name}`,
     captureOfferDescription: captureOffer?.description || getDefaultDescriptionForStakeholder(stakeholder),
     captureOfferValue: captureOffer?.value_label || '',
-    cashbackLabel: cashbackOffer?.value_label || '10% cashback',
+    cashbackLabel: cashbackLabel || 'LocalVIP cashback',
     supportLabel: getSupportLabel(stakeholder, cityName),
   }
 }

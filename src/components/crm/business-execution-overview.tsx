@@ -38,6 +38,7 @@ import { computeBusinessExecutionSteps, getBusinessNextActions, getTabForBusines
 import {
   useAdminTasks,
   useContacts,
+  useDeals,
   useGeneratedMaterials,
   useOfferInsert,
   useOffers,
@@ -178,6 +179,7 @@ export function BusinessExecutionOverview({
   const { data: hookSteps, refetch: refetchSteps } = useOnboardingSteps({ flow_id: flow?.id || EMPTY_UUID }, { enabled: localStateEnabled })
   const steps = localState?.steps ?? hookSteps
   const { data: hookOffers, refetch: refetchOffers } = useOffers({ business_id: queryBusinessId }, { enabled: localStateEnabled })
+  const { data: deals, refetch: refetchDeals } = useDeals({ business_account_id: queryBusinessId })
   const offers = localState?.offers ?? hookOffers
   const { data: hookContacts, refetch: refetchContacts } = useContacts({ business_id: queryBusinessId }, { enabled: localStateEnabled })
   const contacts = localState?.contacts ?? hookContacts
@@ -193,7 +195,9 @@ export function BusinessExecutionOverview({
   const profileMap = React.useMemo(() => new Map(profiles.map((item) => [item.id, item])), [profiles])
   const task = adminTasks[0] || null
   const captureOffer = resolveBusinessOffer(biz, offers, 'capture')
-  const cashbackOffer = resolveBusinessOffer(biz, offers, 'cashback')
+  const cashbackDeal = deals.find((deal) => deal.active) || deals[0] || null
+  const cashbackValue = cashbackDeal ? Number(cashbackDeal.cash_back) : NaN
+  const cashbackReady = Number.isFinite(cashbackValue) && cashbackValue >= 1 && cashbackValue <= 36
   const generatedCount = generatedMaterials.filter((item) => item.generation_status === 'generated' && !!item.generated_file_url).length
   const generationState = generatedCount > 0
     ? 'generated'
@@ -213,7 +217,6 @@ export function BusinessExecutionOverview({
   // backend StartDate/EndDate via toBackendShape (starts_at/ends_at).
   const [captureStartsAt, setCaptureStartsAt] = React.useState((captureOffer.starts_at || '').slice(0, 10))
   const [captureEndsAt, setCaptureEndsAt] = React.useState((captureOffer.ends_at || '').slice(0, 10))
-  const [cashbackPercent, setCashbackPercent] = React.useState(cashbackOffer.cashback_percent || 10)
   const [offerMessage, setOfferMessage] = React.useState<string | null>(null)
   const [offerError, setOfferError] = React.useState<string | null>(null)
   const [offerSaving, setOfferSaving] = React.useState(false)
@@ -267,8 +270,7 @@ export function BusinessExecutionOverview({
     setCaptureValue(captureOffer.value_label || '')
     setCaptureStartsAt((captureOffer.starts_at || '').slice(0, 10))
     setCaptureEndsAt((captureOffer.ends_at || '').slice(0, 10))
-    setCashbackPercent(cashbackOffer.cashback_percent || 10)
-  }, [captureOffer.description, captureOffer.headline, captureOffer.value_label, captureOffer.starts_at, captureOffer.ends_at, cashbackOffer.cashback_percent])
+  }, [captureOffer.description, captureOffer.headline, captureOffer.value_label, captureOffer.starts_at, captureOffer.ends_at])
 
   React.useEffect(() => {
     setBrandingLogoUrl(workspaceBusiness.logo_url || '')
@@ -538,20 +540,6 @@ export function BusinessExecutionOverview({
         metadata: { source: 'crm_business_execution' },
       }
 
-      const cashbackPayload: Partial<Offer> = {
-        business_id: queryBusinessId,
-        offer_type: 'cashback',
-        status: 'active',
-        headline: 'Standard LocalVIP Cashback',
-        description: 'This is the percentage customers receive back when they shop with you through LocalVIP.',
-        value_type: 'cashback_percent',
-        value_label: `${cashbackPercent}% cashback`,
-        cashback_percent: cashbackPercent,
-        starts_at: null,
-        ends_at: null,
-        metadata: { source: 'crm_business_execution' },
-      }
-
       if (captureOffer.id) await updateOffer(captureOffer.id, capturePayload)
       else await insertOffer(capturePayload)
       await updateBusiness(writeBusinessId, {
@@ -562,11 +550,8 @@ export function BusinessExecutionOverview({
           hundred_list_activated_at: new Date().toISOString(),
         },
       })
-      if (cashbackOffer.id) await updateOffer(cashbackOffer.id, cashbackPayload)
-      else await insertOffer(cashbackPayload)
-
       await refetchExecution()
-      setOfferMessage('Offer settings saved.')
+      setOfferMessage('100-list offer saved.')
     } catch (error) {
       setOfferError(error instanceof Error ? error.message : 'Offer settings could not be saved.')
     } finally {
@@ -778,7 +763,7 @@ export function BusinessExecutionOverview({
           value={hundredListActivationStatus === 'active' ? `${joinedCount} / 100` : hundredListInterest === 'interested' ? 'Requested' : 'Not requested'}
           ready={hundredListActivationStatus === 'active'}
         />
-        <StatusCard label="Cashback" value={`${cashbackPercent}%`} ready={cashbackPercent >= 5 && cashbackPercent <= 25} />
+        <StatusCard label="LocalVIP deal" value={cashbackReady ? `${cashbackValue}%` : 'Not configured'} ready={cashbackReady} />
       </div>
 
       {/* Main dashboard: the LocalVIP network referral — distinct from the
@@ -1187,7 +1172,7 @@ export function BusinessExecutionOverview({
 
           {activeWorkspaceTab === 'deal' ? (
             <div id="deal">
-              <DealManager businessAccountId={String(queryBusinessId)} />
+              <DealManager businessAccountId={String(queryBusinessId)} onDealsChanged={() => refetchDeals({ silent: true })} />
             </div>
           ) : null}
 
