@@ -83,13 +83,6 @@ export async function POST(
     if (detail.crmStatus === 'live' && detail.active) {
       return NextResponse.json({ success: true, qaBusinessId, business: detail })
     }
-    if (detail.crmStatus !== 'pending_live_review') {
-      return NextResponse.json(
-        { error: 'This business has not submitted a live-review request.' },
-        { status: 409 },
-      )
-    }
-
     const missingProfileItems = [
       !detail.name?.trim() && 'business name',
       !(detail.ownerEmail?.trim() || detail.ownerPhone?.trim()) && 'email or phone',
