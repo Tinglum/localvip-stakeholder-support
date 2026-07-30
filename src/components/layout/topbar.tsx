@@ -24,6 +24,8 @@ import type { Profile } from '@/lib/types/database'
 import { ViewAsPicker } from '@/components/layout/view-as-picker'
 import { OperatorPicker } from '@/components/admin/operator-picker'
 import { TopbarSearch } from '@/components/layout/topbar-search'
+import { SystemStatusIndicator } from '@/components/layout/system-status-indicator'
+import type { SystemStatusState } from '@/lib/system-status'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 
@@ -201,9 +203,17 @@ interface TopbarProps {
   onOpenMobileNav: () => void
   /** Business shell: retires the Setup shortcut once every setup step is finished. */
   businessSetupComplete?: boolean
+  /** Shared "work in progress" flag, resolved once by the app shell. */
+  systemStatus: SystemStatusState
 }
 
-export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav, businessSetupComplete = false }: TopbarProps) {
+export function Topbar({
+  profile,
+  sidebarCollapsed,
+  onOpenMobileNav,
+  businessSetupComplete = false,
+  systemStatus,
+}: TopbarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const access = getStakeholderAccess(profile, { businessSetupComplete })
@@ -377,6 +387,9 @@ export function Topbar({ profile, sidebarCollapsed, onOpenMobileNav, businessSet
         >
           <Search className="h-4 w-4" />
         </button>
+
+        {/* Everyone sees the current state; only admins get the toggle. */}
+        <SystemStatusIndicator {...systemStatus} canToggle={isAdminProfile(profile)} />
 
         {isAdminProfile(profile) ? (
           <div className="hidden items-center gap-1.5 rounded-xl bg-surface-50 px-2 py-1 md:flex">

@@ -9,6 +9,7 @@ import { useImpersonation } from '@/lib/impersonation-context'
 import { cn } from '@/lib/utils'
 import { canAccessPath, getStakeholderAccess } from '@/lib/stakeholder-access'
 import { useBusinessSetupStatus } from '@/lib/business-setup-status'
+import { useSystemStatus } from '@/lib/system-status'
 import type { Profile } from '@/lib/types/database'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { BugReporter } from '@/components/bug-center/bug-reporter'
@@ -30,6 +31,8 @@ export function AppShell({ profile, children }: AppShellProps) {
   // Resolved once here so the sidebar and topbar don't each refetch it.
   const { loading: setupLoading, state: setupState } = useBusinessSetupStatus(profile)
   const businessSetupComplete = !setupLoading && setupState.isComplete
+  // One poll for the whole shell: the topbar reads it, admins write to it.
+  const systemStatus = useSystemStatus()
 
   React.useEffect(() => {
     if (blockedPath) {
@@ -72,6 +75,7 @@ export function AppShell({ profile, children }: AppShellProps) {
         sidebarCollapsed={collapsed}
         onOpenMobileNav={() => setMobileNavOpen(true)}
         businessSetupComplete={businessSetupComplete}
+        systemStatus={systemStatus}
       />
       <main
         className={cn(
