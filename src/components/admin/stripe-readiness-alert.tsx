@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useAuth } from '@/lib/auth/context'
 import { formatDateTime } from '@/lib/utils'
+import { StripeMaintenanceControls } from '@/components/admin/stripe-maintenance-controls'
 import {
   classifyStripeBlock,
   sortByUrgency,
@@ -29,38 +30,47 @@ export function StripeReadinessAlert() {
   const { profile, isAdmin } = useAuth()
   const [report, setReport] = React.useState<StripeReadinessReport | null>(null)
   const [expanded, setExpanded] = React.useState(false)
+  const [refreshing, setRefreshing] = React.useState(false)
+
+  // Kept as a callback so the repair controls can re-run the exact same report
+  // and the admin sees the effect of a fix immediately.
+  const loadReport = React.useCallback(async () => {
+    setRefreshing(true)
+    try {
+      const res = await fetch('/api/admin/stripe-readiness', { cache: 'no-store' })
+      const json = res.ok ? ((await res.json().catch(() => null)) as unknown) : null
+      setReport(json && typeof json === 'object' ? (json as StripeReadinessReport) : STRIPE_READINESS_UNAVAILABLE)
+    } catch {
+      setReport(STRIPE_READINESS_UNAVAILABLE)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [])
 
   React.useEffect(() => {
     if (!isAdmin) return
-    let cancelled = false
-
-    fetch('/api/admin/stripe-readiness', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (cancelled) return
-        setReport(json && typeof json === 'object' ? (json as StripeReadinessReport) : STRIPE_READINESS_UNAVAILABLE)
-      })
-      .catch(() => {
-        if (!cancelled) setReport(STRIPE_READINESS_UNAVAILABLE)
-      })
-
-    return () => { cancelled = true }
-  }, [isAdmin, profile.id])
+    void loadReport()
+  }, [isAdmin, profile.id, loadReport])
 
   if (!isAdmin || !report) return null
+
+  const controls = <StripeMaintenanceControls onRefreshReadiness={() => void loadReport()} refreshing={refreshing} />
 
   // No data is not good news — say so plainly rather than implying an all clear.
   if (report.unavailable) {
     return (
       <Card>
-        <CardContent className="flex items-center gap-3 py-4">
-          <EyeOff className="h-4 w-4 shrink-0 text-surface-400" />
-          <div>
-            <p className="text-sm font-medium text-surface-700">Payment readiness check unavailable</p>
-            <p className="text-xs text-surface-500">
-              We could not reach Stripe Connect, so we cannot confirm which businesses customers can see.
-            </p>
+        <CardContent className="py-4">
+          <div className="flex items-center gap-3">
+            <EyeOff className="h-4 w-4 shrink-0 text-surface-400" />
+            <div>
+              <p className="text-sm font-medium text-surface-700">Payment readiness check unavailable</p>
+              <p className="text-xs text-surface-500">
+                We could not reach Stripe Connect, so we cannot confirm which businesses customers can see.
+              </p>
+            </div>
           </div>
+          {controls}
         </CardContent>
       </Card>
     )
@@ -71,15 +81,18 @@ export function StripeReadinessAlert() {
   if (failing.length === 0) {
     return (
       <Card>
-        <CardContent className="flex items-center gap-3 py-4">
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" />
-          <div>
-            <p className="text-sm font-medium text-surface-700">All businesses can accept payments</p>
-            <p className="text-xs text-surface-500">
-              {report.totalBusinesses} business{report.totalBusinesses === 1 ? '' : 'es'} cleared by Stripe
-              {report.checkedOn ? ` · checked ${formatDateTime(report.checkedOn)}` : ''}.
-            </p>
+        <CardContent className="py-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" />
+            <div>
+              <p className="text-sm font-medium text-surface-700">All businesses can accept payments</p>
+              <p className="text-xs text-surface-500">
+                {report.totalBusinesses} business{report.totalBusinesses === 1 ? '' : 'es'} cleared by Stripe
+                {report.checkedOn ? ` · checked ${formatDateTime(report.checkedOn)}` : ''}.
+              </p>
+            </div>
           </div>
+          {controls}
         </CardContent>
       </Card>
     )
@@ -153,6 +166,8 @@ export function StripeReadinessAlert() {
             </Button>
           ) : null}
         </div>
+
+        {controls}
       </CardContent>
     </Card>
   )
