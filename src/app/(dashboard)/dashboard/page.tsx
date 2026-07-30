@@ -40,6 +40,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { StatCard } from '@/components/ui/stat-card'
+import { StripeReadinessAlert } from '@/components/admin/stripe-readiness-alert'
 import { BusinessDashboardPage } from '@/components/business/business-dashboard-page'
 import { CommunityDashboardPage } from '@/components/community/community-dashboard-page'
 import { ConsumerDashboardPage } from '@/components/consumer/consumer-dashboard-page'
@@ -517,6 +518,9 @@ function TeamDashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Businesses Stripe has not cleared are hidden from the customer feed — admin-only, above the fold. */}
+      <StripeReadinessAlert />
 
       <div className="scroll-mt-24 space-y-3" id="priority-queue">
         <div className="space-y-1">

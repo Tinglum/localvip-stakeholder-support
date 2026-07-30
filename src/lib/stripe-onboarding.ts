@@ -83,7 +83,7 @@ export function stripeStatusLabel(status: StripeOnboardingStatusName) {
   }
 }
 
-function humanizeRequirement(value: string) {
+export function humanizeStripeRequirement(value: string) {
   const normalized = value.toLowerCase()
   if (normalized === 'external_account') return 'Payout bank account'
   if (normalized === 'business_profile.url') return 'Business website'
@@ -103,7 +103,7 @@ function humanizeRequirement(value: string) {
 
 export function stripeRequirementLabels(status: StripeOnboardingStatus) {
   return Array.from(new Set(
-    [...status.requirements.pastDue, ...status.requirements.currentlyDue].map(humanizeRequirement),
+    [...status.requirements.pastDue, ...status.requirements.currentlyDue].map(humanizeStripeRequirement),
   ))
 }
 
