@@ -130,13 +130,17 @@ export function normalizeStripeMaintenanceResult(
   if (!value || typeof value !== 'object') return null
   const record = value as Record<string, unknown>
 
-  const rawRows = Array.isArray(record.rows)
-    ? record.rows
-    : Array.isArray(record.results)
-      ? record.results
-      : Array.isArray(record.items)
-        ? record.items
-        : null
+  // purge-stale-references returns `references`; force-test-ready returns
+  // `results`. Both are accepted so neither endpoint has to rename its payload.
+  const rawRows = Array.isArray(record.references)
+    ? record.references
+    : Array.isArray(record.rows)
+      ? record.rows
+      : Array.isArray(record.results)
+        ? record.results
+        : Array.isArray(record.items)
+          ? record.items
+          : null
   if (!rawRows) return null
 
   const rows = rawRows
@@ -150,7 +154,7 @@ export function normalizeStripeMaintenanceResult(
   return {
     ok: true,
     applied,
-    scanned: asCount(record.scanned ?? record.totalScanned) ?? rows.length,
+    scanned: asCount(record.scanned ?? record.totalScanned ?? record.total) ?? rows.length,
     staleCount: asCount(record.staleCount) ?? stale,
     // Trust the rows over the served count: the rows are what we render.
     changedCount: changed || asCount(record.clearedCount ?? record.changedCount) || 0,
