@@ -29,6 +29,12 @@ export interface BusinessPortalData {
   hundred_list_interest?: 'interested' | 'not_now'
   hundred_list_interest_recorded_at?: string
   hundred_list_activation_status?: 'requested' | 'in_setup' | 'active' | 'not_requested'
+  /**
+   * Opt-in: show this business in the anonymous referrer typeahead a new signup
+   * uses to name who referred them. Null/undefined = never answered, which
+   * resolves to visible for a business.
+   */
+  is_visible_in_referrer_search?: boolean | null
   cashback_offer_value?: string
   portal_activation_review_state?: 'pending' | 'approved'
   portal_activation_requested_at?: string

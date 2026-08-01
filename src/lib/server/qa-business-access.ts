@@ -188,6 +188,12 @@ export function normalizeQaBusinessSetupPayload(body: Record<string, unknown>) {
         if (userId !== null) assign('hundredListActivatedBy', userId)
         break
       }
+      // Referrer-search opt-in. Sent only when the key is present, matching the
+      // backend's "absent means leave unchanged" contract.
+      case 'isVisibleInReferrerSearch':
+      case 'is_visible_in_referrer_search':
+        if (typeof value === 'boolean') assign('isVisibleInReferrerSearch', value)
+        break
       case 'metadata':
       case 'stage':
       case 'launch_phase':

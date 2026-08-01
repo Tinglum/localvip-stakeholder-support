@@ -24,7 +24,9 @@ export async function GET(
 }
 
 /** PUT — CRM pipeline annotations for a cause (stage, status, campaign,
- * duplicate). Forwarded to the QA Account /crm endpoint. */
+ * duplicate), forwarded to the QA Account /crm endpoint, plus the cause's own
+ * profile settings (currently the referrer-search opt-in), forwarded to the
+ * Nonprofit profile endpoint. A request may carry either or both. */
 export async function PUT(
   request: Request,
   { params }: { params: { id: string } },
@@ -49,17 +51,40 @@ export async function PUT(
     for (const [key, value] of Object.entries(body)) {
       if (key in crmKeyMap) crmPayload[crmKeyMap[key]] = value
     }
-    if (Object.keys(crmPayload).length === 0) {
-      return NextResponse.json({ error: 'No supported CRM fields in the request.' }, { status: 400 })
+
+    // Cause profile settings. The backend only applies keys that are present,
+    // so we forward the flag only when the caller actually sent it.
+    const profilePayload: Record<string, unknown> = {}
+    const referrerVisibility = body.is_visible_in_referrer_search ?? body.isVisibleInReferrerSearch
+    if (typeof referrerVisibility === 'boolean') {
+      profilePayload.isVisibleInReferrerSearch = referrerVisibility
     }
 
-    const res = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${qaNonprofitId}/crm`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(crmPayload),
-    })
-    const json = await parseQaResponse<unknown>(res, 'Failed to update cause CRM fields.')
-    return NextResponse.json(json)
+    if (Object.keys(crmPayload).length === 0 && Object.keys(profilePayload).length === 0) {
+      return NextResponse.json({ error: 'No supported cause fields in the request.' }, { status: 400 })
+    }
+
+    let result: unknown = null
+
+    if (Object.keys(crmPayload).length > 0) {
+      const res = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${qaNonprofitId}/crm`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(crmPayload),
+      })
+      result = await parseQaResponse<unknown>(res, 'Failed to update cause CRM fields.')
+    }
+
+    if (Object.keys(profilePayload).length > 0) {
+      const res = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${qaNonprofitId}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(profilePayload),
+      })
+      result = await parseQaResponse<unknown>(res, 'Failed to update the cause profile.')
+    }
+
+    return NextResponse.json(result)
   } catch (error) {
     return qaRouteErrorResponse(error, 'The QA cause CRM fields could not be updated.')
   }

@@ -118,6 +118,7 @@ type SetupSnapshotInput = {
   captureDescription: string
   captureValue: string
   hundredListInterest: HundredListInterest
+  visibleInReferrerSearch: boolean
 }
 
 function serializeSetupSnapshot(input: SetupSnapshotInput) {
@@ -135,6 +136,7 @@ function serializeSetupSnapshot(input: SetupSnapshotInput) {
     captureDescription: input.captureDescription,
     captureValue: input.captureValue,
     hundredListInterest: input.hundredListInterest,
+    visibleInReferrerSearch: input.visibleInReferrerSearch,
   })
 }
 
@@ -188,6 +190,9 @@ export interface BusinessEditor {
   setCaptureValue: (value: string) => void
   hundredListInterest: HundredListInterest
   setHundredListInterest: (value: HundredListInterest) => void
+  /** Referrer-search opt-in. Businesses default to ON when never answered. */
+  visibleInReferrerSearch: boolean
+  setVisibleInReferrerSearch: (value: boolean) => void
 
   stripeStatus: StripeOnboardingStatus | null
   stripeLoading: boolean
@@ -244,6 +249,8 @@ export function useBusinessEditor(): BusinessEditor {
   const [captureDescription, setCaptureDescription] = React.useState('')
   const [captureValue, setCaptureValue] = React.useState('')
   const [hundredListInterest, setHundredListInterest] = React.useState<HundredListInterest>(null)
+  // Businesses default to visible; null/undefined means "never answered".
+  const [visibleInReferrerSearch, setVisibleInReferrerSearch] = React.useState(true)
   const [activating, setActivating] = React.useState(false)
   const [stripeStatus, setStripeStatus] = React.useState<StripeOnboardingStatus | null>(null)
   const [stripeLoading, setStripeLoading] = React.useState(true)
@@ -369,6 +376,8 @@ export function useBusinessEditor(): BusinessEditor {
           ? 'interested'
           : null
 
+    const nextVisibleInReferrerSearch = portal.is_visible_in_referrer_search !== false
+
     setName(business.name || '')
     setCategoryId(savedCategoryId ? String(savedCategoryId) : '')
     setDescription(business.public_description || portal.description || '')
@@ -380,6 +389,7 @@ export function useBusinessEditor(): BusinessEditor {
     setCaptureDescription(captureOffer?.description || '')
     setCaptureValue(captureOffer?.value_label || '')
     setHundredListInterest(nextInterest)
+    setVisibleInReferrerSearch(nextVisibleInReferrerSearch)
     setCaptureOfferId(captureOffer?.id || null)
     snapshotRef.current = serializeSetupSnapshot({
       name: business.name || '',
@@ -395,6 +405,7 @@ export function useBusinessEditor(): BusinessEditor {
       captureDescription: captureOffer?.description || '',
       captureValue: captureOffer?.value_label || '',
       hundredListInterest: nextInterest,
+      visibleInReferrerSearch: nextVisibleInReferrerSearch,
     })
   }, [
     business,
@@ -406,6 +417,7 @@ export function useBusinessEditor(): BusinessEditor {
     portal.cover_photo_url,
     portal.description,
     portal.hundred_list_interest,
+    portal.is_visible_in_referrer_search,
     portal.logo_url,
     portal.products_services,
   ])
@@ -467,6 +479,7 @@ export function useBusinessEditor(): BusinessEditor {
               : hundredListInterest === 'not_now'
                 ? 'not_requested'
                 : undefined,
+          is_visible_in_referrer_search: visibleInReferrerSearch,
           offer_title: captureHeadline,
           offer_description: captureDescription,
           offer_value: captureValue,
@@ -533,6 +546,7 @@ export function useBusinessEditor(): BusinessEditor {
           captureDescription,
           captureValue,
           hundredListInterest,
+          visibleInReferrerSearch,
         })
 
         setSaveState('saved')
@@ -567,6 +581,7 @@ export function useBusinessEditor(): BusinessEditor {
       refetchOffers,
       updateBusiness,
       updateOffer,
+      visibleInReferrerSearch,
     ],
   )
 
@@ -587,6 +602,7 @@ export function useBusinessEditor(): BusinessEditor {
       captureDescription,
       captureValue,
       hundredListInterest,
+      visibleInReferrerSearch,
     })
 
     if (!snapshotRef.current || snapshot === snapshotRef.current) return
@@ -615,6 +631,7 @@ export function useBusinessEditor(): BusinessEditor {
     logoUrl,
     name,
     persistChanges,
+    visibleInReferrerSearch,
   ])
 
   const toggleKeyword = React.useCallback((keyword: string) => {
@@ -741,6 +758,8 @@ export function useBusinessEditor(): BusinessEditor {
     setCaptureValue,
     hundredListInterest,
     setHundredListInterest,
+    visibleInReferrerSearch,
+    setVisibleInReferrerSearch,
 
     stripeStatus,
     stripeLoading,
@@ -973,6 +992,49 @@ export function ProfileFields({ editor, showValidation = false }: { editor: Busi
           </Button>
         </div>
         <p className="mt-2 text-xs text-surface-500">New keywords are added to your business profile when you save.</p>
+      </div>
+
+      <div className="md:col-span-2">
+        <ReferrerSearchVisibilityField editor={editor} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The referrer-search opt-in. Businesses default to ON, so this reads as a
+ * privacy control the owner can switch off — not a feature they must enable.
+ *
+ * Lives in ProfileFields so it renders in BOTH the first-run setup wizard and
+ * My Business from one definition, and saves through the same autosave path as
+ * every other profile field.
+ */
+export function ReferrerSearchVisibilityField({ editor }: { editor: BusinessEditor }) {
+  return (
+    <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+      <div className="flex items-start gap-3">
+        <input
+          id="business-referrer-search-visibility"
+          type="checkbox"
+          checked={editor.visibleInReferrerSearch}
+          onChange={(event) => editor.setVisibleInReferrerSearch(event.target.checked)}
+          aria-describedby="business-referrer-search-visibility-help"
+          className="mt-1 h-4 w-4 shrink-0 rounded border-surface-400 text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+        />
+        <div className="min-w-0">
+          <label
+            htmlFor="business-referrer-search-visibility"
+            className="block text-sm font-semibold text-surface-900"
+          >
+            Show my basic details in the search overview
+          </label>
+          <p id="business-referrer-search-visibility-help" className="mt-1 text-sm leading-6 text-surface-600">
+            When someone signs up after you told them about LocalVIP, they are asked who referred them. Leaving this on
+            lets them find your business by name and pick you, so you get credit for the businesses, causes and
+            customers you bring in. Only your name, city and account type are ever shown &mdash; never your email or
+            phone number.
+          </p>
+        </div>
       </div>
     </div>
   )

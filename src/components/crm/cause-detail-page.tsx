@@ -384,6 +384,32 @@ export default function CauseDetailPage() {
     window.location.reload()
   }, [cause, canEditCrm, pendingCampaignId, saveCauseCrm])
 
+  // ── Referrer-search visibility ──
+  // Causes default to visible: a null column on QA means "never answered".
+  const canEditReferrerVisibility = !readOnly && causeResponse?.qaCauseId != null
+  const [referrerSearchVisible, setReferrerSearchVisible] = React.useState(true)
+  const [referrerSearchSaving, setReferrerSearchSaving] = React.useState(false)
+  const [referrerSearchError, setReferrerSearchError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    setReferrerSearchVisible(cause?.is_visible_in_referrer_search !== false)
+  }, [cause?.is_visible_in_referrer_search])
+
+  const handleReferrerSearchChange = React.useCallback(async (next: boolean) => {
+    if (!canEditReferrerVisibility) return
+    setReferrerSearchVisible(next)
+    setReferrerSearchError(null)
+    setReferrerSearchSaving(true)
+    try {
+      await saveCauseCrm({ is_visible_in_referrer_search: next })
+    } catch {
+      setReferrerSearchVisible(!next)
+      setReferrerSearchError('That choice could not be saved. Try again.')
+    } finally {
+      setReferrerSearchSaving(false)
+    }
+  }, [canEditReferrerVisibility, saveCauseCrm])
+
   async function refetchExecution() {
     refetchGeneratedMaterials({ silent: true })
     refetchMaterialRecords({ silent: true })
@@ -1092,6 +1118,56 @@ export default function CauseDetailPage() {
                   </div>
                 )
               })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Referrer search</CardTitle>
+              <p className="mt-1 text-sm text-surface-500">
+                How people who were referred by this {entityLabel.toLowerCase()} can name it at signup.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+                <div className="flex items-start gap-3">
+                  <input
+                    id="cause-referrer-search-visibility"
+                    type="checkbox"
+                    checked={referrerSearchVisible}
+                    disabled={!canEditReferrerVisibility || referrerSearchSaving}
+                    onChange={(event) => void handleReferrerSearchChange(event.target.checked)}
+                    aria-describedby="cause-referrer-search-visibility-help"
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-surface-400 text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  <div className="min-w-0">
+                    <label
+                      htmlFor="cause-referrer-search-visibility"
+                      className="block text-sm font-semibold text-surface-900"
+                    >
+                      Show my basic details in the search overview
+                    </label>
+                    <p id="cause-referrer-search-visibility-help" className="mt-1 text-sm leading-6 text-surface-600">
+                      When someone signs up after hearing about LocalVIP from this {entityLabel.toLowerCase()}, they are
+                      asked who referred them. Leaving this on lets them find it by name and pick it, so it gets credit
+                      for the businesses, causes and customers it brings in. Only the name, city and account type are
+                      ever shown &mdash; never an email address or phone number.
+                    </p>
+                    {referrerSearchSaving ? (
+                      <p className="mt-2 text-xs text-surface-500">Saving...</p>
+                    ) : null}
+                    {referrerSearchError ? (
+                      <p className="mt-2 text-xs font-medium text-danger-600">{referrerSearchError}</p>
+                    ) : null}
+                    {!canEditReferrerVisibility ? (
+                      <p className="mt-2 text-xs text-surface-500">
+                        This {entityLabel.toLowerCase()} is not linked to a QA account yet, so this choice cannot be
+                        changed here.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

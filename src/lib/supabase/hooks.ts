@@ -143,6 +143,11 @@ function mapQaBusinessRecordToBusiness(b: Record<string, unknown>): Business {
     hundred_list_setup_started_by: b.hundredListSetupStartedBy ?? null,
     hundred_list_activated_at: b.hundredListActivatedAt ?? null,
     hundred_list_activated_by: b.hundredListActivatedBy ?? null,
+    // Referrer-search opt-in. Only the Business DETAIL response carries it, so a
+    // record loaded from the list shape stays null — which every surface reads
+    // as "default on" for a business.
+    is_visible_in_referrer_search:
+      typeof b.isVisibleInReferrerSearch === 'boolean' ? b.isVisibleInReferrerSearch : null,
     portal_activation_review_state: isPendingLiveReview ? 'pending' : isLive ? 'approved' : null,
   }
 

@@ -69,6 +69,8 @@ export interface QaDashboardAccountDetail extends QaDashboardAccountSummary {
   linkedCauseAccountId?: number | null
   crmCampaignId?: number | null
   duplicateOfAccountId?: number | null
+  /** Referrer-search opt-in. Backend resolves NULL to true for business/cause. */
+  isVisibleInReferrerSearch?: boolean | null
 }
 
 export type QaBusinessListItem = QaDashboardAccountSummary
@@ -187,6 +189,12 @@ export interface QaAccountFields {
   stripe_onboarding_complete?: boolean | null
   referral_code?: string | null
   branch_referral_url?: string | null
+  /**
+   * Opt-in: show this business/cause in the anonymous referrer typeahead a new
+   * signup uses to name who referred them. NULL on the backend means "never
+   * answered"; businesses and causes resolve that to TRUE.
+   */
+  is_visible_in_referrer_search?: boolean | null
 }
 
 export interface CrmBusiness extends Business, QaAccountFields {}

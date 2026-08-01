@@ -44,6 +44,7 @@ function emptyQaAccountFields(): QaAccountFields {
     stripe_onboarding_complete: null,
     referral_code: null,
     branch_referral_url: null,
+    is_visible_in_referrer_search: null,
   }
 }
 
@@ -243,6 +244,11 @@ export function buildQaAccountFields(qaAccount: QaDashboardAccountSummary | QaDa
           : null,
         referral_code: 'referralCode' in qaAccount ? (qaAccount.referralCode ?? null) : null,
         branch_referral_url: 'branchReferralUrl' in qaAccount ? (qaAccount.branchReferralUrl ?? null) : null,
+        // Only the detail responses carry this. Absent (list shape) stays null,
+        // which every surface reads as "default on" for a business/cause.
+        is_visible_in_referrer_search: 'isVisibleInReferrerSearch' in qaAccount
+          ? (qaAccount.isVisibleInReferrerSearch ?? null)
+          : null,
       }
     : {}
 

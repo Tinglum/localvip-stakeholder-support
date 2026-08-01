@@ -156,6 +156,9 @@ export async function PUT(
       'hundred_list_setup_started_by',
       'hundred_list_activated_at',
       'hundred_list_activated_by',
+      // The referrer-search opt-in rides in portal metadata like the 100-list
+      // answers, but is a first-class Account column on QA.
+      'is_visible_in_referrer_search',
     ] as const
     const isSubmittingForLiveReview =
       body.launch_phase === 'ready_to_go_live'
