@@ -12,6 +12,12 @@ import * as React from 'react'
 
 export interface SystemStatus {
   workInProgress: boolean
+  /**
+   * Platform switch for the featured-businesses carousel on my.localvip.com.
+   * Defaults to true everywhere — a missing field or an unreachable backend
+   * must read as "carousel on", never as "carousel hidden".
+   */
+  featuredCarouselEnabled: boolean
   message: string | null
   updatedOn: string | null
   updatedBy: string | null
@@ -26,11 +32,13 @@ export interface SystemStatusState {
   /** Set when a write was rejected and the optimistic state was rolled back. */
   error: string | null
   setWorkInProgress: (next: boolean) => Promise<void>
+  setFeaturedCarouselEnabled: (next: boolean) => Promise<void>
 }
 
 const POLL_INTERVAL_MS = 45_000
 const IDLE_STATUS: SystemStatus = {
   workInProgress: false,
+  featuredCarouselEnabled: true,
   message: null,
   updatedOn: null,
   updatedBy: null,
@@ -44,6 +52,9 @@ function parseStatus(payload: unknown): { status: SystemStatus; unavailable: boo
     unavailable: record.unavailable === true,
     status: {
       workInProgress: record.workInProgress === true,
+      // Note the inverted test: only an explicit `false` hides the carousel.
+      // An older backend that does not send the field reads as "on".
+      featuredCarouselEnabled: record.featuredCarouselEnabled !== false,
       message: text(record.message),
       updatedOn: text(record.updatedOn),
       updatedBy: text(record.updatedBy),
@@ -102,18 +113,33 @@ export function useSystemStatus(): SystemStatusState {
     }
   }, [refresh])
 
-  const setWorkInProgress = React.useCallback(async (next: boolean) => {
+  /**
+   * Optimistically apply `patch`, PUT it, roll back on any failure.
+   *
+   * Each control sends only the field it owns. `featuredCarouselEnabled` is
+   * omitted unless the carousel toggle is the thing being changed, and the
+   * backend treats an absent field as "leave it alone" — so flipping the
+   * maintenance pill can never reset the carousel switch, and vice versa.
+   */
+  const save = React.useCallback(async (patch: Partial<SystemStatus>) => {
     const previous = status
+    const optimistic = { ...previous, ...patch }
     savingRef.current = true
     setSaving(true)
     setError(null)
-    setStatus({ ...previous, workInProgress: next })
+    setStatus(optimistic)
 
     try {
       const res = await fetch('/api/system-status', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ workInProgress: next, message: previous.message }),
+        body: JSON.stringify({
+          workInProgress: optimistic.workInProgress,
+          message: previous.message,
+          ...('featuredCarouselEnabled' in patch
+            ? { featuredCarouselEnabled: optimistic.featuredCarouselEnabled }
+            : {}),
+        }),
       })
       const payload = await res.json().catch(() => null)
 
@@ -145,5 +171,23 @@ export function useSystemStatus(): SystemStatusState {
     }
   }, [status])
 
-  return { status, unavailable, loading, saving, error, setWorkInProgress }
+  const setWorkInProgress = React.useCallback(
+    (next: boolean) => save({ workInProgress: next }),
+    [save],
+  )
+
+  const setFeaturedCarouselEnabled = React.useCallback(
+    (next: boolean) => save({ featuredCarouselEnabled: next }),
+    [save],
+  )
+
+  return {
+    status,
+    unavailable,
+    loading,
+    saving,
+    error,
+    setWorkInProgress,
+    setFeaturedCarouselEnabled,
+  }
 }

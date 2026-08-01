@@ -17,10 +17,12 @@ export const dynamic = 'force-dynamic'
 // PUT is the opposite: it must fail loudly, because the client applies the
 // toggle optimistically and needs a real signal to roll back.
 const QA_PATH = '/api/dashboard/v1/SystemStatus'
-const UNAVAILABLE = { workInProgress: false, unavailable: true } as const
+const UNAVAILABLE = { workInProgress: false, featuredCarouselEnabled: true, unavailable: true } as const
 
 export interface SystemStatusPayload {
   workInProgress: boolean
+  /** Only an explicit `false` from QA hides the consumer carousel. */
+  featuredCarouselEnabled: boolean
   unavailable?: boolean
   message?: string | null
   updatedOn?: string | null
@@ -34,6 +36,7 @@ function toStringOrNull(value: unknown): string | null {
 function normalize(json: Record<string, unknown>): SystemStatusPayload {
   return {
     workInProgress: json.workInProgress === true,
+    featuredCarouselEnabled: json.featuredCarouselEnabled !== false,
     message: toStringOrNull(json.message),
     updatedOn: toStringOrNull(json.updatedOn),
     updatedBy: toStringOrNull(json.updatedBy),
@@ -90,6 +93,12 @@ export async function PUT(request: NextRequest) {
       body: JSON.stringify({
         workInProgress: body.workInProgress,
         message: toStringOrNull(body.message),
+        // Partial update: forwarded only when the client actually sent a
+        // boolean. Absent means "leave the carousel setting alone", so the
+        // maintenance toggle cannot reset it as a side effect.
+        ...(typeof body.featuredCarouselEnabled === 'boolean'
+          ? { featuredCarouselEnabled: body.featuredCarouselEnabled }
+          : {}),
       }),
     })
 

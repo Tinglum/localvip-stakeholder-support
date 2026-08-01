@@ -25,6 +25,7 @@ import { ViewAsPicker } from '@/components/layout/view-as-picker'
 import { OperatorPicker } from '@/components/admin/operator-picker'
 import { TopbarSearch } from '@/components/layout/topbar-search'
 import { SystemStatusIndicator } from '@/components/layout/system-status-indicator'
+import { FeaturedCarouselToggle } from '@/components/layout/featured-carousel-toggle'
 import type { SystemStatusState } from '@/lib/system-status'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -390,6 +391,10 @@ export function Topbar({
 
         {/* Everyone sees the current state; only admins get the toggle. */}
         <SystemStatusIndicator {...systemStatus} canToggle={isAdminProfile(profile)} />
+
+        {/* Platform switches live together: the consumer-app carousel toggle
+            sits right beside the maintenance pill, same admin gating. */}
+        {isAdminProfile(profile) ? <FeaturedCarouselToggle {...systemStatus} /> : null}
 
         {isAdminProfile(profile) ? (
           <div className="hidden items-center gap-1.5 rounded-xl bg-surface-50 px-2 py-1 md:flex">
