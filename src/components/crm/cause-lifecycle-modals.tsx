@@ -543,7 +543,7 @@ export function CauseMaterialsQrModal({
             </div>
             {joinUrl && (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-surface-600">Support page URL</label>
+                <label className="text-xs font-medium text-surface-600">Network join URL</label>
                 <div className="flex gap-2">
                   <Input value={joinUrl} readOnly className="text-xs" />
                   <Button variant="outline" size="sm" onClick={copyUrl}>
@@ -551,6 +551,9 @@ export function CauseMaterialsQrModal({
                     {copied ? 'Copied!' : 'Copy'}
                   </Button>
                 </div>
+                <p className="text-xs text-surface-500">
+                  People who join through this link are added with this cause as their referrer.
+                </p>
               </div>
             )}
             <div className="flex flex-wrap gap-2">

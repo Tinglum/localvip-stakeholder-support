@@ -231,8 +231,12 @@ function randomBase64Url(byteLength: number) {
 }
 
 function getQaStateSecret() {
-  return process.env.QA_AUTH_STATE_SECRET
-    || `${QA_AUTH_CONFIG.clientId}:${QA_AUTH_CONFIG.baseUrl}`
+  const configured = trimToNull(process.env.QA_AUTH_STATE_SECRET)
+  if (configured) return configured
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('QA_AUTH_STATE_SECRET must be configured in production.')
+  }
+  return `${QA_AUTH_CONFIG.clientId}:${QA_AUTH_CONFIG.baseUrl}`
 }
 
 export async function signQaStatePayload(payloadBase64Url: string) {
@@ -675,6 +679,58 @@ export async function readSignedViewAsPayload(value: string | null | undefined):
       consumerType: typeof payload.consumerType === 'string' ? payload.consumerType : undefined,
       since: payload.since,
     }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Signed "which business portal did the admin actually open" payload.
+ *
+ * The business portal used to resolve its business from the USER alone
+ * (`Business/by-user/{id}`, which returns the lowest AccountUsers row). An owner
+ * of several businesses therefore always landed in the same one, no matter which
+ * business the admin clicked "Log in as Business" on. This cookie carries the
+ * SELECTED business account id into the session so the portal can honour it.
+ *
+ * It is signed with the same HMAC-SHA256 scheme as the View-As cookie and set
+ * httpOnly, because it selects which business's data a session sees. `userId`
+ * is part of the signed payload so a cookie minted for one target cannot be
+ * replayed against a different session.
+ */
+export const PORTAL_BUSINESS_COOKIE = 'lvip_portal_business'
+
+export interface PortalBusinessSignedPayload {
+  /** QA user id whose portal this selection applies to. */
+  userId: number
+  /** Business account id the admin launched from. */
+  accountId: number
+  since: string
+}
+
+export async function signPortalBusinessPayload(payload: PortalBusinessSignedPayload): Promise<string> {
+  const payloadBase64Url = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)))
+  const signature = await signQaStatePayload(payloadBase64Url)
+  return `${payloadBase64Url}.${signature}`
+}
+
+export async function readSignedPortalBusinessPayload(
+  value: string | null | undefined,
+): Promise<PortalBusinessSignedPayload | null> {
+  if (!value) return null
+
+  const [payloadBase64Url, signature] = value.split('.')
+  if (!payloadBase64Url || !signature) return null
+
+  const expectedSignature = await signQaStatePayload(payloadBase64Url)
+  if (signature !== expectedSignature) return null
+
+  try {
+    const payload = JSON.parse(base64UrlToString(payloadBase64Url)) as Partial<PortalBusinessSignedPayload>
+    if (typeof payload.userId !== 'number' || !Number.isFinite(payload.userId) || payload.userId <= 0) return null
+    if (typeof payload.accountId !== 'number' || !Number.isFinite(payload.accountId) || payload.accountId <= 0) return null
+    if (typeof payload.since !== 'string') return null
+    return { userId: payload.userId, accountId: payload.accountId, since: payload.since }
   } catch {
     return null
   }

@@ -35,6 +35,7 @@ import { getQrPlacements, getQrRenderRect } from '@/lib/materials/qr-placement'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { generateShortCode, slugify } from '@/lib/utils'
 import { getBusinessJoinUrl } from '@/lib/business-join'
+import { buildConsumerReferralUrl } from '@/lib/material-engine'
 import {
   generateStyledQR, generateQRSVG, downloadDataURL, downloadSVG,
   destinationToString,
@@ -290,14 +291,23 @@ export default function QRGeneratorPage() {
   const causeOptions = React.useMemo(() => causesData.map(c => ({ value: c.id, label: c.name })), [causesData])
   const sourceBusinessId = searchParams.get('businessId')
   const sourceCauseId = searchParams.get('causeId')
+  const sourceQaCauseId = React.useMemo(() => {
+    const configured = searchParams.get('qaId')
+    if (configured && /^\d+$/.test(configured)) return configured
+    if (!sourceCauseId) return null
+    const normalized = sourceCauseId.replace(/^qa-/, '')
+    return /^\d+$/.test(normalized) ? normalized : null
+  }, [searchParams, sourceCauseId])
   const sourceQrId = searchParams.get('qrId')
   const sourceBusiness = React.useMemo(
     () => (sourceBusinessId ? businessesData.find((item) => item.id === sourceBusinessId) || null : null),
     [businessesData, sourceBusinessId],
   )
   const sourceCause = React.useMemo(
-    () => (sourceCauseId ? causesData.find((item) => item.id === sourceCauseId) || null : null),
-    [causesData, sourceCauseId],
+    () => (sourceCauseId
+      ? causesData.find((item) => item.id === sourceCauseId || item.id === sourceQaCauseId) || null
+      : null),
+    [causesData, sourceCauseId, sourceQaCauseId],
   )
   // The business list lacks referral_code/logo_url. Fetch the QA business detail
   // directly (works for a bare QA account id like "1"); the Supabase-coupled CRM
@@ -314,6 +324,29 @@ export default function QRGeneratorPage() {
       .catch(() => { if (!cancelled) setQaBizDetail(null) })
     return () => { cancelled = true }
   }, [sourceBusinessId])
+  const [qaCauseDetail, setQaCauseDetail] = React.useState<Record<string, unknown> | null>(null)
+  React.useEffect(() => {
+    if (!sourceQaCauseId) { setQaCauseDetail(null); return }
+    let cancelled = false
+    fetch(`/api/qa/nonprofits/${encodeURIComponent(sourceQaCauseId)}`, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => { if (!cancelled) setQaCauseDetail(json) })
+      .catch(() => { if (!cancelled) setQaCauseDetail(null) })
+    return () => { cancelled = true }
+  }, [sourceQaCauseId])
+  const sourceCauseReferralCode = React.useMemo(() => {
+    const candidates = [
+      qaCauseDetail?.referralCode,
+      qaCauseDetail?.ReferralCode,
+      (sourceCause as { referral_code?: string | null } | null)?.referral_code,
+    ]
+    const code = candidates.find((value): value is string => typeof value === 'string' && !!value.trim())
+    return code?.trim() || ''
+  }, [qaCauseDetail, sourceCause])
+  const sourceCauseJoinUrl = React.useMemo(
+    () => buildConsumerReferralUrl(sourceCauseReferralCode),
+    [sourceCauseReferralCode],
+  )
   const sourceCaptureCode = React.useMemo(() => {
     if (!sourceBusiness) return ''
     const metadata = (sourceBusiness.metadata as Record<string, unknown> | null) || {}
@@ -540,6 +573,20 @@ export default function QRGeneratorPage() {
     }
   }, [sourceCaptureUrl, sourceBizLogo, sourceExistingQr])
 
+  // A cause QR is a network invitation. Send scanners to consumer signup with
+  // the cause's backend-assigned referral code so the new member is attributed
+  // to that school/cause automatically.
+  React.useEffect(() => {
+    if (sourceExistingQr || !sourceCauseJoinUrl) return
+    setDestType('url')
+    setDestination((current) => (
+      current.type === 'url' && current.url
+        ? current
+        : { type: 'url', url: sourceCauseJoinUrl }
+    ))
+    setFrameText((current) => current || 'JOIN OUR NETWORK')
+  }, [sourceCauseJoinUrl, sourceExistingQr])
+
   // Resolve encoded data
   const encodedData = React.useMemo(() => {
     return destinationToString(destination)
@@ -653,6 +700,8 @@ export default function QRGeneratorPage() {
           business_id: selectedBusiness,
           capture_code: selectedBusiness ? sourceCaptureCode : null,
           capture_url: selectedBusiness ? sourceCaptureUrl : null,
+          referral_code: selectedCause ? sourceCauseReferralCode : null,
+          referral_url: selectedCause ? sourceCauseJoinUrl : null,
           dot_style: dotStyle,
           corner_style: cornerStyle,
           gradient_type: gradientType,
@@ -1099,7 +1148,9 @@ export default function QRGeneratorPage() {
                         {sourceEntityName} destination setup
                       </p>
                       <p className="text-xs leading-5 text-surface-500">
-                        Pull the current referral code and connection code straight into this QR so you do not have to rebuild it manually.
+                        {sourceCause
+                          ? 'This QR opens consumer signup with the cause referral code already attached, so new members join under this cause.'
+                          : 'Pull the current customer join destination straight into this QR so you do not have to rebuild it manually.'}
                       </p>
                       {/* Stakeholder codes removed */}
                     </div>

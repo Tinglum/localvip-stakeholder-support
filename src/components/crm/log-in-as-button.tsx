@@ -10,6 +10,12 @@ interface LogInAsButtonProps {
   userId: string | null
   userName: string | null
   stakeholderType: string
+  /**
+   * Business account this View-As session is being launched from, so an owner of
+   * several businesses lands in the one the admin actually clicked rather than
+   * whichever the by-user lookup returns first. Server-verified.
+   */
+  businessAccountId?: string | number | null
   variant?: 'default' | 'outline' | 'ghost'
   size?: 'default' | 'sm' | 'lg' | 'icon'
 }
@@ -18,6 +24,7 @@ export function LogInAsButton({
   userId,
   userName,
   stakeholderType,
+  businessAccountId = null,
   variant = 'outline',
   size = 'sm',
 }: LogInAsButtonProps) {
@@ -25,6 +32,11 @@ export function LogInAsButton({
   const { startImpersonation } = useImpersonation()
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+
+  const numericBusinessAccountId =
+    businessAccountId != null && /^\d+$/.test(String(businessAccountId).trim())
+      ? Number(String(businessAccountId).trim())
+      : null
 
   if (!isAdmin || !userId) return null
 
@@ -40,7 +52,10 @@ export function LogInAsButton({
         const response = await fetch('/api/admin/view-as', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: Number(userId) }),
+          body: JSON.stringify({
+            userId: Number(userId),
+            ...(numericBusinessAccountId != null ? { businessAccountId: numericBusinessAccountId } : {}),
+          }),
         })
         const payload = await response.json().catch(() => ({ error: 'Request failed.' }))
         if (!response.ok) {

@@ -620,10 +620,15 @@ export default function BusinessDetailPage() {
               <FileText className="h-3.5 w-3.5" /> Materials
             </Button>
             <div className="ml-auto flex items-center gap-2">
+              {/* `businessAccountId` pins the portal to THIS business. Without it
+                  the portal resolved the business from the owner alone, so an owner
+                  of several businesses always landed in the same one — clicking
+                  here on business A could open business B's portal. */}
               <LogInAsButton
                 userId={biz.owner_user_id || owner?.id || null}
                 userName={owner?.full_name || biz.name}
                 stakeholderType="Business"
+                businessAccountId={qaLinkedBusinessId}
               />
               {/* Genuine session as the business owner. Requires the numeric QA
                   backend user id (the token-minting path) — owner?.id is a derived
@@ -632,11 +637,13 @@ export default function BusinessDetailPage() {
                 userId={biz.owner_user_id || null}
                 userName={owner?.full_name || biz.owner_name || biz.name}
                 stakeholderType="Business"
+                businessAccountId={qaLinkedBusinessId}
               />
               <OpenInWebappButton
                 userId={biz.owner_user_id || null}
                 userName={owner?.full_name || biz.owner_name || biz.name}
                 stakeholderType="Business"
+                businessAccountId={qaLinkedBusinessId}
               />
             </div>
           </>

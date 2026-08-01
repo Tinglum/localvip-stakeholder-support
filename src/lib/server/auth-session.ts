@@ -3,6 +3,8 @@ import {
   buildFallbackQaProfile,
   getQaSessionFromCookieStore,
   mapQaRoleFromSignals,
+  PORTAL_BUSINESS_COOKIE,
+  readSignedPortalBusinessPayload,
   readSignedViewAsPayload,
   type QaAuthClaims,
   type QaSession,
@@ -40,7 +42,25 @@ export interface ResolvedAuthSession {
     targetConsumerType: string | null
     adminId: string
     adminEmail: string | null
+    /**
+     * The business account the admin actually launched this session from.
+     *
+     * The portal used to resolve its business from the target USER alone, which
+     * always picked the same business for an owner of several — clicking
+     * "Log in as Business" on one business could open another's portal. This
+     * carries the selection through. It is only a HINT: `resolvePortalBusinessId`
+     * verifies the target user really belongs to the account before honouring it.
+     */
+    targetBusinessAccountId?: number
   }
+  /**
+   * Business account explicitly selected for this portal session (see
+   * `lib/server/portal-business`). Present for impersonated sessions AND for
+   * "Real log in as", which replaces the session outright and so has no
+   * `viewingAs`. Unverified on its own — resolve through
+   * `resolvePortalBusinessId`.
+   */
+  portalBusinessAccountId?: number
 }
 
 interface ViewAsCookiePayload {
@@ -124,6 +144,44 @@ function applyViewAsOverride(
       adminId: original.id,
       adminEmail: original.email,
     },
+  }
+}
+
+/**
+ * Apply the explicitly-selected business account (the one the admin launched the
+ * portal from) to a resolved session.
+ *
+ * `profile.business_id` is the single hinge every business-portal surface reads
+ * (Home, My Business, Grow, Materials all do `useBusinesses({ id: business_id })`
+ * and fall back to "the owner's first business" when it is null). Setting it here
+ * is what stops one page showing a different business than the rest.
+ *
+ * The cookie is HMAC-signed, httpOnly, and only ever minted by the admin-gated
+ * login-as routes AFTER they confirmed with the backend that the target user
+ * belongs to that account — so it is not re-verified on every page load. Server
+ * API routes go through `resolvePortalBusinessId`, which does re-check membership.
+ */
+async function applyPortalBusinessSelection(session: ResolvedAuthSession): Promise<ResolvedAuthSession> {
+  const raw = cookies().get(PORTAL_BUSINESS_COOKIE)?.value
+  if (!raw) return session
+
+  const payload = await readSignedPortalBusinessPayload(raw)
+  if (!payload) return session
+
+  // Bind the selection to the user it was minted for, so a leftover cookie from a
+  // previous impersonation cannot bleed into a different session.
+  const effectiveUserId =
+    session.viewingAs?.targetUserId
+    ?? (session.localProfileId != null && /^\d+$/.test(session.localProfileId) ? Number(session.localProfileId) : null)
+  if (effectiveUserId == null || effectiveUserId !== payload.userId) return session
+
+  return {
+    ...session,
+    profile: { ...session.profile, business_id: String(payload.accountId) },
+    portalBusinessAccountId: payload.accountId,
+    viewingAs: session.viewingAs
+      ? { ...session.viewingAs, targetBusinessAccountId: payload.accountId }
+      : session.viewingAs,
   }
 }
 
@@ -224,7 +282,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
         source: 'demo',
       }
       const viewAs = await getViewAsPayload(cookieStore)
-      return viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession
+      return applyPortalBusinessSelection(viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession)
     }
   }
 
@@ -257,7 +315,7 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     }
 
     const viewAs = await getViewAsPayload(cookieStore)
-    return viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession
+    return applyPortalBusinessSelection(viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession)
   }
 
   return null

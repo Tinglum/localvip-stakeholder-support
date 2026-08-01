@@ -48,6 +48,18 @@ export function getMaterialEngineBaseUrl() {
   return 'https://localvip.com'
 }
 
+export function getConsumerWebappBaseUrl() {
+  return (process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com').replace(/\/+$/, '')
+}
+
+export function buildConsumerReferralUrl(
+  referralCode: string,
+  baseUrl = getConsumerWebappBaseUrl(),
+) {
+  const code = referralCode.trim()
+  return code ? `${baseUrl}/auth/signup?ref=${encodeURIComponent(code)}` : ''
+}
+
 export function getStakeholderJoinPath(type: StakeholderType, connectionCode: string) {
   const code = normalizeStakeholderCode(connectionCode) || 'localvip'
   if (type === 'school' || type === 'cause' || type === 'community') {

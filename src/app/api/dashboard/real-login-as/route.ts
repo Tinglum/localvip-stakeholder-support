@@ -29,6 +29,12 @@ import { cookies } from 'next/headers'
 import { qaAdminLoginAs, QaApiError } from '@/lib/auth/qa-api'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
 import {
+  PORTAL_BUSINESS_COOKIE,
+  buildPortalBusinessSelection,
+  portalBusinessCookieOptions,
+  readRequestedBusinessAccountId,
+} from '@/lib/server/portal-business'
+import {
   QA_COOKIE_NAMES,
   buildQaSessionFromTokens,
   setQaSessionCookies,
@@ -54,7 +60,7 @@ export async function POST(request: NextRequest) {
 
   const jar = cookies()
 
-  let body: { targetUserId?: number | string } = {}
+  let body: { targetUserId?: number | string; businessAccountId?: number | string } = {}
   try {
     body = await request.json()
   } catch {
@@ -75,6 +81,28 @@ export async function POST(request: NextRequest) {
   const actingNumericId = access.session.localProfileId
   if (actingNumericId && String(actingNumericId) === String(targetUserId)) {
     return NextResponse.json({ error: 'Cannot log in as yourself.' }, { status: 400 })
+  }
+
+  // Which business the admin launched from. Verified NOW, while we still hold the
+  // admin's own token and before any session cookie is swapped — an id that does
+  // not belong to the target must fail loudly rather than silently open the wrong
+  // (or someone else's) business portal. See /lib/server/portal-business.
+  const requestedBusinessAccountId = readRequestedBusinessAccountId(body as Record<string, unknown>)
+  let businessSelectionCookie: { name: string; value: string } | null = null
+  if (requestedBusinessAccountId != null) {
+    const selection = await buildPortalBusinessSelection(targetUserId, requestedBusinessAccountId)
+    if (!selection.ok) {
+      return NextResponse.json(
+        {
+          error:
+            selection.reason === 'not-a-member'
+              ? 'That business does not belong to this user.'
+              : 'Could not verify the business belongs to this user.',
+        },
+        { status: selection.reason === 'not-a-member' ? 403 : 502 },
+      )
+    }
+    businessSelectionCookie = selection.cookie
   }
 
   try {
@@ -140,6 +168,18 @@ export async function POST(request: NextRequest) {
     // 4) Clear any stale plain View-As overlay so the two mechanisms can't stack.
     response.cookies.set('lvip_view_as', '', { path: '/', maxAge: 0 })
 
+    // 5) Pin the business the admin launched from (already membership-verified
+    //    above), or clear a previous target's selection when none was named.
+    if (businessSelectionCookie) {
+      response.cookies.set(
+        businessSelectionCookie.name,
+        businessSelectionCookie.value,
+        portalBusinessCookieOptions(),
+      )
+    } else {
+      response.cookies.set(PORTAL_BUSINESS_COOKIE, '', { path: '/', maxAge: 0 })
+    }
+
     return response
   } catch (error) {
     if (error instanceof QaApiError) {
@@ -189,6 +229,7 @@ export async function DELETE() {
 
   response.cookies.set(IMPERSONATION_FLAG, '', { path: '/', maxAge: 0 })
   response.cookies.set('lvip_view_as', '', { path: '/', maxAge: 0 })
+  response.cookies.set(PORTAL_BUSINESS_COOKIE, '', { path: '/', maxAge: 0 })
 
   if (!restoredAny) {
     return NextResponse.json(

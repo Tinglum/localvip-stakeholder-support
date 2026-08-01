@@ -61,7 +61,7 @@ import {
   ActivationDecisionModal,
 } from '@/components/crm/cause-lifecycle-modals'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
-import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
+import { buildConsumerReferralUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
@@ -220,7 +220,13 @@ export default function CauseDetailPage() {
   // (Previously hardcoded null, which blanked the modal and disabled generation.)
   const codes = React.useMemo(() => {
     const rc = (cause as { referral_code?: string | null } | null)?.referral_code || ''
-    return rc ? ({ referral_code: rc, connection_code: rc } as unknown as StakeholderCode) : null
+    return rc
+      ? ({
+          referral_code: rc,
+          connection_code: rc,
+          join_url: buildConsumerReferralUrl(rc),
+        } as unknown as StakeholderCode)
+      : null
   }, [cause])
   const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: EMPTY_UUID })
   const generatedMaterials: any[] = []
@@ -270,7 +276,7 @@ export default function CauseDetailPage() {
   const [engineBusy, setEngineBusy] = React.useState<'codes' | 'generate' | null>(null)
   const [stepBusyId, setStepBusyId] = React.useState<string | null>(null)
 
-  const joinUrl = ''
+  const joinUrl = codes?.join_url || ''
 
   const writebackRows = React.useMemo<QaWritebackRow[]>(() => {
     if (!cause) return []
@@ -670,7 +676,7 @@ export default function CauseDetailPage() {
 
   const completedStepCount = executionSteps.filter(s => s.state === 'completed').length
   const qrGeneratorHref = localCauseId
-    ? `/qr/generator?causeId=${localCauseId}&returnTo=${encodeURIComponent(`/crm/causes/${localCauseId}${qaCauseId !== null ? `?qaId=${qaCauseId}` : ''}`)}`
+    ? `/qr/generator?causeId=${encodeURIComponent(localCauseId)}${qaCauseId !== null ? `&qaId=${encodeURIComponent(String(qaCauseId))}` : ''}&returnTo=${encodeURIComponent(`/crm/causes/${localCauseId}${qaCauseId !== null ? `?qaId=${qaCauseId}` : ''}`)}`
     : '/qr/generator'
 
   // ── TAB CONFIG ──

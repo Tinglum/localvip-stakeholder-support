@@ -15,6 +15,12 @@ import { fetchQaApi, parseQaJsonResponse, QaApiError } from '@/lib/auth/qa-api'
 import { readSignedViewAsPayload, signViewAsPayload } from '@/lib/auth/qa-auth'
 import { resolveUserDisplayName } from '@/lib/auth/display-name'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
+import {
+  PORTAL_BUSINESS_COOKIE,
+  buildPortalBusinessSelection,
+  portalBusinessCookieOptions,
+  readRequestedBusinessAccountId,
+} from '@/lib/server/portal-business'
 import type { UserRole } from '@/lib/types/database'
 
 interface QaUserLookup {
@@ -150,7 +156,7 @@ export async function POST(request: NextRequest) {
   const access = await requireQaRouteAccess(['admin'])
   if ('error' in access) return access.error
 
-  let body: { userId?: number | string } = {}
+  let body: { userId?: number | string; businessAccountId?: number | string } = {}
   try {
     body = await request.json()
   } catch {
@@ -190,8 +196,34 @@ export async function POST(request: NextRequest) {
       since: new Date().toISOString(),
     }
 
-    const jar = cookies()
-    jar.set({
+    // Carry the SELECTED business (the one whose CRM page the admin clicked from)
+    // into the session. Without it the portal resolves from the user alone and an
+    // owner of several businesses always lands in the same one.
+    const requestedBusinessAccountId = readRequestedBusinessAccountId(body as Record<string, unknown>)
+    let businessAccountId: number | null = null
+    let portalCookie: { name: string; value: string } | null = null
+    if (requestedBusinessAccountId != null) {
+      const selection = await buildPortalBusinessSelection(user.id, requestedBusinessAccountId)
+      if (!selection.ok) {
+        return NextResponse.json(
+          {
+            error:
+              selection.reason === 'not-a-member'
+                ? 'That business does not belong to this user.'
+                : 'Could not verify the business belongs to this user.',
+          },
+          { status: selection.reason === 'not-a-member' ? 403 : 502 },
+        )
+      }
+      portalCookie = selection.cookie
+      businessAccountId = requestedBusinessAccountId
+    } else {
+      // No business named — clear any stale selection so the previous target's
+      // business cannot bleed into this one.
+    }
+
+    const response = NextResponse.json({ ok: true, viewingAs: { ...payload, businessAccountId } })
+    response.cookies.set({
       name: COOKIE_NAME,
       value: await signViewAsPayload(payload),
       httpOnly: true,
@@ -200,8 +232,12 @@ export async function POST(request: NextRequest) {
       path: '/',
       maxAge: COOKIE_MAX_AGE,
     })
-
-    return NextResponse.json({ ok: true, viewingAs: payload })
+    if (portalCookie) {
+      response.cookies.set({ name: portalCookie.name, value: portalCookie.value, ...portalBusinessCookieOptions() })
+    } else {
+      response.cookies.set({ name: PORTAL_BUSINESS_COOKIE, value: '', path: '/', maxAge: 0 })
+    }
+    return response
   } catch (error) {
     if (error instanceof QaApiError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
@@ -213,6 +249,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE() {
   const jar = cookies()
   jar.delete(COOKIE_NAME)
+  jar.delete(PORTAL_BUSINESS_COOKIE)
   return NextResponse.json({ ok: true })
 }
 

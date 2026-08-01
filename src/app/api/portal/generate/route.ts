@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { generateMaterialsForStakeholder } from '@/lib/server/material-engine'
+import { resolvePortalBusinessId } from '@/lib/server/portal-business'
 import type { Stakeholder } from '@/lib/types/database'
 
 export async function POST(request: NextRequest) {
@@ -34,18 +35,43 @@ export async function POST(request: NextRequest) {
     // against the business (or cause) account. The GeneratedMaterial endpoint
     // embeds the business QR and renders the file.
     const causeId = (body as { causeId?: string }).causeId
+    if (businessId && causeId) {
+      return NextResponse.json({ error: 'Choose either a business or cause account.' }, { status: 400 })
+    }
+
+    // A portal caller may only generate for the business resolved from its
+    // authenticated session. Never forward a caller-supplied account id without
+    // binding it to that scope.
+    if (businessId) {
+      const requestedBusinessId = Number(businessId)
+      const resolvedBusinessId = await resolvePortalBusinessId(session)
+      if (!Number.isFinite(requestedBusinessId) || resolvedBusinessId !== requestedBusinessId) {
+        return NextResponse.json({ error: 'You do not have access to that business.' }, { status: 403 })
+      }
+    }
+
+    // Cause generation from this generic portal endpoint is currently an
+    // operator workflow. Cause self-service needs a signed cause-scope resolver
+    // before it can safely accept a cause id from the browser.
+    const causeAccountId = causeId == null ? null : Number(causeId)
+    if (causeId != null && (!Number.isInteger(causeAccountId) || (causeAccountId ?? 0) <= 0)) {
+      return NextResponse.json({ error: 'A valid cause account is required.' }, { status: 400 })
+    }
+    const qaRoles = session.qaClaims?.roles.map((role) => role.toLowerCase()) ?? []
+    const isCauseMaterialOperator =
+      ['admin', 'super_admin', 'internal_admin'].includes(profile.role)
+      || qaRoles.some((role) => role.includes('sysadmin') || role.includes('employee'))
+    if (causeId && !isCauseMaterialOperator) {
+      return NextResponse.json({ error: 'You do not have access to that cause.' }, { status: 403 })
+    }
     // Self-serve from the business portal: resolve the business from the session
     // when no explicit id was passed (the owner just clicks Generate on a template).
     if (!businessId && !causeId) {
-      const candidate = session.viewingAs?.targetUserId ?? (session.qaClaims?.sub != null ? Number(session.qaClaims.sub) : null)
-      const userId = candidate != null && Number.isFinite(Number(candidate)) ? Number(candidate) : null
-      if (userId) {
-        try {
-          const byUserRes = await fetchQaApi(`/api/dashboard/v1/Business/by-user/${userId}`)
-          const byUser = await parseQaResponse<{ accountId?: number }>(byUserRes, 'Could not resolve business.')
-          if (byUser?.accountId != null) businessId = String(byUser.accountId)
-        } catch { /* fall through */ }
-      }
+      // Shared resolver — respects the business this portal session was launched
+      // from rather than re-deriving it from the user (which always picks the same
+      // one for an owner of several businesses).
+      const resolvedId = await resolvePortalBusinessId(session)
+      if (resolvedId != null) businessId = String(resolvedId)
     }
     if (!businessId && !causeId) {
       return NextResponse.json({ error: 'Could not resolve your business account.' }, { status: 400 })
@@ -53,7 +79,7 @@ export async function POST(request: NextRequest) {
     try {
       const payload: Record<string, unknown> = { templateId: Number(templateId) }
       if (businessId) payload.businessAccountId = Number(businessId)
-      if (causeId) payload.causeAccountId = Number(causeId)
+      if (causeAccountId != null) payload.causeAccountId = causeAccountId
       // Optional explicit QR choice (the business picked a saved QR or made a new
       // one). Otherwise the backend falls back to the owner's default join QR.
       if (typeof qrContent === 'string' && qrContent.trim()) payload.qrContent = qrContent.trim()

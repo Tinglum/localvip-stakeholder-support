@@ -12,6 +12,12 @@ import { cookies } from 'next/headers'
 import { qaAdminLoginAs, QaApiError } from '@/lib/auth/qa-api'
 import { signViewAsPayload } from '@/lib/auth/qa-auth'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
+import {
+  PORTAL_BUSINESS_COOKIE,
+  buildPortalBusinessSelection,
+  portalBusinessCookieOptions,
+  readRequestedBusinessAccountId,
+} from '@/lib/server/portal-business'
 import type { UserRole } from '@/lib/types/database'
 
 const COOKIE_NAME = 'lvip_view_as'
@@ -48,7 +54,7 @@ export async function POST(request: NextRequest) {
   const access = await requireQaRouteAccess(['admin'])
   if ('error' in access) return access.error
 
-  let body: { targetUserId?: number | string } = {}
+  let body: { targetUserId?: number | string; businessAccountId?: number | string } = {}
   try {
     body = await request.json()
   } catch {
@@ -73,7 +79,29 @@ export async function POST(request: NextRequest) {
       since: new Date().toISOString(),
     }
 
-    cookies().set({
+    // Which business the admin launched from — see /lib/server/portal-business.
+    const requestedBusinessAccountId = readRequestedBusinessAccountId(body as Record<string, unknown>)
+    let businessAccountId: number | null = null
+    let portalCookie: { name: string; value: string } | null = null
+    if (requestedBusinessAccountId != null) {
+      const selection = await buildPortalBusinessSelection(payload.userId, requestedBusinessAccountId)
+      if (!selection.ok) {
+        return NextResponse.json(
+          {
+            error:
+              selection.reason === 'not-a-member'
+                ? 'That business does not belong to this user.'
+                : 'Could not verify the business belongs to this user.',
+          },
+          { status: selection.reason === 'not-a-member' ? 403 : 502 },
+        )
+      }
+      portalCookie = selection.cookie
+      businessAccountId = requestedBusinessAccountId
+    }
+
+    const response = NextResponse.json({ ok: true, viewingAs: { ...payload, businessAccountId } })
+    response.cookies.set({
       name: COOKIE_NAME,
       value: await signViewAsPayload(payload),
       httpOnly: true,
@@ -82,8 +110,12 @@ export async function POST(request: NextRequest) {
       path: '/',
       maxAge: COOKIE_MAX_AGE,
     })
-
-    return NextResponse.json({ ok: true, viewingAs: payload })
+    if (portalCookie) {
+      response.cookies.set({ name: portalCookie.name, value: portalCookie.value, ...portalBusinessCookieOptions() })
+    } else {
+      response.cookies.set({ name: PORTAL_BUSINESS_COOKIE, value: '', path: '/', maxAge: 0 })
+    }
+    return response
   } catch (error) {
     if (error instanceof QaApiError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
@@ -94,5 +126,6 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE() {
   cookies().delete(COOKIE_NAME)
+  cookies().delete(PORTAL_BUSINESS_COOKIE)
   return NextResponse.json({ ok: true })
 }

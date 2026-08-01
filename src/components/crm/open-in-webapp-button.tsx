@@ -9,6 +9,13 @@ interface OpenInWebappButtonProps {
   userId: string | number | null
   userName: string | null
   stakeholderType: 'Business' | 'Cause' | 'Consumer'
+  /**
+   * Business account this webapp session is being launched from. Without it the
+   * webapp re-derives the business from the user alone, so an owner of several
+   * businesses lands in whichever one the backend returns first. The server
+   * verifies the user really belongs to this account before passing it on.
+   */
+  businessAccountId?: string | number | null
   variant?: 'default' | 'outline' | 'ghost'
   size?: 'default' | 'sm' | 'lg' | 'icon'
 }
@@ -17,6 +24,7 @@ export function OpenInWebappButton({
   userId,
   userName,
   stakeholderType,
+  businessAccountId = null,
   variant = 'default',
   size = 'sm',
 }: OpenInWebappButtonProps) {
@@ -26,6 +34,10 @@ export function OpenInWebappButton({
   const numericId = userId !== null && /^\d+$/.test(String(userId).trim())
     ? Number(String(userId).trim())
     : null
+  const numericBusinessAccountId =
+    businessAccountId != null && /^\d+$/.test(String(businessAccountId).trim())
+      ? Number(String(businessAccountId).trim())
+      : null
 
   if (!isAdmin || numericId === null) return null
 
@@ -44,7 +56,10 @@ export function OpenInWebappButton({
       const response = await fetch('/api/dashboard/open-in-app', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: numericId }),
+        body: JSON.stringify({
+          targetUserId: numericId,
+          ...(numericBusinessAccountId != null ? { businessAccountId: numericBusinessAccountId } : {}),
+        }),
       })
       const payload = await response.json().catch(() => ({ error: 'Request failed.' }))
       if (!response.ok || !payload.url) {

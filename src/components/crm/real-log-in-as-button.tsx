@@ -24,6 +24,14 @@ interface RealLogInAsButtonProps {
   userId: string | number | null
   userName: string | null
   stakeholderType: string
+  /**
+   * Business account this session is being launched from. Owners of several
+   * businesses used to land in whichever one the backend's by-user lookup
+   * returned first, regardless of which business the admin clicked. Passing it
+   * pins the portal to the right one; the server verifies the user really
+   * belongs to it before honouring it.
+   */
+  businessAccountId?: string | number | null
   variant?: 'default' | 'outline' | 'ghost'
   size?: 'default' | 'sm' | 'lg' | 'icon'
 }
@@ -32,6 +40,7 @@ export function RealLogInAsButton({
   userId,
   userName,
   stakeholderType,
+  businessAccountId = null,
   variant = 'default',
   size = 'sm',
 }: RealLogInAsButtonProps) {
@@ -43,6 +52,10 @@ export function RealLogInAsButton({
   const numericId = userId !== null && /^\d+$/.test(String(userId).trim())
     ? Number(String(userId).trim())
     : null
+  const numericBusinessAccountId =
+    businessAccountId != null && /^\d+$/.test(String(businessAccountId).trim())
+      ? Number(String(businessAccountId).trim())
+      : null
 
   if (!isAdmin || numericId === null) return null
 
@@ -60,7 +73,10 @@ export function RealLogInAsButton({
       const response = await fetch('/api/dashboard/real-login-as', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: numericId }),
+        body: JSON.stringify({
+          targetUserId: numericId,
+          ...(numericBusinessAccountId != null ? { businessAccountId: numericBusinessAccountId } : {}),
+        }),
       })
       // Read as text first so a non-JSON error page (HTML 500) still surfaces a
       // useful message instead of the opaque "Request failed.".

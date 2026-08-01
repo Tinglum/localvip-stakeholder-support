@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
+import { resolvePortalBusinessId } from '@/lib/server/portal-business'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,18 +30,16 @@ export async function POST() {
   const session = await getAuthenticatedSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
-  const candidate = session.viewingAs?.targetUserId
-    ?? (session.qaClaims?.sub != null ? Number(session.qaClaims.sub) : null)
-  const userId = candidate != null && Number.isFinite(Number(candidate)) ? Number(candidate) : null
-  if (!userId) return NextResponse.json({ error: 'No business identity in session.' }, { status: 400 })
+  // Shared resolver — honours the business the session was actually launched
+  // from, so an owner of several businesses gets THIS business's materials rather
+  // than whichever the by-user lookup happens to return first.
+  const resolvedId = await resolvePortalBusinessId(session)
+  if (resolvedId == null) {
+    return NextResponse.json({ error: 'No business account found for this user.' }, { status: 404 })
+  }
+  const businessId = String(resolvedId)
 
   try {
-    // QA user id -> business account id.
-    const byUserRes = await fetchQaApi(`/api/dashboard/v1/Business/by-user/${userId}`)
-    const byUser = await parseQaResponse<{ accountId?: number }>(byUserRes, 'Could not resolve business.')
-    const businessId = byUser?.accountId != null ? String(byUser.accountId) : null
-    if (!businessId) return NextResponse.json({ error: 'No business account found for this user.' }, { status: 404 })
-
     // What's already generated for this business, and which active templates exist.
     const [existingRes, templatesRes] = await Promise.all([
       fetchQaApi(`/api/dashboard/v1/GeneratedMaterial?businessAccountId=${encodeURIComponent(businessId)}`),

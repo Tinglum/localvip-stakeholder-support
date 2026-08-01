@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { qaAdminLoginAs, QaApiError } from '@/lib/auth/qa-api'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
+import { buildPortalBusinessSelection, readRequestedBusinessAccountId } from '@/lib/server/portal-business'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest) {
   const access = await requireQaRouteAccess(['admin'])
   if ('error' in access) return access.error
 
-  let body: { targetUserId?: number | string } = {}
+  let body: { targetUserId?: number | string; businessAccountId?: number | string } = {}
   try {
     body = await request.json()
   } catch {
@@ -27,12 +28,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'A positive integer targetUserId is required.' }, { status: 400 })
   }
 
+  // Which business the admin launched from. The webapp used to re-derive the
+  // business from the user alone, so an owner of several businesses landed in
+  // whichever one the backend's by-user lookup returned first — clicking
+  // "Log in as Business" on business A could open business B. We now carry the
+  // id across, but only after confirming the target user really belongs to it:
+  // the id comes from a browser, and an unverified one would let a hand-crafted
+  // request open an arbitrary business. Same check the internal portal uses.
+  const requestedBusinessAccountId = readRequestedBusinessAccountId(body as Record<string, unknown>)
+  let verifiedBusinessAccountId: number | null = null
+  if (requestedBusinessAccountId != null) {
+    const selection = await buildPortalBusinessSelection(targetUserId, requestedBusinessAccountId)
+    if (!selection.ok) {
+      // Fail closed. Silently opening "some other" business is exactly the bug
+      // this change exists to remove.
+      return NextResponse.json(
+        {
+          error:
+            selection.reason === 'not-a-member'
+              ? 'That business does not belong to this user.'
+              : 'Could not verify the business belongs to this user.',
+        },
+        { status: selection.reason === 'not-a-member' ? 403 : 502 },
+      )
+    }
+    verifiedBusinessAccountId = requestedBusinessAccountId
+  }
+
   try {
     const result = await qaAdminLoginAs(targetUserId)
-    const url = `${WEBAPP_URL}/auth/app-handoff#t=${encodeURIComponent(result.accessToken)}`
+    // Both values ride in the URL FRAGMENT, which is never sent to a server,
+    // logged, or leaked via Referer. The webapp re-verifies `b` against the
+    // signed-in user before honouring it — this is a hint, not an authority.
+    const url =
+      `${WEBAPP_URL}/auth/app-handoff#t=${encodeURIComponent(result.accessToken)}` +
+      (verifiedBusinessAccountId != null ? `&b=${encodeURIComponent(String(verifiedBusinessAccountId))}` : '')
     return NextResponse.json({
       url,
-      target: { userId: result.user.id, email: result.user.email },
+      target: {
+        userId: result.user.id,
+        email: result.user.email,
+        businessAccountId: verifiedBusinessAccountId,
+      },
     })
   } catch (error) {
     if (error instanceof QaApiError) {
