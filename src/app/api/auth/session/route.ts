@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { setQaSessionCookies } from '@/lib/auth/qa-auth'
+import { isPersistentQaSession, setQaSessionCookies } from '@/lib/auth/qa-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,11 @@ export async function GET() {
     // the refresh would repeat on every request until the refresh token itself
     // expired, and the client would keep seeing a stale expiresAt.
     if (session.qaSessionRefreshed && session.qaSession) {
-      setQaSessionCookies(response, session.qaSession)
+      // Carry the existing "keep me logged in" choice across the refresh rather
+      // than defaulting — a refresh must not change how long the session lasts.
+      setQaSessionCookies(response, session.qaSession, {
+        persistent: isPersistentQaSession(cookies()),
+      })
     }
 
     return response

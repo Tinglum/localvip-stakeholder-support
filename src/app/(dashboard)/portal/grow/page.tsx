@@ -1,1 +1,1 @@
-export { BusinessGrowPage as default } from '@/components/business/business-grow-page'
+export { BusinessGrowHubPage as default } from '@/components/business/business-grow-hub-page'

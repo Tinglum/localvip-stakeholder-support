@@ -5,10 +5,25 @@ import { AppShell } from '@/components/layout/app-shell'
 import { AuthProvider } from '@/lib/auth/context'
 import { ImpersonationProvider } from '@/lib/impersonation-context'
 import { ViewAsBanner } from '@/components/layout/view-as-banner'
+import { BiometricLockGate } from '@/components/auth/biometric-lock-gate'
 import { normalizeBusinessProfile } from '@/lib/business-portal'
 import type { Profile } from '@/lib/types/database'
 
+/**
+ * Wraps the whole shell in the local biometric lock. The gate renders its children
+ * untouched unless the user opted in on this device, so nothing changes by default.
+ * It sits outside the session fetch so a locked device never flashes the dashboard
+ * while the profile loads.
+ */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <BiometricLockGate>
+      <DashboardLayoutShell>{children}</DashboardLayoutShell>
+    </BiometricLockGate>
+  )
+}
+
+function DashboardLayoutShell({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = React.useState<Profile | null>(null)
   const [localProfileId, setLocalProfileId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)

@@ -15,9 +15,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Enter your email and password.' }, { status: 400 })
     }
 
+    // "Keep me logged in on this device" — default on, matching the webapp. Only
+    // an explicit false opts out into browser-session cookies.
+    const persistent = body.keepLoggedIn !== false
+
     const session = await loginWithPassword(email, password)
-    const response = NextResponse.json({ ok: true })
-    setQaSessionCookies(response, session)
+    const response = NextResponse.json({ ok: true, persistent })
+    setQaSessionCookies(response, session, { persistent })
     return response
   } catch (error) {
     return NextResponse.json(

@@ -1,33 +1,39 @@
 'use client'
 
 /**
- * BUSINESS DASHBOARD — overview only.
+ * HOME — status, earnings, network size, next step. READ-ONLY.
  *
- * Everything here is a summary that links out. The setup checklist lives on
- * /portal/setup, the network on /portal/network, the activity timeline on
- * /portal/activity, and the 100-list progress on /portal/clients. Nothing on
- * this page renders a second copy of any of them.
+ * Absorbs the old Activity tab: the full invite/join timeline now lives at the
+ * bottom of this page instead of on its own route.
+ *
+ * The ONE accented card on this page is "Needs your input" — the summary of
+ * unfinished, owner-actionable work. Everything else uses the neutral
+ * treatment, because nothing else here changes data. If you are adding a card
+ * that writes something, it belongs on My Business or Grow, not here.
  */
 
 import * as React from 'react'
 import Link from 'next/link'
 import {
+  AlertTriangle,
   ArrowRight,
+  BarChart3,
+  CheckCircle2,
   Clock3,
   Info,
   Network,
-  Rocket,
   Sparkles,
   Store,
   Tag,
   Users,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StripeFinancialCard } from '@/components/business/stripe-financial-card'
+import { ActionSection, InfoSection, InfoStat, SurfaceLegend } from '@/components/business/business-surfaces'
 import { useAuth } from '@/lib/auth/context'
 import {
   getActivationLabel,
@@ -37,6 +43,8 @@ import {
   getBusinessQaAccountId,
   getContactDisplayName,
   getContactListStatus,
+  getNetworkMilestone,
+  isCreatedToday,
   resolveScopedBusiness,
 } from '@/lib/business-portal'
 import { useBusinessSetupStatus } from '@/lib/business-setup-status'
@@ -44,11 +52,12 @@ import { useBusinesses, useContacts, useOffers } from '@/lib/supabase/hooks'
 import { cn, formatDateTime, formatNumber } from '@/lib/utils'
 import type { Contact } from '@/lib/types/database'
 
-type ActivityPreviewItem = {
+type TimelineItem = {
   id: string
-  title: string
-  createdAt: string
-  tone: 'default' | 'success' | 'info'
+  label: string
+  detail: string
+  at: string
+  tone: 'default' | 'info' | 'success'
 }
 
 export function BusinessDashboardPage() {
@@ -77,8 +86,8 @@ export function BusinessDashboardPage() {
   const qaAccountId = getBusinessQaAccountId(business)
   const networkSize = useNetworkSize(qaAccountId)
 
-  // Refresh quietly when the owner returns to the tab, plus a calm 60s tick while
-  // the page is actually visible — no constant background polling.
+  // Refresh quietly when the owner returns to the tab, plus a calm 60s tick
+  // while the page is actually visible — no constant background polling.
   React.useEffect(() => {
     if (!business) return
 
@@ -118,19 +127,41 @@ export function BusinessDashboardPage() {
   const activationStatus = getBusinessActivationStatus(business, contacts)
   const launchPhase = getBusinessLaunchPhase(business, contacts)
   const joinedCount = contacts.filter((contact) => getContactListStatus(contact) === 'joined').length
+  const invitedCount = contacts.filter((contact) => getContactListStatus(contact) !== 'added').length
+  const todayAdds = contacts.filter((contact) => isCreatedToday(contact.created_at)).length
+  const conversionRate = invitedCount > 0 ? Math.round((joinedCount / invitedCount) * 100) : 0
   const liveOffers = offers.filter((offer) => offer.status === 'active').length
   const progressPercent = Math.min(100, Math.round((contacts.length / 100) * 100))
-  const activityPreview = buildActivityPreview(contacts)
+  const milestone = getNetworkMilestone(contacts.length)
+  const timeline = buildTimeline(contacts)
 
-  // The one next action comes from the shared setup checklist, so the dashboard
-  // and /portal/setup can never disagree about what is left to do.
+  // The next action comes from the shared setup checklist, so Home and the
+  // wizard can never disagree about what is left to do.
   const setup = liveSetupState
   const nextStep = setup.nextStep
-  const nextStepHref = nextStep
-    ? `/portal/setup?step=${nextStep.key}`
-    : '/portal/network'
-  const explicitlyOnboarded = String(business.status || '') === 'pending_live_review'
-    || String(business.status || '') === 'live'
+  const nextStepHref = nextStep ? `/portal/setup?step=${nextStep.key}` : '/portal/grow?section=network'
+  const explicitlyOnboarded =
+    String(business.status || '') === 'pending_live_review' || String(business.status || '') === 'live'
+
+  // "Needs your input" = every unfinished setup requirement, plus the growth
+  // nudge when setup is done but the list has not been started.
+  const needsInput: Array<{ key: string; label: string; description: string; href: string }> = setup.steps
+    .filter((step) => !step.complete)
+    .map((step) => ({
+      key: step.key,
+      label: step.label,
+      description: step.description,
+      href: `/portal/setup?step=${step.key}`,
+    }))
+
+  if (needsInput.length === 0 && contacts.length === 0) {
+    needsInput.push({
+      key: 'first-contacts',
+      label: 'Add your first customers',
+      description: 'Your setup is finished. Start your 100 list so your network has somewhere to grow from.',
+      href: '/portal/grow?section=customers',
+    })
+  }
 
   const launchLabel =
     launchPhase === 'capturing_100'
@@ -142,10 +173,10 @@ export function BusinessDashboardPage() {
           : 'Setup'
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title={`Welcome, ${business.name}`}
-        description="A quick read on where your business stands. Open any card to work on it."
+        description="A quick read on where your business stands. Nothing on this page changes your data — use My Business to edit and Grow to add people."
         actions={
           explicitlyOnboarded ? (
             <Badge variant={getActivationTone(activationStatus)} dot>
@@ -161,6 +192,57 @@ export function BusinessDashboardPage() {
         }
       />
 
+      <SurfaceLegend />
+
+      {/* The one accented card on Home. */}
+      {needsInput.length > 0 ? (
+        <ActionSection
+          title="Needs your input"
+          description={`${needsInput.length} thing${needsInput.length === 1 ? '' : 's'} only you can finish. Everything else on this page is just information.`}
+          complete={false}
+          statusLabel={`${needsInput.length} open`}
+          actions={
+            <Button asChild size="sm">
+              <Link href={nextStepHref}>
+                {nextStep ? 'Open the next one' : 'Get started'}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          }
+        >
+          <ul className="space-y-2">
+            {needsInput.map((item) => (
+              <li key={item.key}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    'flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-3 transition-colors',
+                    'hover:border-amber-300 hover:bg-amber-50/60',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1',
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2">
+                      <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span className="text-sm font-semibold text-surface-900">{item.label}</span>
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-surface-600">{item.description}</span>
+                  </span>
+                  <ArrowRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-surface-400" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </ActionSection>
+      ) : (
+        <InfoSection title="Nothing needs your input" description="Setup is complete and your list is moving.">
+          <p className="flex items-center gap-2 text-sm text-success-700">
+            <CheckCircle2 className="h-4 w-4" />
+            You are all caught up. Keep growing your network from the Grow tab.
+          </p>
+        </InfoSection>
+      )}
+
       <Card className="overflow-hidden border-surface-200">
         <div className="bg-[linear-gradient(135deg,_rgba(245,158,11,0.15),_rgba(255,255,255,0.96)_38%,_rgba(132,204,22,0.16)_100%)] px-6 py-6">
           <div className="grid gap-6 lg:grid-cols-[1.15fr,0.85fr]">
@@ -175,7 +257,8 @@ export function BusinessDashboardPage() {
                   {nextStep?.label || 'Everything is set up'}
                 </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-7 text-surface-600 sm:text-base">
-                  {nextStep?.description || 'Your setup is finished. Keep an eye on your network and keep the list moving.'}
+                  {nextStep?.description
+                    || 'Your setup is finished. Keep an eye on your network and keep the list moving.'}
                 </p>
               </div>
 
@@ -199,7 +282,7 @@ export function BusinessDashboardPage() {
             </div>
 
             <Link
-              href="/portal/clients"
+              href="/portal/grow?section=customers"
               aria-label={`Progress to 100: ${contacts.length} of 100 people added. Open my 100 list.`}
               className={cn(
                 'group rounded-[1.75rem] border border-white/90 bg-white/90 p-5 shadow-sm transition-all',
@@ -216,7 +299,9 @@ export function BusinessDashboardPage() {
                 />
               </div>
               <p className="mt-4 flex items-center gap-1 text-sm text-surface-600">
-                Open my 100 list
+                <Badge variant={activationStatus === 'active' ? 'success' : activationStatus === 'in_progress' ? 'info' : 'warning'}>
+                  {milestone.label}
+                </Badge>
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
               </p>
             </Link>
@@ -224,84 +309,78 @@ export function BusinessDashboardPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiTile
-          href="/portal/network#joined-customers"
-          icon={<Users className="h-5 w-5" />}
-          label="Customers joined"
-          value={formatNumber(joinedCount)}
-          hint="See everyone who joined your team"
-        />
-        <KpiTile
-          href="/portal/network"
-          icon={<Network className="h-5 w-5" />}
-          label="Network size"
-          value={networkSize === null ? '—' : formatNumber(networkSize)}
-          hint={networkSize === null ? 'Open your network to see the levels' : 'People connected across all 10 levels'}
-        />
-        <KpiTile
-          href="/portal/business"
-          icon={<Tag className="h-5 w-5" />}
-          label="Offers live"
-          value={formatNumber(liveOffers)}
-          hint="Review your capture offer and cashback"
-        />
-        <KpiTile
-          href="/portal/setup"
-          icon={<Rocket className="h-5 w-5" />}
-          label="Launch phase"
-          value={launchLabel}
-          hint={`${setup.completedCount} of ${setup.totalSteps} setup steps finished`}
-        />
-      </div>
+      <InfoSection
+        title="Your numbers"
+        description="Read-only. Open Grow to change any of them."
+        bodyClassName="p-5"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <InfoStat
+            label="Customers joined"
+            value={formatNumber(joinedCount)}
+            hint="People who finished joining through your business"
+            icon={<Users className="h-5 w-5" />}
+          />
+          <InfoStat
+            label="Network size"
+            value={networkSize === null ? '—' : formatNumber(networkSize)}
+            hint="People connected across all 10 levels"
+            icon={<Network className="h-5 w-5" />}
+          />
+          <InfoStat
+            label="Offers live"
+            value={formatNumber(liveOffers)}
+            hint="Active offers on your business"
+            icon={<Tag className="h-5 w-5" />}
+          />
+          <InfoStat label="Invites sent" value={formatNumber(invitedCount)} hint="Contacts you have invited so far" />
+          <InfoStat label="Conversion rate" value={`${conversionRate}%`} hint="Invites that turned into joins" />
+          <InfoStat label="Added today" value={formatNumber(todayAdds)} hint={`Launch phase: ${launchLabel}`} />
+        </div>
+      </InfoSection>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
-        <StripeFinancialCard />
+      <StripeFinancialCard />
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle>Latest activity</CardTitle>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/portal/activity">
-                  View all
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {activityPreview.length === 0 ? (
-              <p className="text-sm text-surface-500">
-                This fills in as you add people, invite them, and see them join through your business.
-              </p>
-            ) : (
-              activityPreview.map((item) => (
-                <Link
-                  key={item.id}
-                  href="/portal/activity"
-                  aria-label={`${item.title}. Open the full activity timeline.`}
-                  className={cn(
-                    'flex items-start justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors',
-                    'hover:border-surface-300 hover:bg-surface-100',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1',
-                  )}
-                >
-                  <p className="text-sm font-medium text-surface-900">{item.title}</p>
-                  <Badge variant={item.tone === 'success' ? 'success' : item.tone === 'info' ? 'info' : 'default'}>
-                    {formatDateTime(item.createdAt)}
-                  </Badge>
-                </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Absorbed from the old Activity tab. */}
+      <InfoSection
+        title="Recent activity"
+        description="Every add, invite, and join on your list, newest first."
+      >
+        {timeline.length === 0 ? (
+          <p className="text-sm text-surface-500">
+            This fills in as you add people, invite them, and see them join through your business.
+          </p>
+        ) : (
+          <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+            {timeline.slice(0, 50).map((item) => (
+              <div
+                key={item.id}
+                className="flex items-start justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {item.tone === 'success' ? (
+                      <CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0 text-success-600" />
+                    ) : (
+                      <BarChart3 aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-500" />
+                    )}
+                    <p className="text-sm font-semibold text-surface-900">{item.label}</p>
+                  </div>
+                  <p className="mt-1 text-xs text-surface-500">{item.detail}</p>
+                </div>
+                <Badge variant={item.tone === 'success' ? 'success' : item.tone === 'info' ? 'info' : 'default'}>
+                  {formatDateTime(item.at)}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </InfoSection>
     </div>
   )
 }
 
-/** Total people in the business's downline. Degrades to null when unavailable. */
+/** Total people in the business's network. Degrades to null when unavailable. */
 function useNetworkSize(qaAccountId: string | null) {
   const [size, setSize] = React.useState<number | null>(null)
 
@@ -312,76 +391,63 @@ function useNetworkSize(qaAccountId: string | null) {
     }
 
     let cancelled = false
-    fetch(`/api/dashboard/network/tree?accountId=${encodeURIComponent(qaAccountId)}&depth=10&period=all`, { cache: 'no-store' })
+    fetch(`/api/dashboard/network/tree?accountId=${encodeURIComponent(qaAccountId)}&depth=10&period=all`, {
+      cache: 'no-store',
+    })
       .then((res) => (res.ok ? res.json() : null))
       .then((json: { totalNodes?: number; nodes?: unknown[] } | null) => {
         if (cancelled || !json) return
-        const total = typeof json.totalNodes === 'number' ? json.totalNodes : Array.isArray(json.nodes) ? json.nodes.length : null
+        const total =
+          typeof json.totalNodes === 'number' ? json.totalNodes : Array.isArray(json.nodes) ? json.nodes.length : null
         setSize(total)
       })
       .catch(() => {
         if (!cancelled) setSize(null)
       })
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [qaAccountId])
 
   return size
 }
 
-function buildActivityPreview(contacts: Contact[]): ActivityPreviewItem[] {
-  const items: ActivityPreviewItem[] = []
+function buildTimeline(contacts: Contact[]): TimelineItem[] {
+  return contacts
+    .flatMap((contact) => {
+      const name = getContactDisplayName(contact)
+      const items: TimelineItem[] = [
+        {
+          id: `${contact.id}-added`,
+          label: `${name} added`,
+          detail: 'Added to your list',
+          at: contact.created_at,
+          tone: 'default',
+        },
+      ]
 
-  for (const contact of contacts) {
-    const name = getContactDisplayName(contact)
-    items.push({ id: `${contact.id}-added`, title: `${name} was added to your list`, createdAt: contact.created_at, tone: 'default' })
-    if (contact.invited_at) {
-      items.push({ id: `${contact.id}-invited`, title: `${name} was marked as invited`, createdAt: contact.invited_at, tone: 'info' })
-    }
-    if (contact.joined_at) {
-      items.push({ id: `${contact.id}-joined`, title: `${name} joined`, createdAt: contact.joined_at, tone: 'success' })
-    }
-  }
+      if (contact.invited_at) {
+        items.push({
+          id: `${contact.id}-invited`,
+          label: `${name} invited`,
+          detail: 'Invite recorded',
+          at: contact.invited_at,
+          tone: 'info',
+        })
+      }
 
-  return items
-    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
-    .slice(0, 3)
-}
+      if (contact.joined_at) {
+        items.push({
+          id: `${contact.id}-joined`,
+          label: `${name} joined`,
+          detail: 'Joined through your business list',
+          at: contact.joined_at,
+          tone: 'success',
+        })
+      }
 
-function KpiTile({
-  href,
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  href: string
-  icon: React.ReactNode
-  label: string
-  value: string
-  hint: string
-}) {
-  return (
-    <Link
-      href={href}
-      aria-label={`${label}: ${value}. ${hint}`}
-      className={cn(
-        'group block rounded-2xl border border-surface-200 bg-white p-5 shadow-sm transition-all',
-        'hover:-translate-y-0.5 hover:shadow-card-hover',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2',
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-          <p className="mt-2 truncate text-3xl font-bold text-surface-900">{value}</p>
-        </div>
-        <span className="rounded-2xl bg-surface-100 p-3 text-surface-600">{icon}</span>
-      </div>
-      <p className="mt-3 flex items-center gap-1 text-sm text-surface-500">
-        {hint}
-        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-      </p>
-    </Link>
-  )
+      return items
+    })
+    .sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime())
 }

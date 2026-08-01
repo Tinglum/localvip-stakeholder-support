@@ -49,7 +49,9 @@ function joinedThisMonth(contact: Contact) {
   return joined.getFullYear() === now.getFullYear() && joined.getMonth() === now.getMonth()
 }
 
-export function BusinessNetworkPage() {
+/** `embedded` suppresses the standalone PageHeader when the Grow hub renders
+ *  this as a section. Nothing else changes. */
+export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { profile } = useAuth()
   const businessFilters = React.useMemo<Record<string, string>>(() => {
     const filters: Record<string, string> = {}
@@ -101,18 +103,20 @@ export function BusinessNetworkPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="My Network"
-        description={`Everyone connected to ${business.name}, and the customers who joined your team.`}
-        actions={
-          <Button variant="outline" asChild>
-            <Link href="/portal/clients">
-              Open my 100 list
-              <Users className="h-4 w-4" />
-            </Link>
-          </Button>
-        }
-      />
+      {embedded ? null : (
+        <PageHeader
+          title="My Network"
+          description={`Everyone connected to ${business.name}, and the customers who joined your team.`}
+          actions={
+            <Button variant="outline" asChild>
+              <Link href="/portal/grow?section=customers">
+                Open my 100 list
+                <Users className="h-4 w-4" />
+              </Link>
+            </Button>
+          }
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <StatTile
@@ -122,7 +126,7 @@ export function BusinessNetworkPage() {
           hint="See each person who finished joining through your business"
         />
         <StatTile
-          href="/portal/activity"
+          href="/dashboard"
           label="Joined this month"
           value={formatNumber(joinedThisMonthCount)}
           hint="Open your activity timeline for the full history"
@@ -149,7 +153,7 @@ export function BusinessNetworkPage() {
               </p>
             </div>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/portal/clients">
+              <Link href="/portal/grow?section=customers">
                 Manage my list
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -163,7 +167,7 @@ export function BusinessNetworkPage() {
                 Nobody has finished joining yet. Invite the people already on your list and they will appear here.
               </p>
               <Button className="mt-4" asChild>
-                <Link href="/portal/clients">
+                <Link href="/portal/grow?section=customers">
                   Invite people from my list
                   <ArrowRight className="h-4 w-4" />
                 </Link>
@@ -195,14 +199,93 @@ export function BusinessNetworkPage() {
         {qaAccountId ? (
           <NetworkTreeView accountId={qaAccountId} nodeLabel="business" buildNodeDetailUrl={buildNodeDetailUrl} />
         ) : (
-          <EmptyState
-            icon={<Network className="h-8 w-8" />}
-            title="Network is not connected yet"
-            description="This business is not linked to a network account yet. Once it is fully set up on the platform, your downline will appear here."
-          />
+          <UnlinkedNetworkPanel businessName={business.name} />
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Shown only when the business genuinely has no network account id — a local or
+ * demo record that was never linked to a platform account. There is no tree to
+ * draw, so the panel gives the business the one thing that still works today
+ * (their own referral link, already on this page) and says what unlocks the rest,
+ * instead of dead-ending on "not connected".
+ */
+function UnlinkedNetworkPanel({ businessName }: { businessName: string }) {
+  return (
+    <Card className="border-surface-200">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Network className="h-4 w-4 text-brand-600" />
+          Your network is still being set up
+        </CardTitle>
+        <p className="mt-1 text-sm leading-6 text-surface-500">
+          {businessName} does not have a platform account behind it yet, so there is nothing to lay out level by level.
+          Everything you do now still counts — invites are recorded against your referral link and will appear here as
+          soon as the account is linked.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <ol className="space-y-3">
+          <UnlinkedStep
+            number="1"
+            title="Share your referral link"
+            description="It is on this page, just above. Anyone who joins through it — a customer, a business, or a cause — comes in under you."
+          />
+          <UnlinkedStep
+            number="2"
+            title="Invite people directly"
+            description="Use Grow to invite customers, other businesses, and causes by name. Each invite is tracked with its own referral code."
+          />
+          <UnlinkedStep
+            number="3"
+            title="Finish your business setup"
+            description="Completing setup and going live is what links this business to a platform account and turns this section into your live network."
+          />
+        </ol>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <Link href="/portal/grow">
+              Invite someone
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/portal/business">
+              Finish business setup
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function UnlinkedStep({
+  number,
+  title,
+  description,
+}: {
+  number: string
+  title: string
+  description: string
+}) {
+  return (
+    <li className="flex gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+      <span
+        aria-hidden="true"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
+      >
+        {number}
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-surface-900">{title}</p>
+        <p className="mt-1 text-sm leading-6 text-surface-500">{description}</p>
+      </div>
+    </li>
   )
 }
 
@@ -296,7 +379,7 @@ function JoinedCustomerRow({
             />
           </div>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/portal/clients">
+            <Link href="/portal/grow?section=customers">
               Open in my 100 list
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>

@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
       expiresAt?: number | null
       scope?: string | null
       returnTo?: string | null
+      keepLoggedIn?: boolean | null
     } | null
 
     if (!body?.accessToken) {
@@ -58,7 +59,8 @@ export async function POST(request: NextRequest) {
       expiresAt: session.expiresAt,
     })
 
-    setQaSessionCookies(response, session)
+    // Default on, as on the password form. Only an explicit false opts out.
+    setQaSessionCookies(response, session, { persistent: body.keepLoggedIn !== false })
     response.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })
     response.cookies.set(QA_COOKIE_NAMES.verifier, '', { path: '/', maxAge: 0 })
     response.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })

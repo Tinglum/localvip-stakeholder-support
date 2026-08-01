@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { hasQaSession } from '@/lib/auth/qa-auth'
+import { hasRefreshableQaSession } from '@/lib/auth/qa-auth'
 import { hasDemoSession } from '@/lib/auth/demo-auth'
 
 export async function updateSession(request: NextRequest) {
@@ -16,7 +16,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(callbackUrl)
   }
 
-  const hasQaAuth = hasQaSession(request)
+  // Refreshable, not strictly live: an expired access token with a refresh token
+  // behind it is a working session, and bouncing it to /login here meant the
+  // refresh could never run. Authorization is still enforced downstream by
+  // getAuthenticatedSession, which redirects if the refresh actually fails.
+  const hasQaAuth = hasRefreshableQaSession(request)
   const hasDemoAuth = hasDemoSession(request)
   const response = NextResponse.next({
     request: { headers: request.headers },

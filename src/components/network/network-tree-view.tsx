@@ -3,7 +3,7 @@
 /**
  * NetworkTreeView
  * ───────────────
- * Read-only downline / level-breakdown view for ANY node (customer, business,
+ * Read-only network / level-breakdown view for ANY node (customer, business,
  * or cause). Mirrors the consumer "My Network" page layout. Either:
  *   - pass `accountId` to fetch GET /api/dashboard/network/tree?accountId=…, or
  *   - pass `fetchUrl` to fetch a pre-scoped endpoint (e.g. /api/portal/me/network).

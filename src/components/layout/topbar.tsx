@@ -123,10 +123,10 @@ function getProfileHref(profile: Profile, shell: string) {
 function getQuickLinks(shell: string, businessSetupComplete = false): { label: string; href: string }[] {
   if (shell === 'business') {
     return [
-      { label: 'My 100 list', href: '/portal/clients' },
-      { label: 'My network', href: '/portal/network' },
+      { label: 'My 100 list', href: '/portal/grow?section=customers' },
+      { label: 'My network', href: '/portal/grow?section=network' },
       { label: 'My business profile', href: '/portal/business' },
-      { label: 'My materials', href: '/materials/mine' },
+      { label: 'My materials', href: '/portal/materials' },
       // Setup drops out of the shortcuts once there is nothing left to finish.
       ...(businessSetupComplete ? [] : [{ label: 'Setup steps', href: '/portal/setup' }]),
     ]
@@ -155,8 +155,8 @@ function getActionCenterContent(shell: string, pathname: string) {
       description: 'Pick one task, finish it, then come back for the next step.',
       items: [
         { label: 'Open my next business step', href: '/dashboard' },
-        { label: 'Open my 100 list', href: '/portal/clients' },
-        { label: 'See my network', href: '/portal/network' },
+        { label: 'Open my 100 list', href: '/portal/grow?section=customers' },
+        { label: 'See my network', href: '/portal/grow?section=network' },
         { label: 'Check my business profile', href: '/portal/business' },
       ],
     }
@@ -320,7 +320,7 @@ export function Topbar({
     } else if (access.shell === 'community') {
       router.push('/community/supporters')
     } else if (access.shell === 'business') {
-      router.push('/portal/clients')
+      router.push('/portal/grow?section=customers')
     } else {
       router.push(`/crm/businesses?q=${encodeURIComponent(q)}`)
     }

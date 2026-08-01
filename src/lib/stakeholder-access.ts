@@ -56,25 +56,35 @@ export const STAKEHOLDER_SUBTYPE_OPTIONS: Record<
   influencer: [],
 }
 
+/**
+ * FOUR TABS. Home is read-only status; My Business is the editable surface;
+ * Grow is every way to add customers, businesses and causes; Materials is QR
+ * and printable assets.
+ *
+ * The old nine items are absorbed, not deleted — Dashboard+Activity → Home,
+ * My Business+Setup → My Business, My 100 List+My Network+Grow → Grow,
+ * Materials+Template Library → Materials. Every old route still resolves via
+ * the redirects in `next.config.js`.
+ */
 const BUSINESS_NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
-  { label: 'Setup', href: '/portal/setup', icon: 'Rocket', minLevel: 0 },
+  { label: 'Home', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
   { label: 'My Business', href: '/portal/business', icon: 'Store', minLevel: 0 },
-  { label: 'My 100 List', href: '/portal/clients', icon: 'Users', minLevel: 0 },
-  { label: 'My Network', href: '/portal/network', icon: 'Network', minLevel: 0 },
-  { label: 'Grow with Other Businesses', href: '/portal/grow', icon: 'Megaphone', minLevel: 0 },
-  { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', minLevel: 0 },
-  { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
-  { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', minLevel: 0 },
+  { label: 'Grow', href: '/portal/grow', icon: 'Megaphone', minLevel: 0 },
+  { label: 'Materials', href: '/portal/materials', icon: 'FileDown', minLevel: 0 },
 ]
 
-/** Setup is a finite job — once it's done the nav item retires (the route stays reachable). */
+/**
+ * The first-run wizard is no longer a nav item at all — it is reached from the
+ * "Needs your input" panel on Home and from `?step=` deep links. Kept as an
+ * export because the shell still filters on it when setup is complete.
+ */
 export const BUSINESS_SETUP_NAV_HREF = '/portal/setup'
 
 const CONSUMER_NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
   { label: 'My Wallet', href: '/portal/me/wallet', icon: 'TrendingUp', minLevel: 0 },
   { label: 'My Network', href: '/portal/me/network', icon: 'Users', minLevel: 0 },
+  { label: 'Pay it Forward', href: '/portal/me/pay-it-forward', icon: 'HandHeart', minLevel: 0 },
   { label: 'My Transactions', href: '/portal/me/transactions', icon: 'ScrollText', minLevel: 0 },
   { label: 'My Causes', href: '/portal/me/causes', icon: 'Heart', minLevel: 0 },
 ]
@@ -426,6 +436,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
       '/portal/grow',
       '/portal/templates',
       '/portal/activity',
+      '/portal/materials',
       '/materials/mine',
     ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   }

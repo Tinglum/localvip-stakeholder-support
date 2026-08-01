@@ -71,7 +71,12 @@ const INITIAL_FORM = {
   tag: '',
 }
 
-export function BusinessMy100ListPage() {
+/**
+ * `embedded` renders this page as a SECTION of the Grow hub: the standalone
+ * PageHeader is suppressed because the hub supplies its own. Nothing else
+ * changes — every control and data path is identical.
+ */
+export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { profile } = useAuth()
   const searchParams = useSearchParams()
   const businessFilters = React.useMemo<Record<string, string>>(
@@ -348,15 +353,23 @@ export function BusinessMy100ListPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Build Your 100 List"
-        description="Start with the people most likely to say yes first. This page helps you choose who to add, what to do next, and how to keep moving."
-        actions={
+      {embedded ? (
+        <div className="flex justify-end">
           <Button className={BUSINESS_ACCENT_BUTTON_CLASS} onClick={() => handleOpenCreate()}>
-            <Plus className="h-4 w-4" /> Add first contact
+            <Plus className="h-4 w-4" /> Add a contact
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title="Build Your 100 List"
+          description="Start with the people most likely to say yes first. This page helps you choose who to add, what to do next, and how to keep moving."
+          actions={
+            <Button className={BUSINESS_ACCENT_BUTTON_CLASS} onClick={() => handleOpenCreate()}>
+              <Plus className="h-4 w-4" /> Add first contact
+            </Button>
+          }
+        />
+      )}
 
       {reviewSubmitted ? (
         <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">

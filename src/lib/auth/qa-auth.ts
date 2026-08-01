@@ -183,7 +183,19 @@ export const QA_COOKIE_NAMES = {
   refreshToken: 'lvip_qa_refresh_token',
   expiresAt: 'lvip_qa_expires_at',
   scopes: 'lvip_qa_scopes',
+  persistent: 'lvip_qa_persistent',
 } as const
+
+/**
+ * "Keep me logged in on this device."
+ *
+ * The QA IdentityServer issues NON-EXPIRING refresh tokens for the lvip_dashboard
+ * client, so the only thing that ends a kept session is an explicit sign-out. A
+ * year is simply the longest max-age browsers will reliably honour; the cookie is
+ * re-stamped on every refresh, so it rolls forward for as long as the device is
+ * used.
+ */
+const PERSISTENT_SESSION_MAX_AGE = 60 * 60 * 24 * 365
 
 function bytesToBase64Url(bytes: Uint8Array) {
   let binary = ''
@@ -940,8 +952,33 @@ export async function loginWithPassword(username: string, password: string): Pro
   })
 }
 
-export function setQaSessionCookies(response: NextResponse, session: QaSession) {
+/**
+ * Did the user ask to stay signed in on this device?
+ *
+ * Read this before re-stamping cookies on the refresh path so a refresh never
+ * silently upgrades a browser-session login into a year-long one, or downgrades a
+ * kept one back to browser-session.
+ */
+export function isPersistentQaSession(cookieStore: CookieSource) {
+  return readCookieValue(cookieStore, QA_COOKIE_NAMES.persistent) === '1'
+}
+
+export function setQaSessionCookies(
+  response: NextResponse,
+  session: QaSession,
+  options?: {
+    /**
+     * "Keep me logged in on this device." Default true — the sign-in form ships
+     * the checkbox on, matching the webapp.
+     *
+     * When false the cookies carry no max-age at all, so they are browser-session
+     * cookies and disappear when the browser closes.
+     */
+    persistent?: boolean
+  },
+) {
   const secure = process.env.NODE_ENV === 'production'
+  const persistent = options?.persistent !== false
   const cookieOptions = {
     httpOnly: true,
     sameSite: 'lax' as const,
@@ -949,35 +986,44 @@ export function setQaSessionCookies(response: NextResponse, session: QaSession) 
     path: '/',
   }
 
-  response.cookies.set(QA_COOKIE_NAMES.accessToken, session.accessToken, {
-    ...cookieOptions,
-    maxAge: Math.max(session.expiresAt - Math.floor(Date.now() / 1000), 300),
-  })
-  response.cookies.set(QA_COOKIE_NAMES.expiresAt, String(session.expiresAt), {
-    ...cookieOptions,
-    maxAge: Math.max(session.expiresAt - Math.floor(Date.now() / 1000), 300),
-  })
+  // NOT the access token's own lifetime.
+  //
+  // These cookies used to expire with the access token (~1 hour). The browser then
+  // DELETED them, so nothing was left to refresh from: the refresh token sat in its
+  // own longer-lived cookie but getQaSessionFromCookieStore requires the access
+  // token and expiresAt to be present, and returned null with allowExpired on. That
+  // is the mechanism behind hourly logouts.
+  //
+  // The cookies now outlive the token they carry; `expiresAt` is the *value* that
+  // decides whether the token is still usable, and the refresh path reads the
+  // expired-but-present cookie and trades the refresh token for a new access token.
+  const sessionCookieOptions = persistent
+    ? { ...cookieOptions, maxAge: PERSISTENT_SESSION_MAX_AGE }
+    : cookieOptions
+
+  response.cookies.set(QA_COOKIE_NAMES.accessToken, session.accessToken, sessionCookieOptions)
+  response.cookies.set(QA_COOKIE_NAMES.expiresAt, String(session.expiresAt), sessionCookieOptions)
 
   if (session.idToken) {
-    response.cookies.set(QA_COOKIE_NAMES.idToken, session.idToken, {
-      ...cookieOptions,
-      maxAge: Math.max(session.expiresAt - Math.floor(Date.now() / 1000), 300),
-    })
+    response.cookies.set(QA_COOKIE_NAMES.idToken, session.idToken, sessionCookieOptions)
   }
 
   if (session.refreshToken) {
-    response.cookies.set(QA_COOKIE_NAMES.refreshToken, session.refreshToken, {
-      ...cookieOptions,
-      maxAge: 60 * 60 * 24 * 30,
-    })
+    response.cookies.set(QA_COOKIE_NAMES.refreshToken, session.refreshToken, sessionCookieOptions)
   }
 
   if (session.grantedScopes.length > 0) {
-    response.cookies.set(QA_COOKIE_NAMES.scopes, session.grantedScopes.join(' '), {
-      ...cookieOptions,
-      maxAge: 60 * 60 * 24 * 30,
-    })
+    response.cookies.set(QA_COOKIE_NAMES.scopes, session.grantedScopes.join(' '), sessionCookieOptions)
   }
+
+  // Not httpOnly: the "keep me logged in" state is not a secret, and the biometric
+  // unlock UI needs to know whether a persistent session exists on this device
+  // before it offers to lock one.
+  response.cookies.set(QA_COOKIE_NAMES.persistent, persistent ? '1' : '0', {
+    ...cookieOptions,
+    httpOnly: false,
+    ...(persistent ? { maxAge: PERSISTENT_SESSION_MAX_AGE } : {}),
+  })
 }
 
 export function clearQaSessionCookies(response: NextResponse) {
@@ -1045,6 +1091,30 @@ export function getQaSessionFromCookieStore(
 
 export function hasQaSession(request: NextRequest) {
   return !!getQaSessionFromCookieStore(request.cookies)
+}
+
+/**
+ * Is there a session here that is either live OR recoverable by refreshing?
+ *
+ * ONLY for the middleware routing gate. Middleware cannot perform the refresh
+ * itself (it would have to write cookies on a redirect it is not making), so a
+ * strict read there bounced the user to /login the moment the access token expired
+ * — before anything downstream ever got the chance to refresh. The refresh token
+ * was right there and never used, which is the hourly-logout bug.
+ *
+ * This is deliberately NOT an authorization check: it decides "let the request
+ * through to the app", nothing more. Every actual authorization boundary
+ * (getAuthenticatedSession, requireQaRouteAccess, and the API routes behind them)
+ * still goes through resolveQaSessionWithRefresh, which only reports a session
+ * when the token is live or the refresh genuinely succeeded — and still redirects
+ * to /login when it does not. Expired continues to mean unauthorised everywhere
+ * that grants access.
+ */
+export function hasRefreshableQaSession(request: NextRequest) {
+  const session = getQaSessionFromCookieStore(request.cookies, { allowExpired: true })
+  if (!session) return false
+  if (session.expiresAt > Math.floor(Date.now() / 1000)) return true
+  return !!session.refreshToken
 }
 
 export async function resolveProfileForQaSession(

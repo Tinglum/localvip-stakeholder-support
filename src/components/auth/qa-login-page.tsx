@@ -10,6 +10,7 @@ const QA_STORAGE_KEYS = {
   state: 'lvip_qa_browser_state',
   verifier: 'lvip_qa_browser_verifier',
   returnTo: 'lvip_qa_browser_return_to',
+  keepLoggedIn: 'lvip_qa_browser_keep_logged_in',
 } as const
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -58,6 +59,9 @@ export function QaLoginPage({
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [submitting, setSubmitting] = React.useState(false)
+  // Default ON, matching the webapp. The dashboard's refresh token does not
+  // expire, so a kept session ends only when the user signs out.
+  const [keepLoggedIn, setKeepLoggedIn] = React.useState(true)
   const isOidcCallback = !!code && !!state
   // Never auto-bounce to the QA login page: the dashboard has its own sign-in
   // form below. The QA OAuth flow stays available as a fallback button, and the
@@ -77,7 +81,7 @@ export function QaLoginPage({
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email: email.trim(), password, keepLoggedIn }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok || !json.ok) {
@@ -88,7 +92,7 @@ export function QaLoginPage({
       setClientError(err instanceof Error ? err.message : 'Could not sign in.')
       setSubmitting(false)
     }
-  }, [email, password, returnTo])
+  }, [email, keepLoggedIn, password, returnTo])
 
   const startQaLogin = React.useCallback(async (idp?: string) => {
     setClientError(null)
@@ -103,6 +107,7 @@ export function QaLoginPage({
     window.sessionStorage.setItem(QA_STORAGE_KEYS.state, nextState)
     window.sessionStorage.setItem(QA_STORAGE_KEYS.verifier, verifier)
     window.sessionStorage.setItem(QA_STORAGE_KEYS.returnTo, returnTo)
+    window.sessionStorage.setItem(QA_STORAGE_KEYS.keepLoggedIn, keepLoggedIn ? '1' : '0')
 
     const authorizeUrl = new URL('/connect/authorize', qaBaseUrl.replace(/\/+$/, ''))
     authorizeUrl.searchParams.set('client_id', clientId)
@@ -117,7 +122,7 @@ export function QaLoginPage({
     if (idp) authorizeUrl.searchParams.set('acr_values', `idp:${idp}`)
 
     window.location.assign(authorizeUrl.toString())
-  }, [clientId, qaBaseUrl, returnTo, scopes])
+  }, [clientId, keepLoggedIn, qaBaseUrl, returnTo, scopes])
 
   React.useEffect(() => {
     if (isOidcCallback) {
@@ -182,6 +187,7 @@ export function QaLoginPage({
               expiresIn: tokenJson.expires_in || null,
               scope: tokenJson.scope || null,
               returnTo: storedReturnTo,
+              keepLoggedIn: window.sessionStorage.getItem(QA_STORAGE_KEYS.keepLoggedIn) !== '0',
             }),
           })
 
@@ -198,11 +204,13 @@ export function QaLoginPage({
           window.sessionStorage.removeItem(QA_STORAGE_KEYS.state)
           window.sessionStorage.removeItem(QA_STORAGE_KEYS.verifier)
           window.sessionStorage.removeItem(QA_STORAGE_KEYS.returnTo)
+          window.sessionStorage.removeItem(QA_STORAGE_KEYS.keepLoggedIn)
           window.location.assign(sessionJson.redirectTo || storedReturnTo || '/dashboard')
         } catch (callbackError) {
           window.sessionStorage.removeItem(QA_STORAGE_KEYS.state)
           window.sessionStorage.removeItem(QA_STORAGE_KEYS.verifier)
           window.sessionStorage.removeItem(QA_STORAGE_KEYS.returnTo)
+          window.sessionStorage.removeItem(QA_STORAGE_KEYS.keepLoggedIn)
           const message = callbackError instanceof Error ? callbackError.message : 'Sign-in failed.'
           setClientError(message)
           setStatusMessage(null)
@@ -324,6 +332,22 @@ export function QaLoginPage({
                 autoComplete="current-password"
                 required
               />
+              <label className="flex items-start gap-2.5 py-1 text-sm text-surface-600">
+                <input
+                  type="checkbox"
+                  checked={keepLoggedIn}
+                  onChange={(e) => setKeepLoggedIn(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-surface-300 text-brand-600 accent-brand-600 focus:ring-brand-500"
+                />
+                <span>
+                  <span className="font-medium text-surface-800">Keep me logged in on this device</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-surface-500">
+                    Stay signed in until you sign out. Leave this off on a shared or public computer -
+                    you will then be signed out when you close the browser.
+                  </span>
+                </span>
+              </label>
+
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Signing in…</> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
               </Button>

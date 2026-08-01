@@ -1,153 +1,59 @@
 'use client'
 
+/**
+ * MY BUSINESS — the permanent editing surface.
+ *
+ * Everything a business owner can change about itself lives on this one page:
+ * profile, branding, the 100-list choice and capture offer, the LocalVIP deal,
+ * Stripe, and the live-review submission. It renders the SAME field groups the
+ * first-run wizard renders (`@/components/business/business-editor`), so there
+ * is no second copy of any input and no card that just links back into Setup.
+ *
+ * Every section here uses the ACCENTED treatment, because everything here is
+ * editable. The only neutral card is the read-only status strip at the top.
+ */
+
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, Building2, Heart, Loader2, Store, Users, Wallet } from 'lucide-react'
+import { ArrowRight, Loader2, Rocket, Store } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
 import { DealManager } from '@/components/crm/deal-manager'
-import { useAuth } from '@/lib/auth/context'
+import { ActionSection, InfoSection, SurfaceLegend } from '@/components/business/business-surfaces'
 import {
-  getActivationLabel,
-  getActivationTone,
-  getBusinessLaunchPhase,
-  resolveScopedBusiness,
-} from '@/lib/business-portal'
-import { formatCashbackLabel, resolveBusinessOffer } from '@/lib/offers'
-import { useBusinesses, useBusinessUpdate, useCauses, useContacts, useDeals, useOffers } from '@/lib/supabase/hooks'
+  BrandingFields,
+  CaptureFields,
+  ProfileFields,
+  SaveStateLabel,
+  StripeFields,
+  useBusinessEditor,
+} from '@/components/business/business-editor'
+import { getActivationLabel, getActivationTone } from '@/lib/business-portal'
+import { formatCashbackLabel } from '@/lib/offers'
+import { useCauses } from '@/lib/supabase/hooks'
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+function launchPhaseLabel(value: string) {
+  switch (value) {
+    case 'capturing_100':
+      return 'Capturing 100'
+    case 'ready_to_go_live':
+      return 'Ready to go live'
+    case 'live':
+      return 'Live'
+    default:
+      return 'Setup'
+  }
+}
 
 export function BusinessProfilePage() {
-  const { profile } = useAuth()
-  const businessFilters = React.useMemo<Record<string, string>>(
-    () => {
-      const filters: Record<string, string> = {}
-      if (profile.business_id) {
-        filters.id = profile.business_id
-      } else {
-        filters.owner_id = profile.id
-      }
-      return filters
-    },
-    [profile.business_id, profile.id]
-  )
-  const { data: businesses, loading: businessLoading } = useBusinesses(businessFilters)
-  const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
-  const { data: contacts } = useContacts({ business_id: business?.id || '__none__' })
-  const { data: offers } = useOffers({ business_id: business?.id || '__none__' })
-  const { data: deals, refetch: refetchDeals } = useDeals({ business_account_id: business?.id || '__none__' })
+  const editor = useBusinessEditor()
   const { data: causes } = useCauses()
-  const { update } = useBusinessUpdate()
 
-  const [saveState, setSaveState] = React.useState<SaveState>('idle')
-  const [saveError, setSaveError] = React.useState<string | null>(null)
-  const [name, setName] = React.useState('')
-  const [category, setCategory] = React.useState('')
-  const [description, setDescription] = React.useState('')
-  const [avgTicket, setAvgTicket] = React.useState('')
-  const [products, setProducts] = React.useState('')
-  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedSnapshotRef = React.useRef('')
-  const seededBizIdRef = React.useRef<string | null>(null)
+  const { business, setupState, isStepComplete } = editor
 
-  React.useEffect(() => {
-    if (!business) return
-
-    // Only seed the inputs when a different business loads — not on every
-    // `business` update. Re-seeding after our own autosave overwrites characters
-    // typed during the save round-trip (staccato / cursor jumps back).
-    if (seededBizIdRef.current === business.id) return
-    seededBizIdRef.current = business.id
-
-    const nextName = business.name || ''
-    const nextCategory = business.category || ''
-    const nextDescription = business.public_description || ''
-    const nextAvgTicket = business.avg_ticket || ''
-    const nextProducts = (business.products_services || []).join(', ')
-
-    setName(nextName)
-    setCategory(nextCategory)
-    setDescription(nextDescription)
-    setAvgTicket(nextAvgTicket)
-    setProducts(nextProducts)
-    savedSnapshotRef.current = JSON.stringify({
-      name: nextName,
-      category: nextCategory,
-      description: nextDescription,
-      avgTicket: nextAvgTicket,
-      products: nextProducts,
-    })
-    setSaveState('idle')
-    setSaveError(null)
-  }, [business])
-
-  const persistChanges = React.useCallback(async () => {
-    if (!business) return
-
-    try {
-      setSaveState('saving')
-      setSaveError(null)
-
-      const nextProducts = products
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-
-      const saved = await update(business.id, {
-        name: name.trim() || business.name,
-        category: category.trim() || null,
-        public_description: description.trim() || null,
-        avg_ticket: avgTicket.trim() || null,
-        products_services: nextProducts,
-      })
-
-      if (!saved) {
-        throw new Error('Changes could not be saved.')
-      }
-
-      savedSnapshotRef.current = JSON.stringify({
-        name,
-        category,
-        description,
-        avgTicket,
-        products,
-      })
-      setSaveState('saved')
-    } catch (error) {
-      setSaveState('error')
-      setSaveError(error instanceof Error ? error.message : 'Changes could not be saved.')
-    }
-  }, [avgTicket, business, category, description, name, products, update])
-
-  React.useEffect(() => {
-    if (!business) return
-
-    const nextSnapshot = JSON.stringify({
-      name,
-      category,
-      description,
-      avgTicket,
-      products,
-    })
-
-    if (!savedSnapshotRef.current || nextSnapshot === savedSnapshotRef.current) return
-
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => {
-      void persistChanges()
-    }, 700)
-
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    }
-  }, [avgTicket, business, category, description, name, persistChanges, products])
-
-  if (businessLoading) {
+  if (editor.loading) {
     return (
       <div className="flex min-h-[55vh] items-center justify-center">
         <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-5 py-4 text-sm text-surface-500 shadow-sm">
@@ -168,190 +74,140 @@ export function BusinessProfilePage() {
     )
   }
 
-  const captureOffer = resolveBusinessOffer(business, offers, 'capture')
-  const cashbackDeal = deals.find((deal) => deal.active) || deals[0] || null
+  const activationKey =
+    business.activation_status
+    || (editor.launchPhase === 'setup'
+      ? 'not_started'
+      : editor.launchPhase === 'live' || editor.launchPhase === 'ready_to_go_live'
+        ? 'active'
+        : 'in_progress')
+  const cashbackDeal = editor.deals.find((deal) => deal.active) || editor.deals[0] || null
   const cashbackValue = cashbackDeal ? Number(cashbackDeal.cash_back) : NaN
   const cashbackLabel = Number.isFinite(cashbackValue) ? formatCashbackLabel(cashbackValue) : 'No deal configured'
-  const launchPhase = getBusinessLaunchPhase(business, contacts)
-  const activationTone = getActivationTone(business.activation_status || (launchPhase === 'setup' ? 'not_started' : launchPhase === 'live' || launchPhase === 'ready_to_go_live' ? 'active' : 'in_progress'))
-  const activationLabel = getActivationLabel(business.activation_status || (launchPhase === 'setup' ? 'not_started' : launchPhase === 'live' || launchPhase === 'ready_to_go_live' ? 'active' : 'in_progress'))
   const linkedCause = causes.find((cause) => cause.id === business.linked_cause_id) || null
-  const profileReadyCount = [
-    name.trim() ? 1 : 0,
-    category.trim() ? 1 : 0,
-    description.trim() ? 1 : 0,
-    avgTicket.trim() ? 1 : 0,
-    products.trim() ? 1 : 0,
-  ].reduce((sum, value) => sum + value, 0)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="My Business"
-        description="This is the simple version of your business details. Start by making sure a new customer can quickly understand what you sell and why they should come in."
+        description="Everything about your business that you can change, in one place. Edits save automatically."
         actions={
           <div className="flex items-center gap-3">
-            <Badge variant={activationTone} dot>
-              {activationLabel}
+            <Badge variant={getActivationTone(activationKey)} dot>
+              {getActivationLabel(activationKey)}
             </Badge>
-            <span className={`text-sm ${saveState === 'error' ? 'text-danger-600' : saveState === 'saved' ? 'text-success-600' : 'text-surface-500'}`}>
-              {saveState === 'saving' ? 'Saving changes...' : saveState === 'saved' ? 'All changes saved' : saveState === 'error' ? 'Autosave failed' : 'Changes save automatically'}
-            </span>
+            <SaveStateLabel editor={editor} />
           </div>
         }
       />
 
-      <Card>
-        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Start here</p>
-            <p className="mt-2 text-lg font-semibold text-surface-900">Fill in the basics first, then move to your next action.</p>
-            <p className="mt-1 max-w-2xl text-sm text-surface-600">
-              If you only do three things on this page, make sure your business name, short description, and products or services are easy for a customer to understand.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-            <p className="text-sm font-semibold text-surface-900">Profile basics completed</p>
-            <p className="mt-1 text-2xl font-bold text-surface-900">{profileReadyCount} / 5</p>
-            <p className="mt-1 text-sm text-surface-500">Name, category, description, average ticket, products/services</p>
-          </div>
-        </CardContent>
-      </Card>
+      <SurfaceLegend />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <InfoCard href="/portal/setup" label="Launch phase" value={launchPhaseLabel(launchPhase)} detail="Open your setup path." icon={<Building2 className="h-5 w-5" />} />
-        <InfoCard href="/portal/setup?step=capture" label="Customer capture offer" value={captureOffer.value_label || captureOffer.headline} detail="Edit the offer that collects your first 100." icon={<Users className="h-5 w-5" />} />
-        <InfoCard href="/portal/setup?step=cashback" label="LocalVIP deal" value={cashbackLabel} detail="Change the scheduled customer reward." icon={<Wallet className="h-5 w-5" />} />
-        <InfoCard href="/portal/setup?step=cashback" label="Linked cause or school" value={linkedCause?.name || 'Customer chooses later'} detail="Pick the cause your business champions." icon={<Heart className="h-5 w-5" />} />
-      </div>
-
-      <DealManager businessAccountId={String(business.id)} mode="portal" onDealsChanged={() => refetchDeals({ silent: true })} />
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Business profile</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-sm font-semibold text-surface-900">What to fill in first</p>
-              <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-surface-600">
-                <li>Write the business name exactly how customers know it.</li>
-                <li>Add a short category so people immediately understand the type of business.</li>
-                <li>Write a plain-language description of what you sell or do.</li>
-              </ol>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Business name</label>
-                <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Main Street Coffee" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
-                <Input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Coffee shop, salon, bakery..." />
-                <p className="mt-1 text-xs text-surface-500">Example: Coffee shop</p>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Average ticket</label>
-                <Input value={avgTicket} onChange={(event) => setAvgTicket(event.target.value)} placeholder="$12, $25, $60..." />
-                <p className="mt-1 text-xs text-surface-500">Example: The usual amount one customer spends in a visit.</p>
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
-                <Textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  rows={5}
-                  placeholder="We serve specialty coffee, fresh pastries, and quick lunch options for busy locals."
-                />
-                <p className="mt-1 text-xs text-surface-500">Keep it simple. Write the way you would explain the business to a new customer.</p>
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Products / services</label>
-                <Input value={products} onChange={(event) => setProducts(event.target.value)} placeholder="Coffee, pastries, lunch, catering" />
-                <p className="mt-1 text-xs text-surface-500">Separate items with commas. Example: Haircuts, color, beard trims</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Understand your two offers</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-amber-700">Customer Capture Offer (Pre-launch)</p>
-                <p className="mt-2 text-lg font-semibold text-surface-900">{captureOffer.headline}</p>
-                <p className="mt-2 text-sm leading-6 text-surface-600">{captureOffer.description}</p>
-                <p className="mt-2 text-xs text-amber-800">Use this to get people interested before you are fully live.</p>
-              </div>
-              <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-brand-700">LocalVIP Deal</p>
-                <p className="mt-2 text-lg font-semibold text-surface-900">{cashbackLabel}</p>
-                <p className="mt-2 text-sm leading-6 text-surface-600">The percentage and schedule come from your LocalVIP deal.</p>
-                <p className="mt-2 text-xs text-brand-800">Use the deal editor above to control when customers can shop and earn cashback.</p>
-              </div>
-            </CardContent>
-          </Card>
-
+      {/* The only read-only card on this page. */}
+      <InfoSection
+        title="Where your business stands"
+        description="Read-only. These values come from the sections below and from LocalVIP review."
+      >
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <ReadOnlyFact label="Launch phase" value={launchPhaseLabel(editor.launchPhase)} />
+          <ReadOnlyFact
+            label="Setup requirements"
+            value={`${setupState.completedCount} of ${setupState.totalSteps} complete`}
+          />
+          <ReadOnlyFact label="LocalVIP deal" value={cashbackLabel} />
+          <ReadOnlyFact label="Linked cause or school" value={linkedCause?.name || 'Customer chooses later'} />
         </div>
-      </div>
+      </InfoSection>
 
-      {saveError && (
+      {editor.saveError ? (
         <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
-          {saveError}
+          {editor.saveError}
         </div>
-      )}
+      ) : null}
+
+      <ActionSection
+        id="profile"
+        title="Business profile"
+        description="Name, category, description, average spend, and the keywords customers search on."
+        complete={isStepComplete('profile')}
+      >
+        <ProfileFields editor={editor} />
+      </ActionSection>
+
+      <ActionSection
+        id="branding"
+        title="Branding"
+        description="Your logo and cover image. These appear on your LocalVIP page, QR code, and printed materials."
+        complete={isStepComplete('branding')}
+      >
+        <BrandingFields editor={editor} />
+      </ActionSection>
+
+      <ActionSection
+        id="offer"
+        title="Customer capture offer"
+        description="Your pre-launch offer and whether LocalVIP is helping you build your first 100 customers."
+        complete={isStepComplete('capture')}
+      >
+        <CaptureFields editor={editor} variant="full" />
+      </ActionSection>
+
+      <ActionSection
+        id="deal"
+        title="LocalVIP deal"
+        description="The cashback percentage and the days and times customers can shop and earn it."
+        complete={isStepComplete('cashback')}
+        bodyClassName="p-0"
+      >
+        <DealManager
+          businessAccountId={String(business.id)}
+          mode="portal"
+          onDealsChanged={() => editor.refetchDeals({ silent: true })}
+        />
+      </ActionSection>
+
+      <ActionSection
+        id="stripe"
+        title="Stripe payments"
+        description="Where LocalVIP sends your share of customer payments."
+        complete={isStepComplete('stripe')}
+      >
+        <StripeFields editor={editor} />
+      </ActionSection>
+
+      {!setupState.steps.find((item) => item.key === 'activate')?.complete ? (
+        <ActionSection
+          id="go-live"
+          title="Go live"
+          description="Submit your business for the final LocalVIP review."
+          complete={setupState.readyToActivate}
+          statusLabel={setupState.readyToActivate ? 'Ready to submit' : 'Needs your input'}
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-2xl text-sm leading-6 text-surface-600">
+              {setupState.readyToActivate
+                ? 'Every requirement is met. Submit and LocalVIP will do the final check before customers can use your deals.'
+                : `${editor.missingSteps.length} requirement${editor.missingSteps.length === 1 ? '' : 's'} still need your input: ${editor.missingSteps.map((item) => item.label).join(', ')}.`}
+            </p>
+            <Button asChild className="shrink-0">
+              <Link href="/portal/setup?step=activate">
+                <Rocket className="h-4 w-4" />
+                Open the go-live checklist
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </ActionSection>
+      ) : null}
     </div>
   )
 }
 
-function InfoCard({
-  href,
-  label,
-  value,
-  detail,
-  icon,
-}: {
-  /** Where this detail is edited — every card here opens the step that owns it. */
-  href: string
-  label: string
-  value: React.ReactNode
-  detail: string
-  icon: React.ReactNode
-}) {
+function ReadOnlyFact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <Link
-      href={href}
-      aria-label={`${label}: ${typeof value === 'string' ? value : ''}. ${detail}`}
-      className="group block rounded-2xl border border-surface-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-          <p className="mt-2 text-2xl font-bold text-surface-900">{value}</p>
-        </div>
-        <span className="rounded-2xl bg-surface-100 p-3 text-surface-600">{icon}</span>
-      </div>
-      <p className="mt-3 flex items-center gap-1 text-sm text-surface-500">
-        {detail}
-        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-      </p>
-    </Link>
+    <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-surface-900">{value}</p>
+    </div>
   )
-}
-
-function launchPhaseLabel(value: string) {
-  switch (value) {
-    case 'capturing_100':
-      return 'Capturing 100'
-    case 'ready_to_go_live':
-      return 'Ready To Go Live'
-    case 'live':
-      return 'Live'
-    default:
-      return 'Setup'
-  }
 }

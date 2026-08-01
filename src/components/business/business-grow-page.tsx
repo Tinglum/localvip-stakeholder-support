@@ -7,6 +7,7 @@ import {
   Building2,
   Check,
   Copy,
+  HeartHandshake,
   Loader2,
   Mail,
   Megaphone,
@@ -16,6 +17,7 @@ import {
   Share2,
   Sparkles,
   Store,
+  UserPlus,
   Users,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
@@ -44,6 +46,12 @@ import {
   type BusinessReferralChannel,
   type BusinessReferralScriptType,
 } from '@/lib/business-referral-script-engine'
+import {
+  NETWORK_INVITEE_TYPE_OPTIONS,
+  generateNetworkInviteScript,
+  getNetworkInviteeTypeOption,
+  type NetworkInviteeType,
+} from '@/lib/network-invite-script'
 import type { OutreachScriptTier } from '@/lib/types/database'
 import { cn, formatDateTime, normalizeBusinessName } from '@/lib/utils'
 
@@ -57,6 +65,22 @@ interface BusinessReferralCandidate {
   stage: string
   source: string | null
   status: string
+}
+
+/**
+ * A customer or cause invite that the backend accepted during this session.
+ * Business invites are persisted as CRM referrals and render in Invite Tracking;
+ * these come back from the network endpoint with their own referral code, so
+ * they are surfaced immediately rather than disappearing after a send.
+ */
+interface SentNetworkInvite {
+  key: string
+  inviteeType: NetworkInviteeType
+  name: string
+  email: string
+  referralCode: string | null
+  message: string | null
+  sentAt: string
 }
 
 type SuggestionSection = {
@@ -238,7 +262,10 @@ function getOfferReference(offer: { value_label: string | null; headline: string
   return offer?.value_label || offer?.headline || null
 }
 
-export function BusinessGrowPage() {
+/** `embedded` suppresses the standalone PageHeader when the Grow hub renders
+ *  this as a section. The Customer / Business / Cause invite composer below is
+ *  untouched. */
+export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { profile } = useAuth()
   const { data: cities } = useCities()
   const { data: ownedBusinesses, loading } = useBusinesses(profile.business_id ? { id: profile.business_id } : { owner_id: profile.id })
@@ -248,6 +275,7 @@ export function BusinessGrowPage() {
   const { data: sourceDeals } = useDeals({ business_account_id: business?.id || '__none__' })
   const { data: sourceContacts } = useContacts({ business_id: business?.id || '__none__' })
 
+  const [inviteeType, setInviteeType] = React.useState<NetworkInviteeType>('business')
   const [candidates, setCandidates] = React.useState<BusinessReferralCandidate[]>([])
   const [candidatesLoading, setCandidatesLoading] = React.useState(false)
   const [candidatesError, setCandidatesError] = React.useState<string | null>(null)
@@ -271,6 +299,20 @@ export function BusinessGrowPage() {
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = React.useState<string | null>(null)
+
+  // Customer / cause invites — the person or organisation the backend needs to
+  // open an account for. Business invites keep using the CRM fields above.
+  const [inviteeFirstName, setInviteeFirstName] = React.useState('')
+  const [inviteeLastName, setInviteeLastName] = React.useState('')
+  const [inviteeEmail, setInviteeEmail] = React.useState('')
+  const [inviteePhone, setInviteePhone] = React.useState('')
+  const [organizationName, setOrganizationName] = React.useState('')
+  const [inviteeAddress1, setInviteeAddress1] = React.useState('')
+  const [inviteeCity, setInviteeCity] = React.useState('')
+  const [inviteeState, setInviteeState] = React.useState('')
+  const [inviteeZip, setInviteeZip] = React.useState('')
+  const [personalNote, setPersonalNote] = React.useState('')
+  const [sentInvites, setSentInvites] = React.useState<SentNetworkInvite[]>([])
 
   const lastAutoMessageRef = React.useRef('')
 
@@ -356,8 +398,46 @@ export function BusinessGrowPage() {
 
   const crmTarget = selectedCandidate || exactNameMatch
 
+  const inviteeOption = getNetworkInviteeTypeOption(inviteeType)
+  const isBusinessInvite = inviteeType === 'business'
+
+  /** The name the composer is addressing, whichever type is selected. */
+  const inviteeDisplayName = isBusinessInvite
+    ? targetBusinessName.trim()
+    : inviteeType === 'cause'
+      ? organizationName.trim()
+      : [inviteeFirstName, inviteeLastName].map((part) => part.trim()).filter(Boolean).join(' ')
+
   const generatedScript = React.useMemo(() => {
-    if (!business || !targetBusinessName.trim()) return null
+    if (!business) return null
+
+    if (inviteeType !== 'business') {
+      const hasSubject = inviteeType === 'cause' ? organizationName.trim() : inviteeFirstName.trim()
+      if (!hasSubject) return null
+
+      const script = generateNetworkInviteScript({
+        inviteeType,
+        sourceBusinessName: business.name,
+        sourceCity: cityName,
+        sourceCaptureOffer: getOfferReference(captureOffer),
+        sourceCashbackPercent: cashbackPercent,
+        contactFirstName: inviteeFirstName,
+        organizationName,
+        personalNote,
+        tier,
+        channel,
+      })
+
+      return {
+        ...script,
+        generatedContent: script.body,
+        tier,
+        channel,
+        scriptType,
+      }
+    }
+
+    if (!targetBusinessName.trim()) return null
 
     return generateBusinessReferralScript({
       sourceBusinessName: business.name,
@@ -384,7 +464,11 @@ export function BusinessGrowPage() {
     cityName,
     crmTarget?.city_label,
     fitReason,
+    inviteeFirstName,
+    inviteeType,
     joinedCount,
+    organizationName,
+    personalNote,
     relationshipNote,
     scriptType,
     targetBusinessName,
@@ -528,6 +612,103 @@ export function BusinessGrowPage() {
     }
   }
 
+  function chooseInviteeType(next: NetworkInviteeType) {
+    if (next === inviteeType) return
+    setInviteeType(next)
+    setSubmitError(null)
+    setActionMessage(null)
+    setEditorContent('')
+    lastAutoMessageRef.current = ''
+  }
+
+  function resetNetworkInviteForm() {
+    setInviteeFirstName('')
+    setInviteeLastName('')
+    setInviteeEmail('')
+    setInviteePhone('')
+    setOrganizationName('')
+    setInviteeAddress1('')
+    setInviteeCity('')
+    setInviteeState('')
+    setInviteeZip('')
+    setPersonalNote('')
+    setEditorContent('')
+    lastAutoMessageRef.current = ''
+  }
+
+  /**
+   * Customer and cause invites go to the network endpoint, which opens the
+   * invited account and returns its referral code. Nothing is written to the CRM
+   * business pipeline — a person is not a lead.
+   */
+  async function handleSendNetworkInvite(copyFirst: boolean) {
+    if (isBusinessInvite || !editorContent.trim()) return
+
+    setSubmitting(true)
+    setSubmitError(null)
+    setActionMessage(null)
+
+    try {
+      if (copyFirst) await handleCopy()
+
+      const response = await fetch('/api/business-portal/network-invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inviteeType,
+          firstName: inviteeFirstName.trim(),
+          lastName: inviteeLastName.trim(),
+          email: inviteeEmail.trim(),
+          phone: inviteePhone.trim(),
+          address1: inviteeAddress1.trim(),
+          city: inviteeCity.trim(),
+          state: inviteeState.trim(),
+          zipCode: inviteeZip.trim(),
+          organizationName: inviteeType === 'cause' ? organizationName.trim() : '',
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        // 400 (missing field) and 409 (already registered) both carry a message
+        // written for a human — show it as-is rather than a generic failure.
+        setSubmitError(payload.error || 'This invite could not be sent.')
+        return
+      }
+
+      const label = inviteeDisplayName || inviteeOption.nounSingular
+      setSentInvites((current) => [
+        {
+          key: `${Date.now()}-${label}`,
+          inviteeType,
+          name: label,
+          email: inviteeEmail.trim(),
+          referralCode: typeof payload.referralCode === 'string' ? payload.referralCode : null,
+          message: typeof payload.message === 'string' ? payload.message : null,
+          sentAt: new Date().toISOString(),
+        },
+        ...current,
+      ])
+      setActionMessage(
+        typeof payload.message === 'string' && payload.message
+          ? payload.message
+          : `${label} was invited into your network.`,
+      )
+      resetNetworkInviteForm()
+    } catch {
+      setSubmitError('This invite could not be sent.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const canSubmitInvite = isBusinessInvite
+    ? !!targetBusinessName.trim() && !!editorContent.trim()
+    : !!editorContent.trim()
+      && !!inviteeFirstName.trim()
+      && !!inviteeEmail.trim()
+      && (inviteeType !== 'cause' || (!!organizationName.trim() && !!inviteeAddress1.trim()))
+
   async function handleStatusUpdate(referralId: string, status: ReferralStatusValue) {
     setStatusUpdatingId(referralId)
     setSubmitError(null)
@@ -563,18 +744,20 @@ export function BusinessGrowPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Grow with Other Businesses"
-        description="Pick a business, use a simple message, and save the intro so nothing gets lost."
-        actions={
-          <Button variant="outline" asChild>
-            <Link href="/portal/clients">
-              Open my 100 list
-              <Users className="h-4 w-4" />
-            </Link>
-          </Button>
-        }
-      />
+      {embedded ? null : (
+        <PageHeader
+          title="Grow Your Network"
+          description="Invite customers, other businesses, and causes into your network — one composer, one place to track them."
+          actions={
+            <Button variant="outline" asChild>
+              <Link href="/portal/grow?section=customers">
+                Open my 100 list
+                <Users className="h-4 w-4" />
+              </Link>
+            </Button>
+          }
+        />
+      )}
 
       <div className="grid gap-6">
         <Card className="overflow-hidden border-surface-200">
@@ -590,8 +773,8 @@ export function BusinessGrowPage() {
             <div className="grid gap-3 sm:grid-cols-3">
               <SimpleStepCard
                 number="1"
-                title="Pick a business"
-                description="Choose a nearby business you already know or would feel comfortable approaching."
+                title="Choose who you are inviting"
+                description="A customer, another local business, or a cause. The form and the message change to match."
               />
               <SimpleStepCard
                 number="2"
@@ -600,14 +783,49 @@ export function BusinessGrowPage() {
               />
               <SimpleStepCard
                 number="3"
-                title="Save the intro"
-                description="Track it here so your team can follow up later without guessing what happened."
+                title="Send the invite"
+                description="Every invite is recorded so you can follow up later without guessing what happened."
               />
             </div>
           </CardContent>
         </Card>
 
       </div>
+
+      <fieldset>
+        <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
+          Who are you inviting?
+        </legend>
+        <div role="radiogroup" aria-label="Invitee type" className="mt-3 grid gap-3 sm:grid-cols-3">
+          {NETWORK_INVITEE_TYPE_OPTIONS.map((option) => {
+            const active = inviteeType === option.value
+            const Icon = option.value === 'consumer' ? UserPlus : option.value === 'cause' ? HeartHandshake : Store
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => chooseInviteeType(option.value)}
+                className={cn(
+                  'rounded-2xl border px-4 py-4 text-left transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2',
+                  active
+                    ? 'border-brand-400 bg-brand-50 shadow-sm'
+                    : 'border-surface-200 bg-white hover:border-surface-300 hover:bg-surface-50',
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <Icon className={cn('h-4 w-4', active ? 'text-brand-600' : 'text-surface-400')} />
+                  <span className="text-sm font-semibold text-surface-900">{option.label}</span>
+                </span>
+                <span className="mt-1.5 block text-xs leading-5 text-surface-500">{option.description}</span>
+              </button>
+            )
+          })}
+        </div>
+      </fieldset>
 
       <div className="grid gap-4 md:grid-cols-3">
         <GrowthStat
@@ -617,13 +835,13 @@ export function BusinessGrowPage() {
           hint="Review or change it on your business profile."
         />
         <GrowthStat
-          href="/portal/clients"
+          href="/portal/grow?section=customers"
           label="Customers collected"
           value={`${joinedCount}`}
           hint="Your 100 list owns this number — open it to keep it moving."
         />
         <GrowthStat
-          href="/portal/activity"
+          href="/dashboard"
           label="CRM invites tracked"
           value={`${trackedCrmCount}`}
           hint={`${newLeadCount} of these created brand-new business leads for follow-up.`}
@@ -631,6 +849,9 @@ export function BusinessGrowPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
+        {!isBusinessInvite ? (
+          <InviteeTypeGuidance inviteeType={inviteeType} businessName={scopedBusiness.name} />
+        ) : (
         <Card className="overflow-hidden border-surface-200">
           <CardHeader className="border-b border-surface-100 bg-surface-50/70">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -741,6 +962,7 @@ export function BusinessGrowPage() {
             )}
           </CardContent>
         </Card>
+        )}
 
         <div className="space-y-6">
           <Card className="overflow-hidden border-brand-100 shadow-panel">
@@ -748,18 +970,130 @@ export function BusinessGrowPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <CardTitle>Invite Composer</CardTitle>
-                  <CardDescription>Pick an existing CRM prospect or type a new one. If it does not exist yet, tracking this invite will open the business in the CRM automatically.</CardDescription>
+                  <CardDescription>
+                    {isBusinessInvite
+                      ? 'Pick an existing CRM prospect or type a new one. If it does not exist yet, tracking this invite will open the business in the CRM automatically.'
+                      : inviteeType === 'cause'
+                        ? 'Invite a cause into your network. We open the cause account and hand back its referral code so supporters can pick it.'
+                        : 'Invite a person to join as a member under your business. We open their account and hand back their referral code.'}
+                  </CardDescription>
                 </div>
-                <Badge variant={crmTarget ? 'info' : targetBusinessName.trim() ? 'warning' : 'default'}>
-                  {crmTarget ? 'Existing CRM business' : targetBusinessName.trim() ? 'Will open new CRM lead' : 'Choose a target'}
+                <Badge
+                  variant={
+                    isBusinessInvite
+                      ? crmTarget ? 'info' : targetBusinessName.trim() ? 'warning' : 'default'
+                      : inviteeDisplayName ? 'info' : 'default'
+                  }
+                >
+                  {isBusinessInvite
+                    ? crmTarget ? 'Existing CRM business' : targetBusinessName.trim() ? 'Will open new CRM lead' : 'Choose a target'
+                    : inviteeDisplayName ? `Inviting a ${inviteeOption.nounSingular}` : `Choose a ${inviteeOption.nounSingular}`}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-5 p-5">
               <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-4 text-sm leading-6 text-brand-800">
-                Keep this simple: you only need the business name and a basic reason they are a good fit to get started.
+                {isBusinessInvite
+                  ? 'Keep this simple: you only need the business name and a basic reason they are a good fit to get started.'
+                  : inviteeType === 'cause'
+                    ? 'You need the cause name, a contact person, their email, and a street address so the cause can be placed on the map.'
+                    : 'You need a first name and an email address. Everything else just makes the message better.'}
               </div>
 
+              {!isBusinessInvite ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {inviteeType === 'cause' ? (
+                    <div className="md:col-span-2">
+                      <InputBlock label="Cause name">
+                        <Input
+                          value={organizationName}
+                          onChange={(event) => setOrganizationName(event.target.value)}
+                          placeholder="School PTA, youth league, food pantry..."
+                        />
+                      </InputBlock>
+                    </div>
+                  ) : null}
+                  <InputBlock label={inviteeType === 'cause' ? 'Contact first name' : 'First name'}>
+                    <Input
+                      value={inviteeFirstName}
+                      onChange={(event) => setInviteeFirstName(event.target.value)}
+                      placeholder={inviteeType === 'cause' ? 'Who runs it day to day' : 'A regular, a friend, a past customer...'}
+                    />
+                  </InputBlock>
+                  <InputBlock label="Last name">
+                    <Input
+                      value={inviteeLastName}
+                      onChange={(event) => setInviteeLastName(event.target.value)}
+                      placeholder="Optional"
+                    />
+                  </InputBlock>
+                  <InputBlock label="Email">
+                    <Input
+                      value={inviteeEmail}
+                      onChange={(event) => setInviteeEmail(event.target.value)}
+                      placeholder="name@example.com"
+                      type="email"
+                    />
+                  </InputBlock>
+                  <InputBlock label="Phone">
+                    <Input
+                      value={inviteePhone}
+                      onChange={(event) => setInviteePhone(event.target.value)}
+                      placeholder="(404) 555-0000"
+                      type="tel"
+                    />
+                  </InputBlock>
+                  {inviteeType === 'cause' ? (
+                    <div className="md:col-span-2">
+                      <InputBlock label="Street address">
+                        <Input
+                          value={inviteeAddress1}
+                          onChange={(event) => setInviteeAddress1(event.target.value)}
+                          placeholder="1200 Peachtree St NE"
+                        />
+                      </InputBlock>
+                    </div>
+                  ) : null}
+                  <InputBlock label="City">
+                    <Input
+                      value={inviteeCity}
+                      onChange={(event) => setInviteeCity(event.target.value)}
+                      placeholder={cityName}
+                    />
+                  </InputBlock>
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputBlock label="State">
+                      <Input
+                        value={inviteeState}
+                        onChange={(event) => setInviteeState(event.target.value)}
+                        placeholder="GA"
+                      />
+                    </InputBlock>
+                    <InputBlock label="ZIP">
+                      <Input
+                        value={inviteeZip}
+                        onChange={(event) => setInviteeZip(event.target.value)}
+                        placeholder="30309"
+                      />
+                    </InputBlock>
+                  </div>
+                  <div className="md:col-span-2">
+                    <InputBlock label={inviteeType === 'cause' ? 'Why this cause' : 'Personal note'}>
+                      <Textarea
+                        value={personalNote}
+                        onChange={(event) => setPersonalNote(event.target.value)}
+                        rows={3}
+                        placeholder={
+                          inviteeType === 'cause'
+                            ? 'Why your customers would want to support this cause.'
+                            : 'Anything you actually know about this person that makes the message sound like you.'
+                        }
+                      />
+                    </InputBlock>
+                  </div>
+                </div>
+              ) : (
+              <>
               <div className="grid gap-4 md:grid-cols-2">
                 <InputBlock label="Business to invite">
                   <Input
@@ -833,7 +1167,10 @@ export function BusinessGrowPage() {
                   />
                 </InputBlock>
               </div>
+              </>
+              )}
 
+              {isBusinessInvite ? (
               <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-brand-500" />
@@ -858,6 +1195,7 @@ export function BusinessGrowPage() {
                   ))}
                 </div>
               </div>
+              ) : null}
 
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">Quality tier</p>
@@ -909,7 +1247,9 @@ export function BusinessGrowPage() {
                         <div>
                           <p className="text-sm font-semibold text-surface-900">{generatedScript.title}</p>
                           <p className="mt-1 text-xs text-surface-500">
-                            {BUSINESS_REFERRAL_SCRIPT_TYPE_OPTIONS.find((option) => option.value === scriptType)?.fitHint}
+                            {isBusinessInvite
+                              ? BUSINESS_REFERRAL_SCRIPT_TYPE_OPTIONS.find((option) => option.value === scriptType)?.fitHint
+                              : `Written for ${inviteeDisplayName || `this ${inviteeOption.nounSingular}`}. Edit it freely — what you send is what gets saved.`}
                           </p>
                         </div>
                         <Badge variant="outline">
@@ -954,14 +1294,16 @@ export function BusinessGrowPage() {
                     </div>
                   </div>
 
-                  <InputBlock label="Internal notes for CRM">
-                    <Textarea
-                      value={notes}
-                      onChange={(event) => setNotes(event.target.value)}
-                      rows={3}
-                      placeholder="Anything your team should remember once this intro is in the CRM."
-                    />
-                  </InputBlock>
+                  {isBusinessInvite ? (
+                    <InputBlock label="Internal notes for CRM">
+                      <Textarea
+                        value={notes}
+                        onChange={(event) => setNotes(event.target.value)}
+                        rows={3}
+                        placeholder="Anything your team should remember once this intro is in the CRM."
+                      />
+                    </InputBlock>
+                  ) : null}
 
                   {submitError && (
                     <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
@@ -979,29 +1321,35 @@ export function BusinessGrowPage() {
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => void handleTrack(false)}
-                      disabled={submitting || !targetBusinessName.trim() || !editorContent.trim()}
+                      onClick={() => void (isBusinessInvite ? handleTrack(false) : handleSendNetworkInvite(false))}
+                      disabled={submitting || !canSubmitInvite}
                     >
                       {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
-                      Save intro in CRM
+                      {isBusinessInvite ? 'Save intro in CRM' : 'Send invite'}
                     </Button>
                     <Button
                       type="button"
-                      onClick={() => void handleTrack(true)}
-                      disabled={submitting || !targetBusinessName.trim() || !editorContent.trim()}
+                      onClick={() => void (isBusinessInvite ? handleTrack(true) : handleSendNetworkInvite(true))}
+                      disabled={submitting || !canSubmitInvite}
                     >
                       {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-                      Copy message + save intro
+                      {isBusinessInvite ? 'Copy message + save intro' : 'Copy message + send invite'}
                     </Button>
                   </div>
 
                   <div className="rounded-2xl border border-dashed border-surface-200 px-4 py-3 text-xs leading-6 text-surface-500">
-                    Tracking this intro creates or links the target business inside the CRM, creates a contact when you provide one, logs the outreach activity, and adds an internal note so your team can follow it up later.
+                    {isBusinessInvite
+                      ? 'Tracking this intro creates or links the target business inside the CRM, creates a contact when you provide one, logs the outreach activity, and adds an internal note so your team can follow it up later.'
+                      : `Sending opens the ${inviteeOption.nounSingular} account under your business and returns its referral code. You still send the message yourself — copy it first so the invite does not arrive cold.`}
                   </div>
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-surface-200 px-4 py-10 text-sm text-surface-500">
-                  Pick or type a business and your message will appear here.
+                  {isBusinessInvite
+                    ? 'Pick or type a business and your message will appear here.'
+                    : inviteeType === 'cause'
+                      ? 'Add the cause name and your message will appear here.'
+                      : 'Add a first name and your message will appear here.'}
                 </div>
               )}
             </CardContent>
@@ -1009,12 +1357,57 @@ export function BusinessGrowPage() {
         </div>
       </div>
 
+      {sentInvites.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Invites sent just now</CardTitle>
+                <CardDescription>
+                  Customers and causes you invited in this session, with the referral code the platform assigned to each one.
+                </CardDescription>
+              </div>
+              <Badge variant="success">{sentInvites.length} sent</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {sentInvites.map((invite) => (
+              <div
+                key={invite.key}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-surface-900">{invite.name}</p>
+                    <Badge variant="outline">
+                      {invite.inviteeType === 'cause' ? 'Cause' : 'Customer'}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-surface-500">
+                    {invite.email}
+                    {invite.message ? ` / ${invite.message}` : ''}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  {invite.referralCode ? (
+                    <code className="rounded border border-surface-200 bg-white px-2 py-1 text-xs font-semibold text-surface-900">
+                      {invite.referralCode}
+                    </code>
+                  ) : null}
+                  <span className="text-xs text-surface-400">{formatDateTime(invite.sentAt)}</span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle>Invite Tracking</CardTitle>
-              <CardDescription>Every intro stays connected to the CRM so your team can see which businesses were invited and whether they were opened as leads.</CardDescription>
+              <CardTitle>Business Invite Tracking</CardTitle>
+              <CardDescription>Every business intro stays connected to the CRM so your team can see which businesses were invited and whether they were opened as leads.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline">{referrals.length} total invites</Badge>
@@ -1129,6 +1522,91 @@ export function BusinessGrowPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+/**
+ * Stands in for the CRM candidate picker when the invitee is not a business.
+ * There is no local prospect list for people or causes, so this column explains
+ * what the invite actually does and where to look for people worth inviting.
+ */
+function InviteeTypeGuidance({
+  inviteeType,
+  businessName,
+}: {
+  inviteeType: NetworkInviteeType
+  businessName: string
+}) {
+  const isCause = inviteeType === 'cause'
+
+  return (
+    <Card className="overflow-hidden border-surface-200">
+      <CardHeader className="border-b border-surface-100 bg-surface-50/70">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>{isCause ? 'Inviting a cause' : 'Inviting a customer'}</CardTitle>
+            <CardDescription>
+              {isCause
+                ? `Causes join under ${businessName} and become something your customers can choose to support.`
+                : `Customers join under ${businessName} and start earning on what they already spend locally.`}
+            </CardDescription>
+          </div>
+          <Badge variant="info">
+            {isCause ? <HeartHandshake className="h-3.5 w-3.5" /> : <UserPlus className="h-3.5 w-3.5" />}
+            {isCause ? 'Cause' : 'Customer'}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4 p-5">
+        <div className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+          <p className="text-sm font-semibold text-surface-900">What happens when you send</p>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-surface-600">
+            <li>The account is opened under your business straight away.</li>
+            <li>You get back a referral code that is theirs to share.</li>
+            <li>
+              {isCause
+                ? 'Once it is live, customers can pick the cause and a share of their local spending goes to it.'
+                : 'They appear in your network as soon as they finish signing up.'}
+            </li>
+          </ul>
+        </div>
+
+        <div className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+          <p className="text-sm font-semibold text-surface-900">
+            {isCause ? 'Causes worth asking' : 'People worth asking'}
+          </p>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-surface-600">
+            {isCause ? (
+              <>
+                <li>The school, team, or league your customers already sponsor.</li>
+                <li>A nonprofit you have donated to before, so the ask is not cold.</li>
+                <li>A community group that shows up in your neighborhood already.</li>
+              </>
+            ) : (
+              <>
+                <li>Your regulars — the people who would say yes without thinking.</li>
+                <li>Anyone already on your 100 list who has not joined yet.</li>
+                <li>Friends and family who want to see the business do well.</li>
+              </>
+            )}
+          </ul>
+          {!isCause ? (
+            <Button variant="outline" size="sm" className="mt-4" asChild>
+              <Link href="/portal/grow?section=customers">
+                Open my 100 list
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-dashed border-surface-200 px-4 py-3 text-xs leading-6 text-surface-500">
+          {isCause
+            ? 'A street address is required so the cause can be placed on the map. If the email is already registered, the invite is rejected with a message telling you so.'
+            : 'A first name and email are all that is required. If the email is already registered, the invite is rejected with a message telling you so.'}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

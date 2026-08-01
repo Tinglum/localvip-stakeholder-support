@@ -155,8 +155,15 @@ async function refreshQaAccessToken(refreshToken: string) {
 }
 
 export async function fetchQaApi(path: string, init?: RequestInit) {
-  const session = getQaSessionFromCookieStore(cookies())
-  const accessToken = session?.accessToken || null
+  // allowExpired: the strict read threw "No QA access token available" the moment
+  // the token expired, even though the 401-refresh-retry below could have recovered
+  // the call from the refresh token sitting in the same cookie jar. Send the
+  // (possibly expired) token, take the 401, refresh, retry.
+  const session = getQaSessionFromCookieStore(cookies(), { allowExpired: true })
+  // Prefer a token this process already refreshed (the cookie write may not have
+  // been persisted yet — only a Route Handler can do that), and fall back to the
+  // cookie's own token.
+  const accessToken = (await getQaAccessToken()) || session?.accessToken || null
   if (!accessToken) {
     throw new Error('No QA access token available.')
   }

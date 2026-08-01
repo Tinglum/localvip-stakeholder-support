@@ -87,17 +87,17 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'Share', href: '/community/share', icon: 'Megaphone', description: 'Grow your supporter base' },
     { label: 'Activity', href: '/community/activity', icon: 'BarChart3', description: 'Track supporter growth' },
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Community mobilization materials' },
-    { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', description: 'Browse and add templates' },
+    { label: 'Template Library', href: '/portal/materials?tab=templates', icon: 'LayoutTemplate', description: 'Browse and add templates' },
   ],
+  // Mirrors the four-tab business nav. Sub-destinations point at the section
+  // they now live in rather than at a retired route.
   business: [
-    { label: 'Setup', href: '/portal/setup', icon: 'Rocket', description: 'Complete your business setup' },
-    { label: 'My Business', href: '/portal/business', icon: 'Store', description: 'Update your business profile' },
-    { label: 'My 100 List', href: '/portal/clients', icon: 'Users', description: 'Build your supporter list' },
-    { label: 'My Network', href: '/portal/network', icon: 'Network', description: 'See your downline and who joined' },
-    { label: 'Grow with Other Businesses', href: '/portal/grow', icon: 'Megaphone', description: 'Invite nearby businesses' },
-    { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Customer-facing materials only' },
-    { label: 'Template Library', href: '/portal/templates', icon: 'LayoutTemplate', description: 'Browse and add templates' },
-    { label: 'Activity', href: '/portal/activity', icon: 'BarChart3', description: 'Track invites and joins' },
+    { label: 'My Business', href: '/portal/business', icon: 'Store', description: 'Profile, branding, offers and deals' },
+    { label: 'My 100 List', href: '/portal/grow?section=customers', icon: 'Users', description: 'Build your supporter list' },
+    { label: 'Invite businesses & causes', href: '/portal/grow?section=partners', icon: 'Megaphone', description: 'Invite nearby businesses and causes' },
+    { label: 'My Network', href: '/portal/grow?section=network', icon: 'Network', description: 'See your network and who joined' },
+    { label: 'Materials', href: '/portal/materials', icon: 'FileDown', description: 'QR codes and printable assets' },
+    { label: 'Template Library', href: '/portal/materials?tab=templates', icon: 'LayoutTemplate', description: 'Browse and add templates' },
   ],
   field: [
     { label: 'My Businesses', href: '/workspace/businesses', icon: 'Store', description: 'Your active business list' },

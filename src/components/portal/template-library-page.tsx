@@ -50,7 +50,9 @@ type QrChoice = 'default' | 'new' | string
 // Business-portal template browser: pick a template, preview the design, choose
 // which QR to embed (a saved business QR, the default join QR, or a brand-new
 // one), then generate — the finished material lands in the business's library.
-export function TemplateLibraryPage() {
+/** `embedded` suppresses the standalone PageHeader when the business Materials
+ *  hub renders this as a tab. Defaults to false for every other caller. */
+export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const searchParams = useSearchParams()
   const [templates, setTemplates] = React.useState<PortalTemplate[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -82,18 +84,26 @@ export function TemplateLibraryPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Template Library"
-        description="Pick a template, preview it, and choose which QR code to add — then generate. The finished material lands in your library."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Refresh
-            </Button>
-            <Link href="/materials/mine"><Button variant="outline">My Materials <ArrowRight className="h-4 w-4" /></Button></Link>
-          </div>
-        }
-      />
+      {embedded ? (
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Refresh
+          </Button>
+        </div>
+      ) : (
+        <PageHeader
+          title="Template Library"
+          description="Pick a template, preview it, and choose which QR code to add — then generate. The finished material lands in your library."
+          actions={
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => void load()} disabled={loading}>
+                <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Refresh
+              </Button>
+              <Link href="/materials/mine"><Button variant="outline">My Materials <ArrowRight className="h-4 w-4" /></Button></Link>
+            </div>
+          }
+        />
+      )}
 
       {error && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{error}</div>}
 
@@ -469,7 +479,7 @@ function TemplateGenerateDialog({
 
               {template && ctx?.businessId && (
                 <Link
-                  href={`/qr/generator?businessId=${encodeURIComponent(ctx.businessId)}&returnTo=${encodeURIComponent(`/portal/templates?generateTemplate=${encodeURIComponent(String(template.id))}`)}`}
+                  href={`/qr/generator?businessId=${encodeURIComponent(ctx.businessId)}&returnTo=${encodeURIComponent(`/portal/materials?tab=templates&generateTemplate=${encodeURIComponent(String(template.id))}`)}`}
                   className="flex w-full items-center gap-3 rounded-xl border border-brand-200 bg-brand-50/50 px-3 py-3 text-left transition-colors hover:bg-brand-50"
                 >
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-brand-700">

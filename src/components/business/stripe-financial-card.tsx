@@ -3,10 +3,13 @@
 /**
  * Money panel for the business dashboard.
  *
- * Reads `/api/business-portal/stripe-summary`. That route is deliberately
- * failure-proof — the QA endpoint behind it is not deployed yet — so this
+ * Reads `/api/business-portal/stripe-summary`, which proxies the backend's
+ * StripeConnect summary. That route is deliberately failure-proof, so this
  * component only ever sees three shapes: unavailable, not-connected, connected.
  * Unavailable renders a quiet placeholder, never an error.
+ *
+ * There is no lifetime-volume figure upstream — "Last 30 days" is the only
+ * volume this panel can honestly show.
  */
 
 import * as React from 'react'

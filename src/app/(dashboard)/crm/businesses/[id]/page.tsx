@@ -486,6 +486,14 @@ export default function BusinessDetailPage() {
           <div>
             <p className="font-medium">Could not send this business live</p>
             <p className="mt-1 text-xs text-red-700">{publishError}</p>
+            {/* The blocker is always something missing in onboarding, so send the
+                user straight there for THIS business instead of making them hunt
+                for the workspace button further down the page. */}
+            <Link href={adminOnboardingHref} className="mt-2 inline-block">
+              <Button variant="outline" size="sm">
+                <ExternalLink className="h-3.5 w-3.5" /> Complete onboarding
+              </Button>
+            </Link>
           </div>
         </div>
       ) : null}

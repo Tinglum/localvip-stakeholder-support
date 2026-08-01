@@ -181,25 +181,61 @@ export function resolveScopedBusiness(profile: Profile, businesses: Business[]):
   return businesses.find((business) => business.owner_user_id === profile.id || business.owner_id === profile.id) || businesses[0] || null
 }
 
+/** Accepts a numeric id in either number or string form. */
+function asNumericId(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return String(value)
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return value.trim()
+  return null
+}
+
 /**
  * The numeric QA account id behind a business record — the key every network
- * endpoint is scoped by. Lives on `external_id` for QA-sourced businesses and in
- * metadata for records imported another way. Returns null when the business is
- * not linked to a network account yet.
+ * endpoint is scoped by.
+ *
+ * Businesses reach the portal through several shapes and each one carries the id
+ * somewhere different, which is why this used to come back null on records that
+ * were perfectly well connected:
+ *
+ * - server-merged records (`mergeBusinessRecord`, `buildSyntheticBusiness`) put it
+ *   on `external_id` and on `metadata.qaAccountId` / `qaBusinessId`;
+ * - the client mapper the business portal actually uses
+ *   (`mapQaBusinessRecordToBusiness` in `lib/supabase/hooks`) never sets
+ *   `external_id` at all — there the id is the record's own `id`, plus
+ *   `metadata.qaId` / `metadata.qaBusinessId`;
+ * - CRM-shaped records nest it under `metadata.qaApi.id`.
+ *
+ * All of those are checked here so the network tree resolves whenever the data is
+ * present anywhere. Null means the business genuinely has no network account yet
+ * (a local/demo record with a UUID id and no QA linkage).
  */
 export function getBusinessQaAccountId(
-  business: { external_id?: string | null; metadata?: Record<string, unknown> | null } | null | undefined,
+  business:
+    | { id?: string | null; external_id?: string | null; metadata?: Record<string, unknown> | null }
+    | null
+    | undefined,
 ): string | null {
   if (!business) return null
-  if (business.external_id && /^\d+$/.test(business.external_id.trim())) {
-    return business.external_id.trim()
-  }
+
+  const fromExternalId = asNumericId(business.external_id)
+  if (fromExternalId) return fromExternalId
 
   const meta = (business.metadata as Record<string, unknown> | null) || {}
-  const candidate = meta.qaAccountId ?? meta.qaBusinessId ?? meta.qa_account_id
-  if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate)
-  if (typeof candidate === 'string' && /^\d+$/.test(candidate.trim())) return candidate.trim()
-  return null
+  const fromMetadata =
+    asNumericId(meta.qaAccountId) ??
+    asNumericId(meta.qaBusinessId) ??
+    asNumericId(meta.qa_account_id) ??
+    asNumericId(meta.qaId)
+  if (fromMetadata) return fromMetadata
+
+  const qaApi = meta.qaApi
+  if (qaApi && typeof qaApi === 'object') {
+    const nested = asNumericId((qaApi as Record<string, unknown>).id)
+    if (nested) return nested
+  }
+
+  // Last resort: QA-sourced records are keyed by the account id itself. A local
+  // record has a UUID here, which fails the numeric test and falls through.
+  return asNumericId(business.id)
 }
 
 export function getBusinessProducts(business: Business): string[] {

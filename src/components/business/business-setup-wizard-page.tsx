@@ -1,59 +1,53 @@
 'use client'
 
+/**
+ * FIRST-RUN SETUP WIZARD.
+ *
+ * This page owns NO fields of its own. Every input it shows comes from
+ * `@/components/business/business-editor` — the same groups My Business
+ * (`/portal/business`) renders permanently. All this file adds is the step
+ * sequencing, the progress rail, per-step validation gating, and the
+ * submit-for-live-review flow.
+ *
+ * Not in the nav any more (the nav is Home / My Business / Grow / Materials).
+ * Reached from the "Needs your input" panel on Home and from `?step=` deep
+ * links, which still work exactly as before.
+ */
+
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, ArrowRight, CheckCircle2, CreditCard, Image as ImageIcon, Loader2, Plus, RefreshCw, Rocket, Search, Store, Tag, Users, Wallet, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  CreditCard,
+  Image as ImageIcon,
+  Loader2,
+  Rocket,
+  Store,
+  Tag,
+  Wallet,
+} from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
 import { DealManager } from '@/components/crm/deal-manager'
-import { useAuth } from '@/lib/auth/context'
-import { resolveBusinessOffer } from '@/lib/offers'
+import { ActionSection } from '@/components/business/business-surfaces'
 import {
-  getBusinessQaAccountId,
-  getBusinessLaunchPhase,
-  getBusinessPortalData,
-  resolveScopedBusiness,
-} from '@/lib/business-portal'
-import {
-  BUSINESS_SETUP_CONFIG_STEPS,
-  getBusinessSetupState,
-  type BusinessSetupStepKey,
-  type BusinessSetupSignals,
-} from '@/lib/business-setup'
-import {
-  parseStripeOnboardingStatus,
-  stripeRequirementLabels,
-  stripeStatusLabel,
-  stripeStatusSummary,
-  type StripeOnboardingStatus,
-} from '@/lib/stripe-onboarding'
-import {
-  useBusinesses,
-  useBusinessUpdate,
-  useContacts,
-  useDeals,
-  useOfferInsert,
-  useOffers,
-  useOfferUpdate,
-} from '@/lib/supabase/hooks'
-import {
-  BUSINESS_CATEGORIES,
-  getBusinessCategoryById,
-  getBusinessCategoryId,
-  getKeywordGroupsForCategory,
-} from '@/lib/business-catalog'
-// Client-side Supabase removed — media uploads now use the /api/crm/businesses/[id]/media route
+  BrandingFields,
+  CaptureFields,
+  ProfileFields,
+  SaveStateLabel,
+  StatusPill,
+  StripeFields,
+  useBusinessEditor,
+} from '@/components/business/business-editor'
+import { BUSINESS_SETUP_CONFIG_STEPS, type BusinessSetupStepKey } from '@/lib/business-setup'
 
-/** The steps that are actually edited on this page. The full checklist — these
- *  plus the do-it-on-another-page tasks — lives in `@/lib/business-setup`. */
 type StepKey = BusinessSetupStepKey
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 const STEP_ICONS: Record<BusinessSetupStepKey, React.ReactNode> = {
   profile: <Store className="h-4 w-4" />,
@@ -72,470 +66,39 @@ const STEPS = BUSINESS_SETUP_CONFIG_STEPS.map((step) => ({
 }))
 const STEP_SEQUENCE: StepKey[] = STEPS.map((step) => step.key)
 
-function normalizeKeywords(values: string[]) {
-  const seen = new Set<string>()
-  return values.reduce<string[]>((result, value) => {
-    const keyword = value.trim().replace(/\s+/g, ' ')
-    const key = keyword.toLocaleLowerCase()
-    if (!keyword || seen.has(key)) return result
-    seen.add(key)
-    result.push(keyword)
-    return result
-  }, [])
-}
-
-function parseKeywords(value: string[] | string | null | undefined) {
-  const values = Array.isArray(value)
-    ? value
-    : typeof value === 'string'
-      ? value.split(',')
-      : []
-  return normalizeKeywords(values)
-}
-
-function readUsdInput(value: string | null | undefined) {
-  const parsed = Number(String(value || '').replace(/[$,\s]/g, ''))
-  return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : ''
-}
-
-function formatUsdForStorage(value: string) {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed.toFixed(2) : null
-}
-
-type SetupSnapshotInput = {
-  name: string
-  categoryId: string
-  description: string
-  avgTicket: string
-  keywords: string[]
-  logoUrl: string | null
-  coverUrl: string | null
-  logoFileName: string | null
-  coverFileName: string | null
-  captureHeadline: string
-  captureDescription: string
-  captureValue: string
-  hundredListInterest: 'interested' | 'not_now' | null
-}
-
-function serializeSetupSnapshot(input: SetupSnapshotInput) {
-  return JSON.stringify({
-    name: input.name,
-    categoryId: input.categoryId,
-    description: input.description,
-    avgTicket: input.avgTicket,
-    keywords: normalizeKeywords(input.keywords),
-    logoUrl: input.logoUrl,
-    coverUrl: input.coverUrl,
-    logoFile: input.logoFileName,
-    coverFile: input.coverFileName,
-    captureHeadline: input.captureHeadline,
-    captureDescription: input.captureDescription,
-    captureValue: input.captureValue,
-    hundredListInterest: input.hundredListInterest,
-  })
+function isStepKey(value: string | null): value is StepKey {
+  return (
+    value === 'profile'
+    || value === 'branding'
+    || value === 'capture'
+    || value === 'cashback'
+    || value === 'stripe'
+    || value === 'activate'
+  )
 }
 
 export function BusinessSetupWizardPage() {
-  const { profile } = useAuth()
   const searchParams = useSearchParams()
-  // supabase client removed — media uploads now use the server API route
-  const businessFilters = React.useMemo<Record<string, string>>(() => {
-    const filters: Record<string, string> = {}
-    if (profile.business_id) {
-      filters.id = profile.business_id
-    } else {
-      filters.owner_id = profile.id
-    }
-    return filters
-  }, [profile.business_id, profile.id])
-  const { data: businesses, loading: businessLoading, refetch: refetchBusinesses } = useBusinesses(businessFilters)
-  const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
-  const { data: contacts } = useContacts({ business_id: business?.id || '__none__' })
-  const { data: offers, refetch: refetchOffers } = useOffers({ business_id: business?.id || '__none__' })
-  const { data: deals, refetch: refetchDeals } = useDeals({ business_account_id: business?.id || '__none__' })
-  const { update: updateBusiness } = useBusinessUpdate()
-  const { insert: insertOffer } = useOfferInsert()
-  const { update: updateOffer } = useOfferUpdate()
+  const editor = useBusinessEditor()
 
   const initialStep = React.useMemo<StepKey>(() => {
     const requested = searchParams.get('step')
     return isStepKey(requested) ? requested : 'profile'
   }, [searchParams])
+
+  // A `?step=` link means the owner asked for a specific step — always honour
+  // it, even after setup is finished.
   const [step, setStep] = React.useState<StepKey>(initialStep)
-  // A `?step=` link means the owner asked for a specific step — always honour it,
-  // even after setup is finished.
-  const [saveState, setSaveState] = React.useState<SaveState>('idle')
-  const [saveError, setSaveError] = React.useState<string | null>(null)
   const [stepValidation, setStepValidation] = React.useState<Partial<Record<StepKey, boolean>>>({})
-
-  const [name, setName] = React.useState('')
-  const [categoryId, setCategoryId] = React.useState('')
-  const [description, setDescription] = React.useState('')
-  const [avgTicket, setAvgTicket] = React.useState('')
-  const [keywords, setKeywords] = React.useState<string[]>([])
-  const [keywordSearch, setKeywordSearch] = React.useState('')
-  const [customKeyword, setCustomKeyword] = React.useState('')
-  const [logoUrl, setLogoUrl] = React.useState<string | null>(null)
-  const [coverUrl, setCoverUrl] = React.useState<string | null>(null)
-  const [logoFile, setLogoFile] = React.useState<File | null>(null)
-  const [coverFile, setCoverFile] = React.useState<File | null>(null)
-  const [captureHeadline, setCaptureHeadline] = React.useState('')
-  const [captureDescription, setCaptureDescription] = React.useState('')
-  const [captureValue, setCaptureValue] = React.useState('')
-  const [hundredListInterest, setHundredListInterest] = React.useState<'interested' | 'not_now' | null>(null)
-  const [activating, setActivating] = React.useState(false)
   const [completionAttempted, setCompletionAttempted] = React.useState(false)
-  const [stripeStatus, setStripeStatus] = React.useState<StripeOnboardingStatus | null>(null)
-  const [stripeLoading, setStripeLoading] = React.useState(true)
-  const [stripeError, setStripeError] = React.useState<string | null>(null)
-  const [stripeRefreshKey, setStripeRefreshKey] = React.useState(0)
-  const [openingStripe, setOpeningStripe] = React.useState(false)
-  const [captureOfferId, setCaptureOfferId] = React.useState<string | null>(null)
-  const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const snapshotRef = React.useRef('')
-  // Identity of the record currently seeded into the inputs. We only re-seed when
-  // this changes — see the seeding effect below.
-  const seededKeyRef = React.useRef<string | null>(null)
-  const keywordGroups = React.useMemo(() => {
-    const query = keywordSearch.trim().toLocaleLowerCase()
-    return getKeywordGroupsForCategory(categoryId)
-      .map((group) => ({
-        ...group,
-        keywords: group.keywords.filter((keyword) => !query || keyword.toLocaleLowerCase().includes(query)),
-      }))
-      .filter((group) => group.keywords.length > 0)
-  }, [categoryId, keywordSearch])
-
-  const portal = React.useMemo(
-    () => (business ? getBusinessPortalData(business) : {}),
-    [business]
-  )
-  const qaBusinessId = React.useMemo(() => getBusinessQaAccountId(business), [business])
-  const captureOffer = business ? resolveBusinessOffer(business, offers, 'capture') : null
-  const launchPhase = business ? getBusinessLaunchPhase(business, contacts) : 'setup'
 
   React.useEffect(() => {
     setStep(initialStep)
   }, [initialStep])
 
-  const refreshStripeStatus = React.useCallback(async (): Promise<StripeOnboardingStatus | null> => {
-    if (!business) return null
-    if (!qaBusinessId) {
-      setStripeStatus(null)
-      setStripeError('This business is not linked to a QA business account.')
-      setStripeLoading(false)
-      return null
-    }
-    setStripeLoading(true)
-    setStripeError(null)
-    try {
-      const query = `?businessId=${encodeURIComponent(qaBusinessId)}`
-      const response = await fetch(`/api/business-portal/stripe-onboarding${query}`, { cache: 'no-store' })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok || result.error) throw new Error(result.error || 'Stripe status could not be loaded.')
-      const parsed = parseStripeOnboardingStatus(result)
-      if (!parsed) throw new Error('Stripe returned an invalid status response.')
-      setStripeStatus(parsed)
-      return parsed
-    } catch (error) {
-      setStripeStatus(null)
-      setStripeError(error instanceof Error ? error.message : 'Stripe status could not be loaded.')
-      return null
-    } finally {
-      setStripeLoading(false)
-    }
-  }, [business, qaBusinessId])
+  const { business, setupState, missingSteps, isStepComplete } = editor
 
-  React.useEffect(() => {
-    void refreshStripeStatus()
-  }, [refreshStripeStatus, stripeRefreshKey])
-
-  React.useEffect(() => {
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') void refreshStripeStatus()
-    }
-    window.addEventListener('focus', refreshWhenVisible)
-    document.addEventListener('visibilitychange', refreshWhenVisible)
-    window.addEventListener('pageshow', refreshWhenVisible)
-    return () => {
-      window.removeEventListener('focus', refreshWhenVisible)
-      document.removeEventListener('visibilitychange', refreshWhenVisible)
-      window.removeEventListener('pageshow', refreshWhenVisible)
-    }
-  }, [refreshStripeStatus])
-
-  const openStripeOnboarding = React.useCallback(async () => {
-    if (!business) return
-    if (!qaBusinessId) {
-      setStripeError('This business is not linked to a QA business account.')
-      return
-    }
-    setOpeningStripe(true)
-    setStripeError(null)
-    try {
-      const response = await fetch(`/api/business-portal/stripe-onboarding?businessId=${encodeURIComponent(qaBusinessId)}`, { method: 'POST' })
-      const result = await response.json().catch(() => ({})) as { onboardingUrl?: string; error?: string }
-      if (response.status === 409) {
-        const refreshedStatus = await refreshStripeStatus()
-        if (refreshedStatus?.status === 'complete') {
-          setStripeError(null)
-          setStep('activate')
-          return
-        }
-        throw new Error('Stripe onboarding cannot be opened for this account yet.')
-      }
-      if (!response.ok || !result.onboardingUrl) throw new Error(result.error || 'Stripe onboarding could not be opened.')
-      window.location.assign(result.onboardingUrl)
-    } catch (error) {
-      setStripeError(error instanceof Error ? error.message : 'Stripe onboarding could not be opened.')
-    } finally {
-      setOpeningStripe(false)
-    }
-  }, [business, qaBusinessId, refreshStripeStatus])
-
-  React.useEffect(() => {
-    if (!business) return
-
-    // Only re-seed the inputs when the underlying record IDENTITY changes — a
-    // different business, or the capture offer finishing its load.
-    // Re-seeding on every `business` object update (e.g. the one returned by our
-    // own autosave) overwrites characters the user typed during the save
-    // round-trip, which made typing feel staccato / jump backwards.
-    const seedKey = `${business.id}|${captureOffer?.id || ''}`
-    if (seededKeyRef.current === seedKey) return
-    seededKeyRef.current = seedKey
-
-    const savedCategoryId = business.business_type || getBusinessCategoryId(business.category)
-
-    setName(business.name || '')
-    setCategoryId(savedCategoryId ? String(savedCategoryId) : '')
-    setDescription(business.public_description || portal.description || '')
-    setAvgTicket(readUsdInput(business.avg_ticket || portal.avg_ticket || ''))
-    setKeywords(parseKeywords(business.products_services || portal.products_services))
-    setLogoUrl(business.logo_url || portal.logo_url || null)
-    setCoverUrl(business.cover_photo_url || portal.cover_photo_url || null)
-    setCaptureHeadline(captureOffer?.headline || '')
-    setCaptureDescription(captureOffer?.description || '')
-    setCaptureValue(captureOffer?.value_label || '')
-    setHundredListInterest(
-      portal.hundred_list_interest === 'interested' || portal.hundred_list_interest === 'not_now'
-        ? portal.hundred_list_interest
-        : captureOffer?.id
-          ? 'interested'
-          : null,
-    )
-    setCaptureOfferId(captureOffer?.id || null)
-    snapshotRef.current = serializeSetupSnapshot({
-      name: business.name || '',
-      categoryId: savedCategoryId ? String(savedCategoryId) : '',
-      description: business.public_description || portal.description || '',
-      avgTicket: readUsdInput(business.avg_ticket || portal.avg_ticket || ''),
-      keywords: parseKeywords(business.products_services || portal.products_services),
-      logoUrl: business.logo_url || portal.logo_url || null,
-      coverUrl: business.cover_photo_url || portal.cover_photo_url || null,
-      logoFileName: null,
-      coverFileName: null,
-      captureHeadline: captureOffer?.headline || '',
-      captureDescription: captureOffer?.description || '',
-      captureValue: captureOffer?.value_label || '',
-      hundredListInterest:
-        portal.hundred_list_interest === 'interested' || portal.hundred_list_interest === 'not_now'
-          ? portal.hundred_list_interest
-          : captureOffer?.id
-            ? 'interested'
-            : null,
-    })
-  }, [business, captureOffer?.description, captureOffer?.headline, captureOffer?.id, captureOffer?.value_label, portal.avg_ticket, portal.cover_photo_url, portal.description, portal.hundred_list_interest, portal.logo_url, portal.products_services])
-
-  const persistChanges = React.useCallback(async (options?: {
-    businessPatch?: Record<string, unknown>
-    metadataOverrides?: Record<string, unknown>
-  }): Promise<boolean> => {
-    if (!business) return false
-
-    try {
-      setSaveState('saving')
-      setSaveError(null)
-
-      let nextLogoUrl = logoUrl
-      let nextCoverUrl = coverUrl
-
-      // Upload via the server API route which handles storage + top-level column updates
-      if (logoFile) {
-        const formData = new FormData()
-        formData.append('file', logoFile)
-        formData.append('mediaType', 'logo')
-        const uploadResponse = await fetch(`/api/crm/businesses/${business.id}/media`, { method: 'POST', body: formData })
-        const uploadResult = await uploadResponse.json().catch(() => ({}))
-        if (!uploadResponse.ok || !uploadResult.fileUrl) throw new Error(uploadResult.error || 'The logo could not be uploaded.')
-        nextLogoUrl = uploadResult.fileUrl
-        setLogoFile(null)
-      }
-
-      if (coverFile) {
-        const formData = new FormData()
-        formData.append('file', coverFile)
-        formData.append('mediaType', 'cover_photo')
-        const uploadResponse = await fetch(`/api/crm/businesses/${business.id}/media`, { method: 'POST', body: formData })
-        const uploadResult = await uploadResponse.json().catch(() => ({}))
-        if (!uploadResponse.ok || !uploadResult.fileUrl) throw new Error(uploadResult.error || 'The cover image could not be uploaded.')
-        nextCoverUrl = uploadResult.fileUrl
-        setCoverFile(null)
-      }
-
-      const nextMetadata = {
-        ...portal,
-        logo_url: nextLogoUrl,
-        cover_photo_url: nextCoverUrl,
-        capture_offer_title: captureHeadline,
-        capture_offer_description: captureDescription,
-        capture_offer_value: captureValue,
-        hundred_list_interest: hundredListInterest || undefined,
-        hundred_list_interest_recorded_at: hundredListInterest
-          ? portal.hundred_list_interest_recorded_at || new Date().toISOString()
-          : undefined,
-        hundred_list_activation_status: hundredListInterest === 'interested'
-          ? portal.hundred_list_activation_status === 'active' || portal.hundred_list_activation_status === 'in_setup'
-            ? portal.hundred_list_activation_status
-            : 'requested'
-          : hundredListInterest === 'not_now'
-            ? 'not_requested'
-            : undefined,
-        offer_title: captureHeadline,
-        offer_description: captureDescription,
-        offer_value: captureValue,
-        ...(options?.metadataOverrides || {}),
-      }
-
-      const savedBusiness = await updateBusiness(business.id, {
-        name,
-        category: getBusinessCategoryById(categoryId)?.label || null,
-        business_type: getBusinessCategoryById(categoryId)?.id || null,
-        public_description: description || null,
-        avg_ticket: formatUsdForStorage(avgTicket),
-        products_services: normalizeKeywords(keywords),
-        logo_url: nextLogoUrl || null,
-        cover_photo_url: nextCoverUrl || null,
-        metadata: nextMetadata as Record<string, unknown>,
-        ...(options?.businessPatch || {}),
-      })
-      if (!savedBusiness) {
-        throw new Error('Business setup could not be saved.')
-      }
-
-      // Only persist a capture offer once the business has actually written a
-      // headline (or one already exists). Avoids eagerly creating a placeholder
-      // offer that makes the 100-List step look "Done" before it really is.
-      let savedCapture: { id?: string } | null = null
-      if (captureHeadline.trim() || captureOfferId) {
-        const capturePayload = {
-          business_id: business.id,
-          offer_type: 'capture' as const,
-          status: captureHeadline.trim() ? 'active' as const : 'draft' as const,
-          headline: captureHeadline.trim() || 'Customer capture offer',
-          description: captureDescription || '',
-          value_type: 'label',
-          value_label: captureValue || null,
-          cashback_percent: null,
-          starts_at: null,
-          ends_at: null,
-          metadata: { source: 'business_setup' },
-        }
-        savedCapture = captureOfferId
-          ? await updateOffer(captureOfferId, capturePayload)
-          : await insertOffer(capturePayload)
-        if (!savedCapture) {
-          throw new Error('The 100-list offer could not be saved.')
-        }
-      }
-
-      if (savedCapture?.id) setCaptureOfferId(savedCapture.id)
-
-      setLogoUrl(nextLogoUrl)
-      setCoverUrl(nextCoverUrl)
-      snapshotRef.current = serializeSetupSnapshot({
-        name,
-        categoryId,
-        description,
-        avgTicket,
-        keywords,
-        logoUrl: nextLogoUrl,
-        coverUrl: nextCoverUrl,
-        logoFileName: null,
-        coverFileName: null,
-        captureHeadline,
-        captureDescription,
-        captureValue,
-        hundredListInterest,
-      })
-
-      setSaveState('saved')
-      refetchOffers({ silent: true })
-      refetchBusinesses({ silent: true })
-      return true
-    } catch (error) {
-      setSaveState('error')
-      setSaveError(error instanceof Error ? error.message : 'Changes could not be saved.')
-      return false
-    }
-  }, [
-    avgTicket,
-    business,
-    captureDescription,
-    captureHeadline,
-    hundredListInterest,
-    captureOfferId,
-    captureValue,
-    categoryId,
-    coverFile,
-    coverUrl,
-    description,
-    insertOffer,
-    logoFile,
-    logoUrl,
-    name,
-    portal,
-    keywords,
-    refetchBusinesses,
-    refetchOffers,
-    updateBusiness,
-    updateOffer,
-  ])
-
-  React.useEffect(() => {
-    if (!business) return
-
-    const snapshot = serializeSetupSnapshot({
-      name,
-      categoryId,
-      description,
-      avgTicket,
-      keywords,
-      logoUrl,
-      coverUrl,
-      logoFileName: logoFile?.name || null,
-      coverFileName: coverFile?.name || null,
-      captureHeadline,
-      captureDescription,
-      captureValue,
-      hundredListInterest,
-    })
-
-    if (!snapshotRef.current || snapshot === snapshotRef.current) return
-
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    saveTimeoutRef.current = setTimeout(() => {
-      void persistChanges()
-    }, 650)
-
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    }
-  }, [avgTicket, business, captureDescription, captureHeadline, captureValue, categoryId, coverFile, coverUrl, description, hundredListInterest, keywords, logoFile, logoUrl, name, persistChanges])
-
-  if (businessLoading) {
+  if (editor.loading) {
     return (
       <div className="flex min-h-[55vh] items-center justify-center">
         <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-5 py-4 text-sm text-surface-500 shadow-sm">
@@ -556,64 +119,9 @@ export function BusinessSetupWizardPage() {
     )
   }
 
-  // Completion is evaluated by the shared checklist against the DRAFT values in
-  // these inputs, so the rail updates as the owner types and can never drift
-  // from what the nav and the dashboard believe.
-  const signals: BusinessSetupSignals = {
-    name,
-    category: getBusinessCategoryById(categoryId)?.label || '',
-    description,
-    logoUrl: logoUrl || (logoFile ? logoFile.name : null),
-    coverUrl: coverUrl || (coverFile ? coverFile.name : null),
-    captureHeadline,
-    captureDescription,
-    captureValue,
-    hundredListInterest,
-    dealConfigured: deals.some((deal) => {
-      const cashback = Number(deal.cash_back)
-      if (!Number.isFinite(cashback) || cashback < 1 || cashback > 36) return false
-      if (!deal.start_date || !deal.end_date) return false
-      const start = new Date(deal.start_date)
-      const end = new Date(deal.end_date)
-      return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start
-    }),
-    stripeConnected: stripeStatus?.status === 'complete',
-    liveReviewSubmitted:
-      String(business.status || '') === 'pending_live_review'
-      || String(business.status || '') === 'live'
-      || business.stage === 'live',
-  }
-  const setupState = getBusinessSetupState(signals)
-  const stepCompletion = new Map(setupState.steps.map((step) => [step.key, step.complete]))
-  const completeProfile = !!stepCompletion.get('profile')
-  const completeBranding = !!stepCompletion.get('branding')
-  const completeCapture = !!stepCompletion.get('capture')
-  const completeCashback = !!stepCompletion.get('cashback')
-  const completeStripe = !!stepCompletion.get('stripe')
   const readyToActivate = setupState.readyToActivate
-  const completedStepsCount = setupState.completedCount
-  const completionRatio = setupState.ratio
   const activeStepMeta = STEPS.find((item) => item.key === step) || STEPS[0]
-  const showProfileValidation = !!stepValidation.profile
-  const showBrandingValidation = !!stepValidation.branding
-  const showCaptureValidation = !!stepValidation.capture
-  const profileNameMissing = !name.trim()
-  const profileCategoryMissing = !getBusinessCategoryById(categoryId)
-  const profileDescriptionMissing = !description.trim()
-  const brandingLogoMissing = !(logoUrl || logoFile)
-  const brandingCoverMissing = !(coverUrl || coverFile)
-  const hundredListChoiceMissing = hundredListInterest === null
-  const captureHeadlineMissing = !captureHeadline.trim()
-  const captureDescriptionMissing = !captureDescription.trim()
-  const captureValueMissing = !captureValue.trim()
-  const stripeRequirements = stripeStatus ? stripeRequirementLabels(stripeStatus) : []
-  const stripeOnboardingStarted = stripeStatus?.onboardingStarted === true
-  const missingSetupSteps = setupState.steps.filter((item) => item.key !== 'activate' && !item.complete)
-  const firstMissingSetupStep = missingSetupSteps[0] || null
-
-  function getStepCompletion(key: StepKey) {
-    return !!stepCompletion.get(key)
-  }
+  const firstMissingSetupStep = missingSteps[0] || null
 
   function getNextStep(key: StepKey) {
     const currentIndex = STEP_SEQUENCE.indexOf(key)
@@ -621,28 +129,11 @@ export function BusinessSetupWizardPage() {
     return STEP_SEQUENCE[currentIndex + 1]
   }
 
-  function toggleKeyword(keyword: string) {
-    setKeywords((current) => {
-      const exists = current.some((value) => value.localeCompare(keyword, undefined, { sensitivity: 'accent' }) === 0)
-      return exists
-        ? current.filter((value) => value.localeCompare(keyword, undefined, { sensitivity: 'accent' }) !== 0)
-        : normalizeKeywords([...current, keyword])
-    })
-  }
-
-  function addCustomKeyword() {
-    const keyword = customKeyword.trim().replace(/\s+/g, ' ')
-    if (!keyword) return
-    setKeywords((current) => normalizeKeywords([...current, keyword]))
-    setCustomKeyword('')
-  }
-
   async function handleSaveAndNext(key: StepKey) {
     setStepValidation((current) => ({ ...current, [key]: true }))
-    const readyToSave = getStepCompletion(key)
-    if (!readyToSave) return
+    if (!isStepComplete(key)) return
 
-    const saved = key === 'cashback' ? true : await persistChanges()
+    const saved = key === 'cashback' ? true : await editor.persistChanges()
     if (!saved) return
 
     const nextStep = getNextStep(key)
@@ -657,47 +148,23 @@ export function BusinessSetupWizardPage() {
       setCompletionAttempted(true)
       setStepValidation((current) => ({
         ...current,
-        ...Object.fromEntries(missingSetupSteps.map((item) => [item.key, true])),
+        ...Object.fromEntries(missingSteps.map((item) => [item.key, true])),
       }))
       if (firstMissingSetupStep) setStep(firstMissingSetupStep.key)
       return
     }
 
-    setActivating(true)
-    try {
-      const requestedAt = new Date().toISOString()
-      const saved = await persistChanges({
-        businessPatch: {
-          stage: 'onboarded',
-          launch_phase: 'ready_to_go_live',
-          activation_status: 'in_progress',
-        },
-        metadataOverrides: {
-          portal_activation_review_state: 'pending',
-          portal_activation_requested_at: requestedAt,
-          portal_activation_requested_by: profile.id,
-          portal_activation_reviewed_at: null,
-          portal_activation_reviewed_by: null,
-        },
-      })
-      if (!saved) return
-      window.location.href = '/portal/clients?review=submitted'
-    } finally {
-      setActivating(false)
-    }
+    const saved = await editor.submitForLiveReview()
+    if (!saved) return
+    window.location.href = '/portal/grow?section=customers&review=submitted'
   }
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="Business Setup"
-        description="Open any step, finish the requirements, then complete onboarding for live review."
-        actions={
-          <div className="flex items-center gap-2 text-sm text-surface-500">
-            {saveState === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : saveState === 'saved' ? <CheckCircle2 className="h-4 w-4 text-success-600" /> : null}
-            <span>{saveState === 'saving' ? 'Saving changes...' : saveState === 'saved' ? 'All changes saved' : saveState === 'error' ? 'Autosave failed' : 'Changes save automatically'}</span>
-          </div>
-        }
+        description="Open any step, finish the requirements, then complete onboarding for live review. Everything here stays editable later on My Business."
+        actions={<SaveStateLabel editor={editor} />}
       />
 
       <Card className="overflow-hidden border-surface-200">
@@ -707,7 +174,7 @@ export function BusinessSetupWizardPage() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Setup progress</p>
                 <p className="mt-1 text-sm font-semibold text-surface-950">
-                  {completedStepsCount} of {setupState.totalSteps} steps complete
+                  {setupState.completedCount} of {setupState.totalSteps} steps complete
                 </p>
               </div>
               <div className="flex items-center gap-3 sm:min-w-64 sm:justify-end">
@@ -717,14 +184,16 @@ export function BusinessSetupWizardPage() {
                   aria-label="Onboarding completion"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={Math.round(completionRatio * 100)}
+                  aria-valuenow={Math.round(setupState.ratio * 100)}
                 >
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-success-500 via-teal-500 to-brand-500 transition-all duration-500"
-                    style={{ width: `${completionRatio * 100}%` }}
+                    style={{ width: `${setupState.ratio * 100}%` }}
                   />
                 </div>
-                <span className="w-12 text-right text-sm font-bold tabular-nums text-surface-800">{Math.round(completionRatio * 100)}%</span>
+                <span className="w-12 text-right text-sm font-bold tabular-nums text-surface-800">
+                  {Math.round(setupState.ratio * 100)}%
+                </span>
               </div>
             </div>
           </div>
@@ -732,7 +201,7 @@ export function BusinessSetupWizardPage() {
           <div className="overflow-x-auto px-3 py-5 sm:px-5">
             <ol className="flex min-w-[840px] items-start sm:min-w-0">
               {STEPS.map((item, index) => {
-                const complete = getStepCompletion(item.key)
+                const complete = isStepComplete(item.key)
                 const isActive = step === item.key
                 const statusLabel = complete ? 'Complete' : isActive ? 'Current step' : 'Open step'
                 return (
@@ -752,17 +221,23 @@ export function BusinessSetupWizardPage() {
                       aria-current={isActive ? 'step' : undefined}
                       aria-label={`${item.label}: ${statusLabel}. Open this step.`}
                     >
-                      <span className={`flex h-12 w-12 items-center justify-center rounded-full border-2 bg-white shadow-sm ${
-                        complete
-                          ? 'border-success-600 bg-success-600 text-white'
-                          : isActive
-                            ? 'border-brand-600 bg-brand-600 text-white ring-4 ring-brand-100'
-                            : 'border-surface-300 text-surface-500'
-                      }`}>
+                      <span
+                        className={`flex h-12 w-12 items-center justify-center rounded-full border-2 bg-white shadow-sm ${
+                          complete
+                            ? 'border-success-600 bg-success-600 text-white'
+                            : isActive
+                              ? 'border-brand-600 bg-brand-600 text-white ring-4 ring-brand-100'
+                              : 'border-surface-300 text-surface-500'
+                        }`}
+                      >
                         {complete ? <CheckCircle2 className="h-5 w-5" /> : isActive ? item.icon : <span className="text-sm font-bold">{index + 1}</span>}
                       </span>
                       <span className="max-w-[130px] text-xs font-bold leading-4 sm:text-sm">{item.label}</span>
-                      <span className={`text-[10px] font-semibold uppercase tracking-[0.12em] ${complete ? 'text-success-700' : isActive ? 'text-brand-700' : 'text-surface-400'}`}>
+                      <span
+                        className={`text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                          complete ? 'text-success-700' : isActive ? 'text-brand-700' : 'text-surface-400'
+                        }`}
+                      >
                         {statusLabel}
                       </span>
                     </button>
@@ -774,7 +249,7 @@ export function BusinessSetupWizardPage() {
         </CardContent>
       </Card>
 
-      {saveError ? <p className="text-sm text-danger-600">{saveError}</p> : null}
+      {editor.saveError ? <p className="text-sm text-danger-600">{editor.saveError}</p> : null}
 
       <Card className={setupState.isComplete ? 'border-success-200 bg-success-50/60' : 'border-brand-200 bg-gradient-to-r from-brand-50 via-white to-white'}>
         <CardContent className="flex flex-col gap-5 px-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
@@ -783,7 +258,9 @@ export function BusinessSetupWizardPage() {
               {setupState.isComplete ? <CheckCircle2 className="h-6 w-6" /> : <Rocket className="h-6 w-6" />}
             </span>
             <div>
-              <h2 className="text-lg font-semibold text-surface-950">{setupState.isComplete ? 'Onboarding complete' : 'Finish your onboarding'}</h2>
+              <h2 className="text-lg font-semibold text-surface-950">
+                {setupState.isComplete ? 'Onboarding complete' : 'Finish your onboarding'}
+              </h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-600">
                 {setupState.isComplete
                   ? 'All setup requirements are complete and your live-review request has been submitted.'
@@ -794,22 +271,28 @@ export function BusinessSetupWizardPage() {
           <Button
             type="button"
             onClick={() => void activatePortal()}
-            disabled={activating}
+            disabled={editor.activating}
             className={`h-12 shrink-0 px-5 font-bold ${setupState.isComplete || readyToActivate ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
           >
-            {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : setupState.isComplete || readyToActivate ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-            {activating ? 'Completing...' : 'COMPLETE ONBOARDING'}
+            {editor.activating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : setupState.isComplete || readyToActivate ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : (
+              <AlertTriangle className="h-4 w-4" />
+            )}
+            {editor.activating ? 'Completing...' : 'COMPLETE ONBOARDING'}
           </Button>
         </CardContent>
       </Card>
 
-      {completionAttempted && missingSetupSteps.length > 0 ? (
+      {completionAttempted && missingSteps.length > 0 ? (
         <Card className="border-red-200 bg-red-50">
           <CardHeader>
             <CardTitle className="text-red-950">Finish these steps before onboarding is complete</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {missingSetupSteps.map((item) => (
+            {missingSteps.map((item) => (
               <Button
                 key={item.key}
                 type="button"
@@ -826,592 +309,172 @@ export function BusinessSetupWizardPage() {
       ) : null}
 
       <div className="space-y-6">
-          <Card className="border-surface-200 bg-gradient-to-r from-white via-surface-50 to-white">
-            <CardContent className="flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm font-semibold text-surface-950">
-                  <span className={`flex h-8 w-8 items-center justify-center rounded-full border shadow-sm ${
-                    getStepCompletion(step)
-                      ? 'border-success-600 bg-success-600 text-white'
-                      : 'border-brand-500 bg-brand-500 text-white'
-                  }`}>
-                    {getStepCompletion(step) ? <CheckCircle2 className="h-4 w-4" /> : activeStepMeta.icon}
-                  </span>
-                  {activeStepMeta.label}
-                </div>
-                <p className="text-sm text-surface-600">{activeStepMeta.description}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge className={getStepCompletion(step) ? 'border-success-200 bg-success-100 text-success-800' : 'border-brand-200 bg-brand-100 text-brand-800'}>
-                  {getStepCompletion(step) ? 'Completed' : 'Editing now'}
-                </Badge>
-                <span className="text-xs text-surface-500">
-                  Step {STEPS.findIndex((item) => item.key === step) + 1} of {STEPS.length}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {step === 'profile' && (
-            <Card className="min-h-[58vh]">
-              <CardHeader>
-                <CardTitle>Business Profile</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <FieldLabel required>Business name</FieldLabel>
-                  <Input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    className={showProfileValidation && profileNameMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
-                  />
-                  {showProfileValidation && profileNameMissing ? <RequiredFieldHint /> : null}
-                </div>
-                <div>
-                  <FieldLabel required>Category</FieldLabel>
-                  <select
-                    value={categoryId}
-                    onChange={(event) => setCategoryId(event.target.value)}
-                    className={`h-10 w-full rounded-lg border bg-white px-3 text-sm text-surface-900 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${
-                      showProfileValidation && profileCategoryMissing ? 'border-red-500' : 'border-surface-300'
-                    }`}
-                    aria-invalid={showProfileValidation && profileCategoryMissing}
-                  >
-                    <option value="">Choose a category</option>
-                    {BUSINESS_CATEGORIES.map((item) => (
-                      <option key={item.id} value={item.id}>{item.label}</option>
-                    ))}
-                  </select>
-                  {showProfileValidation && profileCategoryMissing ? <RequiredFieldHint /> : null}
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700" htmlFor="average-spend">Average spend per client</label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-semibold text-surface-500">$</span>
-                    <Input
-                      id="average-spend"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      inputMode="decimal"
-                      value={avgTicket}
-                      onChange={(event) => setAvgTicket(event.target.value)}
-                      placeholder="25.00"
-                      className="pl-7"
-                    />
-                  </div>
-                  <p className="mt-1.5 text-xs text-surface-500">Typical amount one client spends in USD.</p>
-                </div>
-                <div className="md:col-span-2">
-                  <FieldLabel required>Description</FieldLabel>
-                  <Textarea
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    rows={4}
-                    className={showProfileValidation && profileDescriptionMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
-                  />
-                  {showProfileValidation && profileDescriptionMissing ? <RequiredFieldHint /> : null}
-                </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700" htmlFor="keyword-search">Keywords</label>
-                  <p className="mb-3 text-sm leading-6 text-surface-500">Choose words customers can use to find your business and what you offer.</p>
-
-                  {keywords.length > 0 ? (
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      {keywords.map((keyword) => (
-                        <span key={keyword} className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-sm font-medium text-brand-800">
-                          {keyword}
-                          <button
-                            type="button"
-                            onClick={() => toggleKeyword(keyword)}
-                            className="rounded-full p-0.5 text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                            aria-label={`Remove ${keyword}`}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="overflow-hidden rounded-xl border border-surface-200 bg-surface-50">
-                    <div className="border-b border-surface-200 bg-white p-3">
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-                        <Input
-                          id="keyword-search"
-                          value={keywordSearch}
-                          onChange={(event) => setKeywordSearch(event.target.value)}
-                          placeholder="Search keywords, such as pizza, Italian, massage..."
-                          className="pl-9"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto p-3">
-                      {keywordGroups.length > 0 ? keywordGroups.map((group) => (
-                        <div key={group.id} className="mb-4 last:mb-0">
-                          <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-surface-500">{group.label}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {group.keywords.map((keyword) => {
-                              const selected = keywords.some((value) => value.toLocaleLowerCase() === keyword.toLocaleLowerCase())
-                              return (
-                                <button
-                                  key={keyword}
-                                  type="button"
-                                  onClick={() => toggleKeyword(keyword)}
-                                  aria-pressed={selected}
-                                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-                                    selected
-                                      ? 'border-brand-600 bg-brand-600 text-white'
-                                      : 'border-surface-300 bg-white text-surface-700 hover:border-brand-300 hover:bg-brand-50'
-                                  }`}
-                                >
-                                  {selected ? <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" /> : null}
-                                  {keyword}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )) : (
-                        <p className="py-4 text-center text-sm text-surface-500">No catalog keywords match that search.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      value={customKeyword}
-                      onChange={(event) => setCustomKeyword(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          addCustomKeyword()
-                        }
-                      }}
-                      placeholder="Add a custom keyword"
-                    />
-                    <Button type="button" variant="outline" onClick={addCustomKeyword} disabled={!customKeyword.trim()} className="shrink-0">
-                      <Plus className="h-4 w-4" />
-                      Add keyword
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-xs text-surface-500">New keywords are added to your business profile when you save.</p>
-                </div>
-                <div className="md:col-span-2 flex justify-end">
-                  <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('profile')}>
-                    Save and next
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {step === 'branding' && (
-            <Card className="min-h-[58vh]">
-              <CardHeader>
-                <CardTitle>Branding</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <FieldLabel required>Business logo</FieldLabel>
-                    <p className="text-sm leading-6 text-surface-500">
-                      This is your main brand mark. We use it in the middle of your QR code and in smaller places where people should recognize your business right away.
-                    </p>
-                    <p className="text-xs leading-5 text-surface-400">
-                      Best choice: a square logo with a simple shape and a clean or transparent background, so it still looks sharp when it is shown small.
-                    </p>
-                  </div>
-                  <input type="file" accept="image/*" onChange={(event) => setLogoFile(event.target.files?.[0] || null)} />
-                  {showBrandingValidation && brandingLogoMissing ? <RequiredFieldHint /> : null}
-                  <div className={`flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-surface-50 ${showBrandingValidation && brandingLogoMissing ? 'border-red-400' : 'border-surface-300'}`}>
-                    {logoFile || logoUrl ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={logoFile ? URL.createObjectURL(logoFile) : logoUrl || ''} alt="Logo preview" className="h-full w-full object-contain p-4" />
-                    ) : (
-                      <p className="text-sm text-surface-400">Upload the logo you want people to recognize first</p>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <FieldLabel required>Cover image</FieldLabel>
-                    <p className="text-sm leading-6 text-surface-500">
-                      This is the larger photo customers see first on your business page. Use it to show the feel of your business, like your food, your space, your storefront, or your experience.
-                    </p>
-                    <p className="text-xs leading-5 text-surface-400">
-                      Best choice: a wide photo that feels inviting and easy to understand at a glance.
-                    </p>
-                  </div>
-                  <input type="file" accept="image/*" onChange={(event) => setCoverFile(event.target.files?.[0] || null)} />
-                  {showBrandingValidation && brandingCoverMissing ? <RequiredFieldHint /> : null}
-                  <div className={`flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-surface-50 ${showBrandingValidation && brandingCoverMissing ? 'border-red-400' : 'border-surface-300'}`}>
-                    {coverFile || coverUrl ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={coverFile ? URL.createObjectURL(coverFile) : coverUrl || ''} alt="Cover preview" className="h-full w-full object-cover" />
-                    ) : (
-                      <p className="text-sm text-surface-400">Upload the main photo that should represent your business</p>
-                    )}
-                  </div>
-                </div>
-                <div className="md:col-span-2 flex justify-end">
-                  <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('branding')}>
-                    Save and next
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {step === 'capture' && (
-            <Card className="min-h-[58vh] overflow-hidden">
-              <CardContent className="space-y-7 p-6 md:p-10">
-                <div className="mx-auto max-w-3xl text-center">
-                  <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-brand-600 text-white shadow-lg shadow-brand-200">
-                    <Users className="h-7 w-7" />
-                  </span>
-                  <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-brand-600">Your launch audience</p>
-                  <h2 className="mt-2 text-3xl font-bold tracking-tight text-surface-950">Want to build your first 100 customers?</h2>
-                  <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-surface-600">
-                    LocalVIP can help turn local interest into a ready-to-reach customer list. You get a shareable signup experience, a QR code, and a simple launch offer that gives people a reason to join early.
-                  </p>
-                </div>
-
-                <div className="mx-auto grid max-w-4xl gap-4 md:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setHundredListInterest('interested')}
-                    className={`rounded-3xl border-2 p-6 text-left transition ${
-                      hundredListInterest === 'interested'
-                        ? 'border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-100'
-                        : 'border-surface-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-lg font-bold text-surface-950">Yes, help me build my 100 List</p>
-                        <p className="mt-2 text-sm leading-6 text-surface-600">Flag this for the LocalVIP team so we can activate your customer-capture tools and help you start building momentum.</p>
-                      </div>
-                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${hundredListInterest === 'interested' ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-surface-300'}`}>
-                        {hundredListInterest === 'interested' ? <CheckCircle2 className="h-4 w-4" /> : null}
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setHundredListInterest('not_now')}
-                    className={`rounded-3xl border-2 p-6 text-left transition ${
-                      hundredListInterest === 'not_now'
-                        ? 'border-surface-500 bg-surface-100'
-                        : 'border-surface-200 bg-white hover:border-surface-400 hover:bg-surface-50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-lg font-bold text-surface-950">Not right now</p>
-                        <p className="mt-2 text-sm leading-6 text-surface-600">No problem. You can turn it on later from your business portal when you are ready to grow your list.</p>
-                      </div>
-                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${hundredListInterest === 'not_now' ? 'border-surface-600 bg-surface-600 text-white' : 'border-surface-300'}`}>
-                        {hundredListInterest === 'not_now' ? <CheckCircle2 className="h-4 w-4" /> : null}
-                      </span>
-                    </div>
-                  </button>
-                </div>
-
-                {showCaptureValidation && hundredListChoiceMissing ? (
-                  <p className="text-center text-sm font-medium text-red-600">Choose one option to continue.</p>
-                ) : null}
-
-                <div className="hidden">
-                  <FieldLabel required>Offer headline</FieldLabel>
-                  <p className="mb-2 text-sm leading-6 text-surface-500">
-                    This is the first line customers notice. Keep it short, clear, and specific, like “Free cookie with any coffee.”
-                  </p>
-                  <Input
-                    value={captureHeadline}
-                    onChange={(event) => setCaptureHeadline(event.target.value)}
-                    placeholder="Free coffee with purchase"
-                    className={showCaptureValidation && captureHeadlineMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
-                  />
-                  {showCaptureValidation && captureHeadlineMissing ? <RequiredFieldHint /> : null}
-                </div>
-                <div className="hidden">
-                  <FieldLabel required>Offer description</FieldLabel>
-                  <p className="mb-2 text-sm leading-6 text-surface-500">
-                    Explain exactly what they get and any simple condition that comes with it, like “with purchase” or “one per customer.” This is the fuller explanation under the headline.
-                  </p>
-                  <Textarea
-                    value={captureDescription}
-                    onChange={(event) => setCaptureDescription(event.target.value)}
-                    rows={4}
-                    placeholder="Tell customers exactly what they get when they join your list."
-                    className={showCaptureValidation && captureDescriptionMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
-                  />
-                  {showCaptureValidation && captureDescriptionMissing ? <RequiredFieldHint /> : null}
-                </div>
-                <div className="hidden">
-                  <FieldLabel required>Offer value label</FieldLabel>
-                  <p className="mb-2 text-sm leading-6 text-surface-500">
-                    This is the shorter version we use in tighter spaces, like QR cards, badges, and smaller materials. Keep it compact and easy to scan quickly.
-                  </p>
-                  <Input
-                    value={captureValue}
-                    onChange={(event) => setCaptureValue(event.target.value)}
-                    placeholder="Free cookie with purchase"
-                    className={showCaptureValidation && captureValueMissing ? 'border-red-500 focus-visible:ring-red-200' : ''}
-                  />
-                  {showCaptureValidation && captureValueMissing ? <RequiredFieldHint /> : null}
-                </div>
-                <div className="flex justify-end">
-                  <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('capture')}>
-                    Save choice and continue
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {step === 'cashback' && (
-            <div className="space-y-5">
-              <DealManager
-                businessAccountId={String(business.id)}
-                mode="setup"
-                onDealsChanged={() => refetchDeals({ silent: true })}
-              />
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-surface-200 bg-white px-5 py-4">
-                <p className="text-sm text-surface-600">
-                  {completeCashback
-                    ? 'Your LocalVIP deal is saved and ready for the next step.'
-                    : 'Save a cashback percentage and schedule before continuing.'}
-                </p>
-                <Button
-                  className="h-12 shrink-0 px-6 text-base font-semibold"
-                  disabled={!completeCashback}
-                  onClick={() => void handleSaveAndNext('cashback')}
+        <Card className="border-surface-200 bg-gradient-to-r from-white via-surface-50 to-white">
+          <CardContent className="flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-surface-950">
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-full border shadow-sm ${
+                    isStepComplete(step) ? 'border-success-600 bg-success-600 text-white' : 'border-brand-500 bg-brand-500 text-white'
+                  }`}
                 >
-                  Continue to Stripe
+                  {isStepComplete(step) ? <CheckCircle2 className="h-4 w-4" /> : activeStepMeta.icon}
+                </span>
+                {activeStepMeta.label}
+              </div>
+              <p className="text-sm text-surface-600">{activeStepMeta.description}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge className={isStepComplete(step) ? 'border-success-200 bg-success-100 text-success-800' : 'border-brand-200 bg-brand-100 text-brand-800'}>
+                {isStepComplete(step) ? 'Completed' : 'Editing now'}
+              </Badge>
+              <span className="text-xs text-surface-500">
+                Step {STEPS.findIndex((item) => item.key === step) + 1} of {STEPS.length}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {step === 'profile' && (
+          <ActionSection
+            title="Business Profile"
+            description="The basics customers need to understand your business."
+            complete={isStepComplete('profile')}
+          >
+            <ProfileFields editor={editor} showValidation={!!stepValidation.profile} />
+            <div className="mt-5 flex justify-end">
+              <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('profile')}>
+                Save and next
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </ActionSection>
+        )}
+
+        {step === 'branding' && (
+          <ActionSection
+            title="Branding"
+            description="The logo and cover image customers see on your LocalVIP page."
+            complete={isStepComplete('branding')}
+          >
+            <BrandingFields editor={editor} showValidation={!!stepValidation.branding} />
+            <div className="mt-5 flex justify-end">
+              <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('branding')}>
+                Save and next
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </ActionSection>
+        )}
+
+        {step === 'capture' && (
+          <ActionSection
+            title="Build Your 100 List"
+            description="Tell us whether you want LocalVIP to help build your first customer audience."
+            complete={isStepComplete('capture')}
+          >
+            {/* `variant="choice"` keeps the offer copy fields hidden during
+                first-run, exactly as before. They are editable on My Business. */}
+            <CaptureFields editor={editor} showValidation={!!stepValidation.capture} variant="choice" />
+            <div className="mt-5 flex justify-end">
+              <Button className="h-12 px-6 text-base font-semibold" onClick={() => void handleSaveAndNext('capture')}>
+                Save choice and continue
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </ActionSection>
+        )}
+
+        {step === 'cashback' && (
+          <div className="space-y-5">
+            <DealManager
+              businessAccountId={String(business.id)}
+              mode="setup"
+              onDealsChanged={() => editor.refetchDeals({ silent: true })}
+            />
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-surface-200 bg-white px-5 py-4">
+              <p className="text-sm text-surface-600">
+                {isStepComplete('cashback')
+                  ? 'Your LocalVIP deal is saved and ready for the next step.'
+                  : 'Save a cashback percentage and schedule before continuing.'}
+              </p>
+              <Button
+                className="h-12 shrink-0 px-6 text-base font-semibold"
+                disabled={!isStepComplete('cashback')}
+                onClick={() => void handleSaveAndNext('cashback')}
+              >
+                Continue to Stripe
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'stripe' && (
+          <ActionSection
+            title="Connect Stripe Payments"
+            description="Stripe securely sends customer payments to your business bank account."
+            complete={isStepComplete('stripe')}
+          >
+            <StripeFields editor={editor} />
+            {isStepComplete('stripe') ? (
+              <div className="mt-5 flex justify-end">
+                <Button className="h-12 px-6 text-base font-semibold" onClick={() => setStep('activate')}>
+                  Continue to Go Live
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
+            ) : null}
+          </ActionSection>
+        )}
+
+        {step === 'activate' && (
+          <ActionSection
+            title="Submit for Live Review"
+            description="One final LocalVIP check before customers can use your deals."
+            complete={readyToActivate}
+            statusLabel={readyToActivate ? 'Ready to submit' : 'Needs your input'}
+          >
+            <div className="space-y-5">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <StatusPill label="Profile" ready={isStepComplete('profile')} onOpen={() => setStep('profile')} />
+                <StatusPill label="Branding" ready={isStepComplete('branding')} onOpen={() => setStep('branding')} />
+                <StatusPill label="100 List choice" ready={isStepComplete('capture')} onOpen={() => setStep('capture')} />
+                <StatusPill label="LocalVIP deal" ready={isStepComplete('cashback')} onOpen={() => setStep('cashback')} />
+                <StatusPill label="Stripe" ready={isStepComplete('stripe')} onOpen={() => setStep('stripe')} />
+              </div>
+              <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+                <p className="text-sm font-semibold text-surface-900">What unlocks next</p>
+                <p className="mt-2 text-sm leading-6 text-surface-600">
+                  Once you submit this, LocalVIP can review the business, confirm everything looks right, and then make
+                  it live in the system.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={() => void activatePortal()} disabled={editor.activating}>
+                  {editor.activating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      Submit for live review
+                      <Rocket className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/portal/business">
+                    Open My Business
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
             </div>
-          )}
-
-          {step === 'stripe' && (
-            <Card className="min-h-[58vh]">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-brand-600" />
-                  Connect Stripe Payments
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="max-w-3xl">
-                  <p className="text-base leading-7 text-surface-700">
-                    LocalVIP uses Stripe to securely process customer payments and send your share directly to your business bank account.
-                  </p>
-                  <p className="mt-3 text-sm leading-6 text-surface-500">
-                    Stripe verifies the business and payout details. LocalVIP never stores your bank credentials.
-                  </p>
-                </div>
-
-                {stripeLoading ? (
-                  <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-5 py-5 text-sm text-surface-600">
-                    <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
-                    Checking your Stripe connection...
-                  </div>
-                ) : null}
-
-                {!stripeLoading && stripeStatus?.status === 'complete' ? (
-                  <div className="rounded-2xl border border-success-300 bg-success-50 px-5 py-6">
-                    <div className="flex items-start gap-4">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-success-600 text-white">
-                        <CheckCircle2 className="h-6 w-6" />
-                      </span>
-                      <div>
-                        <p className="text-lg font-semibold text-success-950">Stripe is connected</p>
-                        <p className="mt-1 text-sm leading-6 text-success-800">
-                          Your business can receive LocalVIP customer payments. This requirement is complete.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {!stripeLoading && stripeStatus && stripeStatus.status !== 'complete' && stripeOnboardingStarted ? (
-                  <div className={`rounded-2xl border px-5 py-6 ${stripeStatus.status === 'restricted' ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}`}>
-                    <div className="flex items-start gap-4">
-                      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white ${stripeStatus.status === 'restricted' ? 'bg-red-600' : 'bg-amber-500'}`}>
-                        {stripeStatus.status === 'restricted' ? <AlertTriangle className="h-6 w-6" /> : <CreditCard className="h-6 w-6" />}
-                      </span>
-                      <div>
-                        <p className={`text-lg font-semibold ${stripeStatus.status === 'restricted' ? 'text-red-950' : 'text-amber-950'}`}>{stripeStatusLabel(stripeStatus.status)}</p>
-                        <p className={`mt-1 text-sm leading-6 ${stripeStatus.status === 'restricted' ? 'text-red-800' : 'text-amber-800'}`}>{stripeStatusSummary(stripeStatus)}</p>
-                        {stripeStatus.nextAction ? <p className="mt-3 text-sm font-medium text-surface-800">Next: {stripeStatus.nextAction}</p> : null}
-                        {stripeRequirements.length > 0 ? (
-                          <div className="mt-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-surface-600">Still needed</p>
-                            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-surface-700">
-                              {stripeRequirements.map(item => <li key={item}>{item}</li>)}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {!stripeLoading && stripeStatus && stripeStatus.status !== 'complete' && !stripeOnboardingStarted ? (
-                  <div className="rounded-2xl border border-brand-200 bg-brand-50 px-5 py-6">
-                    <div className="flex items-start gap-4">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
-                        <CreditCard className="h-6 w-6" />
-                      </span>
-                      <div>
-                        <p className="text-lg font-semibold text-surface-950">Connect Stripe to receive payments</p>
-                        <p className="mt-1 text-sm leading-6 text-surface-700">
-                          Start the secure Stripe setup when you are ready. We will show any remaining requirements after you begin.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {stripeError ? (
-                  <div className="rounded-2xl border border-red-300 bg-red-50 px-5 py-6">
-                    <div className="flex items-start gap-4">
-                      <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-red-600" />
-                      <div>
-                        <p className="font-semibold text-red-950">Stripe status could not be checked</p>
-                        <p className="mt-1 text-sm leading-6 text-red-800">
-                          {stripeError} Go Live remains locked until QA confirms the connection.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="flex flex-wrap items-center gap-3">
-                  {!stripeLoading && stripeStatus?.status !== 'complete' ? (
-                    <Button
-                      onClick={() => void openStripeOnboarding()}
-                      disabled={openingStripe}
-                      className="h-12 px-6 text-base font-semibold"
-                    >
-                      {openingStripe ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                      {openingStripe ? 'Opening Stripe...' : 'Complete Stripe setup'}
-                    </Button>
-                  ) : null}
-                  {!stripeLoading && stripeStatus?.status === 'complete' ? (
-                    <Button
-                      onClick={() => setStep('activate')}
-                      className="h-12 px-6 text-base font-semibold"
-                    >
-                      Continue to Go Live
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  ) : null}
-                  {stripeError || (!stripeLoading && stripeStatus?.status !== 'complete') ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => setStripeRefreshKey(value => value + 1)}
-                      disabled={stripeLoading}
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Check status again
-                    </Button>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {step === 'activate' && (
-            <Card className="min-h-[58vh]">
-              <CardHeader>
-                <CardTitle>Submit for Live Review</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  <StatusPill label="Profile" ready={completeProfile} onOpen={() => setStep('profile')} />
-                  <StatusPill label="Branding" ready={completeBranding} onOpen={() => setStep('branding')} />
-                  <StatusPill label="100 List choice" ready={completeCapture} onOpen={() => setStep('capture')} />
-                  <StatusPill label="LocalVIP deal" ready={completeCashback} onOpen={() => setStep('cashback')} />
-                  <StatusPill label="Stripe" ready={completeStripe} onOpen={() => setStep('stripe')} />
-                </div>
-                <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-                  <p className="text-sm font-semibold text-surface-900">What unlocks next</p>
-                  <p className="mt-2 text-sm leading-6 text-surface-600">
-                    Once you submit this, LocalVIP can review the business, confirm everything looks right, and then make it live in the system.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => void activatePortal()} disabled={activating}>
-                    {activating ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Submitting...
-                      </>
-                    ) : (
-                      <>
-                        Submit for live review
-                        <Rocket className="h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                  <Button asChild variant="outline">
-                    <Link href="/portal/business">
-                      Open My Business
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+          </ActionSection>
+        )}
+      </div>
     </div>
   )
-}
-
-function FieldLabel({ children, required = false }: { children: React.ReactNode; required?: boolean }) {
-  return (
-    <label className="mb-1.5 block text-sm font-medium text-surface-700">
-      {children}
-      {required ? <span className="ml-1 text-red-500">*</span> : null}
-    </label>
-  )
-}
-
-function RequiredFieldHint() {
-  return <p className="mt-1 text-sm font-medium text-red-600">(Required field)</p>
-}
-
-function StatusPill({ label, ready, onOpen }: { label: string; ready: boolean; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`${label}: ${ready ? 'ready' : 'needs work'}. Open this step.`}
-      className={`rounded-2xl border px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 ${
-        ready ? 'border-success-200 bg-success-50 hover:border-success-300' : 'border-surface-200 bg-surface-50 hover:border-surface-300'
-      }`}
-    >
-      <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-surface-900">{ready ? 'Ready' : 'Needs work'}</p>
-    </button>
-  )
-}
-
-function isStepKey(value: string | null): value is StepKey {
-  return value === 'profile'
-    || value === 'branding'
-    || value === 'capture'
-    || value === 'cashback'
-    || value === 'stripe'
-    || value === 'activate'
 }

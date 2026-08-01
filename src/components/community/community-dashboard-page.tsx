@@ -681,7 +681,7 @@ export function CommunityDashboardPage() {
             <EmptyState
               icon={<Network className="h-8 w-8" />}
               title="Network is not connected yet"
-              description={`This ${entityLabel.toLowerCase()} is not linked to a network account yet. Once it is fully set up on the platform, your downline will appear here.`}
+              description={`This ${entityLabel.toLowerCase()} is not linked to a network account yet. Once it is fully set up on the platform, your network will appear here.`}
             />
           )}
         </div>

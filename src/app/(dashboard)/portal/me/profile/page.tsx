@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { BiometricUnlockSetting } from '@/components/auth/biometric-unlock-setting'
 
 interface ConsumerProfile {
   email: string
@@ -216,6 +217,13 @@ export default function ConsumerProfilePage() {
           )}
         </CardContent>
       </Card>
+
+      <div className="mt-6">
+        <BiometricUnlockSetting
+          accountKey={profile?.email || 'localvip-user'}
+          label={[profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.email || null}
+        />
+      </div>
     </div>
   )
 }

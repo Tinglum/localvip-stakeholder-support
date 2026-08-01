@@ -517,12 +517,27 @@ function UploadMaterialDialog({
   )
 }
 
+/**
+ * Shared by admin, field, launch-partner and influencer at `/materials/mine`,
+ * and by the business Materials hub at `/portal/materials`.
+ *
+ * `embedded` only suppresses the standalone PageHeader (the hub supplies its
+ * own) and the Template Library button (the hub has a tab for it). It defaults
+ * to false, so every other role renders exactly as before.
+ */
 export default function MyMaterialsPage() {
-  // All users now use the standard materials page
+  // All users now use the standard materials page. This default export is
+  // mounted directly as the `/materials/mine` route, so it must stay
+  // prop-free — Next validates route component props.
   return <StandardMaterialsPage />
 }
 
-function StandardMaterialsPage() {
+/** Same view, embeddable. Used by the business Materials hub. */
+export function MyMaterialsView({ embedded = false }: { embedded?: boolean }) {
+  return <StandardMaterialsPage embedded={embedded} />
+}
+
+function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
   const { profile, isAdmin, localProfileId } = useAuth()
   const { data: allMaterials, loading: materialsLoading, error, refetch } = useMaterials()
   const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
@@ -614,22 +629,30 @@ function StandardMaterialsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="My Materials"
-        description="Your uploaded and assigned materials, with direct PDF previews ready for field use."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button onClick={() => setUploadOpen(true)}>
-              <Upload className="h-4 w-4" /> Upload
-            </Button>
-            <Link href="/portal/templates">
-              <Button variant="outline">
-                Template Library <ArrowRight className="h-4 w-4" />
+      {embedded ? (
+        <div className="flex justify-end">
+          <Button onClick={() => setUploadOpen(true)}>
+            <Upload className="h-4 w-4" /> Upload
+          </Button>
+        </div>
+      ) : (
+        <PageHeader
+          title="My Materials"
+          description="Your uploaded and assigned materials, with direct PDF previews ready for field use."
+          actions={
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setUploadOpen(true)}>
+                <Upload className="h-4 w-4" /> Upload
               </Button>
-            </Link>
-          </div>
-        }
-      />
+              <Link href="/portal/materials?tab=templates">
+                <Button variant="outline">
+                  Template Library <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          }
+        />
+      )}
 
       <UploadMaterialDialog
         open={uploadOpen}

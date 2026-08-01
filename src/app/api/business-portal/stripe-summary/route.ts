@@ -5,12 +5,16 @@ import { fetchQaApi } from '@/lib/auth/qa-api'
 export const dynamic = 'force-dynamic'
 
 // Money summary for the signed-in business: balances, next payout, last-30-day
-// volume, and the most recent payments. Proxies the QA StripeConnect summary.
+// volume, and the most recent payments. Proxies GET /api/dashboard/v1/StripeConnect/summary.
 //
-// The upstream endpoint is not deployed yet, so EVERY failure path — no QA
-// session, non-2xx, non-JSON, thrown fetch — resolves to the same quiet shape:
-// `{ connected: false, unavailable: true }`. The dashboard panel renders a
-// placeholder for that, never an error. This route must not return a non-200.
+// The upstream response has no lifetime-volume field — do not invent one.
+//
+// The panel this feeds is a dashboard tile, not a page, so a bad day upstream
+// must not turn into a red error box. Every failure path — no QA session,
+// non-2xx, non-JSON, thrown fetch — resolves to the same quiet shape:
+// `{ connected: false, unavailable: true }`, which renders as a placeholder.
+// Failures are logged server-side so a real outage is still visible to us.
+// This route must not return a non-200.
 const UNAVAILABLE = { connected: false, unavailable: true } as const
 
 export interface StripeSummaryPayment {
@@ -71,7 +75,10 @@ export async function GET() {
 
   try {
     const res = await fetchQaApi('/api/dashboard/v1/StripeConnect/summary')
-    if (!res.ok) return NextResponse.json(UNAVAILABLE)
+    if (!res.ok) {
+      console.error('[business stripe summary] upstream returned', res.status)
+      return NextResponse.json(UNAVAILABLE)
+    }
 
     const contentType = res.headers.get('content-type') || ''
     if (!contentType.includes('json')) return NextResponse.json(UNAVAILABLE)
@@ -92,7 +99,8 @@ export async function GET() {
     }
 
     return NextResponse.json(summary)
-  } catch {
+  } catch (error) {
+    console.error('[business stripe summary] proxy failed', error)
     return NextResponse.json(UNAVAILABLE)
   }
 }
