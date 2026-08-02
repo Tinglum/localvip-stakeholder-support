@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StripeFinancialCard } from '@/components/business/stripe-financial-card'
+import { BusinessAdvocacyPanel } from '@/components/business/business-advocacy-panel'
 import { ActionSection, InfoSection, InfoStat, SurfaceLegend } from '@/components/business/business-surfaces'
 import { useAuth } from '@/lib/auth/context'
 import {
@@ -340,6 +341,8 @@ export function BusinessDashboardPage() {
       </InfoSection>
 
       <StripeFinancialCard />
+
+      <BusinessAdvocacyPanel businessId={qaAccountId} compact />
 
       {/* Absorbed from the old Activity tab. */}
       <InfoSection

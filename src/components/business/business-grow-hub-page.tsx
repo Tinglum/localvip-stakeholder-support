@@ -17,15 +17,19 @@
 
 import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { HeartHandshake, Network, Users } from 'lucide-react'
+import { HeartHandshake, Network, Share2, Users } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { SurfaceLegend } from '@/components/business/business-surfaces'
 import { BusinessMy100ListPage } from '@/components/business/business-my-100-list-page'
 import { BusinessGrowPage } from '@/components/business/business-grow-page'
 import { BusinessNetworkPage } from '@/components/business/business-network-page'
+import { BusinessAdvocacyPanel } from '@/components/business/business-advocacy-panel'
+import { useAuth } from '@/lib/auth/context'
+import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-portal'
+import { useBusinesses } from '@/lib/supabase/hooks'
 import { cn } from '@/lib/utils'
 
-type SectionKey = 'customers' | 'partners' | 'network'
+type SectionKey = 'customers' | 'partners' | 'network' | 'advocacy'
 
 const SECTIONS: Array<{
   key: SectionKey
@@ -35,6 +39,13 @@ const SECTIONS: Array<{
   /** Neutral sections are read-only; accented ones add or change something. */
   tone: 'action' | 'info'
 }> = [
+  {
+    key: 'advocacy',
+    label: 'Customer-powered growth',
+    hint: 'See recommendations become customers',
+    icon: <Share2 className="h-4 w-4" />,
+    tone: 'info',
+  },
   {
     key: 'customers',
     label: 'Customers',
@@ -59,12 +70,22 @@ const SECTIONS: Array<{
 ]
 
 function isSectionKey(value: string | null): value is SectionKey {
-  return value === 'customers' || value === 'partners' || value === 'network'
+  return value === 'customers' || value === 'partners' || value === 'network' || value === 'advocacy'
 }
 
 export function BusinessGrowHubPage() {
+  const { profile } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const businessFilters = React.useMemo<Record<string, string>>(() => {
+    const filters: Record<string, string> = {}
+    if (profile.business_id) filters.id = profile.business_id
+    else filters.owner_id = profile.id
+    return filters
+  }, [profile.business_id, profile.id])
+  const { data: businesses } = useBusinesses(businessFilters)
+  const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
+  const qaAccountId = getBusinessQaAccountId(business)
 
   const requested = searchParams.get('section')
   const section: SectionKey = isSectionKey(requested) ? requested : 'customers'
@@ -137,6 +158,7 @@ export function BusinessGrowHubPage() {
         {section === 'customers' ? <BusinessMy100ListPage embedded /> : null}
         {section === 'partners' ? <BusinessGrowPage embedded /> : null}
         {section === 'network' ? <BusinessNetworkPage embedded /> : null}
+        {section === 'advocacy' ? <BusinessAdvocacyPanel businessId={qaAccountId} /> : null}
       </div>
     </div>
   )
