@@ -44,3 +44,7 @@ LocalVIP010626-main/
 tmp-*.log
 tmp-*.txt
 .claude/
+
+# Agent tooling artifacts - local only
+.agents/
+.codex/
