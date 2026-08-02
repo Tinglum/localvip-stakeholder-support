@@ -39,7 +39,7 @@ import {
   Bug,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { type NavItem, BRANDS } from '@/lib/constants'
+import { type NavItem, BRANDS, ROLES } from '@/lib/constants'
 import { getStakeholderAccess, getThemeForProfile } from '@/lib/stakeholder-access'
 import type { Brand, Profile } from '@/lib/types/database'
 
@@ -99,6 +99,10 @@ export function Sidebar({
   const pathname = usePathname()
   const access = getStakeholderAccess(profile, { businessSetupComplete })
   const roleTheme = getThemeForProfile(profile)
+  // Was hardcoded to 0, so the child filter (userLevel >= child.minLevel) hid
+  // EVERY nav child with a non-zero minLevel from everyone — Admin > Settings
+  // (minLevel 100) was unreachable except by typing the URL, even as SuperAdmin.
+  const userLevel = ROLES[access.themeRole]?.level ?? 0
 
   return (
     <aside
@@ -153,7 +157,7 @@ export function Sidebar({
               key={item.href}
               item={item}
               pathname={pathname}
-              userLevel={0}
+              userLevel={userLevel}
               collapsed={collapsed && !mobile}
               onNavigate={onNavigate}
             />

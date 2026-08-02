@@ -1,11 +1,13 @@
 'use client'
 
 import * as React from 'react'
-import { HeartHandshake, Loader2, Save, Target } from 'lucide-react'
+import { CalendarRange, HeartHandshake, Loader2, Save, Target } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/ui/page-header'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 
 interface FundraisingGoal {
@@ -13,6 +15,17 @@ interface FundraisingGoal {
   month: number
   goalAmount: number
   updatedOn?: string | null
+  updatedBy?: string | null
+}
+
+const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
+function formatMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
 }
 
 function currentPeriod() {
@@ -31,6 +44,27 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [updatedOn, setUpdatedOn] = React.useState<string | null>(null)
+  const [goals, setGoals] = React.useState<FundraisingGoal[]>([])
+  const [goalsLoading, setGoalsLoading] = React.useState(true)
+
+  const thisPeriod = React.useMemo(() => splitPeriod(currentPeriod()), [])
+
+  const loadGoals = React.useCallback(async () => {
+    setGoalsLoading(true)
+    try {
+      const response = await fetch('/api/admin/fundraising-goal/list', { cache: 'no-store' })
+      const payload = await response.json().catch(() => null) as { goals?: FundraisingGoal[]; error?: string } | null
+      if (!response.ok) throw new Error(payload?.error || 'The fundraising goals could not be loaded.')
+      setGoals(Array.isArray(payload?.goals) ? payload.goals : [])
+    } catch (error) {
+      setGoals([])
+      toast.error(error instanceof Error ? error.message : 'The fundraising goals could not be loaded.')
+    } finally {
+      setGoalsLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => { void loadGoals() }, [loadGoals])
 
   const loadGoal = React.useCallback(async () => {
     setLoading(true)
@@ -73,6 +107,7 @@ export default function AdminSettingsPage() {
       setGoalAmount(String(Number(saved.goalAmount) || 0))
       setUpdatedOn(saved.updatedOn || null)
       toast.success('Monthly fundraising goal saved.')
+      await loadGoals()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The fundraising goal could not be saved.')
     } finally {
@@ -111,6 +146,67 @@ export default function AdminSettingsPage() {
               <Button type="submit" disabled={loading || saving || goalAmount === ''}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{saving ? 'Saving' : 'Save goal'}</Button>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-2xl overflow-hidden">
+        <CardHeader>
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-brand-50 p-2.5 text-brand-700"><CalendarRange className="h-5 w-5" /></div>
+            <div>
+              <CardTitle>Goals already set</CardTitle>
+              <CardDescription className="mt-1">Every monthly cause fundraising goal on record, newest first.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {goalsLoading ? (
+            <p className="flex items-center gap-2 py-6 text-sm text-surface-500"><Loader2 className="h-4 w-4 animate-spin" />Loading goals</p>
+          ) : goals.length === 0 ? (
+            <EmptyState
+              icon={<Target className="h-6 w-6" />}
+              title="No goals set yet"
+              description="Save a monthly goal above and it will appear here."
+            />
+          ) : (
+            <div className="max-h-96 overflow-auto rounded-lg border border-surface-100">
+              <table className="w-full border-collapse text-sm">
+                <caption className="sr-only">Monthly cause fundraising goals, newest first</caption>
+                <thead className="sticky top-0 bg-surface-50 text-xs uppercase tracking-wide text-surface-500">
+                  <tr>
+                    <th scope="col" className="px-4 py-2.5 text-left font-medium">Month</th>
+                    <th scope="col" className="px-4 py-2.5 text-right font-medium">Goal</th>
+                    <th scope="col" className="px-4 py-2.5 text-left font-medium">Last updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {goals.map((goal) => {
+                    const isCurrent = goal.year === thisPeriod.year && goal.month === thisPeriod.month
+                    return (
+                      <tr
+                        key={`${goal.year}-${goal.month}`}
+                        className={`border-t border-surface-100 ${isCurrent ? 'bg-brand-50/60' : ''}`}
+                      >
+                        <th scope="row" className="px-4 py-2.5 text-left font-medium text-surface-800">
+                          <span className="flex items-center gap-2">
+                            {formatMonth(goal.year, goal.month)}
+                            {isCurrent && <Badge variant="info">Current month</Badge>}
+                          </span>
+                        </th>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-surface-700">
+                          {currencyFormatter.format(Number(goal.goalAmount) || 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-surface-500">
+                          {goal.updatedOn ? new Date(goal.updatedOn).toLocaleDateString() : '—'}
+                          {goal.updatedBy ? <span className="block text-xs text-surface-400">by {goal.updatedBy}</span> : null}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
