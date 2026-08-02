@@ -39,6 +39,34 @@ interface FilterDef {
   options: { value: string; label: string }[]
 }
 
+/**
+ * Flatten a row into searchable text.
+ *
+ * The previous filter did `String(v)` over `Object.values(row)`, so any nested
+ * value became the literal "[object Object]" and never matched. Rows here are
+ * whole API records — a cause's contact, city and QA metadata all live one or
+ * more levels down — so searching by contact or location silently found
+ * nothing while the placeholder promised otherwise.
+ *
+ * Depth-limited and primitive-only: React elements, functions and long blobs
+ * are skipped so a render prop or a base64 logo can't poison the haystack.
+ */
+function collectSearchText(value: unknown, depth = 0): string {
+  if (value == null || depth > 3) return ''
+  if (typeof value === 'string') return value.length > 300 ? '' : value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (value instanceof Date) return value.toISOString()
+  if (Array.isArray(value)) return value.map(entry => collectSearchText(entry, depth + 1)).join(' ')
+  if (typeof value === 'object') {
+    // React elements and other exotic objects carry no useful text.
+    if ('$$typeof' in (value as Record<string, unknown>)) return ''
+    return Object.values(value as Record<string, unknown>)
+      .map(entry => collectSearchText(entry, depth + 1))
+      .join(' ')
+  }
+  return ''
+}
+
 // ─── Component ───────────────────────────────────────────────
 
 export function DataTable<T extends Record<string, any>>({
@@ -70,13 +98,15 @@ export function DataTable<T extends Record<string, any>>({
 
   const filtered = React.useMemo(() => {
     let result = data
-    if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(item =>
-        Object.values(item).some(v =>
-          String(v ?? '').toLowerCase().includes(q)
-        )
-      )
+    if (search.trim()) {
+      // Every whitespace-separated term must match somewhere in the row, so
+      // "sunshine boise" narrows instead of returning everything matching
+      // either word.
+      const terms = search.toLowerCase().split(/\s+/).filter(Boolean)
+      result = result.filter(item => {
+        const haystack = collectSearchText(item).toLowerCase()
+        return terms.every(term => haystack.includes(term))
+      })
     }
     if (sortKey) {
       result = [...result].sort((a, b) => {
