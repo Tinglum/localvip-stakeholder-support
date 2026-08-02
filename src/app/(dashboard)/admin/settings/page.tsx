@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
+import { RippleReadinessPanel } from '@/components/admin/ripple-readiness-panel'
 
 interface FundraisingGoal {
   year: number
@@ -118,6 +119,7 @@ export default function AdminSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="System Settings" description="Set the community-wide targets used across LocalVIP consumer fundraising progress." />
+      <RippleReadinessPanel />
       <Card className="max-w-2xl overflow-hidden">
         <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-brand-600" />
         <CardHeader>

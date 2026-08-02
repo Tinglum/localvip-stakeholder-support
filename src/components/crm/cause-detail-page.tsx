@@ -776,10 +776,15 @@ export default function CauseDetailPage() {
               userName={owner?.full_name || causeResponse?.qaCause?.ownerName || cause.name}
               stakeholderType={isSchool ? 'School Leader' : 'Cause Leader'}
             />
+            {/* `causeAccountId` pins the portal to THIS cause. Without it the
+                portal resolved the nonprofit from the leader alone, so a leader
+                of several causes always landed in the same one — clicking here
+                on cause A could open cause B's portal. */}
             <OpenInWebappButton
               userId={causeResponse?.qaCause?.ownerUserId || null}
               userName={owner?.full_name || cause.name}
               stakeholderType="Cause"
+              causeAccountId={qaLinkedCauseId}
             />
           </div>
         )}

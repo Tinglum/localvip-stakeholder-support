@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { qaAdminLoginAs, QaApiError } from '@/lib/auth/qa-api'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
 import { buildPortalBusinessSelection, readRequestedBusinessAccountId } from '@/lib/server/portal-business'
+import { readRequestedCauseAccountId, verifyPortalCauseSelection } from '@/lib/server/portal-cause'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +16,11 @@ export async function POST(request: NextRequest) {
   const access = await requireQaRouteAccess(['admin'])
   if ('error' in access) return access.error
 
-  let body: { targetUserId?: number | string; businessAccountId?: number | string } = {}
+  let body: {
+    targetUserId?: number | string
+    businessAccountId?: number | string
+    causeAccountId?: number | string
+  } = {}
   try {
     body = await request.json()
   } catch {
@@ -55,6 +60,27 @@ export async function POST(request: NextRequest) {
     verifiedBusinessAccountId = requestedBusinessAccountId
   }
 
+  // Same story for causes: the cause portal resolved the nonprofit from the user
+  // alone, so a leader of several causes always landed in the same one. Verified
+  // the same way, and fails closed for the same reason.
+  const requestedCauseAccountId = readRequestedCauseAccountId(body as Record<string, unknown>)
+  let verifiedCauseAccountId: number | null = null
+  if (requestedCauseAccountId != null) {
+    const selection = await verifyPortalCauseSelection(targetUserId, requestedCauseAccountId)
+    if (!selection.ok) {
+      return NextResponse.json(
+        {
+          error:
+            selection.reason === 'not-a-member'
+              ? 'That cause does not belong to this user.'
+              : 'Could not verify the cause belongs to this user.',
+        },
+        { status: selection.reason === 'not-a-member' ? 403 : 502 },
+      )
+    }
+    verifiedCauseAccountId = requestedCauseAccountId
+  }
+
   try {
     const result = await qaAdminLoginAs(targetUserId)
     // Both values ride in the URL FRAGMENT, which is never sent to a server,
@@ -62,13 +88,15 @@ export async function POST(request: NextRequest) {
     // signed-in user before honouring it — this is a hint, not an authority.
     const url =
       `${WEBAPP_URL}/auth/app-handoff#t=${encodeURIComponent(result.accessToken)}` +
-      (verifiedBusinessAccountId != null ? `&b=${encodeURIComponent(String(verifiedBusinessAccountId))}` : '')
+      (verifiedBusinessAccountId != null ? `&b=${encodeURIComponent(String(verifiedBusinessAccountId))}` : '') +
+      (verifiedCauseAccountId != null ? `&c=${encodeURIComponent(String(verifiedCauseAccountId))}` : '')
     return NextResponse.json({
       url,
       target: {
         userId: result.user.id,
         email: result.user.email,
         businessAccountId: verifiedBusinessAccountId,
+        causeAccountId: verifiedCauseAccountId,
       },
     })
   } catch (error) {
