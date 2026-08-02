@@ -19,6 +19,15 @@ export interface RippleReadiness {
   }
   blockers: string[]
   warnings: string[]
+  phase1?: {
+    enabled: boolean
+    ready: boolean
+    cutoverAtUtc: string | null
+    missingTables: string[]
+    phase1EnabledColumn: boolean
+    phase1CutoverColumn: boolean
+    blockers: string[]
+  }
 }
 
 export interface RippleReconciliationIssue {

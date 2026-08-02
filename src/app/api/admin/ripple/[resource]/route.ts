@@ -56,7 +56,9 @@ export async function GET(request: NextRequest, { params }: { params: { resource
 export async function PUT(request: NextRequest, { params }: { params: { resource: string } }) {
   const auth = await authorize()
   if (auth.error) return auth.error
-  if (params.resource !== 'enabled') return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+  if (params.resource !== 'enabled' && params.resource !== 'phase1-enabled') {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+  }
 
   const payload = await request.json().catch(() => null) as { enabled?: unknown } | null
   if (typeof payload?.enabled !== 'boolean') {
@@ -64,7 +66,7 @@ export async function PUT(request: NextRequest, { params }: { params: { resource
   }
 
   try {
-    const response = await fetchQaApi('/api/dashboard/v1/Ripple/enabled', {
+    const response = await fetchQaApi(`/api/dashboard/v1/Ripple/${params.resource}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: payload.enabled }),

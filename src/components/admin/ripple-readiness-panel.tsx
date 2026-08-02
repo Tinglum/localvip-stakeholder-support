@@ -25,6 +25,7 @@ export function RippleReadinessPanel() {
   const [reconciliation, setReconciliation] = React.useState<RippleReconciliation | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
+  const [savingPhase1, setSavingPhase1] = React.useState(false)
   const [readinessError, setReadinessError] = React.useState<string | null>(null)
   const [reconciliationError, setReconciliationError] = React.useState<string | null>(null)
 
@@ -76,6 +77,26 @@ export function RippleReadinessPanel() {
     }
   }
 
+  async function setPhase1Enabled(enabled: boolean) {
+    const verb = enabled ? 'enable' : 'pause'
+    if (!window.confirm(`Are you sure you want to ${verb} customer recommendations globally?`)) return
+    setSavingPhase1(true)
+    try {
+      const response = await fetch('/api/admin/ripple/phase1-enabled', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      await readPayload(response, `Customer recommendations could not be ${enabled ? 'enabled' : 'paused'}.`)
+      toast.success(`Customer recommendations ${enabled ? 'enabled globally' : 'paused'}.`)
+      await load()
+    } catch (nextError) {
+      toast.error(nextError instanceof Error ? nextError.message : 'Customer recommendations could not be updated.')
+    } finally {
+      setSavingPhase1(false)
+    }
+  }
+
   const summary = reconciliation?.summary
   const statusLabel = !readiness ? 'Unavailable' : !readiness.enabled ? 'Paused' : readiness.ready ? 'Ready' : 'Blocked'
   const statusVariant = readiness?.enabled && readiness.ready ? 'success' : readiness?.enabled ? 'danger' : 'warning'
@@ -110,6 +131,39 @@ export function RippleReadinessPanel() {
 
         {readiness ? (
           <>
+            {readiness.phase1 ? (
+              <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-surface-900">Phase 1 · Customer recommendations</p>
+                      <Badge variant={readiness.phase1.enabled ? 'success' : readiness.phase1.ready ? 'warning' : 'danger'}>
+                        {readiness.phase1.enabled ? 'Global' : readiness.phase1.ready ? 'Ready to enable' : 'Blocked'}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-surface-500">
+                      All active businesses become eligible together. No historical purchases are backfilled.
+                    </p>
+                    {readiness.phase1.cutoverAtUtc ? <p className="mt-1 text-xs text-surface-500">Cutover {formatTimestamp(readiness.phase1.cutoverAtUtc)}</p> : null}
+                  </div>
+                  <Button
+                    variant={readiness.phase1.enabled ? 'danger' : 'default'}
+                    size="sm"
+                    onClick={() => void setPhase1Enabled(!readiness.phase1!.enabled)}
+                    disabled={loading || saving || savingPhase1 || (!readiness.phase1.enabled && !readiness.phase1.ready)}
+                  >
+                    {savingPhase1 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                    {readiness.phase1.enabled ? 'Pause recommendations' : 'Enable for all businesses'}
+                  </Button>
+                </div>
+                {readiness.phase1.blockers.length > 0 ? (
+                  <ul className="mt-3 space-y-1">
+                    {readiness.phase1.blockers.map((blocker) => <li key={blocker} className="flex gap-2 text-sm text-danger-700"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />{blocker}</li>)}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Outbox pending" value={readiness.outbox.pending} />
               <Metric label="Outbox retrying" value={readiness.outbox.retrying} />
