@@ -36,7 +36,16 @@ export function resolvePortalUserId(session: ResolvedAuthSession): number | null
 export async function fetchPortalBusinessAccounts(userId: number): Promise<PortalBusinessAccount[] | null> {
   try {
     const res = await fetchQaApi(`/api/dashboard/v1/Business/by-user/${userId}/accounts`)
-    if (!res.ok) return null
+    if (!res.ok) {
+      // See portal-cause.ts: a bare null made every upstream failure look the
+      // same from the browser, which is unactionable when it goes wrong.
+      const body = await res.text().catch(() => '')
+      console.error(
+        `[portal-business] business account lookup failed for user ${userId}: ` +
+          `${res.status} ${res.statusText} ${body.slice(0, 300)}`,
+      )
+      return null
+    }
     const json = await parseQaResponse<{ accounts?: unknown[] } | unknown[]>(res, 'Could not list businesses.')
     const rows = Array.isArray(json) ? json : Array.isArray(json?.accounts) ? json.accounts : []
     return rows

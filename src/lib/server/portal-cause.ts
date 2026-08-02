@@ -39,7 +39,17 @@ function toPositiveInt(value: unknown): number | null {
 export async function fetchPortalCauseAccounts(userId: number): Promise<PortalCauseAccount[] | null> {
   try {
     const res = await fetchQaApi(`/api/dashboard/v1/Nonprofit/by-user/${userId}/accounts`)
-    if (!res.ok) return null
+    if (!res.ok) {
+      // Log WHY. Returning a bare null here meant every upstream failure -
+      // 403 role, 404 route, 500 - surfaced identically as "could not verify",
+      // which is unactionable from the browser.
+      const body = await res.text().catch(() => '')
+      console.error(
+        `[portal-cause] cause account lookup failed for user ${userId}: ` +
+          `${res.status} ${res.statusText} ${body.slice(0, 300)}`,
+      )
+      return null
+    }
     const json = await parseQaResponse<{ accounts?: unknown[] } | unknown[]>(res, 'Could not list causes.')
     const rows = Array.isArray(json) ? json : Array.isArray(json?.accounts) ? json.accounts : []
     return rows
@@ -54,7 +64,11 @@ export async function fetchPortalCauseAccounts(userId: number): Promise<PortalCa
         }
       })
       .filter((row): row is PortalCauseAccount => row !== null)
-  } catch {
+  } catch (error) {
+    console.error(
+      `[portal-cause] cause account lookup threw for user ${userId}:`,
+      error instanceof Error ? error.message : error,
+    )
     return null
   }
 }
