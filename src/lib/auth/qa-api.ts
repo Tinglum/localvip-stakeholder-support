@@ -220,6 +220,15 @@ export class QaApiError extends Error {
 }
 
 function getQaErrorMessage(payload: unknown) {
+  // Several QA endpoints answer with a bare JSON string rather than an object —
+  // `StatusCode(409, ex.Message)` and `BadRequest("…")` both serialise that way.
+  // Without this branch the parsed payload is a string, no candidate key matches,
+  // and the real server message (e.g. the duplicate-email conflict) is silently
+  // replaced by the caller's generic fallback.
+  if (typeof payload === 'string') {
+    return payload.trim() || null
+  }
+
   if (!payload || typeof payload !== 'object') return null
 
   const record = payload as Record<string, unknown>
