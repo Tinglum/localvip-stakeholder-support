@@ -20,6 +20,7 @@ import {
   buildPortalBusinessSelection,
   portalBusinessCookieOptions,
   readRequestedBusinessAccountId,
+  toPositiveInt,
 } from '@/lib/server/portal-business'
 import type { UserRole } from '@/lib/types/database'
 
@@ -222,7 +223,51 @@ export async function POST(request: NextRequest) {
       // business cannot bleed into this one.
     }
 
-    const response = NextResponse.json({ ok: true, viewingAs: { ...payload, businessAccountId } })
+    // Same problem and same guarantee for causes: a leader of several nonprofits
+    // must land in the one whose CRM page the admin clicked, not whichever the
+    // by-user lookup happens to return first. Verified against the backend before
+    // it reaches the session, so a caller cannot name a cause the user is not in.
+    const requestedCauseAccountId = toPositiveInt(
+      (body as Record<string, unknown>).causeAccountId ?? null,
+    )
+    let causeAccountId: number | null = null
+    if (requestedCauseAccountId != null) {
+      const membership = await fetchQaApi(
+        `/api/dashboard/v1/Nonprofit/by-user/${userId}/accounts`,
+      ).catch(() => null)
+
+      if (!membership || !membership.ok) {
+        return NextResponse.json(
+          { error: 'Could not verify the cause belongs to this user.' },
+          { status: 502 },
+        )
+      }
+
+      const raw = (await membership.json().catch(() => null)) as unknown
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as { items?: unknown })?.items)
+          ? ((raw as { items: unknown[] }).items)
+          : []
+      const belongs = list.some(entry => {
+        const record = entry as Record<string, unknown>
+        return toPositiveInt(record.accountId ?? record.AccountId ?? record.id ?? null)
+          === requestedCauseAccountId
+      })
+
+      if (!belongs) {
+        return NextResponse.json(
+          { error: 'That cause does not belong to this user.' },
+          { status: 403 },
+        )
+      }
+      causeAccountId = requestedCauseAccountId
+    }
+
+    const response = NextResponse.json({
+      ok: true,
+      viewingAs: { ...payload, businessAccountId, causeAccountId },
+    })
     response.cookies.set({
       name: COOKIE_NAME,
       value: await signViewAsPayload(payload),

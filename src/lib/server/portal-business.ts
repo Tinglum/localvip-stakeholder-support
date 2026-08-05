@@ -15,7 +15,8 @@ export interface PortalBusinessAccount {
   ownerEmail: string | null
 }
 
-function toPositiveInt(value: unknown): number | null {
+/** Shared id parsing so business and cause selections accept exactly the same shapes. */
+export function toPositiveInt(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null
 }

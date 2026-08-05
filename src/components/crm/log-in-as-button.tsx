@@ -16,6 +16,16 @@ interface LogInAsButtonProps {
    * whichever the by-user lookup returns first. Server-verified.
    */
   businessAccountId?: string | number | null
+  /**
+   * Cause account this View-As session is launched from. Same problem and same
+   * guarantee as `businessAccountId`: a leader of several nonprofits must land in
+   * the one the admin clicked, not whichever the by-user lookup returns first.
+   * Server-verified against the user's nonprofit memberships.
+   */
+  causeAccountId?: string | number | null
+  /** Where the impersonated session lands. Causes belong on the cause dashboard. */
+  landingPath?: string
+  label?: string
   variant?: 'default' | 'outline' | 'ghost'
   size?: 'default' | 'sm' | 'lg' | 'icon'
 }
@@ -25,6 +35,9 @@ export function LogInAsButton({
   userName,
   stakeholderType,
   businessAccountId = null,
+  causeAccountId = null,
+  landingPath = '/dashboard',
+  label,
   variant = 'outline',
   size = 'sm',
 }: LogInAsButtonProps) {
@@ -36,6 +49,10 @@ export function LogInAsButton({
   const numericBusinessAccountId =
     businessAccountId != null && /^\d+$/.test(String(businessAccountId).trim())
       ? Number(String(businessAccountId).trim())
+      : null
+  const numericCauseAccountId =
+    causeAccountId != null && /^\d+$/.test(String(causeAccountId).trim())
+      ? Number(String(causeAccountId).trim())
       : null
 
   if (!isAdmin || !userId) return null
@@ -55,6 +72,7 @@ export function LogInAsButton({
           body: JSON.stringify({
             userId: Number(userId),
             ...(numericBusinessAccountId != null ? { businessAccountId: numericBusinessAccountId } : {}),
+            ...(numericCauseAccountId != null ? { causeAccountId: numericCauseAccountId } : {}),
           }),
         })
         const payload = await response.json().catch(() => ({ error: 'Request failed.' }))
@@ -64,7 +82,7 @@ export function LogInAsButton({
         }
         // The view-as cookie is set server-side; reload so the dashboard swaps
         // the active profile and the ViewAsBanner appears.
-        window.location.href = '/dashboard'
+        window.location.href = landingPath
         return
       }
 
@@ -109,7 +127,7 @@ export function LogInAsButton({
         ) : (
           <LogIn className="h-3.5 w-3.5" />
         )}
-        {busy ? 'Opening...' : `Log in as ${stakeholderType}`}
+        {busy ? 'Opening...' : label || `Log in as ${stakeholderType}`}
       </Button>
       {error && <span className="text-xs text-danger-500">{error}</span>}
     </div>

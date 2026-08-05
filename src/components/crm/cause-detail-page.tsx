@@ -780,6 +780,17 @@ export default function CauseDetailPage() {
                 portal resolved the nonprofit from the leader alone, so a leader
                 of several causes always landed in the same one — clicking here
                 on cause A could open cause B's portal. */}
+            {/* Two destinations, deliberately. The cause dashboard is where a
+                leader manages contributions; the webapp is what their supporters
+                see. Both pin to THIS cause via causeAccountId. */}
+            <LogInAsButton
+              userId={causeResponse?.qaCause?.ownerUserId ? String(causeResponse.qaCause.ownerUserId) : null}
+              userName={owner?.full_name || cause.name}
+              stakeholderType="Cause"
+              causeAccountId={qaLinkedCauseId}
+              landingPath="/cause"
+              label="Log in as Cause in dashboard"
+            />
             <OpenInWebappButton
               userId={causeResponse?.qaCause?.ownerUserId || null}
               userName={owner?.full_name || cause.name}
