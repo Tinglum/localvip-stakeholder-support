@@ -58,6 +58,7 @@ const money = (value: number) =>
 async function get<T>(resource: string, params: Record<string, string> = {}): Promise<T> {
   const query = new URLSearchParams(params).toString()
   const response = await fetch(`/api/cause-portal/${resource}${query ? `?${query}` : ''}`)
+
   if (!response.ok) {
     throw new Error(
       response.status === 403
@@ -65,6 +66,14 @@ async function get<T>(resource: string, params: Record<string, string> = {}): Pr
         : 'The cause portal could not be loaded.',
     )
   }
+
+  // The middleware matcher covers /api, so an expired session redirects this fetch to
+  // the login page. That arrives as a 200 with HTML, which would otherwise reach
+  // response.json() and surface as a parse error rather than "sign in again".
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    throw new Error('Your session has expired. Sign in again to see this cause.')
+  }
+
   return response.json() as Promise<T>
 }
 
