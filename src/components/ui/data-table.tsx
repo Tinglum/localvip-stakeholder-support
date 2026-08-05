@@ -24,6 +24,12 @@ export interface DataTableProps<T> {
   keyField: string
   searchable?: boolean
   searchPlaceholder?: string
+  /**
+   * Fields the search box looks at. Defaults to every column key plus anything
+   * listed here. Set this when a row carries text the user cannot see — see the
+   * note on searchableText below.
+   */
+  searchFields?: string[]
   onRowClick?: (item: T) => void
   emptyState?: React.ReactNode
   loading?: boolean
@@ -40,13 +46,7 @@ interface FilterDef {
 }
 
 /**
- * Flatten a row into searchable text.
- *
- * The previous filter did `String(v)` over `Object.values(row)`, so any nested
- * value became the literal "[object Object]" and never matched. Rows here are
- * whole API records — a cause's contact, city and QA metadata all live one or
- * more levels down — so searching by contact or location silently found
- * nothing while the placeholder promised otherwise.
+ * Flatten a value into searchable text.
  *
  * Depth-limited and primitive-only: React elements, functions and long blobs
  * are skipped so a render prop or a base64 logo can't poison the haystack.
@@ -75,6 +75,7 @@ export function DataTable<T extends Record<string, any>>({
   keyField,
   searchable = true,
   searchPlaceholder = 'Search...',
+  searchFields,
   onRowClick,
   emptyState,
   loading = false,
@@ -96,6 +97,22 @@ export function DataTable<T extends Record<string, any>>({
     }
   }
 
+  // Search only what the user can actually see: the column values, plus any
+  // extra fields a page names explicitly.
+  //
+  // Searching the whole row looked thorough and was worse than useless. These
+  // rows are raw API records carrying invisible metadata — a cause has
+  // `brand: "LocalVIP"`, `source`, and a `detailHref` of "/crm/causes/...".
+  // Typing "local" matched the brand on EVERY row, so the box returned all 181
+  // causes and looked broken. Invisible fields must never decide a match: the
+  // user cannot see why a row matched, and a common substring silently disables
+  // the filter entirely.
+  const searchKeys = React.useMemo(() => {
+    const keys = new Set<string>(columns.map(col => col.key))
+    searchFields?.forEach(field => keys.add(field))
+    return [...keys]
+  }, [columns, searchFields])
+
   const filtered = React.useMemo(() => {
     let result = data
     if (search.trim()) {
@@ -104,7 +121,10 @@ export function DataTable<T extends Record<string, any>>({
       // either word.
       const terms = search.toLowerCase().split(/\s+/).filter(Boolean)
       result = result.filter(item => {
-        const haystack = collectSearchText(item).toLowerCase()
+        const haystack = searchKeys
+          .map(key => collectSearchText((item as Record<string, unknown>)[key]))
+          .join(' ')
+          .toLowerCase()
         return terms.every(term => haystack.includes(term))
       })
     }

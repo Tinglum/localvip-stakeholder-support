@@ -385,6 +385,9 @@ export default function CausesPage() {
         keyField="rowId"
         searchable
         searchPlaceholder="Search by cause, contact, or location..."
+        // Columns cover name, contact and location; these add the fields behind
+        // them so an email or a raw city still matches what the placeholder promises.
+        searchFields={['ownerName', 'ownerEmail', 'owner_email', 'city', 'city_name', 'state', 'headline']}
         onRowClick={item => router.push(item.detailHref)}
         filters={[
           { key: 'stage', label: 'All Dashboard Stages', options: STAGE_OPTIONS },
