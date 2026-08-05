@@ -243,12 +243,18 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      // The endpoint wraps its rows: `{ accounts: [{ accountId, name, ownerEmail }] }`.
+      // Reading only a bare array or `items` found nothing and rejected every cause
+      // with "That cause does not belong to this user."
       const raw = (await membership.json().catch(() => null)) as unknown
-      const list = Array.isArray(raw)
+      const envelope = (raw ?? {}) as { accounts?: unknown; items?: unknown }
+      const list: unknown[] = Array.isArray(raw)
         ? raw
-        : Array.isArray((raw as { items?: unknown })?.items)
-          ? ((raw as { items: unknown[] }).items)
-          : []
+        : Array.isArray(envelope.accounts)
+          ? envelope.accounts
+          : Array.isArray(envelope.items)
+            ? envelope.items
+            : []
       const belongs = list.some(entry => {
         const record = entry as Record<string, unknown>
         return toPositiveInt(record.accountId ?? record.AccountId ?? record.id ?? null)
