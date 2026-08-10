@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, CheckCircle2, Loader2, Plus, QrCode, RefreshCw, Sparkles } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -53,6 +53,7 @@ type QrChoice = 'default' | 'new' | string
 /** `embedded` suppresses the standalone PageHeader when the business Materials
  *  hub renders this as a tab. Defaults to false for every other caller. */
 export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean } = {}) {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [templates, setTemplates] = React.useState<PortalTemplate[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -165,8 +166,12 @@ export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean }
         initialQrId={searchParams.get('qrId')}
         onClose={() => setActive(null)}
         onGenerated={(id) => {
+          // Generating used to just close the dialog: the material landed in the
+          // library, but nothing on screen changed and people reasonably assumed
+          // it had failed. Take them to what they just made.
           setDoneIds((prev) => new Set(prev).add(String(id)))
           setActive(null)
+          router.push('/portal/materials?generated=1')
         }}
       />
     </div>
@@ -188,6 +193,7 @@ function TemplateGenerateDialog({
   const [qrCodes, setQrCodes] = React.useState<PortalQr[]>([])
   const [qrLoading, setQrLoading] = React.useState(false)
   const [qrError, setQrError] = React.useState<string | null>(null)
+  const [ctxError, setCtxError] = React.useState<string | null>(null)
   const [choice, setChoice] = React.useState<QrChoice>('default')
   const [newName, setNewName] = React.useState('')
   const [newUrl, setNewUrl] = React.useState('')
@@ -214,6 +220,7 @@ function TemplateGenerateDialog({
     setNewUrl('')
     setGenError(null)
     setQrError(null)
+    setCtxError(null)
     setPreview('')
     setCtx(null)
     setQrLoading(true)
@@ -226,10 +233,19 @@ function TemplateGenerateDialog({
       .catch((e) => setQrError(e instanceof Error ? e.message : 'Could not load your QR codes.'))
       .finally(() => setQrLoading(false))
     // Resolve the business's dynamic join link + logo for the QR.
+    // A silent failure here is what produced "Leads to -" with no explanation:
+    // ctx stayed null, so the standard option had no link, no preview and no
+    // reason given. Surface it like the QR-code list already does.
     fetch('/api/portal/qr-context', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
+      .then(async (r) => {
+        const j = await r.json().catch(() => null)
+        if (!r.ok || !j || j.error) {
+          throw new Error((j && j.error) || 'Could not load your business referral link.')
+        }
+        return j
+      })
       .then((j) => {
-        if (j && !j.error) {
+        if (j) {
           setCtx({
             businessId: String(j.businessId || ''),
             joinUrl: j.networkReferralUrl || j.joinUrl || '',
@@ -241,7 +257,7 @@ function TemplateGenerateDialog({
           setLogoOn(!!j.logoUrl)
         }
       })
-      .catch(() => {})
+      .catch((e) => setCtxError(e instanceof Error ? e.message : 'Could not load your business referral link.'))
     // Admin-defined styled QR templates (auto-filled from the business).
     fetch('/api/portal/qr-templates', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -420,8 +436,16 @@ function TemplateGenerateDialog({
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-surface-400">Leads to</p>
-                  <p className="break-words text-xs text-surface-700">{activeLink || '—'}</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-surface-400">
+                    Anyone scanning this lands on
+                  </p>
+                  {activeLink ? (
+                    <p className="break-words text-xs text-surface-700">{activeLink}</p>
+                  ) : ctxError ? (
+                    <p className="text-xs text-danger-600">{ctxError}</p>
+                  ) : (
+                    <p className="text-xs text-surface-500">Loading your link…</p>
+                  )}
                 </div>
               </div>
               {choice === 'default' && ctx?.logoUrl ? (
@@ -440,10 +464,12 @@ function TemplateGenerateDialog({
               <QrOption
                 active={choice === 'default'}
                 onClick={() => setChoice('default')}
-                title="Standard network referral QR"
+                title="Join my LocalVIP network"
                 subtitle={ctx?.joinUrl
-                  ? `${ctx.name || 'Your business'}${ctx.referralCode ? ` · Code ${ctx.referralCode}` : ''} · ${ctx.joinUrl}`
-                  : "Your business's LocalVIP network referral link"}
+                  ? `New customers join LocalVIP through you and you get the credit${ctx.referralCode ? ` · Code ${ctx.referralCode}` : ''}`
+                  : ctxError
+                    ? 'Your referral link could not be loaded'
+                    : 'New customers join LocalVIP through you and you get the credit'}
               />
 
               {qrLoading && (
@@ -459,7 +485,9 @@ function TemplateGenerateDialog({
                   active={choice === String(q.id)}
                   onClick={() => setChoice(String(q.id))}
                   title={q.name}
-                  subtitle={`${q.purpose === 'business_capture' ? 'Customer capture' : 'Custom business QR'} · ${q.targetUrl || q.code || ''}`}
+                  subtitle={q.purpose === 'business_capture'
+                    ? `Sends customers to your offer sign-up page · ${q.targetUrl || q.code || ''}`
+                    : `Sends people to a link you chose · ${q.targetUrl || q.code || ''}`}
                 />
               ))}
 
@@ -472,7 +500,7 @@ function TemplateGenerateDialog({
                   active={choice === `tpl:${t.id}`}
                   onClick={() => setChoice(`tpl:${t.id}`)}
                   title={t.name}
-                  subtitle={`Your network referral link${t.logo === 'business' ? ' + your logo' : ''}, styled`}
+                  subtitle={`Same destination as "Join my LocalVIP network", styled${t.logo === 'business' ? ' with your logo' : ''}`}
                   icon={<QrCode className="h-4 w-4" />}
                 />
               ))}
