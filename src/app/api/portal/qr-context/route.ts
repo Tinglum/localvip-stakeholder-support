@@ -26,7 +26,8 @@ export async function GET() {
     // The logo lives on the QA host under /uploads; route it through the same-
     // origin proxy so the client can draw it onto a <canvas> without tainting it.
     const rawLogo = (typeof b.imageUrl === 'string' && b.imageUrl) || (typeof b.image_url === 'string' && b.image_url) || ''
-    const logoUrl = rawLogo ? toProxiedMaterialUrl(rawLogo) : ''
+    // Accounts.ImageUrl holds a bare filename; the files live in /uploads/logos.
+    const logoUrl = rawLogo ? toProxiedMaterialUrl(rawLogo, '/uploads/logos') : ''
 
     return NextResponse.json({
       businessId,

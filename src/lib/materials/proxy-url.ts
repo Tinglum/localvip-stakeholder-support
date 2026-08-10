@@ -12,7 +12,17 @@
  * Already-proxied URLs (containing the proxy path) pass through untouched so we
  * never double-wrap.
  */
-export function toProxiedMaterialUrl(src: string | null | undefined): string {
+export function toProxiedMaterialUrl(
+  src: string | null | undefined,
+  /**
+   * Directory to complete a BARE stored filename with, e.g. '/uploads/logos'.
+   * Some columns store only "f5f749e1-....png" with no path; without this such a
+   * value was returned unchanged and the browser resolved it against the current
+   * page, producing a 404. Only the caller knows which folder its column means,
+   * so this helper never guesses one.
+   */
+  bareFileDir?: string,
+): string {
   if (!src) return ''
   if (src.startsWith('data:') || src.startsWith('blob:')) return src
   if (src.includes('/api/qa/material-proxy')) return src
@@ -20,13 +30,14 @@ export function toProxiedMaterialUrl(src: string | null | undefined): string {
   if (src.startsWith('/uploads/') || /^https?:\/\//i.test(src)) {
     return `/api/qa/material-proxy?url=${encodeURIComponent(src)}`
   }
-  // A bare stored filename, which is how Accounts.ImageUrl holds a business logo
-  // ("f5f749e1-....png", no path). Previously this fell through and was returned
-  // unchanged, so the browser resolved it against the current page - e.g.
-  // /portal/f5f749e1-....png - and 404'd. Logos are served from /uploads/logos
-  // on the QA host, so complete the path and proxy it like any other upload.
-  if (/^[\w.-]+\.(png|jpe?g|gif|webp|svg)$/i.test(src)) {
-    return `/api/qa/material-proxy?url=${encodeURIComponent(`/uploads/logos/${src}`)}`
+  // Plain string checks rather than a regex: an earlier attempt used
+  // /^[^/\]+\.[A-Za-z0-9]{2,5}$/ where the backslash escaped the closing
+  // bracket, so the character class never closed and nothing ever matched.
+  const isBareFilename =
+    !src.includes('/') && !src.includes('\\') && /\.[A-Za-z0-9]{2,5}$/.test(src)
+  if (bareFileDir && isBareFilename) {
+    const dir = bareFileDir.replace(/\/+$/, '')
+    return `/api/qa/material-proxy?url=${encodeURIComponent(`${dir}/${src}`)}`
   }
 
   // Other same-origin relative paths (e.g. /api/qa/material-asset) pass through.
