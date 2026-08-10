@@ -93,6 +93,10 @@ const config: Config = {
           700: '#334155',
           800: '#1e293b',
           900: '#0f172a',
+          // 13 components style headings with text-surface-950 but the ramp
+          // stopped at 900, so those headings inherited whatever colour was
+          // around them instead of the near-black they asked for.
+          950: '#020617',
         },
       },
       fontFamily: {

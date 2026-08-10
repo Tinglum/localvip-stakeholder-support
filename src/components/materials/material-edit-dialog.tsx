@@ -175,12 +175,12 @@ export function MaterialEditDialog({
           <form onSubmit={handleSave} className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Title</label>
-                <Input value={title} onChange={(event) => setTitle(event.target.value)} required />
+                <label htmlFor="material-edit-title" className="mb-1.5 block text-sm font-medium text-surface-700">Title</label>
+                <Input id="material-edit-title" value={title} onChange={(event) => setTitle(event.target.value)} required />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
-                <select
+                <label htmlFor="material-edit-category" className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
+                <select id="material-edit-category"
                   value={category}
                   onChange={(event) => setCategory(event.target.value)}
                   className="h-10 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
@@ -195,8 +195,8 @@ export function MaterialEditDialog({
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
-                <Textarea
+                <label htmlFor="material-edit-description" className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
+                <Textarea id="material-edit-description"
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   rows={4}
@@ -205,8 +205,8 @@ export function MaterialEditDialog({
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Use case</label>
-                  <select
+                  <label htmlFor="material-edit-use-case" className="mb-1.5 block text-sm font-medium text-surface-700">Use case</label>
+                  <select id="material-edit-use-case"
                     value={useCase}
                     onChange={(event) => setUseCase(event.target.value)}
                     className="h-10 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
@@ -341,8 +341,8 @@ export function MaterialEditDialog({
                   <div className="mt-4 space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
-                        <label className="mb-1.5 block text-sm font-medium text-surface-700">Delivery folder</label>
-                        <select
+                        <label htmlFor="material-edit-delivery-folder" className="mb-1.5 block text-sm font-medium text-surface-700">Delivery folder</label>
+                        <select id="material-edit-delivery-folder"
                           value={automationLibraryFolder}
                           onChange={(event) => setAutomationLibraryFolder(event.target.value as MaterialLibraryFolder)}
                           className="h-10 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
@@ -353,8 +353,8 @@ export function MaterialEditDialog({
                         </select>
                       </div>
                       <div>
-                        <label className="mb-1.5 block text-sm font-medium text-surface-700">Template status</label>
-                        <select
+                        <label htmlFor="material-edit-template-status" className="mb-1.5 block text-sm font-medium text-surface-700">Template status</label>
+                        <select id="material-edit-template-status"
                           value={automationActive ? 'active' : 'inactive'}
                           onChange={(event) => setAutomationActive(event.target.value === 'active')}
                           className="h-10 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
@@ -389,8 +389,8 @@ export function MaterialEditDialog({
                     </div>
 
                     <div>
-                      <label className="mb-1.5 block text-sm font-medium text-surface-700">Automation audience tags</label>
-                      <Input
+                      <label htmlFor="material-edit-audience-tags" className="mb-1.5 block text-sm font-medium text-surface-700">Automation audience tags</label>
+                      <Input id="material-edit-audience-tags"
                         value={automationAudienceTags}
                         onChange={(event) => setAutomationAudienceTags(event.target.value)}
                         placeholder="customers, parents, pta"

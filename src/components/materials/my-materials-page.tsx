@@ -872,6 +872,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
                         variant="ghost"
                         size="icon-sm"
                         title="Edit tags"
+                        aria-label="Edit tags"
                         onClick={() => setEditingMaterial(material)}
                       >
                         <PencilLine className="h-3.5 w-3.5" />
@@ -882,6 +883,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
                         variant="ghost"
                         size="icon-sm"
                         title="Delete"
+                        aria-label="Delete"
                         onClick={() => handleDelete(material)}
                         disabled={deletingId === material.id}
                         className="text-danger-500 hover:text-danger-700"
@@ -960,6 +962,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
                         variant="ghost"
                         size="icon-sm"
                         title="Preview"
+                        aria-label="Preview"
                         onClick={() => setPreviewMaterial(material)}
                       >
                         <Eye className="h-4 w-4" />
@@ -977,6 +980,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
                         variant="ghost"
                         size="icon-sm"
                         title="Edit tags"
+                        aria-label="Edit tags"
                         onClick={() => setEditingMaterial(material)}
                       >
                         <PencilLine className="h-3.5 w-3.5" />
@@ -987,6 +991,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
                         variant="ghost"
                         size="icon-sm"
                         title="Delete"
+                        aria-label="Delete"
                         onClick={() => handleDelete(material)}
                         disabled={deletingId === material.id}
                         className="text-danger-500 hover:text-danger-700"
