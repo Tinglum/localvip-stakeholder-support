@@ -915,8 +915,12 @@ export function LaunchDecisionModal({
                 <Stat label="Launch phase" value={biz.launch_phase || 'setup'} />
                 <Stat label="Status" value={biz.activation_status || 'inactive'} />
               </div>
+              {/* /portal/business resolves the business from the SIGNED-IN account, so an
+                  admin working someone else's record landed on "We couldn't find your
+                  business details for this account yet". Go to this business's own deal
+                  workspace instead. */}
               <Button variant="outline" size="sm" asChild>
-                <Link href="/portal/business">Manage live offers</Link>
+                <Link href={`/crm/businesses/${biz.id}?workspaceTab=deal`}>Manage live offers</Link>
               </Button>
             </div>
           </div>

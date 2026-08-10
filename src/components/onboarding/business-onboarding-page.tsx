@@ -2835,7 +2835,16 @@ function BusinessDetailModal({
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Customer List Capture</p>
             <div className="mt-2 space-y-1">
               <ActionableDetailButton label={`100-list offer: ${captureOffer?.headline || 'Missing'}`} onClick={() => setLifecycleModal('launch_decision')} />
-              <ActionableDetailButton label="Live LocalVIP offers: Manage separately" href="/portal/business" />
+              {/* /portal/business is the BUSINESS's own portal, resolved from the signed-in
+                  account. An admin managing someone else's business has no business of
+                  their own, so this sent them to "We couldn't find your business details
+                  for this account yet" - a dead end, about the wrong business. Send them
+                  to this business's deal workspace instead, which is where an admin can
+                  actually edit its live offers. */}
+              <ActionableDetailButton
+                label="Live LocalVIP offers: Manage separately"
+                href={`/crm/businesses/${business.id}?workspaceTab=deal`}
+              />
               <ActionableDetailButton
                 label={`Cause: ${linkedCause?.name || 'Not linked'}`}
                 onClick={() => setChecklistEditorMode('relationships')}

@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
 // Real-time refresh is implemented as polling against the QA backend below;
@@ -221,9 +222,20 @@ export function BusinessExecutionOverview({
   const [offerError, setOfferError] = React.useState<string | null>(null)
   const [offerSaving, setOfferSaving] = React.useState(false)
   const [outreachSubject, setOutreachSubject] = React.useState('')
+  const executionSearchParams = useSearchParams()
   const [outreachBody, setOutreachBody] = React.useState('')
   const [outreachOutcome, setOutreachOutcome] = React.useState('')
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'deal' | 'outreach' | 'branding'>('materials')
+  // Deep-linkable so other surfaces can send an admin straight to the right
+  // workspace tab (e.g. "manage live offers" from business onboarding) instead
+  // of dropping them at the top of the page to hunt for it.
+  const workspaceTabFromUrl = (() => {
+    const requested = executionSearchParams?.get('workspaceTab')
+    const allowed = ['materials', 'offers', 'deal', 'outreach', 'branding'] as const
+    return (allowed as readonly string[]).includes(requested || '')
+      ? (requested as 'materials' | 'offers' | 'deal' | 'outreach' | 'branding')
+      : 'materials'
+  })()
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'deal' | 'outreach' | 'branding'>(workspaceTabFromUrl)
   const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision' | null>(null)
   const { data: hookCities } = useCities({ enabled: localStateEnabled })
   const allCities = localState?.cities ?? hookCities
