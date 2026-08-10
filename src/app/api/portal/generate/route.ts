@@ -3,7 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { generateMaterialsForStakeholder } from '@/lib/server/material-engine'
-import { resolvePortalBusinessId } from '@/lib/server/portal-business'
+import { resolvePortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
 import type { Stakeholder } from '@/lib/types/database'
 
 export async function POST(request: NextRequest) {
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       if (resolvedId != null) businessId = String(resolvedId)
     }
     if (!businessId && !causeId) {
-      return NextResponse.json({ error: 'Could not resolve your business account.' }, { status: 400 })
+      return NextResponse.json({ error: noPortalBusinessError(session) }, { status: 400 })
     }
     try {
       const payload: Record<string, unknown> = { templateId: Number(templateId) }

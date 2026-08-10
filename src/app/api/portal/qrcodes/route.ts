@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
-import { resolvePortalBusinessId } from '@/lib/server/portal-business'
+import { resolvePortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +52,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   const businessId = await resolvePortalBusinessId(session)
   if (businessId == null) {
-    return NextResponse.json({ error: 'Could not resolve your business account.' }, { status: 400 })
+    return NextResponse.json({ error: noPortalBusinessError(session) }, { status: 400 })
   }
   try {
     const entityTypes = ['business', 'business_custom', 'business_capture', 'business_network_referral']
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   const businessId = await resolvePortalBusinessId(session)
   if (businessId == null) {
-    return NextResponse.json({ error: 'Could not resolve your business account.' }, { status: 400 })
+    return NextResponse.json({ error: noPortalBusinessError(session) }, { status: 400 })
   }
   const body = await request.json().catch(() => ({})) as { name?: string; targetUrl?: string }
   const targetUrl = (body.targetUrl || '').trim()

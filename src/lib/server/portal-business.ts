@@ -184,3 +184,19 @@ export async function resolvePortalBusinessId(session: ResolvedAuthSession): Pro
   if (accounts && accounts.length > 0) return accounts[0].accountId
   return fetchLegacyBusinessId(userId)
 }
+
+/**
+ * The four portal endpoints below all need a business. When the caller has none,
+ * a bare "Could not resolve your business account." is a dead end for the two
+ * people who hit it most: a super admin browsing the portal (who has no business
+ * of their own and must view-as one), and an owner whose account is not linked
+ * yet. Say which case it is and what to do about it.
+ */
+export function noPortalBusinessError(session: { profile?: { role?: string | null; role_subtype?: string | null } | null }) {
+  const role = session?.profile?.role ?? null
+  const subtype = session?.profile?.role_subtype ?? null
+  const isAdmin = role === 'super_admin' || (role === 'admin' && subtype === 'super')
+  return isAdmin
+    ? 'This page builds materials for one business, and your admin account is not a business. Open a business in CRM and use "Log in as Business" to work inside its portal.'
+    : 'Your account is not linked to a business yet, so there is no referral link to build a QR from. Ask an administrator to link your business account.'
+}

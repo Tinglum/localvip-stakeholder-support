@@ -59,6 +59,7 @@ export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean }
   const [loading, setLoading] = React.useState(true)
   const [doneIds, setDoneIds] = React.useState<Set<string>>(new Set())
   const [error, setError] = React.useState<string | null>(null)
+  const [unusableCount, setUnusableCount] = React.useState(0)
   const [active, setActive] = React.useState<PortalTemplate | null>(null)
 
   const load = React.useCallback(async () => {
@@ -69,6 +70,7 @@ export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean }
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Could not load templates.')
       setTemplates(json.templates || [])
+      setUnusableCount(Array.isArray(json.unusable) ? json.unusable.length : 0)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load templates.')
     } finally {
@@ -161,6 +163,14 @@ export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean }
         </div>
       )}
 
+      {unusableCount > 0 ? (
+        <p className="rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
+          {unusableCount === 1 ? '1 template is' : `${unusableCount} templates are`} not ready to
+          generate yet because the design file could not be loaded. Your LocalVIP contact can fix
+          this — nothing is wrong with your account.
+        </p>
+      ) : null}
+
       <TemplateGenerateDialog
         template={active}
         initialQrId={searchParams.get('qrId')}
@@ -171,7 +181,7 @@ export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean }
           // it had failed. Take them to what they just made.
           setDoneIds((prev) => new Set(prev).add(String(id)))
           setActive(null)
-          router.push('/portal/materials?generated=1')
+          router.push('/portal/materials?tab=mine&generated=1')
         }}
       />
     </div>

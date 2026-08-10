@@ -33,14 +33,30 @@ export async function GET() {
             sourcePath = (d.fileUrl ?? d.file_url ?? null) as string | null
             outputFormat = (d.mimeType ?? d.mime_type ?? null) as string | null
           } catch {
-            /* skip templates whose design can't be loaded */
+            /* Falls through to sourcePath === null and is counted as unusable below. */
           }
         }
         return { id, name, sourcePath, outputFormat }
       }),
     )
 
-    return NextResponse.json({ templates: templates.filter((t) => t.sourcePath) })
+    // A template with no loadable design cannot be generated from, so it is not
+    // offered. Silently dropping it meant an admin could flag a material as a
+    // template, see nothing appear in the portal, and have no way to tell whether
+    // the flag failed or the design was missing. Report the count so both sides
+    // can be told the list is incomplete.
+    const usable = templates.filter((t) => t.sourcePath)
+    const unusable = templates
+      .filter((t) => !t.sourcePath)
+      .map((t) => ({ id: t.id, name: t.name }))
+    if (unusable.length > 0) {
+      console.warn(
+        '[portal/templates] %d template(s) flagged IsTemplate have no loadable design and were hidden: %s',
+        unusable.length,
+        unusable.map((t) => `${t.name || 'Untitled'} (#${t.id})`).join(', '),
+      )
+    }
+    return NextResponse.json({ templates: usable, unusable })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not load templates.' }, { status: 400 })
   }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { resolvePortalBusinessId } from '@/lib/server/portal-business'
+import { resolvePortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { ensureQaBusinessEngagementAssets } from '@/lib/server/qa-business-stakeholders'
 
@@ -14,7 +14,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   const businessId = await resolvePortalBusinessId(session)
   if (businessId == null) {
-    return NextResponse.json({ error: 'Could not resolve your business account.' }, { status: 400 })
+    return NextResponse.json({ error: noPortalBusinessError(session) }, { status: 400 })
   }
   try {
     const assets = await ensureQaBusinessEngagementAssets(String(businessId))
