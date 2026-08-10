@@ -204,6 +204,8 @@ function TemplateGenerateDialog({
   const [qrLoading, setQrLoading] = React.useState(false)
   const [qrError, setQrError] = React.useState<string | null>(null)
   const [ctxError, setCtxError] = React.useState<string | null>(null)
+  // null = not rendered yet. Set by the QR renderer, never inferred from the URL.
+  const [logoDrawn, setLogoDrawn] = React.useState<boolean | null>(null)
   const [choice, setChoice] = React.useState<QrChoice>('default')
   const [newName, setNewName] = React.useState('')
   const [newUrl, setNewUrl] = React.useState('')
@@ -328,12 +330,13 @@ function TemplateGenerateDialog({
       frameText: typeof L.frameText === 'string' ? L.frameText : undefined,
       gradientType: (L.gradientType as never) || undefined,
       gradientColors: gc && gc.length === 2 ? [gc[0], gc[1]] : undefined,
+      onLogoDrawn: (drawn) => setLogoDrawn(logoSrc ? drawn : null),
     })
   }, [activeLink, logoSrc, activeTpl])
 
   // Live, debounced preview.
   React.useEffect(() => {
-    if (!open || !activeLink) { setPreview(''); return }
+    if (!open || !activeLink) { setPreview(''); setLogoDrawn(null); return }
     let cancelled = false
     setPreviewBusy(true)
     const t = setTimeout(async () => {
@@ -459,9 +462,16 @@ function TemplateGenerateDialog({
                 </div>
               </div>
               {choice === 'default' && ctx?.logoUrl ? (
-                <p className="mt-3 text-xs font-medium text-success-700">
-                  Your business logo is included in the standard QR.
-                </p>
+                logoDrawn === false ? (
+                  <p className="mt-3 text-xs font-medium text-warning-800">
+                    Your logo could not be loaded, so this QR is being made without it. It still
+                    scans correctly. Re-upload your logo in Setup if you want it in the middle.
+                  </p>
+                ) : logoDrawn ? (
+                  <p className="mt-3 text-xs font-medium text-success-700">
+                    Your business logo is in the middle of this QR.
+                  </p>
+                ) : null
               ) : ctx?.logoUrl && (
                 <label className="mt-3 flex items-center gap-2 text-sm text-surface-700">
                   <input type="checkbox" checked={logoOn} onChange={(e) => setLogoOn(e.target.checked)} className="h-4 w-4 accent-brand-600" />

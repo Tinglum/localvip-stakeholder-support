@@ -23,6 +23,13 @@ export interface QRFrameOptions extends QRGenerateOptions {
   logoFile?: File | null
   gradientType?: 'none' | 'linear' | 'radial'
   gradientColors?: [string, string]
+  /**
+   * Called with whether the logo was actually drawn. A logo that fails to load
+   * is not an error - the QR is still valid without it - but callers that tell
+   * the user "your logo is included" need to know it really was, rather than
+   * asserting it from the logo URL merely existing.
+   */
+  onLogoDrawn?: (drawn: boolean) => void
 }
 
 export type QRDestinationType = 'url' | 'email' | 'phone' | 'sms' | 'wifi' | 'vcard' | 'file'
@@ -180,6 +187,7 @@ export async function generateStyledQR(options: QRFrameOptions): Promise<string>
     logoFile,
     gradientType = 'none',
     gradientColors = ['#000000', '#333333'],
+    onLogoDrawn,
   } = options
 
   if (typeof document === 'undefined') {
@@ -421,9 +429,13 @@ export async function generateStyledQR(options: QRFrameOptions): Promise<string>
       drawImageContained(ctx, logo, logoX, logoY, logoSize, logoSize)
 
       if (logoFile) URL.revokeObjectURL(logoSrc)
-    } catch {
-      console.warn('QR logo failed to load, generating without logo')
+      onLogoDrawn?.(true)
+    } catch (error) {
+      console.warn('QR logo failed to load, generating without logo:', logoSrc, error)
+      onLogoDrawn?.(false)
     }
+  } else {
+    onLogoDrawn?.(false)
   }
 
   // Draw frame text below the QR code
