@@ -20,6 +20,15 @@ export function toProxiedMaterialUrl(src: string | null | undefined): string {
   if (src.startsWith('/uploads/') || /^https?:\/\//i.test(src)) {
     return `/api/qa/material-proxy?url=${encodeURIComponent(src)}`
   }
+  // A bare stored filename, which is how Accounts.ImageUrl holds a business logo
+  // ("f5f749e1-....png", no path). Previously this fell through and was returned
+  // unchanged, so the browser resolved it against the current page - e.g.
+  // /portal/f5f749e1-....png - and 404'd. Logos are served from /uploads/logos
+  // on the QA host, so complete the path and proxy it like any other upload.
+  if (/^[\w.-]+\.(png|jpe?g|gif|webp|svg)$/i.test(src)) {
+    return `/api/qa/material-proxy?url=${encodeURIComponent(`/uploads/logos/${src}`)}`
+  }
+
   // Other same-origin relative paths (e.g. /api/qa/material-asset) pass through.
   return src
 }
