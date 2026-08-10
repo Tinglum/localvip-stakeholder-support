@@ -17,13 +17,24 @@
   body {
     @apply text-surface-800 antialiased;
     background:
-      radial-gradient(circle at top left, rgba(var(--brand-primary), 0.08), transparent 24%),
+      radial-gradient(circle at top left, rgb(var(--brand-primary) / 0.08), transparent 24%),
       linear-gradient(180deg, #f8fafc 0%, #ffffff 42%, #f3f8ff 100%);
   }
 
+  /*
+   * --brand-primary is space-separated ("37 99 235"), so it composes with the
+   * SLASH alpha syntax. Written as rgba(var(--brand-primary), 0.18) it expanded
+   * to rgba(37 99 235, 0.18) - space-separated channels with a comma before the
+   * alpha, which is valid in neither the legacy nor the modern grammar. The
+   * whole declaration was dropped, leaving ::selection with a colour and no
+   * background: once an author styles ::selection, browsers stop painting their
+   * default highlight, so selected text became invisible. Users concluded that
+   * Ctrl+A, double-click and Shift+Ctrl+Arrow were broken and deleted text one
+   * backspace at a time. Alpha raised to 0.30 so the highlight is unmistakable,
+   * and the text colour left alone so selection cannot wash out against it.
+   */
   ::selection {
-    background: rgba(var(--brand-primary), 0.18);
-    color: #0f172a;
+    background: rgb(var(--brand-primary) / 0.30);
   }
 
   /* Branded, consistent keyboard focus ring across interactive elements */
@@ -35,7 +46,7 @@
   select:focus-visible,
   summary:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(var(--brand-primary), 0.55);
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgb(var(--brand-primary) / 0.55);
     border-radius: 0.5rem;
   }
 
