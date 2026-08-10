@@ -75,7 +75,7 @@ function isMaterialPreviewable(mimeType?: string | null) {
 }
 
 function formatFileSize(bytes?: number | null) {
-  if (!bytes) return 'Unknown size'
+  if (!bytes) return ''
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -579,7 +579,15 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
       .filter(isReadyGeneratedMaterial)
       .map(row => generatedToMaterial(row, templateMap.get(String(row.template_id))))
 
-    return [...chosenGenerated, ...ownedOrAssignedUploads]
+    // Newest first. Neither source guarantees an order - useMaterials() passes no
+    // orderBy and generated rows come back by updated_at - so concatenating them
+    // produced an arbitrary sequence. The thing you just made is the thing you
+    // came to find, and it belongs at the top.
+    return [...chosenGenerated, ...ownedOrAssignedUploads].sort((a, b) => {
+      const at = new Date(a.created_at || 0).getTime() || 0
+      const bt = new Date(b.created_at || 0).getTime() || 0
+      return bt - at
+    })
   }, [allMaterials, assignments, generatedMaterials, localProfileId, templates])
 
   const filtered = React.useMemo(() => {
