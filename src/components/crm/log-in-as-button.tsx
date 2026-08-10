@@ -5,6 +5,7 @@ import { LogIn, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/auth/context'
 import { useImpersonation } from '@/lib/impersonation-context'
+import { VIEW_AS_RETURN_KEY } from '@/components/layout/view-as-banner'
 
 interface LogInAsButtonProps {
   userId: string | null
@@ -79,6 +80,17 @@ export function LogInAsButton({
         if (!response.ok) {
           setError(payload.error || 'Could not start View As.')
           return
+        }
+        // Remember where this started so "Return to admin" comes back here
+        // rather than to a generic dashboard. Path-only: it is read back to
+        // drive a navigation.
+        try {
+          window.sessionStorage.setItem(
+            VIEW_AS_RETURN_KEY,
+            window.location.pathname + window.location.search,
+          )
+        } catch {
+          /* Storage blocked - the banner falls back to /dashboard. */
         }
         // The view-as cookie is set server-side; reload so the dashboard swaps
         // the active profile and the ViewAsBanner appears.

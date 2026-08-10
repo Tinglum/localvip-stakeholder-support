@@ -1,8 +1,10 @@
 'use client'
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import { Eye, X } from 'lucide-react'
+
+/** Where to send an admin when they leave a View-As session. Written by LogInAsButton. */
+export const VIEW_AS_RETURN_KEY = 'lvip_view_as_return'
 
 interface ViewAsPayload {
   email: string
@@ -17,7 +19,6 @@ function readCookie(name: string): string | null {
 }
 
 export function ViewAsBanner() {
-  const router = useRouter()
   const [viewingAs, setViewingAs] = React.useState<ViewAsPayload | null>(null)
   // Real impersonation = a genuine session as the target (lvip_real_impersonation
   // flag set by /api/dashboard/real-login-as). This is NOT the read-only overlay.
@@ -91,8 +92,28 @@ export function ViewAsBanner() {
     try {
       await fetch('/api/admin/view-as', { method: 'DELETE' })
       setViewingAs(null)
-      router.refresh()
-    } finally {
+      // router.refresh() only re-runs server components. The client auth context,
+      // the cached session and every piece of client state still held the
+      // impersonated profile, so the admin stayed "inside" the business until
+      // they reloaded by hand. The real-impersonation path above already hard
+      // navigates for exactly this reason; do the same here.
+      //
+      // Go back to the page the session was started from - usually the CRM record
+      // the admin clicked - instead of dumping them on a generic dashboard.
+      let destination = '/dashboard'
+      try {
+        const stored = window.sessionStorage.getItem(VIEW_AS_RETURN_KEY)
+        window.sessionStorage.removeItem(VIEW_AS_RETURN_KEY)
+        // Same-origin, path-only. A stored value is attacker-influencable in
+        // principle, and this runs an unattended navigation.
+        if (stored && stored.startsWith('/') && !stored.startsWith('//')) {
+          destination = stored
+        }
+      } catch {
+        /* sessionStorage unavailable (private mode, blocked storage) - use the default. */
+      }
+      window.location.assign(destination)
+    } catch {
       setReturning(false)
     }
   }
