@@ -42,7 +42,7 @@ import {
 import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
-import { useMaterials, useGeneratedMaterials } from '@/lib/supabase/hooks'
+import { useMaterials } from '@/lib/supabase/hooks'
 import type { Material, MaterialLibraryFolder, StakeholderType, UserRole, UserRoleSubtype } from '@/lib/types/database'
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -811,10 +811,18 @@ export default function MaterialsLibraryPage() {
   // legacy MaterialTemplates table — every uploaded template lived there too,
   // producing a duplicate card per upload.
   const { data: legacy, loading: legacyLoading, error: legacyError, refetch: refetchLegacy } = useMaterials()
-  const { data: generated, loading: genLoading, error: genError, refetch: refetchGen } = useGeneratedMaterials()
-  const loading = legacyLoading || genLoading
-  const error = legacyError || genError
-  const refetch = React.useCallback(() => { refetchLegacy(); refetchGen() }, [refetchLegacy, refetchGen])
+  // GeneratedMaterial listing REQUIRES a business or cause scope - the backend
+  // rejects an unscoped call by design, because defaulting to every account once
+  // turned a stale filter into "show every material in the system". This page is
+  // the global library and has no account to scope by, so asking at all produced
+  // a guaranteed 400 whose raw JSON body was then printed on screen:
+  //   {"error":"A businessAccountId or causeAccountId filter is required."}
+  // Don't make the request; explain where generated files live instead.
+  const generated: Record<string, unknown>[] = React.useMemo(() => [], [])
+  const genLoading = false
+  const loading = legacyLoading
+  const error = legacyError
+  const refetch = React.useCallback(() => { refetchLegacy() }, [refetchLegacy])
 
   const materials = React.useMemo(() => {
     const fromGenerated = (generated || []).map((g) => {
@@ -1193,6 +1201,14 @@ export default function MaterialsLibraryPage() {
       <p className="mb-4 text-xs text-surface-500">
         {loading ? 'Loading...' : `${filtered.length} material${filtered.length !== 1 ? 's' : ''}`}
       </p>
+
+      {showGenerated && (
+        <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-surface-700">
+          Generated files are listed per business and per cause, not globally. Open a
+          business or cause in CRM and use its Materials section to see and download
+          what has been generated for it.
+        </div>
+      )}
 
       {/* Error */}
       {error && (

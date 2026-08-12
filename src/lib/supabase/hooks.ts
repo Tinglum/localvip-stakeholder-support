@@ -237,7 +237,7 @@ function useQaQuery<T>(
 
         if (!res.ok) {
           const text = await res.text().catch(() => '')
-          throw new Error(text || `${table} request failed with ${res.status}`)
+          throw new Error(readApiErrorMessage(text, table, res.status))
         }
 
         const json = await res.json().catch(() => [])
@@ -684,6 +684,32 @@ export function useMaterialTemplates(filters?: Record<string, string>) {
 }
 export function useMaterialTemplateInsert() { return useQaInsert<MaterialTemplate>('material_templates') }
 export function useMaterialTemplateUpdate() { return useQaUpdate<MaterialTemplate>('material_templates') }
+
+/**
+ * Turn an error response body into something worth showing a person.
+ *
+ * The body was previously thrown verbatim, so a JSON API error surfaced in the
+ * UI as the literal envelope - users saw
+ *   {"error":"A businessAccountId or causeAccountId filter is required."}
+ * rendered inside the red banner. Unwrap the common shapes, fall back to the
+ * raw text only when it is not JSON, and cap the length so a stack trace or an
+ * HTML error page cannot fill the screen.
+ */
+function readApiErrorMessage(text: string, table: string, status: number): string {
+  const trimmed = (text || '').trim()
+  if (!trimmed) return `${table} request failed with ${status}`
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>
+      const message = parsed?.error ?? parsed?.message ?? parsed?.title
+      if (typeof message === 'string' && message.trim()) return message.trim()
+    } catch {
+      /* Not JSON after all - fall through to the raw text. */
+    }
+  }
+  if (trimmed.startsWith('<')) return `${table} request failed with ${status}`
+  return trimmed.length > 300 ? `${trimmed.slice(0, 300)}...` : trimmed
+}
 
 export function useGeneratedMaterials(filters?: Record<string, string>, options?: UseQueryOptions) {
   return useQaQuery<GeneratedMaterial>('generated_materials', { filters, orderBy: 'updated_at', enabled: options?.enabled })
