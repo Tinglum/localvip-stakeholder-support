@@ -39,8 +39,8 @@ import { buildConsumerReferralUrl } from '@/lib/material-engine'
 import {
   generateStyledQR, generateQRSVG, downloadDataURL, downloadSVG,
   destinationToString,
-  type DotStyle, type CornerStyle, type QRDestination, type QRDestinationType,
-} from '@/lib/qr/generate'
+  describeIncompleteDestination,
+  type DotStyle, type CornerStyle, type QRDestination, type QRDestinationType } from '@/lib/qr/generate'
 import {
   DEFAULT_QR_LOGO_EDIT_SETTINGS,
   type QrLogoEditSettings,
@@ -638,6 +638,16 @@ export default function QRGeneratorPage() {
     const resolvedCauseId = sourceBusiness ? null : (sourceCause?.id || cause || null)
     if (!resolvedBusinessId && !resolvedCauseId) {
       setFormError('Select a business or cause to attach this QR code to before generating.')
+      return
+    }
+
+    // An incomplete destination previously fell through to the LocalVIP homepage
+    // and was saved as this code's destination_url, so a forgotten field produced
+    // a perfectly valid-looking QR that led nowhere useful - and QR codes get
+    // printed before anyone notices.
+    const destinationProblem = describeIncompleteDestination(destination)
+    if (destinationProblem) {
+      setFormError(destinationProblem)
       return
     }
 

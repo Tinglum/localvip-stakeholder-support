@@ -64,6 +64,37 @@ export interface QRDestination {
 /**
  * Convert a QRDestination to a string that can be encoded in a QR code.
  */
+/**
+ * Why a destination is not safe to SAVE, or null when it is fine.
+ *
+ * destinationToString deliberately falls back to the LocalVIP homepage so the
+ * live preview always renders something. That is right for a preview and wrong
+ * for a saved code: an empty URL produced a real, downloadable, printable QR
+ * pointing at a generic homepage, stored as its destination_url, with no
+ * warning. Callers that persist or download a QR must check this first.
+ */
+export function describeIncompleteDestination(dest: QRDestination): string | null {
+  const has = (value?: string) => Boolean(value && value.trim())
+  switch (dest.type) {
+    case 'url':
+      return has(dest.url) ? null : 'Enter the web address this QR code should open.'
+    case 'email':
+      return has(dest.emailTo) ? null : 'Enter the email address this QR code should write to.'
+    case 'phone':
+      return has(dest.phone) ? null : 'Enter the phone number this QR code should call.'
+    case 'sms':
+      return has(dest.phone) ? null : 'Enter the phone number this QR code should text.'
+    case 'wifi':
+      return has(dest.wifiSsid) ? null : 'Enter the network name this QR code should join.'
+    case 'vcard':
+      return has(dest.vcardName) ? null : 'Enter the name for this contact card.'
+    case 'file':
+      return has(dest.fileUrl) ? null : 'Enter the file link this QR code should open.'
+    default:
+      return 'Choose what this QR code should do.'
+  }
+}
+
 export function destinationToString(dest: QRDestination): string {
   switch (dest.type) {
     case 'url':
