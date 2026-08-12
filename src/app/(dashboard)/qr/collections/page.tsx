@@ -23,6 +23,9 @@ import type { QrCodeCollection } from '@/lib/types/database'
 function useQrCollections() {
   const [data, setData] = React.useState<QrCodeCollection[]>([])
   const [loading, setLoading] = React.useState(true)
+  // A failed load produced the same empty array as "you have none", so the page
+  // told people to create their first collection while hiding the ones they had.
+  const [loadFailed, setLoadFailed] = React.useState(false)
   const [refetchKey, setRefetchKey] = React.useState(0)
 
   React.useEffect(() => {
@@ -30,12 +33,14 @@ function useQrCollections() {
     async function load() {
       setLoading(true)
       try {
+        setLoadFailed(false)
         const res = await fetch('/api/qa/dashboard/qr_code_collections', { cache: 'no-store' })
+        if (!res.ok) throw new Error('Collections request failed.')
         const raw = await res.json()
         const rows: QrCodeCollection[] = Array.isArray(raw) ? raw : raw?.items ?? []
         if (!cancelled) setData(rows)
       } catch {
-        if (!cancelled) setData([])
+        if (!cancelled) { setData([]); setLoadFailed(true) }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -44,12 +49,12 @@ function useQrCollections() {
     return () => { cancelled = true }
   }, [refetchKey])
 
-  return { data, loading, refetch: () => setRefetchKey(k => k + 1) }
+  return { data, loading, loadFailed, refetch: () => setRefetchKey(k => k + 1) }
 }
 
 export default function QrCollectionsPage() {
   const { profile } = useAuth()
-  const { data: collections, loading, refetch } = useQrCollections()
+  const { data: collections, loading, loadFailed, refetch } = useQrCollections()
   const [addOpen, setAddOpen] = React.useState(false)
   const [name, setName] = React.useState('')
   const [description, setDescription] = React.useState('')
@@ -102,12 +107,19 @@ export default function QrCollectionsPage() {
           <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
         </div>
       ) : collections.length === 0 ? (
-        <EmptyState
-          icon={<FolderOpen className="h-8 w-8" />}
-          title="No collections yet"
-          description="Create a collection to organize your QR codes by campaign or purpose."
-          action={{ label: 'New Collection', onClick: () => setAddOpen(true) }}
-        />
+        loadFailed ? (
+          <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+            Your collections could not be loaded, so this list is incomplete. It is not empty
+            because you have none. Refresh to try again.
+          </div>
+        ) : (
+          <EmptyState
+            icon={<FolderOpen className="h-8 w-8" />}
+            title="No collections yet"
+            description="Create a collection to organize your QR codes by campaign or purpose."
+            action={{ label: 'New Collection', onClick: () => setAddOpen(true) }}
+          />
+        )
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {collections.map(col => (

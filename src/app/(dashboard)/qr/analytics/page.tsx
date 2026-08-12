@@ -100,6 +100,8 @@ interface AnalyticsData {
   businessNames: Map<string, string>
   causeNames: Map<string, string>
   loading: boolean
+  /** True when the scan data could not be fetched, as distinct from there being none. */
+  loadFailed: boolean
 }
 
 function useAnalyticsData(days: number): AnalyticsData {
@@ -107,6 +109,10 @@ function useAnalyticsData(days: number): AnalyticsData {
   const { data: causes } = useCauses()
   const [events, setEvents] = React.useState<QrCodeEvent[]>([])
   const [loading, setLoading] = React.useState(true)
+  // "No scans yet" and "we could not load your scans" are the same empty array,
+  // and on an analytics page that difference is the whole point: a silent
+  // failure reads as "nobody is scanning my QR codes".
+  const [loadFailed, setLoadFailed] = React.useState(false)
 
   // Build name lookups from the QA-backed business + cause lists
   const businessNames = React.useMemo(
@@ -120,7 +126,7 @@ function useAnalyticsData(days: number): AnalyticsData {
 
   // Pull events from the backend QrCode analytics endpoint — one shot per QR,
   // merged. The QA backend doesn't expose a "all events" route, so we fan out.
-  // Falls back to an empty array if no QRs exist or the route errors.
+  // A failure sets loadFailed so the page can say so instead of reporting zero.
   React.useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -128,21 +134,25 @@ function useAnalyticsData(days: number): AnalyticsData {
 
     void (async () => {
       try {
+        if (!cancelled) setLoadFailed(false)
         const listRes = await fetch('/api/qa/dashboard/qr_codes', { cache: 'no-store' })
-        if (!listRes.ok) { if (!cancelled) { setEvents([]); setLoading(false) } return }
+        if (!listRes.ok) { if (!cancelled) { setEvents([]); setLoadFailed(true); setLoading(false) } return }
         const raw = await listRes.json()
         const qrs: Array<{ id: number | string }> = Array.isArray(raw) ? raw : raw?.items ?? []
         if (qrs.length === 0) { if (!cancelled) { setEvents([]); setLoading(false) } return }
 
+        // Every per-QR lookup failing is indistinguishable from every QR having
+        // no scans, so count them and treat a total wipeout as a load failure.
+        let failedQrLookups = 0
         const perQr = await Promise.all(
           qrs.slice(0, 200).map(async (qr) => {
             try {
               const r = await fetch(`/api/qa/dashboard/qr_codes/${qr.id}`, { cache: 'no-store' })
-              if (!r.ok) return [] as QrCodeEvent[]
+              if (!r.ok) { failedQrLookups += 1; return [] as QrCodeEvent[] }
               const detail = await r.json()
               const list: unknown[] = Array.isArray(detail?.events) ? detail.events : []
               return list.map((e: unknown) => e as QrCodeEvent)
-            } catch { return [] as QrCodeEvent[] }
+            } catch { failedQrLookups += 1; return [] as QrCodeEvent[] }
           }),
         )
         const flat = perQr
@@ -152,9 +162,12 @@ function useAnalyticsData(days: number): AnalyticsData {
             return Number.isFinite(t) && t >= since
           })
           .sort((a, b) => Date.parse(b.scanned_at) - Date.parse(a.scanned_at))
-        if (!cancelled) setEvents(flat as QrCodeEvent[])
+        if (!cancelled) {
+          setEvents(flat as QrCodeEvent[])
+          setLoadFailed(failedQrLookups > 0 && failedQrLookups === qrs.slice(0, 200).length)
+        }
       } catch {
-        if (!cancelled) setEvents([])
+        if (!cancelled) { setEvents([]); setLoadFailed(true) }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -162,7 +175,7 @@ function useAnalyticsData(days: number): AnalyticsData {
     return () => { cancelled = true }
   }, [days])
 
-  return { events, businessNames, causeNames, loading }
+  return { events, businessNames, causeNames, loading, loadFailed }
 }
 
 // ─── Small UI components ─────────────────────────────────────
@@ -242,7 +255,7 @@ export default function QrAnalyticsPage() {
   const [showAllEvents, setShowAllEvents] = React.useState(false)
 
   const { data: allQrCodes, loading: qrLoading } = useQrCodes()
-  const { events, businessNames, causeNames, loading: dataLoading } = useAnalyticsData(timeRange)
+  const { events, businessNames, causeNames, loading: dataLoading, loadFailed } = useAnalyticsData(timeRange)
   const loading = qrLoading || dataLoading
 
 
@@ -460,6 +473,14 @@ export default function QrAnalyticsPage() {
         title="QR Code Analytics"
         description="Scans, signups, devices, referrers, and timing — for every QR code across business and cause."
       />
+
+      {loadFailed ? (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          Scan data could not be loaded, so the figures below are not your real numbers.
+          They are not zero because nobody scanned - we could not reach the analytics
+          service. Refresh to try again.
+        </div>
+      ) : null}
 
       {/* ── Filters ── */}
       <div className="flex flex-wrap items-center gap-3">
