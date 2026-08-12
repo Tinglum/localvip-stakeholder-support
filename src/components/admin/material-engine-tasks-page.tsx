@@ -29,7 +29,12 @@ function badgeForStatus(status: string) {
 export function MaterialEngineTasksPage() {
   const { data: tasks, loading } = useAdminTasks()
   const { data: stakeholders } = useStakeholders()
-  const { data: generatedMaterials } = useGeneratedMaterials()
+  // GeneratedMaterial listing requires a business or cause scope; the backend
+  // refuses an unscoped call by design (defaulting to every account once turned a
+  // stale filter into "show every material in the system"). This page is
+  // cross-account, so the request was a guaranteed 400 on every load and the data
+  // never arrived anyway. Ask for nothing rather than fail every time.
+  const { data: generatedMaterials } = useGeneratedMaterials({}, { enabled: false })
   const [filter, setFilter] = React.useState<AdminTaskStatus | 'all'>('all')
 
   const filtered = React.useMemo(() => {

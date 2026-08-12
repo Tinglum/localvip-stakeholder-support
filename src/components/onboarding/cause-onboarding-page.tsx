@@ -376,7 +376,12 @@ export default function CauseOnboardingPage() {
   const { data: outreach } = useOutreach()
   const { data: stakeholders, refetch: refetchStakeholders } = useStakeholders()
   const { data: stakeholderCodes, refetch: refetchCodes } = useStakeholderCodes()
-  const { data: generatedMaterials, refetch: refetchGenerated } = useGeneratedMaterials()
+  // GeneratedMaterial listing requires a business or cause scope; the backend
+  // refuses an unscoped call by design (defaulting to every account once turned a
+  // stale filter into "show every material in the system"). This page is
+  // cross-account, so the request was a guaranteed 400 on every load and the data
+  // never arrived anyway. Ask for nothing rather than fail every time.
+  const { data: generatedMaterials, refetch: refetchGenerated } = useGeneratedMaterials({}, { enabled: false })
   const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks()
   const { data: qrCodes, refetch: refetchQrCodes } = useQrCodes()
   const [insertingCause, setInsertingCause] = React.useState(false)

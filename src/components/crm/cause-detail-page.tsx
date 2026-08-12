@@ -170,7 +170,13 @@ export default function CauseDetailPage() {
   const { data: allBusinesses } = useBusinesses()
   const { data: allStakeholders, refetch: refetchStakeholders } = useStakeholders()
   const { data: allStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes()
-  const { data: allGeneratedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials()
+  // Scoped to THIS cause. Unscoped, the backend rejects the call outright, so the
+  // materials list on this page was always empty.
+  const generatedMaterialsCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
+  const { data: allGeneratedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials(
+    { cause_id: String(generatedMaterialsCauseId ?? '') },
+    { enabled: !!generatedMaterialsCauseId },
+  )
   const { data: allMaterialRecords, refetch: refetchMaterialRecords } = useMaterials()
   const { data: assignments } = useStakeholderAssignments({ entity_id: causeId })
   const { data: causeQrCodes, refetch: refetchQrCodes } = useQrCodes({ cause_id: causeId })

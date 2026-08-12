@@ -272,7 +272,12 @@ export default function BusinessOnboardingPage() {
   const { data: assignments, refetch: refetchAssignments } = useStakeholderAssignments()
   const { data: stakeholders, refetch: refetchStakeholders } = useStakeholders()
   const { data: stakeholderCodes, refetch: refetchStakeholderCodes } = useStakeholderCodes()
-  const { data: generatedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials()
+  // GeneratedMaterial listing requires a business or cause scope; the backend
+  // refuses an unscoped call by design (defaulting to every account once turned a
+  // stale filter into "show every material in the system"). This page is
+  // cross-account, so the request was a guaranteed 400 on every load and the data
+  // never arrived anyway. Ask for nothing rather than fail every time.
+  const { data: generatedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials({}, { enabled: false })
   const { data: flows, refetch: refetchFlows } = useOnboardingFlows()
   const { data: steps, refetch: refetchSteps } = useOnboardingSteps()
   const { data: offers, refetch: refetchOffers } = useOffers()
