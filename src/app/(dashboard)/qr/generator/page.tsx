@@ -747,12 +747,27 @@ export default function QRGeneratorPage() {
     }
   }
 
+  // Downloading is the printable path, so it needs the same guard as saving:
+  // the preview intentionally renders the homepage placeholder for an empty
+  // destination, and a downloaded file outlives the screen that explained it.
+  function blockedByIncompleteDestination() {
+    const problem = describeIncompleteDestination(destination)
+    if (problem) {
+      setFormError(problem)
+      return true
+    }
+    setFormError(null)
+    return false
+  }
+
   function handleDownloadPNG() {
     if (!previewUrl) return
+    if (blockedByIncompleteDestination()) return
     downloadDataURL(previewUrl, `${name || 'qr-code'}-${size}px.png`)
   }
 
   function handleDownloadSVG() {
+    if (blockedByIncompleteDestination()) return
     const dataToEncode = encodedData || 'https://localvip.com'
     const svg = generateQRSVG({
       data: dataToEncode,
