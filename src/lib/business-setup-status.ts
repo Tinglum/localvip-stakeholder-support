@@ -7,7 +7,7 @@
  */
 
 import * as React from 'react'
-import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-portal'
+import { getBusinessQaAccountId, isBoomerangEnabledForBusiness, resolveScopedBusiness } from '@/lib/business-portal'
 import { getBusinessSetupSignals, getBusinessSetupState, type BusinessSetupState } from '@/lib/business-setup'
 import { parseStripeOnboardingStatus } from '@/lib/stripe-onboarding'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
@@ -18,6 +18,12 @@ export interface BusinessSetupStatus {
   loading: boolean
   business: Business | null
   state: BusinessSetupState
+  /**
+   * This business opted in to the Boomerang list. Resolved here because the
+   * shell already loads the business row, so the nav, the topbar and the
+   * Boomerang page all read one answer instead of three.
+   */
+  boomerangEnabled: boolean
 }
 
 export function useBusinessSetupStatus(profile: Profile): BusinessSetupStatus {
@@ -89,5 +95,6 @@ export function useBusinessSetupStatus(profile: Profile): BusinessSetupStatus {
     loading: isBusinessShell && (businessesLoading || (!!business && (contactsLoading || dealsLoading || offersLoading || stripeConnected === null))),
     business,
     state,
+    boomerangEnabled: isBoomerangEnabledForBusiness(business),
   }
 }

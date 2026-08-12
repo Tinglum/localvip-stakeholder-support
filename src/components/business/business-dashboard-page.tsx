@@ -45,9 +45,12 @@ import {
   getContactDisplayName,
   getContactListStatus,
   getNetworkMilestone,
+  isBoomerangEnabledForBusiness,
   isCreatedToday,
   resolveScopedBusiness,
 } from '@/lib/business-portal'
+import { BOOMERANG_SURFACE } from '@/lib/engagement-codes'
+import { BUSINESS_BOOMERANG_NAV_HREF } from '@/lib/stakeholder-access'
 import { useBusinessSetupStatus } from '@/lib/business-setup-status'
 import { useBusinesses, useContacts, useOffers } from '@/lib/supabase/hooks'
 import { cn, formatDateTime, formatNumber } from '@/lib/utils'
@@ -127,6 +130,7 @@ export function BusinessDashboardPage() {
 
   const activationStatus = getBusinessActivationStatus(business, contacts)
   const launchPhase = getBusinessLaunchPhase(business, contacts)
+  const boomerangEnabled = isBoomerangEnabledForBusiness(business)
   const joinedCount = contacts.filter((contact) => getContactListStatus(contact) === 'joined').length
   const invitedCount = contacts.filter((contact) => getContactListStatus(contact) !== 'added').length
   const todayAdds = contacts.filter((contact) => isCreatedToday(contact.created_at)).length
@@ -155,18 +159,20 @@ export function BusinessDashboardPage() {
       href: `/portal/setup?step=${step.key}`,
     }))
 
-  if (needsInput.length === 0 && contacts.length === 0) {
+  // "Add your first customers" means the Boomerang list, so it is only a next
+  // step for a business that has one.
+  if (needsInput.length === 0 && contacts.length === 0 && boomerangEnabled) {
     needsInput.push({
       key: 'first-contacts',
       label: 'Add your first customers',
-      description: 'Your setup is finished. Start your 100 list so your network has somewhere to grow from.',
-      href: '/portal/grow?section=customers',
+      description: `Your setup is finished. Start your ${BOOMERANG_SURFACE.tab.toLowerCase()} so your network has somewhere to grow from.`,
+      href: BUSINESS_BOOMERANG_NAV_HREF,
     })
   }
 
   const launchLabel =
     launchPhase === 'capturing_100'
-      ? 'Building your first 100'
+      ? `Building your ${BOOMERANG_SURFACE.tab.toLowerCase()}`
       : launchPhase === 'ready_to_go_live'
         ? 'Ready to go live'
         : launchPhase === 'live'
@@ -246,7 +252,9 @@ export function BusinessDashboardPage() {
 
       <Card className="overflow-hidden border-surface-200">
         <div className="bg-[linear-gradient(135deg,_rgba(245,158,11,0.15),_rgba(255,255,255,0.96)_38%,_rgba(132,204,22,0.16)_100%)] px-6 py-6">
-          <div className="grid gap-6 lg:grid-cols-[1.15fr,0.85fr]">
+          {/* One column when the progress card is gated out, so the next-step
+              copy fills the card instead of leaving a dead half. */}
+          <div className={cn('grid gap-6', boomerangEnabled && 'lg:grid-cols-[1.15fr,0.85fr]')}>
             <div className="space-y-5">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-brand-700 shadow-sm">
                 <Sparkles className="h-3.5 w-3.5" />
@@ -282,9 +290,13 @@ export function BusinessDashboardPage() {
               </Button>
             </div>
 
+            {/* Progress toward 100 is a Boomerang-list measure. It is not shown
+                to a business that does not have one — there is nothing to
+                progress toward, and the card would advertise the feature. */}
+            {boomerangEnabled ? (
             <Link
-              href="/portal/grow?section=customers"
-              aria-label={`Progress to 100: ${contacts.length} of 100 people added. Open my 100 list.`}
+              href={BUSINESS_BOOMERANG_NAV_HREF}
+              aria-label={`Progress to 100: ${contacts.length} of 100 people added. Open my ${BOOMERANG_SURFACE.tab.toLowerCase()}.`}
               className={cn(
                 'group rounded-[1.75rem] border border-white/90 bg-white/90 p-5 shadow-sm transition-all',
                 'hover:-translate-y-0.5 hover:shadow-card-hover',
@@ -306,6 +318,7 @@ export function BusinessDashboardPage() {
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
               </p>
             </Link>
+            ) : null}
           </div>
         </div>
       </Card>
@@ -316,12 +329,17 @@ export function BusinessDashboardPage() {
         bodyClassName="p-5"
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {/* Joins, invites and conversion all count Boomerang-list contacts.
+              For a business without a list they are structurally zero, which
+              reads as a broken dashboard rather than an absent feature. */}
+          {boomerangEnabled ? (
           <InfoStat
             label="Customers joined"
             value={formatNumber(joinedCount)}
             hint="People who finished joining through your business"
             icon={<Users className="h-5 w-5" />}
           />
+          ) : null}
           <InfoStat
             label="Network size"
             value={networkSize === null ? '—' : formatNumber(networkSize)}
@@ -334,9 +352,15 @@ export function BusinessDashboardPage() {
             hint="Active offers on your business"
             icon={<Tag className="h-5 w-5" />}
           />
-          <InfoStat label="Invites sent" value={formatNumber(invitedCount)} hint="Contacts you have invited so far" />
-          <InfoStat label="Conversion rate" value={`${conversionRate}%`} hint="Invites that turned into joins" />
-          <InfoStat label="Added today" value={formatNumber(todayAdds)} hint={`Launch phase: ${launchLabel}`} />
+          {boomerangEnabled ? (
+            <>
+              <InfoStat label="Invites sent" value={formatNumber(invitedCount)} hint="Contacts you have invited so far" />
+              <InfoStat label="Conversion rate" value={`${conversionRate}%`} hint="Invites that turned into joins" />
+              <InfoStat label="Added today" value={formatNumber(todayAdds)} hint={`Launch phase: ${launchLabel}`} />
+            </>
+          ) : (
+            <InfoStat label="Launch phase" value={launchLabel} hint="Where your business is in going live" />
+          )}
         </div>
       </InfoSection>
 

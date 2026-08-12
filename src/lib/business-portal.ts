@@ -7,6 +7,7 @@ import type {
   Profile,
   UserRole,
 } from '@/lib/types/database'
+import { isBoomerangEnabled } from '@/lib/engagement-codes'
 
 type BusinessPortalOwnershipRecord = Pick<Business, 'id' | 'email' | 'website' | 'owner_id'>
 
@@ -273,6 +274,19 @@ export function getBusinessDescription(business: Business): string {
 export function getBusinessOfferTitle(business: Business): string {
   const data = getBusinessPortalData(business)
   return data.capture_offer_title || data.offer_title || 'Join our list and get access to exclusive offers'
+}
+
+/**
+ * Whether this business opted in to the Boomerang list.
+ *
+ * `hundred_list_interest` was recorded during onboarding and then consulted
+ * nowhere, so a business that answered "Not right now" kept seeing the whole
+ * feature. Every business-facing Boomerang surface now gates on this. The
+ * never-answered case is deliberately closed - see `isBoomerangEnabled`.
+ */
+export function isBoomerangEnabledForBusiness(business: Business | null | undefined): boolean {
+  if (!business) return false
+  return isBoomerangEnabled(getBusinessPortalData(business).hundred_list_interest ?? null)
 }
 
 export function getBusinessLaunchPhase(business: Business, contacts: Contact[]): BusinessLaunchPhase {

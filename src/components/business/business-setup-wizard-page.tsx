@@ -46,6 +46,7 @@ import {
   useBusinessEditor,
 } from '@/components/business/business-editor'
 import { BUSINESS_SETUP_CONFIG_STEPS, type BusinessSetupStepKey } from '@/lib/business-setup'
+import { BOOMERANG_SURFACE } from '@/lib/engagement-codes'
 
 type StepKey = BusinessSetupStepKey
 
@@ -156,7 +157,9 @@ export function BusinessSetupWizardPage() {
 
     const saved = await editor.submitForLiveReview()
     if (!saved) return
-    window.location.href = '/portal/grow?section=customers&review=submitted'
+    // Was the retired Grow "customers" section. Home is the right landing after a
+    // live-review submission for every business, Boomerang or not.
+    window.location.href = '/dashboard?review=submitted'
   }
 
   return (
@@ -369,8 +372,8 @@ export function BusinessSetupWizardPage() {
 
         {step === 'capture' && (
           <ActionSection
-            title="Build Your 100 List"
-            description="Tell us whether you want LocalVIP to help build your first customer audience."
+            title={`Your ${BOOMERANG_SURFACE.tab.toLowerCase()}`}
+            description="Tell us whether you want LocalVIP to help you build a list of your own customers that you can promote to directly. You can say no and keep everything else."
             complete={isStepComplete('capture')}
           >
             {/* `variant="choice"` keeps the offer copy fields hidden during
@@ -439,7 +442,7 @@ export function BusinessSetupWizardPage() {
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <StatusPill label="Profile" ready={isStepComplete('profile')} onOpen={() => setStep('profile')} />
                 <StatusPill label="Branding" ready={isStepComplete('branding')} onOpen={() => setStep('branding')} />
-                <StatusPill label="100 List choice" ready={isStepComplete('capture')} onOpen={() => setStep('capture')} />
+                <StatusPill label={`${BOOMERANG_SURFACE.tab} choice`} ready={isStepComplete('capture')} onOpen={() => setStep('capture')} />
                 <StatusPill label="LocalVIP deal" ready={isStepComplete('cashback')} onOpen={() => setStep('cashback')} />
                 <StatusPill label="Stripe" ready={isStepComplete('stripe')} onOpen={() => setStep('stripe')} />
               </div>

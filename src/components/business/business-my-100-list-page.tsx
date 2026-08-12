@@ -131,7 +131,7 @@ export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean
       <div className="flex min-h-[55vh] items-center justify-center">
         <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-5 py-4 text-sm text-surface-500 shadow-sm">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-          Loading your 100 list...
+          Loading your Boomerang list...
         </div>
       </div>
     )
@@ -141,7 +141,7 @@ export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean
     return (
       <EmptyState
         icon={<Users className="h-8 w-8" />}
-        title="Your 100 list will show up here"
+        title="Your Boomerang list will show up here"
         description="We couldn't find your business details for this account yet."
       />
     )
@@ -361,7 +361,7 @@ export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean
         </div>
       ) : (
         <PageHeader
-          title="Build Your 100 List"
+          title="Add people to your Boomerang list"
           description="Start with the people most likely to say yes first. This page helps you choose who to add, what to do next, and how to keep moving."
           actions={
             <Button className={BUSINESS_ACCENT_BUTTON_CLASS} onClick={() => handleOpenCreate()}>
@@ -555,7 +555,7 @@ export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean
             columns={columns}
             data={contacts}
             keyField="id"
-            searchPlaceholder="Search your 100 list..."
+            searchPlaceholder="Search your Boomerang list..."
             loading={contactsLoading}
             emptyState={
               <EmptyState
@@ -638,7 +638,7 @@ export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean
         businessId={business.id}
         profileId={profile.id}
         onImported={(count) => {
-          setBulkMessage(`${count} contacts added to your 100 list.`)
+          setBulkMessage(`${count} contacts added to your Boomerang list.`)
           refetch()
         }}
       />

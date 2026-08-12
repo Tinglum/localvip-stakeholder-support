@@ -67,6 +67,24 @@ export const ENGAGEMENT_CODES: Record<EngagementCodeKind, EngagementCodeCopy> = 
   },
 }
 
+/**
+ * Copy for the Boomerang surfaces themselves - the tab, its page, and the
+ * explanation a business reads there. Kept beside the code names so the tab and
+ * the QR that feeds it cannot end up called different things.
+ */
+export const BOOMERANG_SURFACE = {
+  /** Nav tab label. Only ever rendered for a business that opted in. */
+  tab: 'Boomerang list',
+  pageTitle: 'Boomerang list',
+  pageDescription:
+    'Your own list of customers. Everyone here joined through you, and you can promote to them directly — this is separate from your LocalVIP referrals.',
+  /** Heading for the QR/link that puts a customer on the list. */
+  joinHeading: 'Get customers onto your list',
+  /** Said where Boomerang and LocalVIP referral assets sit side by side. */
+  contrast: 'Puts a customer on your own list. It does not sign them up to LocalVIP.',
+  materialsHeading: 'Boomerang list materials',
+} as const
+
 /** Recorded during onboarding when a business is asked about the Boomerang list. */
 export type BoomerangInterest = 'interested' | 'not_now' | null | undefined
 

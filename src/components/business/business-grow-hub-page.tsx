@@ -1,35 +1,40 @@
 'use client'
 
 /**
- * GROW — every way a business adds people, in one tab.
+ * GROW — every way a business brings people INTO LocalVIP, in one tab.
  *
- * Absorbs the three old nav items:
- *   - My 100 List                  → "Customers" section
+ * Absorbs the old nav items:
  *   - Grow with Other Businesses   → "Businesses & causes" section (the invite
  *                                     composer, which still handles all three
  *                                     invitee types: customer, business, cause)
  *   - My Network                   → "Network" section (read-only)
  *
- * The sections are tabs rather than one long scroll because each of the three
- * underlying views is heavy. `?section=` keeps every old deep link alive:
- * `/portal/clients` → `?section=customers`, `/portal/network` → `?section=network`.
+ * The Boomerang list used to be the "Customers" section here. It has moved to
+ * its own tab (`/portal/boomerang`) because it is a different product from the
+ * LocalVIP referral the rest of this tab is about, and because a business that
+ * declined it must not see it at all. `?section=customers` still resolves — it
+ * redirects to the Boomerang tab for a business that has one.
+ *
+ * The sections are tabs rather than one long scroll because each underlying view
+ * is heavy. `?section=` keeps every old deep link alive:
+ * `/portal/network` → `?section=network`.
  */
 
 import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { HeartHandshake, Network, Share2, Users } from 'lucide-react'
+import { HeartHandshake, Network, Share2 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { SurfaceLegend } from '@/components/business/business-surfaces'
-import { BusinessMy100ListPage } from '@/components/business/business-my-100-list-page'
 import { BusinessGrowPage } from '@/components/business/business-grow-page'
 import { BusinessNetworkPage } from '@/components/business/business-network-page'
 import { BusinessAdvocacyPanel } from '@/components/business/business-advocacy-panel'
 import { useAuth } from '@/lib/auth/context'
-import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-portal'
+import { getBusinessQaAccountId, isBoomerangEnabledForBusiness, resolveScopedBusiness } from '@/lib/business-portal'
+import { BUSINESS_BOOMERANG_NAV_HREF } from '@/lib/stakeholder-access'
 import { useBusinesses } from '@/lib/supabase/hooks'
 import { cn } from '@/lib/utils'
 
-type SectionKey = 'customers' | 'partners' | 'network' | 'advocacy'
+type SectionKey = 'partners' | 'network' | 'advocacy'
 
 const SECTIONS: Array<{
   key: SectionKey
@@ -45,13 +50,6 @@ const SECTIONS: Array<{
     hint: 'See recommendations become customers',
     icon: <Share2 className="h-4 w-4" />,
     tone: 'info',
-  },
-  {
-    key: 'customers',
-    label: 'Customers',
-    hint: 'Build and work your 100 list',
-    icon: <Users className="h-4 w-4" />,
-    tone: 'action',
   },
   {
     key: 'partners',
@@ -70,7 +68,7 @@ const SECTIONS: Array<{
 ]
 
 function isSectionKey(value: string | null): value is SectionKey {
-  return value === 'customers' || value === 'partners' || value === 'network' || value === 'advocacy'
+  return value === 'partners' || value === 'network' || value === 'advocacy'
 }
 
 export function BusinessGrowHubPage() {
@@ -83,12 +81,23 @@ export function BusinessGrowHubPage() {
     else filters.owner_id = profile.id
     return filters
   }, [profile.business_id, profile.id])
-  const { data: businesses } = useBusinesses(businessFilters)
+  const { data: businesses, loading: businessesLoading } = useBusinesses(businessFilters)
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
   const qaAccountId = getBusinessQaAccountId(business)
+  const boomerangEnabled = isBoomerangEnabledForBusiness(business)
 
   const requested = searchParams.get('section')
-  const section: SectionKey = isSectionKey(requested) ? requested : 'customers'
+  // The Boomerang list left this tab. An old `?section=customers` link forwards
+  // to its own tab, but only once the business row says there is one to forward
+  // to — a business that declined lands on the default section instead.
+  const wantsRetiredCustomersSection = requested === 'customers'
+  React.useEffect(() => {
+    if (wantsRetiredCustomersSection && !businessesLoading && boomerangEnabled) {
+      router.replace(BUSINESS_BOOMERANG_NAV_HREF)
+    }
+  }, [boomerangEnabled, businessesLoading, router, wantsRetiredCustomersSection])
+
+  const section: SectionKey = isSectionKey(requested) ? requested : 'advocacy'
 
   const selectSection = React.useCallback(
     (next: SectionKey) => {
@@ -105,7 +114,7 @@ export function BusinessGrowHubPage() {
     <div className="space-y-6">
       <PageHeader
         title="Grow"
-        description="Add customers, invite other local businesses, and bring in schools and causes. Everything that grows your network is here."
+        description="Bring people into LocalVIP through you, invite other local businesses, and bring in schools and causes. Everything that grows your LocalVIP network is here."
       />
 
       <SurfaceLegend />
@@ -155,7 +164,6 @@ export function BusinessGrowHubPage() {
       </div>
 
       <div id="grow-panel" role="tabpanel" aria-labelledby={`grow-tab-${active.key}`}>
-        {section === 'customers' ? <BusinessMy100ListPage embedded /> : null}
         {section === 'partners' ? <BusinessGrowPage embedded /> : null}
         {section === 'network' ? <BusinessNetworkPage embedded /> : null}
         {section === 'advocacy' ? <BusinessAdvocacyPanel businessId={qaAccountId} /> : null}

@@ -4,7 +4,7 @@
  * THE BUSINESS EDITOR — one implementation, two presentations.
  *
  * Every field a business owner can change about itself lives here exactly once:
- * profile, branding, the 100-list choice + capture offer, the LocalVIP deal,
+ * profile, branding, the Boomerang-list choice + its offer, the LocalVIP deal,
  * Stripe, and the go-live submission.
  *
  *  - `/portal/business` ("My Business") renders every group at once. It is the
@@ -69,6 +69,7 @@ import {
   getKeywordGroupsForCategory,
 } from '@/lib/business-catalog'
 import type { Business, Contact, Offer } from '@/lib/types/database'
+import { BOOMERANG_SURFACE, ENGAGEMENT_CODES, isBoomerangEnabled } from '@/lib/engagement-codes'
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 export type HundredListInterest = 'interested' | 'not_now' | null
@@ -511,7 +512,7 @@ export function useBusinessEditor(): BusinessEditor {
             business_id: business.id,
             offer_type: 'capture' as const,
             status: captureHeadline.trim() ? ('active' as const) : ('draft' as const),
-            headline: captureHeadline.trim() || 'Customer capture offer',
+            headline: captureHeadline.trim() || 'Boomerang list offer',
             description: captureDescription || '',
             value_type: 'label',
             value_label: captureValue || null,
@@ -524,7 +525,7 @@ export function useBusinessEditor(): BusinessEditor {
             ? await updateOffer(captureOfferId, capturePayload)
             : await insertOffer(capturePayload)
           if (!savedCapture) {
-            throw new Error('The 100-list offer could not be saved.')
+            throw new Error('The Boomerang list offer could not be saved.')
           }
         }
 
@@ -1122,12 +1123,16 @@ export function BrandingFields({ editor, showValidation = false }: { editor: Bus
 }
 
 /**
- * The 100-list choice, plus the capture-offer copy fields.
+ * The Boomerang-list choice, plus the offer copy shown to someone joining it.
  *
  * The three offer inputs are intentionally not shown during first-run setup
  * (`variant="choice"`) — the LocalVIP team writes them with the owner. On My
  * Business (`variant="full"`) they ARE editable, which is the one place an
- * owner can change their capture offer themselves.
+ * owner can change that offer themselves.
+ *
+ * The choice itself always renders: it is the question, not a Boomerang surface,
+ * and it is how a business changes its mind in either direction. Everything
+ * downstream of a "yes" is gated on that answer.
  */
 export function CaptureFields({
   editor,
@@ -1139,16 +1144,21 @@ export function CaptureFields({
   variant?: 'full' | 'choice'
 }) {
   const choiceMissing = editor.hundredListInterest === null
+  const boomerangEnabled = isBoomerangEnabled(editor.hundredListInterest)
 
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold text-surface-900">Do you want LocalVIP to help build your first 100?</p>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-600">
-          You get a shareable signup experience, a QR code, and a simple launch offer that gives people a reason to
-          join early. You can change this answer at any time.
+        <p className="text-sm font-semibold text-surface-900">
+          Do you want a {BOOMERANG_SURFACE.tab.toLowerCase()}?
         </p>
-        <div role="radiogroup" aria-label="100 list interest" className="mt-4 grid gap-3 md:grid-cols-2">
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-surface-600">
+          {ENGAGEMENT_CODES.business_capture.outcome} You get a shareable signup page, a QR code, and a simple
+          launch offer that gives people a reason to join early. This is separate from your{' '}
+          {ENGAGEMENT_CODES.business_network_referral.linkLabel.toLowerCase()}, which you keep either way. You can
+          change this answer at any time.
+        </p>
+        <div role="radiogroup" aria-label={`${BOOMERANG_SURFACE.tab} interest`} className="mt-4 grid gap-3 md:grid-cols-2">
           <button
             type="button"
             role="radio"
@@ -1162,10 +1172,12 @@ export function CaptureFields({
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-base font-bold text-surface-950">Yes, help me build my 100 List</p>
+                <p className="text-base font-bold text-surface-950">
+                  Yes, set up my {BOOMERANG_SURFACE.tab.toLowerCase()}
+                </p>
                 <p className="mt-2 text-sm leading-6 text-surface-600">
-                  Flag this for the LocalVIP team so we can activate your customer-capture tools and help you start
-                  building momentum.
+                  You get a {BOOMERANG_SURFACE.tab.toLowerCase()} tab of your own, its QR code and link, and its
+                  printable materials.
                 </p>
               </div>
               <span
@@ -1195,7 +1207,9 @@ export function CaptureFields({
               <div>
                 <p className="text-base font-bold text-surface-950">Not right now</p>
                 <p className="mt-2 text-sm leading-6 text-surface-600">
-                  No problem. You can turn it on later from your business portal when you are ready to grow your list.
+                  No problem — none of it will be shown to you. Everything else, including your{' '}
+                  {ENGAGEMENT_CODES.business_network_referral.linkLabel.toLowerCase()}, is unaffected. You can turn
+                  it on here later.
                 </p>
               </div>
               <span
@@ -1215,8 +1229,16 @@ export function CaptureFields({
         ) : null}
       </div>
 
-      {variant === 'full' ? (
+      {/* The offer only exists to give someone a reason to join the Boomerang
+          list, so it is meaningless — and must not be shown — when there is no
+          list. It appears the moment the answer above becomes yes. */}
+      {variant === 'full' && boomerangEnabled ? (
         <div className="grid gap-4 border-t border-surface-100 pt-6 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <p className="text-sm font-semibold text-surface-900">
+              What someone gets for joining your {BOOMERANG_SURFACE.tab.toLowerCase()}
+            </p>
+          </div>
           <div className="md:col-span-2">
             <FieldLabel>Offer headline</FieldLabel>
             <p className="mb-2 text-sm leading-6 text-surface-500">

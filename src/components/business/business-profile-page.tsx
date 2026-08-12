@@ -4,7 +4,7 @@
  * MY BUSINESS — the permanent editing surface.
  *
  * Everything a business owner can change about itself lives on this one page:
- * profile, branding, the 100-list choice and capture offer, the LocalVIP deal,
+ * profile, branding, the Boomerang-list choice and its offer, the LocalVIP deal,
  * Stripe, and the live-review submission. It renders the SAME field groups the
  * first-run wizard renders (`@/components/business/business-editor`), so there
  * is no second copy of any input and no card that just links back into Setup.
@@ -33,11 +33,12 @@ import {
 import { getActivationLabel, getActivationTone } from '@/lib/business-portal'
 import { formatCashbackLabel } from '@/lib/offers'
 import { useCauses } from '@/lib/supabase/hooks'
+import { BOOMERANG_SURFACE } from '@/lib/engagement-codes'
 
 function launchPhaseLabel(value: string) {
   switch (value) {
     case 'capturing_100':
-      return 'Capturing 100'
+      return 'Building the Boomerang list'
     case 'ready_to_go_live':
       return 'Ready to go live'
     case 'live':
@@ -145,8 +146,8 @@ export function BusinessProfilePage() {
 
       <ActionSection
         id="offer"
-        title="Customer capture offer"
-        description="Your pre-launch offer and whether LocalVIP is helping you build your first 100 customers."
+        title={BOOMERANG_SURFACE.tab}
+        description={`Whether you want a list of your own customers, and what someone gets for joining it. ${BOOMERANG_SURFACE.contrast}`}
         complete={isStepComplete('capture')}
       >
         <CaptureFields editor={editor} variant="full" />

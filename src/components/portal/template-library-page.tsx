@@ -302,6 +302,16 @@ function TemplateGenerateDialog({
     const q = qrCodes.find((x) => String(x.id) === choice)
     return q?.targetUrl || q?.code || ''
   }, [activeTpl, choice, ctx, newUrl, qrCodes])
+  // Split rather than filtered inline, so each group can be labelled and the
+  // Boomerang group can be absent entirely for a business without a list.
+  const boomerangQrCodes = React.useMemo(
+    () => (ctx?.boomerangEnabled ? qrCodes.filter((q) => q.purpose === 'business_capture') : []),
+    [ctx?.boomerangEnabled, qrCodes],
+  )
+  const customQrCodes = React.useMemo(
+    () => qrCodes.filter((q) => q.purpose !== 'business_capture'),
+    [qrCodes],
+  )
   const activePurpose = React.useMemo(() => {
     if (choice === 'default' || activeTpl) return 'business_network_referral'
     if (choice === 'new') return 'business_custom'
@@ -484,11 +494,15 @@ function TemplateGenerateDialog({
               )}
             </div>
 
+            {/* Grouped under the code names, because the whole point is that
+                choosing here decides WHICH of the three codes gets printed. An
+                ungrouped list is what let a business stamp the wrong one. */}
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+              <QrGroupHeading>{ENGAGEMENT_CODES.business_network_referral.label}</QrGroupHeading>
               <QrOption
                 active={choice === 'default'}
                 onClick={() => setChoice('default')}
-                title={ENGAGEMENT_CODES.business_network_referral.label}
+                title={ENGAGEMENT_CODES.business_network_referral.qrLabel}
                 subtitle={ctxError
                   ? 'Your LocalVIP referral link could not be loaded'
                   : `${ENGAGEMENT_CODES.business_network_referral.outcome}${ctx?.referralCode ? ` · Code ${ctx.referralCode}` : ''}`}
@@ -504,23 +518,33 @@ function TemplateGenerateDialog({
               {/* A business that declined the Boomerang list must not see its QR
                   anywhere. Filtered here rather than hidden with CSS so it cannot
                   be selected, generated from, or reached by keyboard. */}
-              {qrCodes
-                .filter((q) => q.purpose !== 'business_capture' || ctx?.boomerangEnabled)
-                .map((q) => (
+              {boomerangQrCodes.length > 0 && (
+                <QrGroupHeading>{ENGAGEMENT_CODES.business_capture.label}</QrGroupHeading>
+              )}
+              {boomerangQrCodes.map((q) => (
                 <QrOption
                   key={q.id}
                   active={choice === String(q.id)}
                   onClick={() => setChoice(String(q.id))}
                   title={q.name}
-                  subtitle={q.purpose === 'business_capture'
-                    ? `${ENGAGEMENT_CODES.business_capture.outcome} · ${q.targetUrl || q.code || ''}`
-                    : `${ENGAGEMENT_CODES.business_custom.outcome} · ${q.targetUrl || q.code || ''}`}
+                  subtitle={`${ENGAGEMENT_CODES.business_capture.outcome} · ${q.targetUrl || q.code || ''}`}
                 />
               ))}
 
-              {qrTemplates.length > 0 && (
-                <p className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-400">Styled templates</p>
+              {customQrCodes.length > 0 && (
+                <QrGroupHeading>{ENGAGEMENT_CODES.business_custom.label}</QrGroupHeading>
               )}
+              {customQrCodes.map((q) => (
+                <QrOption
+                  key={q.id}
+                  active={choice === String(q.id)}
+                  onClick={() => setChoice(String(q.id))}
+                  title={q.name}
+                  subtitle={`${ENGAGEMENT_CODES.business_custom.outcome} · ${q.targetUrl || q.code || ''}`}
+                />
+              ))}
+
+              {qrTemplates.length > 0 && <QrGroupHeading>Styled templates</QrGroupHeading>}
               {qrTemplates.map((t) => (
                 <QrOption
                   key={`tpl:${t.id}`}
@@ -584,6 +608,15 @@ function TemplateGenerateDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Names the code family the options beneath it belong to. */
+function QrGroupHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-400">
+      {children}
+    </p>
   )
 }
 

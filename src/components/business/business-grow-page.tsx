@@ -28,7 +28,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
-import { resolveScopedBusiness } from '@/lib/business-portal'
+import { isBoomerangEnabledForBusiness, resolveScopedBusiness } from '@/lib/business-portal'
+import { BOOMERANG_SURFACE } from '@/lib/engagement-codes'
+import { BUSINESS_BOOMERANG_NAV_HREF } from '@/lib/stakeholder-access'
 import { resolveBusinessOffer } from '@/lib/offers'
 import {
   useBusinesses,
@@ -270,6 +272,9 @@ export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = 
   const { data: cities } = useCities()
   const { data: ownedBusinesses, loading } = useBusinesses(profile.business_id ? { id: profile.business_id } : { owner_id: profile.id })
   const business = React.useMemo(() => resolveScopedBusiness(profile, ownedBusinesses), [ownedBusinesses, profile])
+  // Grow is about the LocalVIP referral. It may only point AT the Boomerang list
+  // for a business that has one.
+  const boomerangEnabled = isBoomerangEnabledForBusiness(business)
   const { data: referrals, refetch } = useBusinessReferrals({ source_business_id: business?.id || '__none__' })
   const { data: sourceOffers } = useOffers({ business_id: business?.id || '__none__' })
   const { data: sourceDeals } = useDeals({ business_account_id: business?.id || '__none__' })
@@ -749,12 +754,14 @@ export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = 
           title="Grow Your Network"
           description="Invite customers, other businesses, and causes into your network — one composer, one place to track them."
           actions={
-            <Button variant="outline" asChild>
-              <Link href="/portal/grow?section=customers">
-                Open my 100 list
-                <Users className="h-4 w-4" />
-              </Link>
-            </Button>
+            boomerangEnabled ? (
+              <Button variant="outline" asChild>
+                <Link href={BUSINESS_BOOMERANG_NAV_HREF}>
+                  {`Open my ${BOOMERANG_SURFACE.tab.toLowerCase()}`}
+                  <Users className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : undefined
           }
         />
       )}
@@ -827,19 +834,25 @@ export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = 
         </div>
       </fieldset>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <GrowthStat
-          href="/portal/business"
-          label="Current capture offer"
-          value={captureOffer?.value_label || captureOffer?.headline || 'Offer not set'}
-          hint="Review or change it on your business profile."
-        />
-        <GrowthStat
-          href="/portal/grow?section=customers"
-          label="Customers collected"
-          value={`${joinedCount}`}
-          hint="Your 100 list owns this number — open it to keep it moving."
-        />
+      <div className={cn('grid gap-4', boomerangEnabled ? 'md:grid-cols-3' : 'md:grid-cols-1')}>
+        {/* Both of these measure the Boomerang list, so neither is shown to a
+            business that does not have one. */}
+        {boomerangEnabled ? (
+          <>
+            <GrowthStat
+              href="/portal/business"
+              label={`${BOOMERANG_SURFACE.tab} offer`}
+              value={captureOffer?.value_label || captureOffer?.headline || 'Offer not set'}
+              hint="Review or change it on your business profile."
+            />
+            <GrowthStat
+              href={BUSINESS_BOOMERANG_NAV_HREF}
+              label="Customers collected"
+              value={`${joinedCount}`}
+              hint={`Your ${BOOMERANG_SURFACE.tab.toLowerCase()} owns this number — open it to keep it moving.`}
+            />
+          </>
+        ) : null}
         <GrowthStat
           href="/dashboard"
           label="CRM invites tracked"
@@ -850,7 +863,7 @@ export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = 
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
         {!isBusinessInvite ? (
-          <InviteeTypeGuidance inviteeType={inviteeType} businessName={scopedBusiness.name} />
+          <InviteeTypeGuidance inviteeType={inviteeType} businessName={scopedBusiness.name} boomerangEnabled={boomerangEnabled} />
         ) : (
         <Card className="overflow-hidden border-surface-200">
           <CardHeader className="border-b border-surface-100 bg-surface-50/70">
@@ -1533,9 +1546,12 @@ export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = 
 function InviteeTypeGuidance({
   inviteeType,
   businessName,
+  boomerangEnabled,
 }: {
   inviteeType: NetworkInviteeType
   businessName: string
+  /** Passed down so the Boomerang prompts stay absent for a business without a list. */
+  boomerangEnabled: boolean
 }) {
   const isCause = inviteeType === 'cause'
 
@@ -1585,15 +1601,17 @@ function InviteeTypeGuidance({
             ) : (
               <>
                 <li>Your regulars — the people who would say yes without thinking.</li>
-                <li>Anyone already on your 100 list who has not joined yet.</li>
+                {boomerangEnabled ? (
+                  <li>{`Anyone already on your ${BOOMERANG_SURFACE.tab.toLowerCase()} who has not joined yet.`}</li>
+                ) : null}
                 <li>Friends and family who want to see the business do well.</li>
               </>
             )}
           </ul>
-          {!isCause ? (
+          {!isCause && boomerangEnabled ? (
             <Button variant="outline" size="sm" className="mt-4" asChild>
-              <Link href="/portal/grow?section=customers">
-                Open my 100 list
+              <Link href={BUSINESS_BOOMERANG_NAV_HREF}>
+                {`Open my ${BOOMERANG_SURFACE.tab.toLowerCase()}`}
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>

@@ -46,7 +46,8 @@ import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
 import { EMPTY_UUID } from '@/lib/uuid'
 import { formatDate } from '@/lib/utils'
 import { useBusinesses, useGeneratedMaterials, useMaterialAssignments, useMaterialInsert, useMaterialTemplates, useMaterials, useStakeholders } from '@/lib/supabase/hooks'
-import { resolveScopedBusiness } from '@/lib/business-portal'
+import { isBoomerangEnabledForBusiness, resolveScopedBusiness } from '@/lib/business-portal'
+import { BOOMERANG_SURFACE, ENGAGEMENT_CODES } from '@/lib/engagement-codes'
 import type { BusinessJoinResource } from '@/lib/business-join'
 import type { GeneratedMaterial, Material, MaterialTemplate, Stakeholder } from '@/lib/types/database'
 
@@ -222,9 +223,11 @@ function BusinessQrMaterialCard({ businessId }: { businessId: string }) {
             <Badge variant="success">Always available</Badge>
           </div>
           <div>
-            <h3 className="text-base font-semibold text-surface-900">Customer capture QR code</h3>
+            <h3 className="text-base font-semibold text-surface-900">
+              {ENGAGEMENT_CODES.business_capture.qrLabel}
+            </h3>
             <p className="mt-1 text-sm leading-6 text-surface-600">
-              This QR sends customers to your 100-list join page. Generated template materials should use this same QR.
+              {ENGAGEMENT_CODES.business_capture.outcome} {BOOMERANG_SURFACE.contrast}
             </p>
             <p className="mt-2 break-all font-mono text-xs text-surface-500">{resource.joinUrl}</p>
           </div>
@@ -765,7 +768,12 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
         </div>
       )}
 
-      {businessId ? <BusinessQrMaterialCard businessId={businessId} /> : null}
+      {/* This card is the Boomerang list QR and its join link, so it is only
+          shown to a business that opted in. An unresolved business counts as not
+          opted in — the safe direction is to withhold the feature, not offer it. */}
+      {businessId && isBoomerangEnabledForBusiness(scopedBusiness) ? (
+        <BusinessQrMaterialCard businessId={businessId} />
+      ) : null}
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

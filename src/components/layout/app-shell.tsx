@@ -29,7 +29,7 @@ export function AppShell({ profile, children }: AppShellProps) {
   const blockedPath = !canAccessPath(profile, pathname)
   // Setup is a finite job: once every step is done the nav item retires shell-wide.
   // Resolved once here so the sidebar and topbar don't each refetch it.
-  const { loading: setupLoading, state: setupState } = useBusinessSetupStatus(profile)
+  const { loading: setupLoading, state: setupState, boomerangEnabled } = useBusinessSetupStatus(profile)
   const businessSetupComplete = !setupLoading && setupState.isComplete
   // One poll for the whole shell: the topbar reads it, admins write to it.
   const systemStatus = useSystemStatus()
@@ -56,6 +56,7 @@ export function AppShell({ profile, children }: AppShellProps) {
         collapsed={collapsed}
         onToggle={() => setCollapsed(c => !c)}
         businessSetupComplete={businessSetupComplete}
+        boomerangEnabled={boomerangEnabled}
       />
       <Dialog open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <DialogContent className="left-0 top-0 h-full w-auto max-w-none translate-x-0 translate-y-0 rounded-none border-r border-surface-200 p-0 sm:max-w-none">
@@ -67,6 +68,7 @@ export function AppShell({ profile, children }: AppShellProps) {
             mobile
             onNavigate={() => setMobileNavOpen(false)}
             businessSetupComplete={businessSetupComplete}
+            boomerangEnabled={boomerangEnabled}
           />
         </DialogContent>
       </Dialog>
@@ -75,6 +77,7 @@ export function AppShell({ profile, children }: AppShellProps) {
         sidebarCollapsed={collapsed}
         onOpenMobileNav={() => setMobileNavOpen(true)}
         businessSetupComplete={businessSetupComplete}
+        boomerangEnabled={boomerangEnabled}
         systemStatus={systemStatus}
       />
       <main

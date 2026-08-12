@@ -19,7 +19,8 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { BRANDS } from '@/lib/constants'
-import { getStakeholderAccess, isAdminProfile } from '@/lib/stakeholder-access'
+import { BUSINESS_BOOMERANG_NAV_HREF, getStakeholderAccess, isAdminProfile } from '@/lib/stakeholder-access'
+import { BOOMERANG_SURFACE } from '@/lib/engagement-codes'
 import type { Profile } from '@/lib/types/database'
 import { ViewAsPicker } from '@/components/layout/view-as-picker'
 import { OperatorPicker } from '@/components/admin/operator-picker'
@@ -50,7 +51,8 @@ const ROUTE_LABELS: Record<string, string> = {
   portal: 'Portal',
   setup: 'Setup',
   business: 'My Business',
-  clients: 'My 100 List',
+  clients: BOOMERANG_SURFACE.tab,
+  boomerang: BOOMERANG_SURFACE.tab,
   grow: 'Grow',
   templates: 'Templates',
   campaigns: 'Campaigns',
@@ -121,10 +123,13 @@ function getProfileHref(profile: Profile, shell: string) {
   return '/dashboard'
 }
 
-function getQuickLinks(shell: string, businessSetupComplete = false): { label: string; href: string }[] {
+function getQuickLinks(shell: string, businessSetupComplete = false, boomerangEnabled = false): { label: string; href: string }[] {
   if (shell === 'business') {
     return [
-      { label: 'My 100 list', href: '/portal/grow?section=customers' },
+      // The Boomerang shortcut only exists for a business that opted in.
+      ...(boomerangEnabled
+        ? [{ label: BOOMERANG_SURFACE.tab, href: BUSINESS_BOOMERANG_NAV_HREF }]
+        : []),
       { label: 'My network', href: '/portal/grow?section=network' },
       { label: 'My business profile', href: '/portal/business' },
       { label: 'My materials', href: '/portal/materials' },
@@ -149,14 +154,16 @@ function getQuickLinks(shell: string, businessSetupComplete = false): { label: s
   ]
 }
 
-function getActionCenterContent(shell: string, pathname: string) {
+function getActionCenterContent(shell: string, pathname: string, boomerangEnabled = false) {
   if (shell === 'business') {
     return {
       title: 'Keep business setup simple',
       description: 'Pick one task, finish it, then come back for the next step.',
       items: [
         { label: 'Open my next business step', href: '/dashboard' },
-        { label: 'Open my 100 list', href: '/portal/grow?section=customers' },
+        ...(boomerangEnabled
+          ? [{ label: `Open my ${BOOMERANG_SURFACE.tab.toLowerCase()}`, href: BUSINESS_BOOMERANG_NAV_HREF }]
+          : []),
         { label: 'See my network', href: '/portal/grow?section=network' },
         { label: 'Check my business profile', href: '/portal/business' },
       ],
@@ -204,6 +211,8 @@ interface TopbarProps {
   onOpenMobileNav: () => void
   /** Business shell: retires the Setup shortcut once every setup step is finished. */
   businessSetupComplete?: boolean
+  /** Business shell: adds the Boomerang shortcuts, but only for an opted-in business. */
+  boomerangEnabled?: boolean
   /** Shared "work in progress" flag, resolved once by the app shell. */
   systemStatus: SystemStatusState
 }
@@ -213,11 +222,12 @@ export function Topbar({
   sidebarCollapsed,
   onOpenMobileNav,
   businessSetupComplete = false,
+  boomerangEnabled = false,
   systemStatus,
 }: TopbarProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const access = getStakeholderAccess(profile, { businessSetupComplete })
+  const access = getStakeholderAccess(profile, { businessSetupComplete, boomerangEnabled })
   const searchPlaceholder = access.searchPlaceholder
   const [searchValue, setSearchValue] = React.useState('')
   const [mobileSearchOpen, setMobileSearchOpen] = React.useState(false)
@@ -227,12 +237,12 @@ export function Topbar({
   const pageContext = React.useMemo(() => getPageContext(pathname), [pathname])
   const profileHref = getProfileHref(profile, access.shell)
   const actionCenter = React.useMemo(
-    () => getActionCenterContent(access.shell, pathname),
-    [access.shell, pathname]
+    () => getActionCenterContent(access.shell, pathname, boomerangEnabled),
+    [access.shell, pathname, boomerangEnabled]
   )
   const quickLinks = React.useMemo(
-    () => getQuickLinks(access.shell, businessSetupComplete),
-    [access.shell, businessSetupComplete],
+    () => getQuickLinks(access.shell, businessSetupComplete, boomerangEnabled),
+    [access.shell, businessSetupComplete, boomerangEnabled],
   )
 
   React.useEffect(() => {
@@ -321,7 +331,9 @@ export function Topbar({
     } else if (access.shell === 'community') {
       router.push('/community/supporters')
     } else if (access.shell === 'business') {
-      router.push('/portal/grow?section=customers')
+      // Boomerang is where a business searches its own customers — but only if it
+      // has one. Otherwise Grow is the nearest thing the search can answer with.
+      router.push(boomerangEnabled ? BUSINESS_BOOMERANG_NAV_HREF : '/portal/grow')
     } else {
       router.push(`/crm/businesses?q=${encodeURIComponent(q)}`)
     }

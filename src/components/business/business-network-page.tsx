@@ -33,8 +33,11 @@ import {
   getBusinessQaAccountId,
   getContactDisplayName,
   getContactListStatus,
+  isBoomerangEnabledForBusiness,
   resolveScopedBusiness,
 } from '@/lib/business-portal'
+import { BOOMERANG_SURFACE } from '@/lib/engagement-codes'
+import { BUSINESS_BOOMERANG_NAV_HREF } from '@/lib/stakeholder-access'
 import { useBusinesses, useContacts } from '@/lib/supabase/hooks'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 import type { Contact } from '@/lib/types/database'
@@ -65,6 +68,9 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
 
   const { data: businesses, loading: businessesLoading } = useBusinesses(businessFilters)
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
+  // The network is the LocalVIP side. Links to the Boomerang list only exist for
+  // a business that has one.
+  const boomerangEnabled = isBoomerangEnabledForBusiness(business)
   const { data: contacts, loading: contactsLoading } = useContacts({ business_id: business?.id || '__none__' })
   const [openContactId, setOpenContactId] = React.useState<string | null>(null)
 
@@ -108,12 +114,14 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
           title="My Network"
           description={`Everyone connected to ${business.name}, and the customers who joined your team.`}
           actions={
-            <Button variant="outline" asChild>
-              <Link href="/portal/grow?section=customers">
-                Open my 100 list
-                <Users className="h-4 w-4" />
-              </Link>
-            </Button>
+            boomerangEnabled ? (
+              <Button variant="outline" asChild>
+                <Link href={BUSINESS_BOOMERANG_NAV_HREF}>
+                  {`Open my ${BOOMERANG_SURFACE.tab.toLowerCase()}`}
+                  <Users className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : undefined
           }
         />
       )}
@@ -133,7 +141,7 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
         />
         <StatTile
           href={`#${TREE_SECTION_ID}`}
-          label="People in my 100 list"
+          label={`People in my ${BOOMERANG_SURFACE.tab.toLowerCase()}`}
           value={formatNumber(contacts.length)}
           hint="Jump to the level-by-level breakdown of your network"
         />
@@ -152,12 +160,14 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
                 These are the people who finished joining through your business. Open a row to see how to reach them.
               </p>
             </div>
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/portal/grow?section=customers">
-                Manage my list
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
+            {boomerangEnabled ? (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href={BUSINESS_BOOMERANG_NAV_HREF}>
+                  Manage my list
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -166,17 +176,20 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
               <p className="text-sm text-surface-600">
                 Nobody has finished joining yet. Invite the people already on your list and they will appear here.
               </p>
-              <Button className="mt-4" asChild>
-                <Link href="/portal/grow?section=customers">
-                  Invite people from my list
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
+              {boomerangEnabled ? (
+                <Button className="mt-4" asChild>
+                  <Link href={BUSINESS_BOOMERANG_NAV_HREF}>
+                    Invite people from my list
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              ) : null}
             </div>
           ) : (
             <div className="space-y-2">
               {joinedContacts.map((contact) => (
                 <JoinedCustomerRow
+                  boomerangEnabled={boomerangEnabled}
                   key={contact.id}
                   contact={contact}
                   open={openContactId === contact.id}
@@ -324,10 +337,13 @@ function JoinedCustomerRow({
   contact,
   open,
   onToggle,
+  boomerangEnabled,
 }: {
   contact: Contact
   open: boolean
   onToggle: () => void
+  /** Passed down so the "open in my list" link stays absent without a list. */
+  boomerangEnabled: boolean
 }) {
   const panelId = `joined-contact-${contact.id}`
   const name = getContactDisplayName(contact)
@@ -378,12 +394,14 @@ function JoinedCustomerRow({
               value={contact.invited_at ? formatDate(contact.invited_at) : 'Not recorded'}
             />
           </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/portal/grow?section=customers">
-              Open in my 100 list
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
+          {boomerangEnabled ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={BUSINESS_BOOMERANG_NAV_HREF}>
+                {`Open in my ${BOOMERANG_SURFACE.tab.toLowerCase()}`}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -93,7 +93,11 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
   // they now live in rather than at a retired route.
   business: [
     { label: 'My Business', href: '/portal/business', icon: 'Store', description: 'Profile, branding, offers and deals' },
-    { label: 'My 100 List', href: '/portal/grow?section=customers', icon: 'Users', description: 'Build your supporter list' },
+    // Boomerang has its own tab now, not a Grow section. Note this list is not
+    // what the business shell renders (that is BusinessDashboardPage, which gates
+    // on the opt-in); it is kept in step so the two cannot describe the portal
+    // differently if a caller ever reads it.
+    { label: 'Boomerang list', href: '/portal/boomerang', icon: 'Users', description: 'Build a list of your own customers' },
     { label: 'Invite businesses & causes', href: '/portal/grow?section=partners', icon: 'Megaphone', description: 'Invite nearby businesses and causes' },
     { label: 'My Network', href: '/portal/grow?section=network', icon: 'Network', description: 'See your network and who joined' },
     { label: 'Materials', href: '/portal/materials', icon: 'FileDown', description: 'QR codes and printable assets' },
@@ -310,7 +314,10 @@ export const MATERIAL_USE_CASES = [
 ] as const
 
 export const MATERIAL_CATEGORIES = [
-  { value: 'customer_capture', label: 'Customer Capture' },
+  // Stored value stays `customer_capture`; only the label changed. "Customer
+  // Capture" read close enough to "Customer Referral" to be mistaken for the
+  // LocalVIP referral, which is a different product.
+  { value: 'customer_capture', label: 'Boomerang List' },
   { value: 'localvip_live', label: 'LocalVIP Live' },
   { value: 'business_to_business', label: 'Business to Business' },
   { value: 'business_to_consumer', label: 'Business to Consumer' },

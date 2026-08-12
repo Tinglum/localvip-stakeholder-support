@@ -85,6 +85,8 @@ interface SidebarProps {
   onNavigate?: () => void
   /** Business shell: retires the Setup item once every setup step is finished. */
   businessSetupComplete?: boolean
+  /** Business shell: adds the Boomerang list tab, but only for an opted-in business. */
+  boomerangEnabled?: boolean
 }
 
 export function Sidebar({
@@ -95,9 +97,10 @@ export function Sidebar({
   mobile = false,
   onNavigate,
   businessSetupComplete = false,
+  boomerangEnabled = false,
 }: SidebarProps) {
   const pathname = usePathname()
-  const access = getStakeholderAccess(profile, { businessSetupComplete })
+  const access = getStakeholderAccess(profile, { businessSetupComplete, boomerangEnabled })
   const roleTheme = getThemeForProfile(profile)
   // Was hardcoded to 0, so the child filter (userLevel >= child.minLevel) hid
   // EVERY nav child with a non-zero minLevel from everyone — Admin > Settings

@@ -1,6 +1,7 @@
 import type { NavItem } from '@/lib/constants'
 import { ROLE_THEMES, ROLES } from '@/lib/constants'
 import type { Profile, UserRole, UserRoleSubtype } from '@/lib/types/database'
+import { BOOMERANG_SURFACE } from '@/lib/engagement-codes'
 
 export type StakeholderShell =
   | 'admin'
@@ -57,12 +58,13 @@ export const STAKEHOLDER_SUBTYPE_OPTIONS: Record<
 }
 
 /**
- * FOUR TABS. Home is read-only status; My Business is the editable surface;
- * Grow is every way to add customers, businesses and causes; Materials is QR
- * and printable assets.
+ * FOUR TABS, plus the Boomerang list for a business that opted in. Home is
+ * read-only status; My Business is the editable surface; Grow is how you bring
+ * in other businesses, causes and LocalVIP members; Materials is QR and
+ * printable assets.
  *
  * The old nine items are absorbed, not deleted — Dashboard+Activity → Home,
- * My Business+Setup → My Business, My 100 List+My Network+Grow → Grow,
+ * My Business+Setup → My Business, My Network+Grow → Grow,
  * Materials+Template Library → Materials. Every old route still resolves via
  * the redirects in `next.config.js`.
  */
@@ -72,6 +74,20 @@ const BUSINESS_NAV_ITEMS: NavItem[] = [
   { label: 'Grow', href: '/portal/grow', icon: 'Megaphone', minLevel: 0 },
   { label: 'Materials', href: '/portal/materials', icon: 'FileDown', minLevel: 0 },
 ]
+
+/**
+ * The Boomerang list gets its OWN tab rather than a section inside Grow, because
+ * it is a different product from the LocalVIP referral that Grow is about, and
+ * because a business that declined it must not see it at all.
+ */
+export const BUSINESS_BOOMERANG_NAV_HREF = '/portal/boomerang'
+
+const BUSINESS_BOOMERANG_NAV_ITEM: NavItem = {
+  label: BOOMERANG_SURFACE.tab,
+  href: BUSINESS_BOOMERANG_NAV_HREF,
+  icon: 'Users',
+  minLevel: 0,
+}
 
 /**
  * The first-run wizard is no longer a nav item at all — it is reached from the
@@ -375,14 +391,27 @@ function getSearchPlaceholder(shell: StakeholderShell) {
 export interface StakeholderAccessOptions {
   /** Business shell only: drop the Setup item once every setup step is finished. */
   businessSetupComplete?: boolean
+  /**
+   * Business shell only: this business opted in to the Boomerang list, so it
+   * gets the tab. Absent or false hides it — a business that declined, or was
+   * never asked, must not see the feature anywhere.
+   */
+  boomerangEnabled?: boolean
 }
 
 function getNavItems(shell: StakeholderShell, options?: StakeholderAccessOptions) {
   switch (shell) {
-    case 'business':
-      return options?.businessSetupComplete
+    case 'business': {
+      const items = options?.businessSetupComplete
         ? BUSINESS_NAV_ITEMS.filter((item) => item.href !== BUSINESS_SETUP_NAV_HREF)
         : BUSINESS_NAV_ITEMS
+      // Inserted after Grow rather than appended, so the two growth surfaces sit
+      // together and Materials stays last.
+      if (!options?.boomerangEnabled) return items
+      const at = items.findIndex((item) => item.href === '/portal/grow')
+      if (at < 0) return [...items, BUSINESS_BOOMERANG_NAV_ITEM]
+      return [...items.slice(0, at + 1), BUSINESS_BOOMERANG_NAV_ITEM, ...items.slice(at + 1)]
+    }
     case 'consumer':
       return CONSUMER_NAV_ITEMS
     case 'field':
@@ -435,6 +464,11 @@ export function canAccessPath(profile: Profile, pathname: string) {
       '/portal/clients',
       '/portal/network',
       '/portal/grow',
+      // Reachable by the business shell as a route; whether there is anything to
+      // see is decided by the page against the opt-in. Gating it here would
+      // depend on business data this function does not have, and a wrong answer
+      // while that data loads would lock out a business that did opt in.
+      BUSINESS_BOOMERANG_NAV_HREF,
       '/portal/templates',
       '/portal/activity',
       '/portal/materials',

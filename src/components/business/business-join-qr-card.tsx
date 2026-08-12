@@ -37,6 +37,7 @@ import {
 } from '@/lib/business-theme'
 import type { Business } from '@/lib/types/database'
 import type { BusinessJoinQrAppearance, BusinessJoinResource } from '@/lib/business-join'
+import { ENGAGEMENT_CODES } from '@/lib/engagement-codes'
 
 interface BusinessJoinQrCardProps {
   business: Business
@@ -137,12 +138,12 @@ export function BusinessJoinQrCard({
           try {
             payload = JSON.parse(raw)
           } catch {
-            payload = { error: 'Customer capture could not be prepared.' }
+            payload = { error: 'Your Boomerang list QR could not be prepared.' }
           }
         }
 
         if (!response.ok) {
-          throw new Error(payload.error || `Customer capture could not be prepared (${response.status}).`)
+          throw new Error(payload.error || `Your Boomerang list QR could not be prepared (${response.status}).`)
         }
 
         if (!cancelled) {
@@ -150,7 +151,7 @@ export function BusinessJoinQrCard({
         }
       } catch (requestError) {
         if (!cancelled) {
-          setError(requestError instanceof Error ? requestError.message : 'Customer capture could not be prepared.')
+          setError(requestError instanceof Error ? requestError.message : 'Your Boomerang list QR could not be prepared.')
         }
       } finally {
         if (!cancelled) {
@@ -463,10 +464,10 @@ export function BusinessJoinQrCard({
                 Collect Customers
               </CardTitle>
               <p className="mt-2 text-sm text-surface-600">
-                Place this QR code where customers can scan it to get your pre-launch customer capture offer.
+                Place this QR code where customers can scan it to join your Boomerang list and get your offer. It does not sign them up to LocalVIP.
               </p>
             </div>
-            <Badge className={BUSINESS_ACCENT_BADGE_CLASS}>Build Your 100 List</Badge>
+            <Badge className={BUSINESS_ACCENT_BADGE_CLASS}>{ENGAGEMENT_CODES.business_capture.qrLabel}</Badge>
           </div>
         </CardHeader>
         <CardContent className={containerClasses}>
@@ -483,7 +484,7 @@ export function BusinessJoinQrCard({
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={qrPreviewUrl}
-                  alt={`${business.name} customer capture QR`}
+                  alt={`${business.name} ${ENGAGEMENT_CODES.business_capture.qrLabel}`}
                   className="h-full max-h-[330px] w-full max-w-[330px] object-contain"
                 />
               ) : null}
@@ -544,7 +545,7 @@ export function BusinessJoinQrCard({
                 <Link href="/portal/setup?step=capture" className="mb-4 block rounded-2xl border border-[#d7e200] bg-[#fbfdd9] px-4 py-3 transition hover:border-[#c7d400] hover:bg-[#f6fac1]">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#728000]">Customer capture offer</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#728000]">Boomerang list offer</p>
                       <p className="mt-2 text-base font-semibold text-surface-900">{resource.offerTitle}</p>
                       {resource.offerValue && <p className="mt-1 text-sm text-surface-600">{resource.offerValue}</p>}
                     </div>

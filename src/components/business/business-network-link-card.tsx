@@ -6,16 +6,21 @@ import { Copy, ExternalLink, Network } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import type { Business } from '@/lib/types/database'
+import { isBoomerangEnabledForBusiness } from '@/lib/business-portal'
+import { BOOMERANG_SURFACE, ENGAGEMENT_CODES } from '@/lib/engagement-codes'
 
 interface BusinessNetworkLinkCardProps {
   business: Business
 }
 
-// The LocalVIP network (node) referral — for inviting friends, causes, and other
-// businesses to join LocalVIP under this business. Deliberately separate from the
-// 100-list customer join link (which lives in the "My 100 list" view) so the
-// business doesn't confuse the two.
+// The LocalVIP referral — for inviting friends, causes, and other businesses to
+// join LocalVIP under this business. Deliberately separate from the Boomerang
+// list link (its own tab) so the business doesn't confuse the two. The contrast
+// is only DRAWN for a business that has a Boomerang list; telling a business it
+// is "not the other link" when it has no other link only creates the confusion
+// this is meant to prevent.
 export function BusinessNetworkLinkCard({ business }: BusinessNetworkLinkCardProps) {
+  const boomerangEnabled = isBoomerangEnabledForBusiness(business)
   const [referralCode, setReferralCode] = React.useState<string>('')
   const [appReferralUrl, setAppReferralUrl] = React.useState<string>('')
   const [loading, setLoading] = React.useState(true)
@@ -53,12 +58,19 @@ export function BusinessNetworkLinkCard({ business }: BusinessNetworkLinkCardPro
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Network className="h-4 w-4 text-brand-600" /> Grow the LocalVIP network
+          <Network className="h-4 w-4 text-brand-600" /> {ENGAGEMENT_CODES.business_network_referral.label}
         </CardTitle>
         <p className="text-sm leading-6 text-surface-500">
-          Share this to invite friends, causes, and other businesses to join LocalVIP under you.
-          This is <span className="font-medium">not</span> your customer 100-list link — you&apos;ll find
-          that in <span className="font-medium">My 100 list</span>.
+          Share this to invite friends, causes, and other businesses to join LocalVIP under you.{' '}
+          {ENGAGEMENT_CODES.business_network_referral.benefit}
+          {boomerangEnabled ? (
+            <>
+              {' '}This is <span className="font-medium">not</span> your{' '}
+              {ENGAGEMENT_CODES.business_capture.linkLabel.toLowerCase()} — that one puts people on
+              your own list, and lives on the{' '}
+              <span className="font-medium">{BOOMERANG_SURFACE.tab}</span> tab.
+            </>
+          ) : null}
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
