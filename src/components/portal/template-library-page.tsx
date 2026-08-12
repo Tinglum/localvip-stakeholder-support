@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { ENGAGEMENT_CODES } from '@/lib/engagement-codes'
 
 interface PortalTemplate {
   id: number | string
@@ -219,6 +220,8 @@ function TemplateGenerateDialog({
     name: string
     referralCode: string
     standardQrId: string | number | null
+    /** False when the business declined the Boomerang list, or was never asked. */
+    boomerangEnabled: boolean
   } | null>(null)
   const [logoOn, setLogoOn] = React.useState(true)
   const [preview, setPreview] = React.useState('')
@@ -265,6 +268,7 @@ function TemplateGenerateDialog({
             name: j.name || '',
             referralCode: j.referralCode || '',
             standardQrId: j.standardQrId || null,
+            boomerangEnabled: j.boomerangEnabled === true,
           })
           setLogoOn(!!j.logoUrl)
         }
@@ -484,12 +488,10 @@ function TemplateGenerateDialog({
               <QrOption
                 active={choice === 'default'}
                 onClick={() => setChoice('default')}
-                title="Join my LocalVIP network"
-                subtitle={ctx?.joinUrl
-                  ? `New customers join LocalVIP through you and you get the credit${ctx.referralCode ? ` · Code ${ctx.referralCode}` : ''}`
-                  : ctxError
-                    ? 'Your referral link could not be loaded'
-                    : 'New customers join LocalVIP through you and you get the credit'}
+                title={ENGAGEMENT_CODES.business_network_referral.label}
+                subtitle={ctxError
+                  ? 'Your LocalVIP referral link could not be loaded'
+                  : `${ENGAGEMENT_CODES.business_network_referral.outcome}${ctx?.referralCode ? ` · Code ${ctx.referralCode}` : ''}`}
               />
 
               {qrLoading && (
@@ -499,15 +501,20 @@ function TemplateGenerateDialog({
               )}
               {qrError && <p className="px-1 text-xs text-danger-600">{qrError}</p>}
 
-              {qrCodes.map((q) => (
+              {/* A business that declined the Boomerang list must not see its QR
+                  anywhere. Filtered here rather than hidden with CSS so it cannot
+                  be selected, generated from, or reached by keyboard. */}
+              {qrCodes
+                .filter((q) => q.purpose !== 'business_capture' || ctx?.boomerangEnabled)
+                .map((q) => (
                 <QrOption
                   key={q.id}
                   active={choice === String(q.id)}
                   onClick={() => setChoice(String(q.id))}
                   title={q.name}
                   subtitle={q.purpose === 'business_capture'
-                    ? `Sends customers to your offer sign-up page · ${q.targetUrl || q.code || ''}`
-                    : `Sends people to a link you chose · ${q.targetUrl || q.code || ''}`}
+                    ? `${ENGAGEMENT_CODES.business_capture.outcome} · ${q.targetUrl || q.code || ''}`
+                    : `${ENGAGEMENT_CODES.business_custom.outcome} · ${q.targetUrl || q.code || ''}`}
                 />
               ))}
 
@@ -520,7 +527,7 @@ function TemplateGenerateDialog({
                   active={choice === `tpl:${t.id}`}
                   onClick={() => setChoice(`tpl:${t.id}`)}
                   title={t.name}
-                  subtitle={`Same destination as "Join my LocalVIP network", styled${t.logo === 'business' ? ' with your logo' : ''}`}
+                  subtitle={`Same destination as the ${ENGAGEMENT_CODES.business_network_referral.label}, styled${t.logo === 'business' ? ' with your logo' : ''}`}
                   icon={<QrCode className="h-4 w-4" />}
                 />
               ))}

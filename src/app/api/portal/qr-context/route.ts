@@ -3,6 +3,7 @@ import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { resolvePortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { ensureQaBusinessEngagementAssets } from '@/lib/server/qa-business-stakeholders'
+import { isBoomerangEnabled } from '@/lib/engagement-codes'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,8 +30,16 @@ export async function GET() {
     // Accounts.ImageUrl holds a bare filename; the files live in /uploads/logos.
     const logoUrl = rawLogo ? toProxiedMaterialUrl(rawLogo, '/uploads/logos') : ''
 
+    // A business that declined the Boomerang list, or was never asked, must not
+    // be shown its QR, link, offer or materials anywhere. The flag was recorded
+    // during onboarding and then never consulted, so declining changed nothing.
+    const boomerangEnabled = isBoomerangEnabled(
+      (b.hundredListInterest as 'interested' | 'not_now' | null | undefined) ?? null,
+    )
+
     return NextResponse.json({
       businessId,
+      boomerangEnabled,
       name: String(b.name || ''),
       joinUrl: networkUrl,
       networkReferralUrl: networkUrl,
