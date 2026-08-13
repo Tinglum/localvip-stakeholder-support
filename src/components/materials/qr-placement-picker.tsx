@@ -15,6 +15,8 @@ import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 
 // Placements use the QR square's top-left corner. Size is always measured
 // against page width so the preview and every export path share one contract.
+// The square is a bounding box: the QR image is contained inside it and
+// centred, mirroring getQrRenderRect so the preview matches the stamped output.
 function isPdfSource(src: string, mimeType?: string | null) {
   return mimeType === 'application/pdf'
     || mimeType?.includes('pdf')
@@ -37,11 +39,14 @@ export function QrPlacementPicker({
   previewMimeType,
   placements,
   onChange,
+  qrImageUrl,
 }: {
   previewUrl: string
   previewMimeType?: string | null
   placements: QrPlacement[]
   onChange: (placements: QrPlacement[]) => void
+  /** Optional real QR asset, so the preview uses its true aspect ratio. */
+  qrImageUrl?: string | null
 }) {
   const isPdf = isPdfSource(previewUrl, previewMimeType)
   const pageFrameRef = React.useRef<HTMLDivElement>(null)
@@ -52,6 +57,8 @@ export function QrPlacementPicker({
   const [containerWidth, setContainerWidth] = React.useState(0)
   const [renderedSize, setRenderedSize] = React.useState({ width: 0, height: 0 })
   const [imageLoaded, setImageLoaded] = React.useState(false)
+  // Height / width of the real QR asset. 1 (square) until we know better.
+  const [qrAspect, setQrAspect] = React.useState(1)
   const draggingIdRef = React.useRef<string | null>(null)
   const dragOffsetRef = React.useRef({ x: 0, y: 0 })
 
@@ -70,6 +77,25 @@ export function QrPlacementPicker({
     setImageLoaded(false)
     setRenderedSize({ width: 0, height: 0 })
   }, [previewUrl])
+
+  React.useEffect(() => {
+    if (!qrImageUrl) {
+      setQrAspect(1)
+      return
+    }
+
+    let cancelled = false
+    const image = new Image()
+    image.onload = () => {
+      if (cancelled || !image.naturalWidth || !image.naturalHeight) return
+      setQrAspect(image.naturalHeight / image.naturalWidth)
+    }
+    image.src = qrImageUrl
+
+    return () => {
+      cancelled = true
+    }
+  }, [qrImageUrl])
 
   React.useEffect(() => {
     const observer = new ResizeObserver((entries) => {
@@ -103,6 +129,8 @@ export function QrPlacementPicker({
     )
   }
 
+  // The bounding box is square in pixels, so its height as a percentage of the
+  // page height is the width percentage rescaled by the page's aspect ratio.
   function qrHeightPercent(size: number) {
     if (!renderedSize.width || !renderedSize.height) return size
     return (size * renderedSize.width) / renderedSize.height
@@ -290,7 +318,18 @@ export function QrPlacementPicker({
                     aspectRatio: '1 / 1',
                   }}
                 >
-                  <QrCode className="h-6 w-6 text-brand-700 opacity-70" />
+                  {/* Contained QR rect: same fit-and-centre rule as
+                      getQrRenderRect, expressed relative to the square box. */}
+                  <span
+                    className="flex items-center justify-center rounded-sm bg-brand-500/25"
+                    style={
+                      qrAspect >= 1
+                        ? { height: '100%', width: `${100 / qrAspect}%` }
+                        : { width: '100%', height: `${100 * qrAspect}%` }
+                    }
+                  >
+                    <QrCode className="h-6 w-6 text-brand-700 opacity-70" />
+                  </span>
                 </button>
               ))}
             </div>
@@ -371,7 +410,7 @@ export function QrPlacementPicker({
               </span>
             </div>
             <p className="text-xs text-surface-400">
-              Measured against page width. Any call-to-action stays centered below the QR square.
+              Measured against page width. The square is a bounding box — the QR and any call-to-action are contained inside it.
             </p>
             {activePlacement && (
               <button

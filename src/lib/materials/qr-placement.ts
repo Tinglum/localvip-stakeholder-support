@@ -40,6 +40,14 @@ export function createQrPlacementId() {
   return `qr_${Math.random().toString(36).slice(2, 10)}`
 }
 
+/**
+ * The placement is a square BOUNDING BOX whose side is `size`% of the page
+ * width, anchored at (`x`% of width, `y`% of height) — its top-left corner.
+ * The QR image is contained inside that box (fit by the limiting dimension)
+ * and centred, so the rendered rect never spills past the square the user
+ * positioned no matter what aspect ratio the QR asset has (frames and
+ * "GET MY OFFER" caption strips make it taller than wide).
+ */
 export function getQrRenderRect(
   placement: QrPlacement,
   pageWidth: number,
@@ -47,15 +55,24 @@ export function getQrRenderRect(
   imageWidth = 1,
   imageHeight = 1,
 ) {
-  const width = (placement.size / 100) * pageWidth
+  // Square in absolute units: the same length in both dimensions, both derived
+  // from page width so the box does not stretch with the page's aspect ratio.
+  const box = (placement.size / 100) * pageWidth
   const safeImageWidth = imageWidth > 0 ? imageWidth : 1
   const safeImageHeight = imageHeight > 0 ? imageHeight : safeImageWidth
 
+  const scale = Math.min(box / safeImageWidth, box / safeImageHeight)
+  const width = safeImageWidth * scale
+  const height = safeImageHeight * scale
+
+  const boxLeft = (placement.x / 100) * pageWidth
+  const boxTop = (placement.y / 100) * pageHeight
+
   return {
-    left: (placement.x / 100) * pageWidth,
-    top: (placement.y / 100) * pageHeight,
+    left: boxLeft + (box - width) / 2,
+    top: boxTop + (box - height) / 2,
     width,
-    height: width * (safeImageHeight / safeImageWidth),
+    height,
   }
 }
 
