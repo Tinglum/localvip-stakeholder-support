@@ -209,6 +209,9 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
       { label: 'Team', href: '/admin/stakeholders', icon: 'FolderKanban', minLevel: 0 },
       { label: 'Material Tasks', href: '/admin/material-engine/tasks', icon: 'ListChecks', minLevel: 0 },
       { label: 'Template Manager', href: '/admin/material-engine/templates', icon: 'LayoutTemplate', minLevel: 0 },
+      // Bulk generation is a write across many accounts at once, so it sits with
+      // the other material-engine operator tools rather than in the CRM.
+      { label: 'Bulk Generate', href: '/admin/material-engine/bulk-generate', icon: 'Send', minLevel: 0 },
       { label: 'Users', href: '/admin/users', icon: 'Users', minLevel: 0 },
       { label: 'Settings', href: '/admin/settings', icon: 'Settings', minLevel: 100 },
       { label: 'Bug Center', href: '/admin/bugs', icon: 'Bug', minLevel: 0 },
