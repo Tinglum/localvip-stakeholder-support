@@ -11,6 +11,7 @@ import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { sanitizeStakeholderCodeValue } from '@/lib/stakeholder-codes'
 import { buildQaAccountMetadata, buildQaBusinessLogoUrl, joinAddress } from '@/lib/server/qa-dashboard-shared'
 import { slugify } from '@/lib/utils'
+import { ENGAGEMENT_CODES, isBoomerangEnabled } from '@/lib/engagement-codes'
 
 interface QaOfferRecord {
   id?: string | number | null
@@ -52,16 +53,20 @@ export interface QaBusinessQrAsset {
 /**
  * Two intentionally separate distribution channels for a business.
  *
- * Capture assets build the business's pre-launch 100-list. Network assets add
- * people, businesses, or causes to the LocalVIP network. Neither value may be
- * inferred from the other.
+ * Boomerang assets build the business's own customer list. LocalVIP referral
+ * assets add people, businesses, or causes to the LocalVIP network. Neither
+ * value may be inferred from the other.
+ *
+ * Every Boomerang field is nullable because the business may have declined the
+ * Boomerang list, in which case none of it is created. Callers must handle null
+ * rather than assume a capture asset always exists.
  */
 export interface QaBusinessEngagementAssets {
   business: QaBusinessDetail
   customerCapture: {
-    captureCode: string
-    captureUrl: string
-    qrCode: QaBusinessQrAsset
+    captureCode: string | null
+    captureUrl: string | null
+    qrCode: QaBusinessQrAsset | null
   }
   networkReferral: {
     networkReferralCode: string | null
@@ -279,18 +284,28 @@ export function ensureQaBusinessEngagementAssets(businessId: string) {
     const qaBusiness = await parseQaResponse<QaBusinessDetail>(businessRes, 'Failed to load business.')
     if (!qaBusiness) throw new Error('The QA business could not be loaded.')
 
-    const captureCode = buildJoinSlug(qaBusiness)
-    const captureUrl = getBusinessJoinUrl(captureCode)
-    const captureQr = await ensureQaBusinessQr(qaBusiness, {
-      purpose: 'business_capture',
-      name: `${qaBusiness.name} customer capture QR`,
-      code: captureCode,
-      targetUrl: captureUrl,
-      metadata: {
-        capture_code: captureCode,
-        capture_url: captureUrl,
-      },
-    })
+    // The Boomerang QR is only PROVISIONED for a business that opted in.
+    //
+    // Hiding the Boomerang surfaces was not enough: this function ran on every
+    // call to /api/portal/qr-context, so merely opening the QR dialog minted a
+    // business_capture QR for a business that had answered "Not right now". The
+    // asset then existed, with a live join URL, for a business that declined the
+    // whole feature. Gating display without gating creation is not an opt-out.
+    const boomerangEnabled = isBoomerangEnabled(qaBusiness.hundredListInterest ?? null)
+    const captureCode = boomerangEnabled ? buildJoinSlug(qaBusiness) : null
+    const captureUrl = captureCode ? getBusinessJoinUrl(captureCode) : null
+    const captureQr = captureCode && captureUrl
+      ? await ensureQaBusinessQr(qaBusiness, {
+          purpose: 'business_capture',
+          name: `${qaBusiness.name} ${ENGAGEMENT_CODES.business_capture.qrLabel}`,
+          code: captureCode,
+          targetUrl: captureUrl,
+          metadata: {
+            capture_code: captureCode,
+            capture_url: captureUrl,
+          },
+        })
+      : null
 
     const networkReferralCode = getQaBusinessNetworkReferralCode(qaBusiness)
     const networkReferralUrl = qaBusiness.branchReferralUrl?.trim()
