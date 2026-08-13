@@ -25,11 +25,13 @@ import {
 } from '@/lib/materials/automation-template'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import {
-  MATERIAL_VISIBILITY_ROLE_OPTIONS,
-  MATERIAL_VISIBILITY_SUBTYPE_OPTIONS,
   getMaterialCustomTags,
   withUpdatedMaterialCustomTags,
 } from '@/lib/materials/material-targeting'
+import {
+  MaterialVisibilityPicker,
+  cleanVisibilitySubtypes,
+} from '@/components/materials/material-visibility-picker'
 import { useMaterialUpdate } from '@/lib/supabase/hooks'
 import type {
   Material,
@@ -91,22 +93,6 @@ export function MaterialEditDialog({
     setFeedback(null)
   }, [material])
 
-  function toggleRoleTag(role: UserRole) {
-    setRoleTags((current) =>
-      current.includes(role)
-        ? current.filter((item) => item !== role)
-        : [...current, role],
-    )
-  }
-
-  function toggleSubtypeTag(subtype: UserRoleSubtype) {
-    setSubtypeTags((current) =>
-      current.includes(subtype)
-        ? current.filter((item) => item !== subtype)
-        : [...current, subtype],
-    )
-  }
-
   function toggleAutomationStakeholderType(stakeholderType: StakeholderType) {
     setAutomationStakeholderTypes((current) =>
       current.includes(stakeholderType)
@@ -121,7 +107,9 @@ export function MaterialEditDialog({
 
     const supportsAutomation = materialSupportsAutomationTemplate(material)
     const nextAutomationEnabled = isAdmin && automationEnabled && supportsAutomation
-    const nextTargetSubtypes = subtypeTags.filter(Boolean) as Exclude<UserRoleSubtype, null>[]
+    // Inert subtypes (owning role not selected) match nobody, so they are not
+    // written back — otherwise stale ones survive every save forever.
+    const nextTargetSubtypes = cleanVisibilitySubtypes(roleTags, subtypeTags)
     const inferredStakeholderTypes = deriveMaterialAutomationStakeholderTypes({
       ...material,
       target_roles: roleTags,
@@ -235,63 +223,14 @@ export function MaterialEditDialog({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
-              <p className="text-sm font-semibold text-surface-900">Visibility tags</p>
-              <p className="mt-1 text-xs text-surface-500">
-                Add more stakeholder roles here to make this material visible in more stakeholder libraries.
-              </p>
-
-              <div className="mt-4 space-y-4">
-                <div>
-                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-surface-500">Stakeholder roles</p>
-                  <div className="flex flex-wrap gap-2">
-                    {MATERIAL_VISIBILITY_ROLE_OPTIONS.map((option) => {
-                      const active = roleTags.includes(option.value)
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => toggleRoleTag(option.value)}
-                          className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                            active
-                              ? 'border-brand-500 bg-brand-50 text-brand-700'
-                              : 'border-surface-200 bg-white text-surface-600 hover:border-brand-300 hover:text-brand-700'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-surface-500">Subtype tags</p>
-                  <div className="flex flex-wrap gap-2">
-                    {MATERIAL_VISIBILITY_SUBTYPE_OPTIONS.map((option) => {
-                      const active = subtypeTags.includes(option.value)
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => toggleSubtypeTag(option.value)}
-                          className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                            active
-                              ? 'border-success-500 bg-success-50 text-success-700'
-                              : 'border-surface-200 bg-white text-surface-600 hover:border-success-300 hover:text-success-700'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <p className="mt-1 text-xs text-surface-500">
-                    Use subtype tags when a material should only show for a narrower audience like interns, volunteers, schools, or causes.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <MaterialVisibilityPicker
+              roleTags={roleTags}
+              subtypeTags={subtypeTags}
+              onChange={(next) => {
+                setRoleTags(next.roleTags)
+                setSubtypeTags(next.subtypeTags)
+              }}
+            />
 
             <div className="flex flex-wrap gap-2">
               {roleTags.length > 0 && roleTags.map((role) => (

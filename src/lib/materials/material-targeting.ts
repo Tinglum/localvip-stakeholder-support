@@ -39,6 +39,56 @@ export const MATERIAL_VISIBILITY_SUBTYPE_OPTIONS = Object.values(STAKEHOLDER_SUB
   .flat()
   .filter((option, index, array) => array.findIndex((item) => item.value === option.value) === index)
 
+/**
+ * Which role each subtype belongs to. Subtype values are unique across shells
+ * (super/internal are Admin, intern/volunteer are Field, school/cause are
+ * Community), so a flat reverse map is exact.
+ *
+ * This is the fact the old flat subtype row hid: a subtype is not a free-floating
+ * audience, it belongs to exactly one role.
+ */
+const SUBTYPE_TO_ROLE = Object.entries(STAKEHOLDER_SUBTYPE_OPTIONS).reduce(
+  (map, [shell, options]) => {
+    options.forEach((option) => { map[option.value] = shell as UserRole })
+    return map
+  },
+  {} as Record<string, UserRole>,
+)
+
+/** The subtype chips a role owns. Empty for Business, Launch Partner, Influencer. */
+export function getSubtypeOptionsForVisibilityRole(role: UserRole) {
+  return STAKEHOLDER_SUBTYPE_OPTIONS[role as keyof typeof STAKEHOLDER_SUBTYPE_OPTIONS] || []
+}
+
+/** The selected subtypes that narrow this particular role. */
+export function getSelectedSubtypesForRole(
+  role: UserRole,
+  subtypeTags: Array<UserRoleSubtype>,
+) {
+  return subtypeTags.filter((subtype) => !!subtype && SUBTYPE_TO_ROLE[subtype] === role)
+}
+
+/**
+ * Selected subtypes whose owning role is NOT selected. These do nothing at all -
+ * the role check rejects those viewers before subtype is ever considered - so
+ * they are worth saying out loud rather than leaving as a silent no-op.
+ */
+export function getInertSubtypeTags(
+  roleTags: UserRole[],
+  subtypeTags: Array<UserRoleSubtype>,
+) {
+  return subtypeTags.filter((subtype) => {
+    if (!subtype) return false
+    const owner = SUBTYPE_TO_ROLE[subtype]
+    return !!owner && !roleTags.includes(owner)
+  }) as Array<Exclude<UserRoleSubtype, null>>
+}
+
+/** Display label for a subtype value. */
+export function getSubtypeLabel(subtype: Exclude<UserRoleSubtype, null>) {
+  return SUBTYPE_LABELS[subtype] || subtype
+}
+
 function normalizeMaterialRole(role: UserRole) {
   return LEGACY_ROLE_TO_CANONICAL[role] || role
 }
@@ -121,8 +171,17 @@ export function materialMatchesTargeting(material: Material, profile: Profile) {
   const roleMatches = targetRoles.includes(shellRole) || targetRoles.includes(normalizeMaterialRole(profile.role))
   if (!roleMatches) return false
 
-  const targetSubtypes = (material.target_subtypes || []).filter(Boolean)
-  if (targetSubtypes.length === 0) return true
+  // Subtypes narrow the role they BELONG TO, and only that role.
+  //
+  // They used to be one flat AND filter applied to everyone who passed the role
+  // check, which meant tagging Admin+Super also hid the material from every
+  // Business user — Business has no subtype at all, so `!!access.subtype` was
+  // false and the material vanished. Selecting a role and then any subtype chip
+  // silently cancelled that role out. Now a role with no subtype chips of its
+  // own is simply not narrowed.
+  const matchedRole = targetRoles.includes(shellRole) ? shellRole : normalizeMaterialRole(profile.role)
+  const narrowing = getSelectedSubtypesForRole(matchedRole, material.target_subtypes || [])
+  if (narrowing.length === 0) return true
 
-  return !!access.subtype && targetSubtypes.includes(access.subtype)
+  return !!access.subtype && narrowing.includes(access.subtype)
 }
