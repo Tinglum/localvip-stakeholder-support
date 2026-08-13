@@ -254,6 +254,10 @@ export function BusinessExecutionOverview({
   const [engagementAssets, setEngagementAssets] = React.useState<BusinessEngagementAssets | null>(null)
   const [engagementAssetStatus, setEngagementAssetStatus] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [engagementAssetError, setEngagementAssetError] = React.useState<string | null>(null)
+  // Partial-failure warnings, tracked apart from engagementAssetError so a code clash is
+  // never rendered as "the QR failed".
+  const [engagementCodeIssue, setEngagementCodeIssue] = React.useState<string | null>(null)
+  const [engagementQrIssue, setEngagementQrIssue] = React.useState<string | null>(null)
   const [hundredListBusy, setHundredListBusy] = React.useState(false)
 
   const qaBranchReferralUrl = (workspaceBusiness as { branch_referral_url?: string | null }).branch_referral_url || ''
@@ -328,6 +332,8 @@ export function BusinessExecutionOverview({
     if (!writeBusinessId) return
     setEngagementAssetStatus('loading')
     setEngagementAssetError(null)
+    setEngagementCodeIssue(null)
+    setEngagementQrIssue(null)
     try {
       const response = await fetch(`/api/crm/businesses/${writeBusinessId}/execution`, {
         method: 'POST',
@@ -337,6 +343,8 @@ export function BusinessExecutionOverview({
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error || 'Assets could not be loaded.')
       setEngagementAssets(body as BusinessEngagementAssets)
+      setEngagementCodeIssue(typeof body.codeIssue === 'string' ? body.codeIssue : null)
+      setEngagementQrIssue(typeof body.qrIssue === 'string' ? body.qrIssue : null)
       setEngagementAssetStatus('ready')
       refetchQrCodes({ silent: true })
     } catch (error) {
@@ -1429,6 +1437,8 @@ export function BusinessExecutionOverview({
         engagementAssets={engagementAssets}
         assetStatus={engagementAssetStatus}
         assetError={engagementAssetError}
+        codeIssue={engagementCodeIssue}
+        qrIssue={engagementQrIssue}
         onEnsureAssets={refreshEngagementAssets}
         engineBusy={engineBusy}
         regenBusy={regenBusy}

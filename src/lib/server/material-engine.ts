@@ -323,18 +323,54 @@ export async function ensureStakeholderCodesAndQrCode(
 
   const existingCodes = await getStakeholderCode(supabase, stakeholderId)
   const defaultCodes = await buildDefaultStakeholderCodes(supabase, stakeholder, existingCodes)
-  const saved = await upsertStakeholderCodes(supabase, stakeholderId, {
-    referralCode: defaultCodes.referralCode,
-    connectionCode: defaultCodes.connectionCode,
-  })
-  const context = await buildStakeholderMaterialContext(supabase, stakeholder, saved.codes)
-  const qrCode = await ensureStakeholderQrCode(supabase, context, actorId)
+
+  // Codes and the QR are separate concerns. This used to run the code upsert first and let
+  // it throw, which aborted the whole call before the QR was ever created — so a code clash
+  // showed up in the UI as a permanently "Creating" QR. Keep going and report both outcomes.
+  let codes = existingCodes
+  let joinUrl = existingCodes?.join_url || ''
+  let codeError: string | null = null
+
+  try {
+    const saved = await upsertStakeholderCodes(supabase, stakeholderId, {
+      referralCode: defaultCodes.referralCode,
+      connectionCode: defaultCodes.connectionCode,
+    })
+    codes = saved.codes
+    joinUrl = saved.joinUrl
+  } catch (error) {
+    codeError = extractErrorMessage(error, 'Stakeholder codes could not be saved.')
+  }
+
+  // The QR is keyed off the connection code, so it can only be provisioned when we have a
+  // code to key it on — either the newly saved set or the pre-existing one.
+  let qrCode: Awaited<ReturnType<typeof ensureStakeholderQrCode>> | null = null
+  let qrError: string | null = null
+
+  if (codes) {
+    try {
+      const context = await buildStakeholderMaterialContext(supabase, stakeholder, codes)
+      qrCode = await ensureStakeholderQrCode(supabase, context, actorId)
+      joinUrl = joinUrl || context.joinUrl
+    } catch (error) {
+      qrError = extractErrorMessage(error, 'The QR code could not be prepared.')
+    }
+  } else {
+    qrError = 'No connection code is stored yet, so the QR code could not be prepared.'
+  }
+
+  // Only a total failure is fatal; a partial result still gives the operator something usable.
+  if (codeError && qrError) {
+    throw new Error(codeError)
+  }
 
   return {
     stakeholder,
-    codes: saved.codes,
-    joinUrl: saved.joinUrl,
+    codes,
+    joinUrl,
     qrCode,
+    codeError,
+    qrError,
   }
 }
 
@@ -363,7 +399,11 @@ export async function upsertStakeholderCodes(
     stakeholderId,
   )
   if (referralConflict) {
-    throw new Error(`Referral code "${referralCode}" is already in use.`)
+    throw new Error(
+      `The referral code "${referralCode}" is already in use by a different stakeholder record. `
+      + 'This is a code clash only — the QR code and capture link are not affected. '
+      + 'Set a different referral code for this business, or release the code from the other record.',
+    )
   }
 
   const connectionConflict = await findStakeholderCodeConflict(
@@ -373,7 +413,11 @@ export async function upsertStakeholderCodes(
     stakeholderId,
   )
   if (connectionConflict) {
-    throw new Error(`Connection code "${connectionCode}" is already in use.`)
+    throw new Error(
+      `The connection code "${connectionCode}" is already in use by a different stakeholder record. `
+      + 'This is a code clash only — the QR code and capture link are not affected. '
+      + 'Set a different connection code for this business, or release the code from the other record.',
+    )
   }
 
   const joinUrl = buildStakeholderJoinUrl(stakeholder.type, connectionCode)
@@ -1552,15 +1596,22 @@ async function findStakeholderCodeConflict(
   value: string,
   stakeholderId: string,
 ) {
+  // Deliberately NOT maybeSingle(): that throws when more than one row matches, so a
+  // stale/duplicate stakeholder_codes row turned a survivable situation into a hard
+  // failure ("code already in use") that also aborted QR provisioning. Fetch a small
+  // page instead and filter in JS so duplicates degrade into a normal conflict answer.
   const { data } = await supabase
     .from('stakeholder_codes')
     .select('stakeholder_id')
     .ilike(column, value)
-    .maybeSingle()
+    .limit(10)
 
-  const existingRow = (data || null) as { stakeholder_id: string } | null
-  if (!existingRow) return null
-  return existingRow.stakeholder_id === stakeholderId ? null : existingRow.stakeholder_id
+  const rows = (data || []) as Array<{ stakeholder_id: string | null }>
+  // Exclude our own row(s) — a stakeholder must never collide with itself. Rows with no
+  // stakeholder_id are orphans we cannot name; leave those to the DB unique constraint,
+  // which already produces a specific message via getStakeholderCodeSaveErrorMessage.
+  const conflict = rows.find((row) => row.stakeholder_id && row.stakeholder_id !== stakeholderId)
+  return conflict?.stakeholder_id || null
 }
 
 function getStakeholderCodeSaveErrorMessage(error: unknown, action: 'insert' | 'update') {

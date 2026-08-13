@@ -449,6 +449,10 @@ export interface MaterialsQrModalProps {
   } | null
   assetStatus?: 'idle' | 'loading' | 'ready' | 'error'
   assetError?: string | null
+  /** Referral/connection code problem. Never rendered as a QR problem. */
+  codeIssue?: string | null
+  /** QR provisioning problem, reported independently of codeIssue. */
+  qrIssue?: string | null
   onEnsureAssets?: () => Promise<void>
   onGenerateMaterials: (assetKind: 'customer_capture' | 'network_referral') => Promise<void>
   onRegenerateAll: (assetKind: 'customer_capture' | 'network_referral') => Promise<void>
@@ -468,6 +472,8 @@ export function MaterialsQrModal({
   engagementAssets = null,
   assetStatus = 'idle',
   assetError = null,
+  codeIssue = null,
+  qrIssue = null,
   onEnsureAssets,
   onGenerateMaterials,
   onRegenerateAll,
@@ -606,13 +612,16 @@ export function MaterialsQrModal({
               Preparing the separate customer-capture and network-referral assets...
             </div>
           )}
-          {assetStatus === 'ready' && (
+          {assetStatus === 'ready' && !codeIssue && !qrIssue && (
             <SuccessBanner text="Customer capture and network referral assets are ready." />
           )}
           {assetStatus === 'error' && (
             <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-800" role="alert">
-              <p className="font-semibold">Engagement assets could not be prepared.</p>
-              <p className="mt-1">{assetError || 'Try the asset action again.'}</p>
+              <p className="font-semibold">Automatic check on open: engagement assets could not be prepared.</p>
+              <p className="mt-1">
+                This check runs by itself whenever this panel opens, so nothing you just did caused it.
+              </p>
+              <p className="mt-1">{assetError || 'Use "Retry assets" below to run the check again.'}</p>
             </div>
           )}
 
@@ -634,6 +643,18 @@ export function MaterialsQrModal({
                 {assetStatus === 'error' ? 'Retry assets' : captureCode && effectiveJoinUrl ? 'Refresh capture assets' : 'Create capture assets'}
               </Button>
             </div>
+            {/* Code clashes live with the code fields, never beside the QR tiles — operators
+                previously read "code already in use" as the QR being in use. */}
+            {codeIssue && (
+              <div className="rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm text-amber-900" role="alert">
+                <p className="font-semibold">Referral / connection code needs attention</p>
+                <p className="mt-1 text-xs text-surface-600">
+                  Found by the automatic check that runs when this panel opens. It is about the text codes
+                  below, not the QR code or the capture link.
+                </p>
+                <p className="mt-1">{codeIssue}</p>
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-surface-600">Capture code</label>
@@ -666,6 +687,7 @@ export function MaterialsQrModal({
                 </p>
                 {qrDestination && <p className="mt-3 break-all text-xs text-surface-600">{qrDestination}</p>}
                 {qrPreviewError && <p className="mt-2 text-xs font-medium text-danger-700" role="alert">{qrPreviewError}</p>}
+                {qrIssue && <p className="mt-2 text-xs font-medium text-danger-700" role="alert">{qrIssue}</p>}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {displayedQrImageUrl && (
                     <a href={displayedQrImageUrl} target="_blank" rel="noopener noreferrer">

@@ -418,18 +418,23 @@ export async function POST(
         context.stakeholder.id,
         context.localProfileId,
       )
+      // codeIssue / qrIssue are partial-failure warnings, not request failures: the caller
+      // still gets whatever was provisioned. Keeping them apart stops a code clash from
+      // being presented as a broken QR.
       return NextResponse.json({
         success: true,
         customerCapture: {
-          captureCode: result.codes.connection_code,
+          captureCode: result.codes?.connection_code ?? null,
           captureUrl: result.joinUrl,
           qrCode: result.qrCode,
         },
         networkReferral: {
-          networkReferralCode: result.codes.referral_code,
+          networkReferralCode: result.codes?.referral_code ?? null,
           networkReferralUrl: null,
           qrCode: null,
         },
+        codeIssue: result.codeError,
+        qrIssue: result.qrError,
       })
     }
 
