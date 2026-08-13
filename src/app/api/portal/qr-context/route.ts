@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { resolvePortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
+import { resolveScopedPortalBusinessId } from '@/lib/server/portal-business'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { ensureQaBusinessEngagementAssets } from '@/lib/server/qa-business-stakeholders'
 import { isBoomerangEnabled } from '@/lib/engagement-codes'
@@ -10,13 +10,14 @@ export const dynamic = 'force-dynamic'
 // The dynamic business details used to fill a templated QR (link / logo / phone)
 // when a business generates a material. Mirrors the backend's join-URL logic so
 // the client can preview the exact QR that will be stamped.
-export async function GET() {
+// `businessId` is optional: the admin Materials Library is not business-scoped,
+// so it names the business it is generating for. Verified, never trusted as-is.
+export async function GET(request: NextRequest) {
   const session = await getAuthenticatedSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
-  const businessId = await resolvePortalBusinessId(session)
-  if (businessId == null) {
-    return NextResponse.json({ error: noPortalBusinessError(session) }, { status: 400 })
-  }
+  const scope = await resolveScopedPortalBusinessId(session, request.nextUrl.searchParams.get('businessId'))
+  if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status })
+  const businessId = scope.businessId
   try {
     const assets = await ensureQaBusinessEngagementAssets(String(businessId))
     const b = assets.business as unknown as Record<string, unknown>

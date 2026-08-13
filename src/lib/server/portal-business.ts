@@ -91,6 +91,59 @@ export async function userBelongsToBusinessAccount(userId: number, accountId: nu
   return accounts.some((account) => account.accountId === accountId)
 }
 
+/**
+ * Does this session carry admin authority *right now*?
+ *
+ * While impersonating, the session IS the business user (`profile.role` is the
+ * target's), and admin authority must not leak back in — otherwise a view-as
+ * session could name a business the target does not belong to.
+ */
+export function isPortalAdminSession(session: ResolvedAuthSession): boolean {
+  if (session.viewingAs) return false
+  const role = session.profile?.role ?? null
+  return role === 'admin' || role === 'super_admin' || role === 'internal_admin'
+}
+
+export type PortalBusinessScope =
+  | { ok: true; businessId: number }
+  | { ok: false; error: string; status: 400 | 403 }
+
+/**
+ * Resolve the business a portal endpoint should act on, allowing an explicit id.
+ *
+ * The portal endpoints were session-scoped only, which made them unusable from
+ * the admin Materials Library: an admin has no business of their own, so every
+ * call 400'd and the generate dialog lost its logo, join link and referral code
+ * with no way to say which business it should have used.
+ *
+ * `requested` arrives from the browser and is never taken on trust: an admin may
+ * name any business, but anyone else only their own memberships (checked against
+ * `fetchPortalBusinessAccounts`, the same authority the login-as flow uses).
+ * With no `requested`, behaviour is exactly the old session-scoped resolution.
+ */
+export async function resolveScopedPortalBusinessId(
+  session: ResolvedAuthSession,
+  requested: unknown,
+): Promise<PortalBusinessScope> {
+  const hasRequest = requested != null && String(requested).trim() !== ''
+  const explicit = hasRequest ? toPositiveInt(requested) : null
+
+  if (!hasRequest) {
+    const own = await resolvePortalBusinessId(session)
+    if (own == null) return { ok: false, error: noPortalBusinessError(session), status: 400 }
+    return { ok: true, businessId: own }
+  }
+  if (explicit == null) {
+    return { ok: false, error: 'That business id is not valid.', status: 400 }
+  }
+  if (isPortalAdminSession(session)) return { ok: true, businessId: explicit }
+
+  const userId = resolvePortalUserId(session)
+  if (userId == null) return { ok: false, error: noPortalBusinessError(session), status: 400 }
+  if (await userBelongsToBusinessAccount(userId, explicit)) return { ok: true, businessId: explicit }
+  return { ok: false, error: 'You do not have access to that business.', status: 403 }
+}
+
 const PORTAL_BUSINESS_COOKIE_MAX_AGE = 60 * 60 * 8
 
 /** Cookie attributes for the portal-business selection. httpOnly: it selects data scope. */

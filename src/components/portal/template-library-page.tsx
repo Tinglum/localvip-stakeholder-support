@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { ENGAGEMENT_CODES } from '@/lib/engagement-codes'
+import { useAuth } from '@/lib/auth/context'
+import { useBusinesses } from '@/lib/supabase/hooks'
 
 interface PortalTemplate {
   id: number | string
@@ -201,6 +203,22 @@ function TemplateGenerateDialog({
   onGenerated: (templateId: number | string) => void
 }) {
   const open = !!template
+  // This dialog is also rendered by the ADMIN Materials Library, which is not
+  // business-scoped. Every /api/portal call below resolves the business from the
+  // signed-in user, so for an admin (who has no business) they all failed — no
+  // logo, no join link, no referral code, and the styled options silently blank.
+  // An admin therefore picks the business the material is being made for; a
+  // business user never sees the picker and nothing about their flow changes.
+  const { isAdmin, businessId: ownBusinessId } = useAuth()
+  const needsBusinessPicker = isAdmin && !ownBusinessId
+  const [pickedBusinessId, setPickedBusinessId] = React.useState('')
+  const { data: pickableBusinesses, loading: businessesLoading } = useBusinesses(undefined, {
+    enabled: needsBusinessPicker,
+  })
+  const scopedBusinessId = needsBusinessPicker ? pickedBusinessId : ''
+  // Appended to every portal call so the server scopes to the chosen business.
+  const scopeQuery = scopedBusinessId ? `?businessId=${encodeURIComponent(scopedBusinessId)}` : ''
+
   const [qrCodes, setQrCodes] = React.useState<PortalQr[]>([])
   const [qrLoading, setQrLoading] = React.useState(false)
   const [qrError, setQrError] = React.useState<string | null>(null)
@@ -238,8 +256,15 @@ function TemplateGenerateDialog({
     setCtxError(null)
     setPreview('')
     setCtx(null)
+    setQrCodes([])
+    setQrTemplates([])
+    if (needsBusinessPicker && !scopedBusinessId) {
+      // Nothing to load yet, and saying so beats an empty panel with no reason.
+      setCtxError('Choose which business this material is for.')
+      return
+    }
     setQrLoading(true)
-    fetch('/api/portal/qrcodes', { cache: 'no-store' })
+    fetch(`/api/portal/qrcodes${scopeQuery}`, { cache: 'no-store' })
       .then(async (r) => {
         const j = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(j.error || 'Could not load your QR codes.')
@@ -251,7 +276,7 @@ function TemplateGenerateDialog({
     // A silent failure here is what produced "Leads to -" with no explanation:
     // ctx stayed null, so the standard option had no link, no preview and no
     // reason given. Surface it like the QR-code list already does.
-    fetch('/api/portal/qr-context', { cache: 'no-store' })
+    fetch(`/api/portal/qr-context${scopeQuery}`, { cache: 'no-store' })
       .then(async (r) => {
         const j = await r.json().catch(() => null)
         if (!r.ok || !j || j.error) {
@@ -279,7 +304,7 @@ function TemplateGenerateDialog({
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (j && Array.isArray(j.templates)) setQrTemplates(j.templates) })
       .catch(() => {})
-  }, [open])
+  }, [open, needsBusinessPicker, scopedBusinessId, scopeQuery])
 
   React.useEffect(() => {
     if (!open || !initialQrId || qrLoading) return
@@ -371,13 +396,19 @@ function TemplateGenerateDialog({
     setGenerating(true)
     setGenError(null)
     try {
+      if (needsBusinessPicker && !scopedBusinessId) {
+        throw new Error('Choose which business this material is for.')
+      }
       const payload: Record<string, unknown> = { templateId: String(template.id) }
+      // The admin surface has no session business, so name the picked one. The
+      // route verifies it against the caller's authority before using it.
+      if (scopedBusinessId) payload.businessId = scopedBusinessId
 
       if (choice === 'default' && ctx?.standardQrId != null) {
         payload.qrCodeId = ctx.standardQrId
       } else if (choice === 'new') {
         if (!newUrl.trim()) throw new Error('Enter a destination URL for the new QR code.')
-        const cRes = await fetch('/api/portal/qrcodes', {
+        const cRes = await fetch(`/api/portal/qrcodes${scopeQuery}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: newName.trim(), targetUrl: newUrl.trim() }),
@@ -445,6 +476,31 @@ function TemplateGenerateDialog({
 
           {/* QR selector */}
           <div className="flex flex-col gap-3">
+            {needsBusinessPicker && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-surface-600" htmlFor="tpl-gen-business">
+                  Business this material is for <span className="text-danger-500">*</span>
+                </label>
+                <select
+                  id="tpl-gen-business"
+                  value={pickedBusinessId}
+                  onChange={(e) => setPickedBusinessId(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-surface-300 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="">
+                    {businessesLoading ? 'Loading businesses…' : 'Select a business…'}
+                  </option>
+                  {pickableBusinesses.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-surface-500">
+                  Your admin account is not a business, so the logo, referral code and join link
+                  come from the business you pick here.
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 text-sm font-semibold text-surface-900">
               <QrCode className="h-4 w-4 text-brand-500" /> QR code to add
             </div>
@@ -504,7 +560,9 @@ function TemplateGenerateDialog({
                 onClick={() => setChoice('default')}
                 title={ENGAGEMENT_CODES.business_network_referral.qrLabel}
                 subtitle={ctxError
-                  ? 'Your LocalVIP referral link could not be loaded'
+                  // Show the server's actual reason: "could not be loaded" gave no
+                  // clue that the real problem was an unresolvable business.
+                  ? ctxError
                   : `${ENGAGEMENT_CODES.business_network_referral.outcome}${ctx?.referralCode ? ` · Code ${ctx.referralCode}` : ''}`}
               />
 

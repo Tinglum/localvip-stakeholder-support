@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
-import { resolvePortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
+import { resolveScopedPortalBusinessId } from '@/lib/server/portal-business'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,13 +47,13 @@ function mapQr(r: Record<string, unknown>): PortalQr {
 
 // GET: the active QR codes belonging to the session's business, so a business
 // can choose which QR to stamp on a generated material.
-export async function GET() {
+// `businessId` is optional and verified — see /api/portal/qr-context.
+export async function GET(request: NextRequest) {
   const session = await getAuthenticatedSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
-  const businessId = await resolvePortalBusinessId(session)
-  if (businessId == null) {
-    return NextResponse.json({ error: noPortalBusinessError(session) }, { status: 400 })
-  }
+  const scope = await resolveScopedPortalBusinessId(session, request.nextUrl.searchParams.get('businessId'))
+  if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status })
+  const businessId = scope.businessId
   try {
     const entityTypes = ['business', 'business_custom', 'business_capture', 'business_network_referral']
     const responses = await Promise.all(entityTypes.map(async (entityType) => {
@@ -80,11 +80,15 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const session = await getAuthenticatedSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
-  const businessId = await resolvePortalBusinessId(session)
-  if (businessId == null) {
-    return NextResponse.json({ error: noPortalBusinessError(session) }, { status: 400 })
-  }
-  const body = await request.json().catch(() => ({})) as { name?: string; targetUrl?: string }
+  const body = await request.json().catch(() => ({})) as { name?: string; targetUrl?: string; businessId?: string | number }
+  // Accepted from either place so the client can post JSON without also having to
+  // build a query string; both go through the same verification.
+  const scope = await resolveScopedPortalBusinessId(
+    session,
+    request.nextUrl.searchParams.get('businessId') ?? body.businessId ?? null,
+  )
+  if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status })
+  const businessId = scope.businessId
   const targetUrl = (body.targetUrl || '').trim()
   const name = (body.name || '').trim()
   if (!targetUrl) {

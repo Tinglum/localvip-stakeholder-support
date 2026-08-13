@@ -3,7 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { generateMaterialsForStakeholder } from '@/lib/server/material-engine'
-import { resolvePortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
+import { resolveScopedPortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
 import type { Stakeholder } from '@/lib/types/database'
 
 export async function POST(request: NextRequest) {
@@ -39,15 +39,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Choose either a business or cause account.' }, { status: 400 })
     }
 
-    // A portal caller may only generate for the business resolved from its
-    // authenticated session. Never forward a caller-supplied account id without
-    // binding it to that scope.
+    // Never forward a caller-supplied account id without binding it to the
+    // caller's authority. A business user is still limited to its own memberships;
+    // an admin (who has no business of its own, and so used to be locked out of
+    // generating from the admin Materials Library) may name any business.
     if (businessId) {
-      const requestedBusinessId = Number(businessId)
-      const resolvedBusinessId = await resolvePortalBusinessId(session)
-      if (!Number.isFinite(requestedBusinessId) || resolvedBusinessId !== requestedBusinessId) {
-        return NextResponse.json({ error: 'You do not have access to that business.' }, { status: 403 })
-      }
+      const scope = await resolveScopedPortalBusinessId(session, businessId)
+      if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status })
+      businessId = String(scope.businessId)
     }
 
     // Cause generation from this generic portal endpoint is currently an
@@ -70,8 +69,8 @@ export async function POST(request: NextRequest) {
       // Shared resolver — respects the business this portal session was launched
       // from rather than re-deriving it from the user (which always picks the same
       // one for an owner of several businesses).
-      const resolvedId = await resolvePortalBusinessId(session)
-      if (resolvedId != null) businessId = String(resolvedId)
+      const resolved = await resolveScopedPortalBusinessId(session, null)
+      if (resolved.ok) businessId = String(resolved.businessId)
     }
     if (!businessId && !causeId) {
       return NextResponse.json({ error: noPortalBusinessError(session) }, { status: 400 })
