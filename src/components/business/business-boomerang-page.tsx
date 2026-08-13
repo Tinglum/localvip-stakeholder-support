@@ -22,8 +22,9 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { BusinessMy100ListPage } from '@/components/business/business-my-100-list-page'
+import { BusinessQrMaterialCard } from '@/components/business/business-qr-material-card'
 import { useAuth } from '@/lib/auth/context'
-import { isBoomerangEnabledForBusiness, resolveScopedBusiness } from '@/lib/business-portal'
+import { getBusinessQaAccountId, isBoomerangEnabledForBusiness, resolveScopedBusiness } from '@/lib/business-portal'
 import { useBusinesses } from '@/lib/supabase/hooks'
 import { BOOMERANG_SURFACE, ENGAGEMENT_CODES } from '@/lib/engagement-codes'
 
@@ -38,6 +39,10 @@ export function BusinessBoomerangPage() {
   const { data: businesses, loading } = useBusinesses(businessFilters)
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
   const enabled = isBoomerangEnabledForBusiness(business)
+  // Same resolution order the QR card used at its old home in My materials:
+  // prefer the QA account id, then the business row's own id, then the
+  // profile's business id as a last resort.
+  const businessId = getBusinessQaAccountId(business) || (business?.id ? String(business.id) : profile.business_id || null)
 
   // Deciding while the business row is still in flight would flash the refusal
   // at a business that DID opt in, so nothing is claimed until it has loaded.
@@ -102,6 +107,10 @@ export function BusinessBoomerangPage() {
           </p>
         </div>
       </div>
+
+      {/* The gate (opted in) is already enforced by this branch, so the card
+          takes no gate of its own — only the id it needs to fetch the QR. */}
+      {businessId ? <BusinessQrMaterialCard businessId={businessId} /> : null}
 
       <BusinessMy100ListPage embedded />
     </div>
