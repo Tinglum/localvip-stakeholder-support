@@ -19,10 +19,11 @@
 import * as React from 'react'
 import { AlertTriangle } from 'lucide-react'
 import {
-  MATERIAL_VISIBILITY_ROLE_OPTIONS,
+  MATERIAL_VISIBILITY_ROLE_GROUPS,
   getInertSubtypeTags,
   getSubtypeLabel,
   getSubtypeOptionsForVisibilityRole,
+  type MaterialVisibilityRoleGroup,
 } from '@/lib/materials/material-targeting'
 import type { UserRole, UserRoleSubtype } from '@/lib/types/database'
 
@@ -35,17 +36,23 @@ export function MaterialVisibilityPicker({
   subtypeTags: UserRoleSubtype[]
   onChange: (next: { roleTags: UserRole[]; subtypeTags: UserRoleSubtype[] }) => void
 }) {
-  function toggleRole(role: UserRole) {
-    const selected = roleTags.includes(role)
-    if (!selected) {
-      onChange({ roleTags: [...roleTags, role], subtypeTags })
+  // A group chip (e.g. Enablers = Field + Launch Partner + Influencer) toggles
+  // ALL of its roles together. "Active" means every role in the group is
+  // present - a material tagged with only one of the three by the old,
+  // ungrouped picker shows the chip as unselected until re-saved, which is
+  // correct: it is genuinely narrower than the group, not equal to it.
+  function toggleGroup(group: MaterialVisibilityRoleGroup) {
+    const allSelected = group.roles.every((role) => roleTags.includes(role))
+    if (!allSelected) {
+      const missing = group.roles.filter((role) => !roleTags.includes(role))
+      onChange({ roleTags: [...roleTags, ...missing], subtypeTags })
       return
     }
-    // Deselecting a role drops its subtypes too. Leaving them behind is how a
-    // chip ends up selected with no effect and no explanation.
-    const owned = new Set(getSubtypeOptionsForVisibilityRole(role).map((option) => option.value))
+    // Deselecting drops every member role's subtypes too. Leaving them behind
+    // is how a chip ends up selected with no effect and no explanation.
+    const owned = new Set(group.roles.flatMap((role) => getSubtypeOptionsForVisibilityRole(role).map((o) => o.value)))
     onChange({
-      roleTags: roleTags.filter((item) => item !== role),
+      roleTags: roleTags.filter((role) => !group.roles.includes(role)),
       subtypeTags: subtypeTags.filter((item) => !item || !owned.has(item)),
     })
   }
@@ -70,12 +77,12 @@ export function MaterialVisibilityPicker({
       </p>
 
       <div className="mt-4 space-y-2">
-        {MATERIAL_VISIBILITY_ROLE_OPTIONS.map((option) => {
-          const active = roleTags.includes(option.value)
-          const subtypeOptions = getSubtypeOptionsForVisibilityRole(option.value)
+        {MATERIAL_VISIBILITY_ROLE_GROUPS.map((group) => {
+          const active = group.roles.every((role) => roleTags.includes(role))
+          const subtypeOptions = group.roles.flatMap((role) => getSubtypeOptionsForVisibilityRole(role))
           return (
             <div
-              key={option.value}
+              key={group.key}
               className={`rounded-xl border p-3 transition-colors ${
                 active ? 'border-brand-300 bg-white' : 'border-surface-200 bg-white/60'
               }`}
@@ -84,26 +91,28 @@ export function MaterialVisibilityPicker({
                 <button
                   type="button"
                   aria-pressed={active}
-                  onClick={() => toggleRole(option.value)}
+                  onClick={() => toggleGroup(group)}
                   className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
                     active
                       ? 'border-brand-500 bg-brand-50 text-brand-700'
                       : 'border-surface-200 bg-white text-surface-600 hover:border-brand-300 hover:text-brand-700'
                   }`}
                 >
-                  {option.label}
+                  {group.label}
                 </button>
                 {active && subtypeOptions.length === 0 ? (
-                  <span className="text-xs text-surface-500">Everyone in this role</span>
+                  <span className="text-xs text-surface-500">
+                    {group.roles.length > 1 ? 'Everyone in these roles' : 'Everyone in this role'}
+                  </span>
                 ) : null}
               </div>
 
-              {/* A role's subtypes only exist once the role itself is selected —
-                  they cannot narrow a role that is not targeted. */}
+              {/* A group's subtypes only exist once the group itself is selected —
+                  they cannot narrow a group that is not targeted. */}
               {active && subtypeOptions.length > 0 ? (
                 <div className="mt-3 border-t border-surface-100 pt-3">
                   <p className="text-xs text-surface-500">
-                    Optional: show only to some {option.label.toLowerCase()} users. Leave these off for all of them.
+                    Optional: show only to some {group.label.toLowerCase()} users. Leave these off for all of them.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {subtypeOptions.map((subtype) => {

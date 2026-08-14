@@ -30,10 +30,38 @@ const SUBTYPE_LABELS: Record<Exclude<UserRoleSubtype, null>, string> = {
   cause: 'Cause',
 }
 
+/** Individual-role label lookup. Kept for material_matches/label logic; the
+ *  picker itself renders MATERIAL_VISIBILITY_ROLE_GROUPS instead. */
 export const MATERIAL_VISIBILITY_ROLE_OPTIONS = CANONICAL_STAKEHOLDER_ROLES.map((role) => ({
   value: role.value,
   label: role.label,
 }))
+
+export interface MaterialVisibilityRoleGroup {
+  /** Stable key for the chip. Equal to the sole role's value for a single-role group. */
+  key: string
+  label: string
+  /** The individual UserRole values this chip represents in target_roles. */
+  roles: UserRole[]
+}
+
+/**
+ * Field, Launch Partner and Influencer are grouped into one "Enablers" chip.
+ * None of the three IS a business or a cause - they work on behalf of one,
+ * which is exactly what left them showing as three separate, thin, easy-to-miss
+ * chips with no shared identity on screen. Grouped, they read as what they are:
+ * the people who act for a business or cause rather than being one.
+ *
+ * This is presentation only. `target_roles` still stores the individual role
+ * values - materialMatchesTargeting is untouched, and a material tagged only
+ * `field` by the old ungrouped UI still matches a Field viewer correctly.
+ */
+export const MATERIAL_VISIBILITY_ROLE_GROUPS: MaterialVisibilityRoleGroup[] = [
+  { key: 'admin', label: 'Admin', roles: ['admin'] },
+  { key: 'business', label: 'Business', roles: ['business'] },
+  { key: 'enablers', label: 'Enablers', roles: ['field', 'launch_partner', 'influencer'] },
+  { key: 'community', label: 'Community', roles: ['community'] },
+]
 
 export const MATERIAL_VISIBILITY_SUBTYPE_OPTIONS = Object.values(STAKEHOLDER_SUBTYPE_OPTIONS)
   .flat()
@@ -136,17 +164,23 @@ export function withUpdatedMaterialCustomTags(
 }
 
 export function getMaterialVisibilityRoleLabels(material: Material) {
-  const seen = new Set<string>()
+  const tagged = new Set((material.target_roles || []).map(normalizeMaterialRole))
   const labels: string[] = []
 
-  ;(material.target_roles || []).forEach((role) => {
-    const canonical = normalizeMaterialRole(role)
-    if (seen.has(canonical)) return
-    seen.add(canonical)
-    labels.push(
-      MATERIAL_VISIBILITY_ROLE_OPTIONS.find((option) => option.value === canonical)?.label
-      || canonical
-    )
+  // A group whose every role is tagged shows as one label ("Enablers") rather
+  // than three. A material saved under the old ungrouped picker with only ONE
+  // of the group's roles still shows that role by its own name below - it is
+  // genuinely narrower than "Enablers", and collapsing it would overstate who
+  // can see it.
+  MATERIAL_VISIBILITY_ROLE_GROUPS.forEach((group) => {
+    if (group.roles.every((role) => tagged.has(role))) {
+      labels.push(group.label)
+      group.roles.forEach((role) => tagged.delete(role))
+    }
+  })
+
+  tagged.forEach((role) => {
+    labels.push(MATERIAL_VISIBILITY_ROLE_OPTIONS.find((option) => option.value === role)?.label || role)
   })
 
   return labels
