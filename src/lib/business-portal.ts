@@ -180,12 +180,28 @@ export function isBusinessPendingLiveReview(business: Business | null | undefine
   return getBusinessPortalActivationReview(business).state === 'pending'
 }
 
+/**
+ * Which business a business-portal surface is scoped to. Returns null - never
+ * a guess - when the profile does not positively resolve to exactly one.
+ *
+ * The trailing `|| businesses[0]` used to be here for a caller with no
+ * business_id and no ownership match. For a genuine business user that never
+ * happens, so it was silent for years - but a super admin has no business_id
+ * and owns nothing, and every /portal/* route allows admin through
+ * (`canAccessPath`). Loading the page then silently attached the admin's
+ * session to whatever business happened to be first in an unfiltered list -
+ * an arbitrary business's Boomerang QR, profile fields, and live-review
+ * submission became editable through a URL nobody chose. All nine callers of
+ * this function already treat null as "nothing to show yet" (an explicit
+ * guard, or a null-safe helper downstream), so returning null instead of a
+ * guess costs nothing and closes that hole.
+ */
 export function resolveScopedBusiness(profile: Profile, businesses: Business[]): Business | null {
   if (profile.business_id) {
     return businesses.find((business) => business.id === profile.business_id) || null
   }
 
-  return businesses.find((business) => business.owner_user_id === profile.id || business.owner_id === profile.id) || businesses[0] || null
+  return businesses.find((business) => business.owner_user_id === profile.id || business.owner_id === profile.id) || null
 }
 
 /** Accepts a numeric id in either number or string form. */
