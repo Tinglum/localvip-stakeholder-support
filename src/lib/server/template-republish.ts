@@ -32,6 +32,36 @@ import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 /** Backend endpoints this feature depends on. See REQUIRED_ENDPOINTS docs below. */
 const TEMPLATE_ENDPOINT = '/api/dashboard/v1/MaterialTemplate'
 
+/**
+ * WHICH TABLE A TEMPLATE ID NAMES
+ * -------------------------------
+ * A generated copy's templateId is ambiguous — it is either a MaterialTemplates
+ * row or a DashboardMaterials row flagged is_template (the "Use This As an
+ * Automation Template" panel in the Materials Library upload dialog). The two
+ * tables have independent id sequences, so id 42 can mean two different designs.
+ *
+ * `dashboard_material` is the path that actually matters: MaterialTemplates has
+ * one unused row on QA, while the materials-library templates are what real
+ * businesses have generated copies from. It is not the default only because
+ * omitting the discriminator has to keep meaning what it meant before.
+ */
+export const TEMPLATE_SOURCES = ['material_template', 'dashboard_material'] as const
+export type TemplateSource = (typeof TEMPLATE_SOURCES)[number]
+export const DEFAULT_TEMPLATE_SOURCE: TemplateSource = 'material_template'
+
+/** Anything unrecognised (or absent) means the MaterialTemplates path. */
+export function normalizeTemplateSource(value: unknown): TemplateSource {
+  return value === 'dashboard_material' ? 'dashboard_material' : DEFAULT_TEMPLATE_SOURCE
+}
+
+/**
+ * Run logs and plans are keyed by BOTH id and source — keying on id alone would
+ * merge the progress of two unrelated templates that happen to share a number.
+ */
+function templateKey(templateId: string | number, source: TemplateSource): string {
+  return `${source}:${templateId}`
+}
+
 /** Default accounts per batch. Small enough that a serverless request finishes. */
 export const REPUBLISH_BATCH_SIZE = 25
 export const REPUBLISH_MAX_BATCH_SIZE = 100
@@ -50,6 +80,8 @@ export interface RepublishTargetSummary {
 export interface RepublishPlan {
   templateId: number
   templateName: string
+  /** Which table templateId names. Echoed by the backend, never inferred here. */
+  templateSource: TemplateSource
   templateVersion: number
   /** Copies that exist at all, across every account. */
   totalCopies: number
@@ -76,6 +108,7 @@ export interface RepublishItemResult {
 
 export interface RepublishBatchResult {
   templateId: number
+  templateSource: TemplateSource
   templateVersion: number
   attempted: number
   succeeded: number
@@ -126,9 +159,13 @@ async function callQa<T>(path: string, init: RequestInit | undefined, fallback: 
  * Dry run. Answers "how many accounts would this touch" without changing
  * anything, so the admin can look before committing.
  */
-export async function getRepublishPlan(templateId: string | number): Promise<RepublishPlan> {
+export async function getRepublishPlan(
+  templateId: string | number,
+  source: TemplateSource = DEFAULT_TEMPLATE_SOURCE,
+): Promise<RepublishPlan> {
   return callQa<RepublishPlan>(
-    `${TEMPLATE_ENDPOINT}/${encodeURIComponent(String(templateId))}/republish-plan`,
+    `${TEMPLATE_ENDPOINT}/${encodeURIComponent(String(templateId))}/republish-plan`
+      + `?templateSource=${encodeURIComponent(source)}`,
     { method: 'GET' },
     'Could not build the republish plan.',
   )
@@ -143,7 +180,7 @@ export async function getRepublishPlan(templateId: string | number): Promise<Rep
  */
 export async function runRepublishBatch(
   templateId: string | number,
-  options?: { batchSize?: number },
+  options?: { batchSize?: number; source?: TemplateSource },
 ): Promise<RepublishBatchResult> {
   const requested = Number(options?.batchSize ?? REPUBLISH_BATCH_SIZE)
   const batchSize = Number.isFinite(requested)
@@ -155,7 +192,9 @@ export async function runRepublishBatch(
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ batchSize }),
+      // templateSource travels in the body rather than the route so the backend
+      // keeps one implementation for both tables and old callers still work.
+      body: JSON.stringify({ batchSize, templateSource: options?.source ?? DEFAULT_TEMPLATE_SOURCE }),
     },
     'Could not republish this batch.',
   )
@@ -167,6 +206,7 @@ export async function runRepublishBatch(
 
 export interface RepublishRunLog {
   templateId: number
+  templateSource: TemplateSource
   startedAt: string
   updatedAt: string
   batches: number
@@ -184,13 +224,18 @@ export interface RepublishRunLog {
 const MAX_KEPT = 200
 const runLogs = new Map<string, RepublishRunLog>()
 
-export function recordRepublishBatch(templateId: string | number, result: RepublishBatchResult): RepublishRunLog {
-  const key = String(templateId)
+export function recordRepublishBatch(
+  templateId: string | number,
+  result: RepublishBatchResult,
+  source: TemplateSource = DEFAULT_TEMPLATE_SOURCE,
+): RepublishRunLog {
+  const key = templateKey(templateId, source)
   const now = new Date().toISOString()
   const existing = runLogs.get(key)
 
   const log: RepublishRunLog = existing ?? {
     templateId: Number(templateId),
+    templateSource: source,
     startedAt: now,
     updatedAt: now,
     batches: 0,
@@ -221,39 +266,58 @@ export function recordRepublishBatch(templateId: string | number, result: Republ
   return log
 }
 
-export function getRepublishRunLog(templateId: string | number): RepublishRunLog | null {
-  return runLogs.get(String(templateId)) ?? null
+export function getRepublishRunLog(
+  templateId: string | number,
+  source: TemplateSource = DEFAULT_TEMPLATE_SOURCE,
+): RepublishRunLog | null {
+  return runLogs.get(templateKey(templateId, source)) ?? null
 }
 
-export function clearRepublishRunLog(templateId: string | number) {
-  runLogs.delete(String(templateId))
+export function clearRepublishRunLog(templateId: string | number, source: TemplateSource = DEFAULT_TEMPLATE_SOURCE) {
+  runLogs.delete(templateKey(templateId, source))
 }
 
 /**
  * REQUIRED_ENDPOINTS — the exact backend contract this file is written against.
- * Nothing here is implemented in the .NET repo yet; see the handover notes.
  *
  * Schema additions (SQL Server, via EF migration):
- *   MaterialTemplates.Version           int  NOT NULL DEFAULT 1
- *   GeneratedMaterials.TemplateVersion  int  NOT NULL DEFAULT 1
- *   GeneratedMaterials.IsOutdated       bit  NOT NULL DEFAULT 0
+ *   MaterialTemplates.Version           int           NOT NULL DEFAULT 1
+ *   DashboardMaterials.Version          int           NOT NULL DEFAULT 1  (pre-existing)
+ *   GeneratedMaterials.TemplateVersion  int           NOT NULL DEFAULT 1
+ *   GeneratedMaterials.IsOutdated       bit           NOT NULL DEFAULT 0
+ *   GeneratedMaterials.TemplateSource   nvarchar(32)  NOT NULL DEFAULT 'material_template'
+ *
+ * TemplateSource is the discriminator that makes TemplateVersion meaningful:
+ * TemplateId names EITHER a MaterialTemplates row or a DashboardMaterials row
+ * flagged IsTemplate, and the two id sequences are independent. Every query
+ * below is scoped by (TemplateSource, TemplateId) — never TemplateId alone.
+ * The backend stamps it at generation time from whichever branch it rendered.
  *
  * 1. PUT /api/dashboard/v1/MaterialTemplate/{id}
  *    (existing endpoint, behaviour change) — when SourcePath, QrPositionJson or
  *    OutputFormat changes, increment Version and set IsOutdated = 1 on every
- *    GeneratedMaterials row for that TemplateId. Must attach explicitly
- *    (global NoTracking) or the write silently does nothing.
+ *    GeneratedMaterials row with TemplateSource = 'material_template' and that
+ *    TemplateId. Must attach explicitly (global NoTracking) or the write
+ *    silently does nothing.
  *
- * 2. GET /api/dashboard/v1/MaterialTemplate/{id}/republish-plan
+ * 1b. PUT /api/dashboard/v1/Material/{id}
+ *    The same behaviour for a materials-library template: FileUrl and Metadata
+ *    are its SourcePath / QrPositionJson equivalents, and a change to either
+ *    bumps DashboardMaterials.Version and flags copies with TemplateSource =
+ *    'dashboard_material'. Version is NOT client-settable — the dashboard PUTs
+ *    the whole entity back, so honouring it would overwrite the bump.
+ *
+ * 2. GET /api/dashboard/v1/MaterialTemplate/{id}/republish-plan?templateSource=…
  *    Operator/SysAdmin only. Cross-account by design — the account-scope rule on
  *    GeneratedMaterialController.GetAll must NOT apply here.
+ *    templateSource: 'material_template' (default when absent) | 'dashboard_material'.
  *    200 -> RepublishPlan (see interface above).
  *
  * 3. POST /api/dashboard/v1/MaterialTemplate/{id}/republish-batch
- *    Body: { batchSize: number }   (1..100)
+ *    Body: { batchSize: number, templateSource?: string }   (batchSize 1..100)
  *    Operator/SysAdmin only. Selects the next `batchSize` GeneratedMaterials
- *    rows where TemplateId = id AND TemplateVersion < template.Version, oldest
- *    UpdatedAt first, and for EACH one:
+ *    rows where TemplateSource = templateSource AND TemplateId = id AND
+ *    TemplateVersion < template.Version, oldest UpdatedAt first, and for EACH one:
  *      a. archive the current row into GeneratedMaterialVersions
  *         (GeneratedMaterialId, VersionNumber, FileUrl, FileName, Metadata)
  *         so the previous render stays retrievable;
@@ -273,6 +337,7 @@ export function clearRepublishRunLog(templateId: string | number) {
  */
 export const REQUIRED_ENDPOINTS = [
   'PUT  /api/dashboard/v1/MaterialTemplate/{id}          (bump Version, flag copies outdated)',
-  'GET  /api/dashboard/v1/MaterialTemplate/{id}/republish-plan',
-  'POST /api/dashboard/v1/MaterialTemplate/{id}/republish-batch',
+  'PUT  /api/dashboard/v1/Material/{id}                  (same, for a materials-library template)',
+  'GET  /api/dashboard/v1/MaterialTemplate/{id}/republish-plan?templateSource=…',
+  'POST /api/dashboard/v1/MaterialTemplate/{id}/republish-batch  { batchSize, templateSource }',
 ] as const

@@ -3,6 +3,7 @@ import { getAdminRouteContext } from '@/lib/server/admin-access'
 import {
   clearRepublishRunLog,
   getRepublishPlan,
+  normalizeTemplateSource,
   recordRepublishBatch,
   REPUBLISH_BATCH_SIZE,
   RepublishEndpointMissingError,
@@ -19,8 +20,12 @@ import {
  * derived from the data (copies still behind the template version), stopping
  * and re-calling later resumes exactly where it left off.
  *
- * Body: { batchSize?: number, reset?: boolean }
- *   reset — clear the display-only run log before the first batch of a new run.
+ * Body: { batchSize?: number, reset?: boolean, source?: string }
+ *   reset  — clear the display-only run log before the first batch of a new run.
+ *   source — 'material_template' (default) or 'dashboard_material'. The id alone
+ *            does not identify a template: the two tables have independent id
+ *            sequences, so republishing the wrong one is a real outcome, not a
+ *            theoretical one.
  */
 export async function POST(
   request: NextRequest,
@@ -29,20 +34,23 @@ export async function POST(
   const context = await getAdminRouteContext()
   if ('error' in context) return context.error
 
-  let body: { batchSize?: number; reset?: boolean } = {}
+  let body: { batchSize?: number; reset?: boolean; source?: string } = {}
   try {
     body = (await request.json()) as typeof body
   } catch {
     // No body is fine — defaults apply.
   }
 
-  if (body.reset) clearRepublishRunLog(params.id)
+  const source = normalizeTemplateSource(body.source)
+
+  if (body.reset) clearRepublishRunLog(params.id, source)
 
   try {
     const result = await runRepublishBatch(params.id, {
       batchSize: body.batchSize ?? REPUBLISH_BATCH_SIZE,
+      source,
     })
-    const run = recordRepublishBatch(params.id, result)
+    const run = recordRepublishBatch(params.id, result, source)
 
     return NextResponse.json({ batch: result, run })
   } catch (error) {
@@ -55,7 +63,7 @@ export async function POST(
     // If even the plan call fails we say so instead of guessing a number.
     let remaining: number | null = null
     try {
-      remaining = (await getRepublishPlan(params.id)).outdatedCopies
+      remaining = (await getRepublishPlan(params.id, source)).outdatedCopies
     } catch {
       remaining = null
     }

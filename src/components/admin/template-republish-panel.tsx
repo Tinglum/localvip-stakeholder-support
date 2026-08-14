@@ -5,14 +5,34 @@ import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Search } from 'lucide-
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useMaterialTemplates } from '@/lib/supabase/hooks'
+import { useMaterialTemplates, useMaterials } from '@/lib/supabase/hooks'
 import { formatDateTime } from '@/lib/utils'
 import type {
   RepublishBatchResult,
   RepublishItemResult,
   RepublishPlan,
   RepublishRunLog,
+  TemplateSource,
 } from '@/lib/server/template-republish'
+
+/**
+ * A template the admin can pick, from either of the two tables that hold one.
+ *
+ * `key` is what the <select> carries, because an id on its own is ambiguous:
+ * MaterialTemplates and DashboardMaterials have independent id sequences, so
+ * "42" names two different designs and the source has to travel with it.
+ */
+interface RepublishableTemplate {
+  key: string
+  id: string
+  source: TemplateSource
+  name: string
+  version: number
+}
+
+function templateKey(source: TemplateSource, id: string | number) {
+  return `${source}:${id}`
+}
 
 /**
  * Cascade republish control.
@@ -28,8 +48,12 @@ import type {
  */
 export function TemplateRepublishPanel() {
   const { data: templates, loading: templatesLoading } = useMaterialTemplates()
+  // The materials-library templates ("Use This As an Automation Template") are
+  // the ones real businesses have generated copies from — MaterialTemplates is
+  // effectively empty — so they are listed first rather than tacked on.
+  const { data: materials, loading: materialsLoading } = useMaterials()
 
-  const [templateId, setTemplateId] = React.useState<string>('')
+  const [selectedKey, setSelectedKey] = React.useState<string>('')
   const [plan, setPlan] = React.useState<RepublishPlan | null>(null)
   const [run, setRun] = React.useState<RepublishRunLog | null>(null)
   const [planning, setPlanning] = React.useState(false)
@@ -41,12 +65,40 @@ export function TemplateRepublishPanel() {
   // state would be stale inside the running closure.
   const stopRequested = React.useRef(false)
 
-  const sortedTemplates = React.useMemo(
-    () => [...templates].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+  const loading = templatesLoading || materialsLoading
+
+  const materialTemplates = React.useMemo<RepublishableTemplate[]>(
+    () =>
+      (materials || [])
+        // The hook has no server-side filter, so narrow to actual templates here.
+        .filter((material: any) => Boolean(material?.is_template))
+        .map((material: any) => ({
+          key: templateKey('dashboard_material', material.id),
+          id: String(material.id),
+          source: 'dashboard_material' as TemplateSource,
+          name: material.title || material.name || `Material ${material.id}`,
+          version: Number(material.version) || 1,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [materials],
+  )
+
+  const publishedTemplates = React.useMemo<RepublishableTemplate[]>(
+    () =>
+      (templates || [])
+        .map((template: any) => ({
+          key: templateKey('material_template', template.id),
+          id: String(template.id),
+          source: 'material_template' as TemplateSource,
+          name: template.name || `Template ${template.id}`,
+          version: Number(template.version) || 1,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [templates],
   )
 
-  const selected = sortedTemplates.find((template) => String(template.id) === templateId) || null
+  const selected =
+    [...materialTemplates, ...publishedTemplates].find((template) => template.key === selectedKey) || null
 
   const resetResults = () => {
     setPlan(null)
@@ -55,13 +107,15 @@ export function TemplateRepublishPanel() {
     setEndpointMissing(false)
   }
 
-  const loadPlan = async (id: string) => {
-    if (!id) return
+  const loadPlan = async (target: RepublishableTemplate | null) => {
+    if (!target) return
     setPlanning(true)
     setError(null)
     setEndpointMissing(false)
     try {
-      const response = await fetch(`/api/admin/material-engine/templates/${id}/republish/plan`)
+      const response = await fetch(
+        `/api/admin/material-engine/templates/${target.id}/republish/plan?source=${target.source}`,
+      )
       const body = await response.json()
       if (!response.ok) {
         setEndpointMissing(Boolean(body?.endpointMissing))
@@ -79,7 +133,7 @@ export function TemplateRepublishPanel() {
   }
 
   const republish = async () => {
-    if (!templateId || !plan) return
+    if (!selected || !plan) return
     stopRequested.current = false
     setRunning(true)
     setError(null)
@@ -89,10 +143,10 @@ export function TemplateRepublishPanel() {
       // Loop until the backend reports nothing left. `complete` is computed from
       // a fresh database count after each batch, not from our own arithmetic.
       for (;;) {
-        const response = await fetch(`/api/admin/material-engine/templates/${templateId}/republish`, {
+        const response = await fetch(`/api/admin/material-engine/templates/${selected.id}/republish`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ reset: first }),
+          body: JSON.stringify({ reset: first, source: selected.source }),
         })
         const body = await response.json()
         first = false
@@ -114,7 +168,7 @@ export function TemplateRepublishPanel() {
     } finally {
       setRunning(false)
       // Re-plan so the headline numbers reflect the database, not the run log.
-      await loadPlan(templateId)
+      await loadPlan(selected)
     }
   }
 
@@ -134,27 +188,42 @@ export function TemplateRepublishPanel() {
           <label className="flex-1 min-w-[240px] text-sm">
             <span className="mb-1 block text-xs uppercase tracking-[0.16em] text-surface-500">Template</span>
             <select
-              value={templateId}
+              value={selectedKey}
               onChange={(event) => {
-                setTemplateId(event.target.value)
+                setSelectedKey(event.target.value)
                 resetResults()
               }}
-              disabled={running || templatesLoading}
+              disabled={running || loading}
               className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
-              <option value="">{templatesLoading ? 'Loading templates…' : 'Select a template…'}</option>
-              {sortedTemplates.map((template) => (
-                <option key={template.id} value={String(template.id)}>
-                  {template.name} (v{template.version || 1})
-                </option>
-              ))}
+              <option value="">{loading ? 'Loading templates…' : 'Select a template…'}</option>
+              {/* Grouped, because the same number can appear in both lists and
+                  the admin needs to see which design they are about to push. */}
+              {materialTemplates.length > 0 && (
+                <optgroup label="Automation templates (Materials Library)">
+                  {materialTemplates.map((template) => (
+                    <option key={template.key} value={template.key}>
+                      {template.name} (v{template.version})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {publishedTemplates.length > 0 && (
+                <optgroup label="Published material templates">
+                  {publishedTemplates.map((template) => (
+                    <option key={template.key} value={template.key}>
+                      {template.name} (v{template.version})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </label>
 
           <Button
             variant="outline"
-            onClick={() => loadPlan(templateId)}
-            disabled={!templateId || planning || running}
+            onClick={() => loadPlan(selected)}
+            disabled={!selected || planning || running}
           >
             {planning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             Dry run
@@ -185,6 +254,16 @@ export function TemplateRepublishPanel() {
               <p className="mt-1">{error}</p>
             </div>
           </div>
+        )}
+
+        {plan && (
+          <p className="text-xs text-surface-500">
+            {plan.templateName} —{' '}
+            {plan.templateSource === 'dashboard_material'
+              ? 'automation template from the Materials Library'
+              : 'published material template'}
+            {' '}(#{plan.templateId})
+          </p>
         )}
 
         {plan && (
