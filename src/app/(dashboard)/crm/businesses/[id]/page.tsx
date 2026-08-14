@@ -47,7 +47,9 @@ import {
   useNotes, useNoteInsert,
   useBusinessUpdate,
   useCampaigns,
+  useProfiles,
 } from '@/lib/supabase/hooks'
+import { AssignEntityHelperCard } from '@/components/crm/assign-entity-helper'
 import type { CrmBusiness, QaBusinessDetail } from '@/lib/crm-api'
 import {
   parseStripeOnboardingStatus,
@@ -153,7 +155,12 @@ export default function BusinessDetailPage() {
   const { data: localState, loading: localStateLoading, error: localStateError, refetch: refetchLocalState } = useCrmBusinessLocalState(localStateBusinessId)
   const qaFallbackStateEnabled = !!resolvedBusinessId && (!localState || preferQaWorkspace)
   const { data: qaMaterials } = useMaterials(undefined, { enabled: qaFallbackStateEnabled })
+  // Not live — see the local-state route, which reads from the dead Supabase
+  // stub and so always resolves empty. Kept as-is: repairing that route is a
+  // separate, larger job than this page. AssignEntityHelperCard below uses
+  // useProfiles() directly instead, which IS QA-backed.
   const profiles = React.useMemo(() => localState?.profiles ?? [], [localState?.profiles])
+  const { data: liveProfiles } = useProfiles()
   const cities = localState?.cities || []
   // Cause + campaign pickers are sourced from QA (nonprofits + Campaign domain),
   // not the legacy Supabase workspace, so they work on any QA business.
@@ -735,6 +742,13 @@ export default function BusinessDetailPage() {
           </button>
         </Card>
       </div>
+
+      <AssignEntityHelperCard
+        entityType="business"
+        entityId={qaLinkedBusinessId}
+        profiles={liveProfiles}
+        currentProfileId={profile?.id || null}
+      />
 
       {/* Tabs */}
       <div id="business-page-tabs" className="border-b border-surface-200">

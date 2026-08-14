@@ -51,6 +51,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { AssignEntityHelperCard } from '@/components/crm/assign-entity-helper'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { OpenInWebappButton } from '@/components/crm/open-in-webapp-button'
 import { QaImportedFieldsPanel, QaWritebackWishlistTable, type QaImportedFact, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
@@ -178,7 +179,10 @@ export default function CauseDetailPage() {
     { enabled: !!generatedMaterialsCauseId },
   )
   const { data: allMaterialRecords, refetch: refetchMaterialRecords } = useMaterials()
-  const { data: assignments } = useStakeholderAssignments({ entity_id: causeId })
+  // Was scoped to causeId (the local Supabase-era id). DashboardStakeholderAssignments
+  // stores the QA numeric account id, same as generatedMaterialsCauseId above, so this
+  // filter matched nothing that was ever actually written.
+  const { data: assignments } = useStakeholderAssignments({ entity_id: String(generatedMaterialsCauseId ?? '') })
   const { data: causeQrCodes, refetch: refetchQrCodes } = useQrCodes({ cause_id: causeId })
   const { data: flows, refetch: refetchFlows } = useOnboardingFlows({ entity_type: 'cause', entity_id: causeId })
   const flow = flows[0] || null
@@ -1810,6 +1814,13 @@ export default function CauseDetailPage() {
           </div>
         </div>
       )}
+
+      <AssignEntityHelperCard
+        entityType="cause"
+        entityId={generatedMaterialsCauseId}
+        profiles={profiles}
+        currentProfileId={profile?.id || null}
+      />
 
       {/* ══════════════════════════════════════════════════════════
           QA PANELS (bottom — for reference only)

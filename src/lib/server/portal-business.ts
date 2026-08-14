@@ -87,8 +87,38 @@ async function fetchLegacyBusinessId(userId: number): Promise<number | null> {
  */
 export async function userBelongsToBusinessAccount(userId: number, accountId: number): Promise<boolean> {
   const accounts = await fetchPortalBusinessAccounts(userId)
-  if (accounts === null) return false
-  return accounts.some((account) => account.accountId === accountId)
+  if (accounts !== null && accounts.some((account) => account.accountId === accountId)) return true
+  // Owning the account is one path; being explicitly assigned to help it is the
+  // other. Matches GeneratedMaterialController.CanAccessAccountAsync on the QA
+  // backend exactly, so a caller this gate lets through is never rejected there.
+  return userIsAssignedToAccount(userId, accountId, 'business')
+}
+
+/**
+ * Whether `userId` has an active DashboardStakeholderAssignment for this
+ * business or cause account — the "Enablers" connection, not ownership.
+ */
+export async function userIsAssignedToAccount(
+  userId: number,
+  accountId: number,
+  entityType: 'business' | 'cause',
+): Promise<boolean> {
+  try {
+    const res = await fetchQaApi(
+      `/api/dashboard/v1/StakeholderAssignment`
+      + `?stakeholderUserId=${encodeURIComponent(userId)}`
+      + `&entityType=${encodeURIComponent(entityType)}`
+      + `&entityId=${encodeURIComponent(accountId)}`,
+    )
+    if (!res.ok) return false
+    const json = await parseQaResponse<{ items?: unknown[] } | unknown[]>(res, 'Could not check assignment.')
+    const rows = Array.isArray(json) ? json : Array.isArray(json?.items) ? json.items : []
+    // The GetAll endpoint already defaults to active/non-released when no status
+    // filter is supplied, so any row returned here is a live assignment.
+    return rows.length > 0
+  } catch {
+    return false
+  }
 }
 
 /**
