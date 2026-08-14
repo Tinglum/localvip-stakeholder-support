@@ -3,7 +3,12 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { generateMaterialsForStakeholder } from '@/lib/server/material-engine'
-import { resolveScopedPortalBusinessId, noPortalBusinessError } from '@/lib/server/portal-business'
+import {
+  resolveScopedPortalBusinessId,
+  resolvePortalUserId,
+  userIsAssignedToAccount,
+  noPortalBusinessError,
+} from '@/lib/server/portal-business'
 import type { Stakeholder } from '@/lib/types/database'
 
 export async function POST(request: NextRequest) {
@@ -49,9 +54,11 @@ export async function POST(request: NextRequest) {
       businessId = String(scope.businessId)
     }
 
-    // Cause generation from this generic portal endpoint is currently an
-    // operator workflow. Cause self-service needs a signed cause-scope resolver
-    // before it can safely accept a cause id from the browser.
+    // Cause generation from this generic portal endpoint is an operator
+    // workflow, plus — since Enablers shipped — anyone holding an active
+    // DashboardStakeholderAssignment on that cause. Cause SELF-service (a cause
+    // leader naming their own cause) still needs a signed cause-scope resolver
+    // before a cause id from the browser can be trusted on that path.
     const causeAccountId = causeId == null ? null : Number(causeId)
     if (causeId != null && (!Number.isInteger(causeAccountId) || (causeAccountId ?? 0) <= 0)) {
       return NextResponse.json({ error: 'A valid cause account is required.' }, { status: 400 })
@@ -61,7 +68,17 @@ export async function POST(request: NextRequest) {
       ['admin', 'super_admin', 'internal_admin'].includes(profile.role)
       || qaRoles.some((role) => role.includes('sysadmin') || role.includes('employee'))
     if (causeId && !isCauseMaterialOperator) {
-      return NextResponse.json({ error: 'You do not have access to that cause.' }, { status: 403 })
+      // Mirrors GeneratedMaterialController.CanAccessAccountAsync on the QA
+      // backend, so a caller this gate lets through is never rejected there.
+      // The id is re-checked against the caller's own assignments — never
+      // trusted because the browser sent it.
+      const callerUserId = resolvePortalUserId(session)
+      const assigned = callerUserId != null
+        && causeAccountId != null
+        && (await userIsAssignedToAccount(callerUserId, causeAccountId, 'cause'))
+      if (!assigned) {
+        return NextResponse.json({ error: 'You do not have access to that cause.' }, { status: 403 })
+      }
     }
     // Self-serve from the business portal: resolve the business from the session
     // when no explicit id was passed (the owner just clicks Generate on a template).

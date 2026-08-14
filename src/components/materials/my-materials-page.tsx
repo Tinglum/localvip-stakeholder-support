@@ -78,7 +78,8 @@ function formatFileSize(bytes?: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function isReadyGeneratedMaterial(row: GeneratedMaterial) {
+/** Exported so the Enabler materials tab applies the same "is this usable" rule. */
+export function isReadyGeneratedMaterial(row: GeneratedMaterial) {
   return row.generation_status === 'generated' && row.is_active !== false && !row.is_outdated
 }
 

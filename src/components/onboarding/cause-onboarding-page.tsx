@@ -55,6 +55,7 @@ import {
   computeCauseOnboardingChecklist,
   type CauseOnboardingChecklist,
 } from '@/lib/cause-execution'
+import { MaterialGenerateLauncher } from '@/components/materials/enabler-materials'
 import {
   useAdminTaskInsert,
   useAdminTasks,
@@ -1389,6 +1390,18 @@ function CauseOnboardingCard({
               <QrCode className="h-3.5 w-3.5" /> QR Code
             </Button>
           </Link>
+          {/* Generate a specific template for the cause being onboarded, without
+              having to impersonate it. `causes` come from the QA nonprofit list,
+              so `cause.id` IS the QA numeric account id — but it is checked
+              rather than assumed, because a local record would carry a UUID here
+              and generate against an account the backend cannot match. */}
+          <MaterialGenerateLauncher
+            scope={/^\d+$/.test(String(cause.id))
+              ? { entityType: 'cause', accountId: String(cause.id), name: cause.name }
+              : null}
+            label="Generate materials"
+            onGenerated={onStageChanged}
+          />
           {!stakeholder || !taskStatus ? (
             <Button variant="outline" size="sm" onClick={onCreateSetup} disabled={setupLoading}>
               {setupLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}

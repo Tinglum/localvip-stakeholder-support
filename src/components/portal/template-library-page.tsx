@@ -21,13 +21,7 @@ import { cn } from '@/lib/utils'
 import { ENGAGEMENT_CODES } from '@/lib/engagement-codes'
 import { useAuth } from '@/lib/auth/context'
 import { useBusinesses } from '@/lib/supabase/hooks'
-
-interface PortalTemplate {
-  id: number | string
-  name: string
-  sourcePath: string | null
-  outputFormat?: string | null | undefined
-}
+import { usePortalTemplates, type PortalTemplate } from '@/lib/materials/portal-templates'
 
 interface PortalQr {
   id: number | string
@@ -58,29 +52,10 @@ type QrChoice = 'default' | 'new' | string
 export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [templates, setTemplates] = React.useState<PortalTemplate[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const { templates, unusableCount, loading, error, reload: load } = usePortalTemplates()
   const [doneIds, setDoneIds] = React.useState<Set<string>>(new Set())
-  const [error, setError] = React.useState<string | null>(null)
-  const [unusableCount, setUnusableCount] = React.useState(0)
   const [active, setActive] = React.useState<PortalTemplate | null>(null)
 
-  const load = React.useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/portal/templates', { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Could not load templates.')
-      setTemplates(json.templates || [])
-      setUnusableCount(Array.isArray(json.unusable) ? json.unusable.length : 0)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load templates.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-  React.useEffect(() => { void load() }, [load])
   React.useEffect(() => {
     const requestedTemplateId = searchParams.get('generateTemplate')
     if (!requestedTemplateId || templates.length === 0) return
@@ -191,14 +166,32 @@ export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean }
   )
 }
 
-function TemplateGenerateDialog({
+/**
+ * The account a material is being generated FOR, when the caller already knows
+ * it and the user must not be able to change it — an Enabler who picked one of
+ * their assigned accounts, or an onboarding screen working on one business/cause.
+ *
+ * `accountId` is the QA NUMERIC account id. Passing a local/Supabase-era id here
+ * generates against an account the backend cannot match, so callers must resolve
+ * it (`getBusinessQaAccountId`, or the cause's `qa_account_id`) first.
+ */
+export interface MaterialGenerateScope {
+  entityType: 'business' | 'cause'
+  accountId: string
+  name?: string | null
+}
+
+export function TemplateGenerateDialog({
   template,
   initialQrId,
+  scope = null,
   onClose,
   onGenerated,
 }: {
   template: PortalTemplate | null
   initialQrId: string | null
+  /** Fixed target account. When absent the old business/admin behaviour applies. */
+  scope?: MaterialGenerateScope | null
   onClose: () => void
   onGenerated: (templateId: number | string) => void
 }) {
@@ -210,12 +203,23 @@ function TemplateGenerateDialog({
   // An admin therefore picks the business the material is being made for; a
   // business user never sees the picker and nothing about their flow changes.
   const { isAdmin, businessId: ownBusinessId } = useAuth()
-  const needsBusinessPicker = isAdmin && !ownBusinessId
+  // A caller-supplied scope always wins: the Enabler already chose which of THEIR
+  // assigned accounts this is for, and re-deriving it from the session here would
+  // silently retarget the material at whatever business the user happens to own.
+  const needsBusinessPicker = !scope && isAdmin && !ownBusinessId
   const [pickedBusinessId, setPickedBusinessId] = React.useState('')
   const { data: pickableBusinesses, loading: businessesLoading } = useBusinesses(undefined, {
     enabled: needsBusinessPicker,
   })
-  const scopedBusinessId = needsBusinessPicker ? pickedBusinessId : ''
+  // A cause has no business QR context at all (no referral link, no logo, no
+  // saved QR codes — those endpoints are business-only), so the QR panel is
+  // skipped entirely and the backend stamps the cause's own default code.
+  const isCauseScope = scope?.entityType === 'cause'
+  const scopedBusinessId = scope?.entityType === 'business'
+    ? scope.accountId
+    : needsBusinessPicker
+    ? pickedBusinessId
+    : ''
   // Appended to every portal call so the server scopes to the chosen business.
   const scopeQuery = scopedBusinessId ? `?businessId=${encodeURIComponent(scopedBusinessId)}` : ''
 
@@ -258,6 +262,10 @@ function TemplateGenerateDialog({
     setCtx(null)
     setQrCodes([])
     setQrTemplates([])
+    // Every fetch below is business-scoped. For a cause there is nothing to ask
+    // for, and asking anyway resolves the CALLER's business — which is how a
+    // cause material would quietly end up carrying a business's referral QR.
+    if (isCauseScope) return
     if (needsBusinessPicker && !scopedBusinessId) {
       // Nothing to load yet, and saying so beats an empty panel with no reason.
       setCtxError('Choose which business this material is for.')
@@ -304,7 +312,7 @@ function TemplateGenerateDialog({
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (j && Array.isArray(j.templates)) setQrTemplates(j.templates) })
       .catch(() => {})
-  }, [open, needsBusinessPicker, scopedBusinessId, scopeQuery])
+  }, [open, needsBusinessPicker, scopedBusinessId, scopeQuery, isCauseScope])
 
   React.useEffect(() => {
     if (!open || !initialQrId || qrLoading) return
@@ -400,6 +408,23 @@ function TemplateGenerateDialog({
         throw new Error('Choose which business this material is for.')
       }
       const payload: Record<string, unknown> = { templateId: String(template.id) }
+
+      // Cause: name the cause account and stop. None of the business QR options
+      // below exist for it, and sending a half-filled business payload alongside
+      // a causeId is rejected by /api/portal/generate rather than guessed at.
+      if (isCauseScope && scope) {
+        payload.causeId = scope.accountId
+        const causeRes = await fetch('/api/portal/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const causeJson = await causeRes.json().catch(() => ({}))
+        if (!causeRes.ok || causeJson.error) throw new Error(causeJson.error || 'Could not generate this material.')
+        onGenerated(template.id)
+        return
+      }
+
       // The admin surface has no session business, so name the picked one. The
       // route verifies it against the caller's authority before using it.
       if (scopedBusinessId) payload.businessId = scopedBusinessId
@@ -476,6 +501,24 @@ function TemplateGenerateDialog({
 
           {/* QR selector */}
           <div className="flex flex-col gap-3">
+            {scope && (
+              <div className="rounded-xl border border-brand-200 bg-brand-50/60 px-3 py-2">
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-surface-500">
+                  Generating for
+                </p>
+                <p className="text-sm font-semibold text-surface-900">
+                  {scope.name || `${scope.entityType === 'cause' ? 'Cause' : 'Business'} #${scope.accountId}`}
+                </p>
+              </div>
+            )}
+
+            {isCauseScope ? (
+              <div className="rounded-2xl border border-surface-200 bg-surface-50 p-3 text-xs text-surface-600">
+                This cause&apos;s own support code is stamped on the design automatically. Business
+                QR options do not apply here, so there is nothing to choose.
+              </div>
+            ) : (
+            <>
             {needsBusinessPicker && (
               <div className="space-y-1">
                 <label className="text-xs font-medium text-surface-600" htmlFor="tpl-gen-business">
@@ -653,6 +696,8 @@ function TemplateGenerateDialog({
                 </div>
               )}
             </div>
+            </>
+            )}
 
             {genError && <p className="text-sm text-danger-600">{genError}</p>}
           </div>
@@ -661,7 +706,9 @@ function TemplateGenerateDialog({
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={generating}>Cancel</Button>
           <Button onClick={() => void handleGenerate()} disabled={generating}>
-            {generating ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</> : <><Sparkles className="h-4 w-4" /> Generate with this QR</>}
+            {generating
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
+              : <><Sparkles className="h-4 w-4" /> {isCauseScope ? 'Generate this material' : 'Generate with this QR'}</>}
           </Button>
         </DialogFooter>
       </DialogContent>

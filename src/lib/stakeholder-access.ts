@@ -121,6 +121,24 @@ const SHARED_OPERATOR_CRM_ITEMS: NavItem = {
   ],
 }
 
+/**
+ * Field, Launch Partner and Influencer — the three "Enabler" shells — share one
+ * Materials tab. It is a different surface from `/materials/mine` (the user's own
+ * files): this one is about the businesses and causes they are ASSIGNED to, which
+ * previously could only be reached by impersonating the account.
+ *
+ * Declared once so the three shells cannot drift, and exported so `canAccessPath`
+ * gates the exact path the nav links to.
+ */
+export const ENABLER_MATERIALS_NAV_HREF = '/materials/enablers'
+
+const ENABLER_MATERIALS_NAV_ITEM: NavItem = {
+  label: 'Materials',
+  href: ENABLER_MATERIALS_NAV_HREF,
+  icon: 'FileDown',
+  minLevel: 0,
+}
+
 const FIELD_NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
   SHARED_OPERATOR_CRM_ITEMS,
@@ -129,7 +147,10 @@ const FIELD_NAV_ITEMS: NavItem[] = [
   { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
   { label: 'Log Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 0 },
   { label: 'My Tasks', href: '/crm/tasks', icon: 'CheckSquare', minLevel: 0 },
-  { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
+  ENABLER_MATERIALS_NAV_ITEM,
+  // Renamed from 'Materials': this is the user's OWN library. The assigned-account
+  // surface above owns the plain 'Materials' name.
+  { label: 'My Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
   { label: 'My Stats', href: '/analytics/me', icon: 'BarChart3', minLevel: 0 },
 ]
 
@@ -140,7 +161,10 @@ const LAUNCH_PARTNER_NAV_ITEMS: NavItem[] = [
   { label: 'Businesses', href: '/partner/businesses', icon: 'Store', minLevel: 0 },
   { label: 'Community', href: '/partner/community', icon: 'Heart', minLevel: 0 },
   { label: 'City Requests', href: '/partner/requests', icon: 'UserPlus', minLevel: 0 },
-  { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
+  ENABLER_MATERIALS_NAV_ITEM,
+  // Renamed from 'Materials': this is the user's OWN library. The assigned-account
+  // surface above owns the plain 'Materials' name.
+  { label: 'My Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
 ]
 
 const COMMUNITY_NAV_ITEMS: NavItem[] = [
@@ -159,7 +183,10 @@ const INFLUENCER_NAV_ITEMS: NavItem[] = [
   { label: 'Share', href: '/influencer/share', icon: 'Megaphone', minLevel: 0 },
   { label: 'My Links', href: '/influencer/links', icon: 'QrCode', minLevel: 0 },
   { label: 'Stats', href: '/influencer/stats', icon: 'BarChart3', minLevel: 0 },
-  { label: 'Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
+  ENABLER_MATERIALS_NAV_ITEM,
+  // Renamed from 'Materials': this is the user's OWN library. The assigned-account
+  // surface above owns the plain 'Materials' name.
+  { label: 'My Materials', href: '/materials/mine', icon: 'FileDown', minLevel: 0 },
 ]
 
 const ADMIN_NAV_ITEMS: NavItem[] = [
@@ -491,6 +518,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
       pathname === '/dashboard'
       || pathname.startsWith('/workspace')
       || pathname.startsWith('/materials/mine')
+      || pathname.startsWith(ENABLER_MATERIALS_NAV_HREF)
       || pathname.startsWith('/analytics/me')
     ) {
       return true
@@ -507,6 +535,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
       '/partner/community',
       '/partner/requests',
       '/materials/mine',
+      ENABLER_MATERIALS_NAV_HREF,
       ...operatorCrmPrefixes,
     ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   }
@@ -531,6 +560,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
     '/influencer/links',
     '/influencer/stats',
     '/materials/mine',
+    ENABLER_MATERIALS_NAV_HREF,
   ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 

@@ -48,7 +48,8 @@ import {
 } from '@/components/ui/dialog'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { computeBusinessExecutionSteps, computeBusinessOnboardingChecklist } from '@/lib/business-execution'
-import { getBusinessPortalActivationReview, isBusinessPendingLiveReview } from '@/lib/business-portal'
+import { getBusinessPortalActivationReview, getBusinessQaAccountId, isBusinessPendingLiveReview } from '@/lib/business-portal'
+import { MaterialGenerateLauncher } from '@/components/materials/enabler-materials'
 import { getEntityTheme } from '@/lib/entity-themes'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
 import { asUuid } from '@/lib/uuid'
@@ -1715,6 +1716,10 @@ function BusinessDetailModal({
   } = detail
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
+  // QA numeric account id, resolved from whichever shape this record arrived in.
+  // Null for a local/demo record with no QA linkage — material generation is
+  // disabled in that case rather than sent an id nothing can match.
+  const qaAccountIdForMaterials = getBusinessQaAccountId(business)
   const { data: allCities } = useCities()
   const { data: allCauses } = useCauses()
   const { data: allCampaigns } = useCampaigns()
@@ -2899,6 +2904,20 @@ function BusinessDetailModal({
                 Regenerate all
               </Button>
             ) : null}
+            {/* The engine buttons above run the fixed capture/referral bundle.
+                This one is the template library: whoever is onboarding this
+                business picks a specific design and generates it here, instead
+                of having to impersonate the business to reach its portal.
+                Scoped to the QA numeric account id — a local record with no QA
+                account renders the button disabled rather than generating
+                against an id the backend cannot match. */}
+            <MaterialGenerateLauncher
+              scope={qaAccountIdForMaterials
+                ? { entityType: 'business', accountId: qaAccountIdForMaterials, name: business.name }
+                : null}
+              label="Generate from a template"
+              onGenerated={onStageChanged}
+            />
           </div>
         </div>
 
