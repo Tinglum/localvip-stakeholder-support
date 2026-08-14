@@ -48,6 +48,12 @@ export async function GET(request: NextRequest) {
       standardQrId: assets.networkReferral.qrCode?.id || null,
       logoUrl,
       phone: typeof b.ownerPhone === 'string' ? b.ownerPhone : '',
+      // Per-asset, so a QR that could not be prepared names itself instead of
+      // failing the whole request. This used to be one thrown error that took
+      // the logo and the referral link down with it, and surfaced the raw
+      // backend string where the destination URL belongs.
+      networkQrError: assets.networkReferral.error,
+      captureQrError: assets.customerCapture.error,
     })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not load business.' }, { status: 400 })

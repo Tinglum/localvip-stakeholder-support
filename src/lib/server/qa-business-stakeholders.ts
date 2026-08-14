@@ -67,11 +67,15 @@ export interface QaBusinessEngagementAssets {
     captureCode: string | null
     captureUrl: string | null
     qrCode: QaBusinessQrAsset | null
+    /** Why this QR is missing, when it should have been there. */
+    error: string | null
   }
   networkReferral: {
     networkReferralCode: string | null
     networkReferralUrl: string | null
     qrCode: QaBusinessQrAsset | null
+    /** Why this QR is missing, when it should have been there. */
+    error: string | null
   }
 }
 
@@ -188,22 +192,42 @@ function parseQrMetadata(value: unknown) {
 
 type QaQrPurpose = 'business_capture' | 'business_network_referral'
 
+/**
+ * Find this business's existing QR for a purpose.
+ *
+ * Identity is the CODE, not the target URL. The old version also required
+ * `recordTarget === targetUrl`, which is what produced "QR code already
+ * exists.": the backend enforces uniqueness on Code alone and globally, so as
+ * soon as a stored row's target drifted from the one being requested — a
+ * changed join-URL base, a business that gained a branchReferralUrl — the
+ * lookup missed a row whose slug was identical, the caller went on to create a
+ * duplicate of that slug, and the backend rejected it. The rejection then took
+ * down the whole engagement-assets call, so the logo and the LocalVIP referral
+ * link disappeared along with it.
+ *
+ * It also queries by entityId only, without pinning entityType, so a row
+ * written under an older entityType is still found instead of being duplicated.
+ */
 async function findQaBusinessQr(
   businessId: string,
   purpose: QaQrPurpose,
-  targetUrl: string,
+  code: string,
 ) {
   const response = await fetchQaApi(
-    `/api/dashboard/v1/QrCode?entityType=${encodeURIComponent(purpose)}&entityId=${encodeURIComponent(businessId)}&pageSize=200`,
+    `/api/dashboard/v1/QrCode?entityId=${encodeURIComponent(businessId)}&pageSize=200`,
   )
   const json = await parseQaResponse<unknown>(response, 'Failed to load business QR codes.')
+  const records = asItems<QaQrCodeRecord>(json)
 
-  return asItems<QaQrCodeRecord>(json).find((record) => {
+  // The code is the uniqueness key the backend actually enforces, so match it
+  // first and ignore where the row currently points.
+  const byCode = records.find((record) => (record.code || '') === code)
+  if (byCode) return byCode
+
+  return records.find((record) => {
     const metadata = parseQrMetadata(record.metadata)
-    const recordTarget = record.targetUrl || record.target_url || ''
     return metadata.purpose === purpose
       && String(metadata.business_account_id || '') === businessId
-      && recordTarget === targetUrl
   }) || null
 }
 
@@ -219,7 +243,7 @@ async function ensureQaBusinessQr(
 ) {
   const businessId = String(qaBusiness.id)
   const logoUrl = buildQaBusinessLogoUrl(qaBusiness)
-  let qrCode = await findQaBusinessQr(businessId, input.purpose, input.targetUrl)
+  let qrCode = await findQaBusinessQr(businessId, input.purpose, input.code)
 
   if (!qrCode) {
     const metadata = {
@@ -252,17 +276,41 @@ async function ensureQaBusinessQr(
       })
       qrCode = await parseQaResponse<QaQrCodeRecord>(response, 'Failed to create the business QR code.')
     } catch (error) {
-      qrCode = await findQaBusinessQr(businessId, input.purpose, input.targetUrl)
+      // Two ways to land here: a genuine race, or the slug already exists on a
+      // row this business's lookup does not reach. Either way the row exists,
+      // so look again rather than failing.
+      qrCode = await findQaBusinessQr(businessId, input.purpose, input.code)
       if (!qrCode) throw error
     }
   }
 
   if (!qrCode?.id) throw new Error('The business QR code could not be prepared.')
 
+  // A reused row can still point at where it pointed when it was made. Since we
+  // now match on the code rather than the target, that drift is no longer a
+  // reason to fail — but it must be corrected, not ignored, or the QR keeps
+  // sending people to the old destination.
+  let storedTarget = qrCode.targetUrl || qrCode.target_url || ''
+  if (storedTarget && storedTarget !== input.targetUrl) {
+    try {
+      const patch = await fetchQaApi(`/api/dashboard/v1/QrCode/${encodeURIComponent(String(qrCode.id))}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targetUrl: input.targetUrl }),
+      })
+      await parseQaResponse<unknown>(patch, 'Failed to update the business QR destination.')
+      storedTarget = input.targetUrl
+    } catch {
+      // Report where it ACTUALLY points, rather than where we wish it did.
+      // Claiming the new URL while the row still holds the old one would make
+      // this impossible to diagnose from the screen.
+    }
+  }
+
   return {
     id: String(qrCode.id),
     code: qrCode.code || null,
-    targetUrl: qrCode.targetUrl || qrCode.target_url || input.targetUrl,
+    targetUrl: storedTarget || input.targetUrl,
     qrImageUrl: qrCode.qrImageUrl || qrCode.qr_image_url || null,
     logoUrl,
   }
@@ -294,6 +342,14 @@ export function ensureQaBusinessEngagementAssets(businessId: string) {
     const boomerangEnabled = isBoomerangEnabled(qaBusiness.hundredListInterest ?? null)
     const captureCode = boomerangEnabled ? buildJoinSlug(qaBusiness) : null
     const captureUrl = captureCode ? getBusinessJoinUrl(captureCode) : null
+    // Each QR is provisioned independently and reports its own failure.
+    //
+    // These used to throw straight out of the function, so ONE QR that could
+    // not be prepared nulled the entire context — the business logo, the
+    // LocalVIP referral link and the styled templates all vanished with it,
+    // and the dialog showed the raw backend string where the destination URL
+    // belongs. The logo does not depend on the capture QR existing.
+    let captureError: string | null = null
     const captureQr = captureCode && captureUrl
       ? await ensureQaBusinessQr(qaBusiness, {
           purpose: 'business_capture',
@@ -304,6 +360,9 @@ export function ensureQaBusinessEngagementAssets(businessId: string) {
             capture_code: captureCode,
             capture_url: captureUrl,
           },
+        }).catch((error: unknown) => {
+          captureError = error instanceof Error ? error.message : 'The Boomerang list QR could not be prepared.'
+          return null
         })
       : null
 
@@ -312,23 +371,32 @@ export function ensureQaBusinessEngagementAssets(businessId: string) {
       || (networkReferralCode
         ? `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(networkReferralCode)}`
         : null)
+    let networkError: string | null = null
     const networkQr = networkReferralCode && networkReferralUrl
       ? await ensureQaBusinessQr(qaBusiness, {
           purpose: 'business_network_referral',
-          name: `${qaBusiness.name} LocalVIP network QR`,
+          name: `${qaBusiness.name} ${ENGAGEMENT_CODES.business_network_referral.qrLabel}`,
           code: `network-${qaBusiness.id}-${networkReferralCode}`,
           targetUrl: networkReferralUrl,
           metadata: {
             network_referral_code: networkReferralCode,
             network_referral_url: networkReferralUrl,
           },
+        }).catch((error: unknown) => {
+          networkError = error instanceof Error ? error.message : 'The LocalVIP referral QR could not be prepared.'
+          return null
         })
       : null
 
     return {
       business: qaBusiness,
-      customerCapture: { captureCode, captureUrl, qrCode: captureQr },
-      networkReferral: { networkReferralCode, networkReferralUrl, qrCode: networkQr },
+      customerCapture: { captureCode, captureUrl, qrCode: captureQr, error: captureError as string | null },
+      networkReferral: {
+        networkReferralCode,
+        networkReferralUrl,
+        qrCode: networkQr,
+        error: networkError as string | null,
+      },
     }
   })().finally(() => {
     qaEngagementAssetPromises.delete(key)
