@@ -49,6 +49,7 @@ import { InfluencerDashboardPage } from '@/components/influencer/influencer-dash
 import { LaunchPartnerDashboardPage } from '@/components/partner/launch-partner-dashboard-page'
 import { ROLES, ROLE_THEMES, ROLE_TOOLS } from '@/lib/constants'
 import { getStakeholderAccess } from '@/lib/stakeholder-access'
+import type { GivebackLead } from '@/lib/types/giveback-lead'
 import { cn, formatDate } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -146,6 +147,10 @@ function TeamDashboardPage() {
   }, [])
 
   const { data: businessData, loading: businessLoading, refetch: refetchBusinesses } = useBusinesses()
+  // Giveback Day flyer leads are NOT businesses — they live in their own
+  // backend table so an anonymous public form can never write into Accounts —
+  // so they need their own fetch rather than a filter over businessData.
+  const [givebackLeads, setGivebackLeads] = React.useState<GivebackLead[]>([])
   const { data: causeData } = useCauses()
   const { data: adminTasks } = useAdminTasks()
   const { data: cityRequests } = useCityAccessRequests()
@@ -155,6 +160,22 @@ function TeamDashboardPage() {
     const timer = window.setInterval(() => refetchBusinesses({ silent: true }), 15_000)
     return () => window.clearInterval(timer)
   }, [isAdmin, refetchBusinesses])
+
+  const loadGivebackLeads = React.useCallback(() => {
+    if (!isAdmin) return
+    fetch('/api/qa/giveback-leads?status=pending', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((j) => setGivebackLeads(Array.isArray(j) ? j : []))
+      .catch(() => {})
+  }, [isAdmin])
+
+  React.useEffect(() => {
+    loadGivebackLeads()
+    // Same 15s cadence as the business refetch above, so a flyer scanned while
+    // someone is looking at this page shows up without a manual reload.
+    const timer = window.setInterval(loadGivebackLeads, 15_000)
+    return () => window.clearInterval(timer)
+  }, [loadGivebackLeads])
 
   const pendingCityRequests = React.useMemo(
     () => cityRequests.filter((request) => request.status === 'pending'),
@@ -381,6 +402,56 @@ function TeamDashboardPage() {
 
   return (
     <div className="space-y-8">
+      {isAdmin && givebackLeads.length > 0 ? (
+        <section className="overflow-hidden rounded-[2rem] border-4 border-amber-500 bg-amber-500 text-white shadow-xl shadow-amber-200/70">
+          <div className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20">
+                  <QrCode className="h-7 w-7" />
+                </span>
+                <Badge className="border-white/40 bg-white text-amber-800">
+                  {givebackLeads.length} to approve
+                </Badge>
+              </div>
+              <h2 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">
+                New businesses scanned a flyer
+              </h2>
+              <p className="mt-3 max-w-3xl text-base leading-7 text-amber-50">
+                They watched the Giveback Day video and asked to join. Nothing has been created
+                yet — review each one and approve it to create the business and attach it to
+                whoever shared the flyer.
+              </p>
+            </div>
+            <Button asChild size="lg" className="bg-white text-amber-800 hover:bg-amber-50">
+              <Link href="/crm/giveback-leads">
+                Review requests
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+          <div className="grid gap-px bg-amber-400 sm:grid-cols-2 xl:grid-cols-3">
+            {givebackLeads.map((lead) => (
+              <Link
+                key={lead.id}
+                href={`/crm/giveback-leads?lead=${lead.id}`}
+                className="flex items-center justify-between gap-4 bg-amber-600/80 px-6 py-5 transition-colors hover:bg-amber-700"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-semibold">{lead.businessName}</p>
+                  <p className="mt-1 truncate text-sm text-amber-100">
+                    {[lead.campaign, lead.city, lead.sponsorName ? `via ${lead.sponsorName}` : null]
+                      .filter(Boolean)
+                      .join(' / ') || 'Awaiting approval'}
+                  </p>
+                </div>
+                <ArrowRight className="h-5 w-5 shrink-0" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {isAdmin && businessesPendingLiveReview.length > 0 ? (
         <section className="overflow-hidden rounded-[2rem] border-4 border-emerald-500 bg-emerald-500 text-white shadow-xl shadow-emerald-200/70">
           <div className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
