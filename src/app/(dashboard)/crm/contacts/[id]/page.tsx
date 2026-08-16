@@ -113,6 +113,15 @@ export default function CustomerDetailPage() {
     return () => { cancelled = true }
   }, [node])
 
+  // Must be called before the early returns below: hooks run in the same order
+  // on every render, and this one previously sat after `if (loading) return`,
+  // which builds fine under tsc and fails the production ESLint pass.
+  // `enabled` keeps it idle until there is a user to ask about.
+  const { data: assignments } = useStakeholderAssignments(
+    { stakeholder_id: node ? String(node.userId) : '' },
+    { enabled: !!node },
+  )
+
   if (loading) return <div className="p-6 text-sm text-surface-500">Loading…</div>
   if (error || !node) {
     return (
@@ -126,8 +135,6 @@ export default function CustomerDetailPage() {
   const isCustomer = node.type?.toLowerCase() === 'customer'
   const consumerTypeName = node.consumerTypeName || 'Normal'
   const trackRole = mapConsumerTypeToRole(consumerTypeName)
-  // Used to warn before a track change strands work this person owns.
-  const { data: assignments } = useStakeholderAssignments({ stakeholder_id: String(node.userId) })
 
   const TABS: { key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
