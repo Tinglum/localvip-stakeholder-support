@@ -574,11 +574,23 @@ export function mapQaRoleFromSignals(options: {
   claims?: QaAuthClaims | null
   accountType?: string | null
   profileRole?: string | null
+  /** Stakeholder track from the CRM. See the ordering note below. */
+  consumerType?: string | null
 }): { role: UserRole; roleSubtype?: UserRoleSubtype } {
   const roles = [
     normalizeQaSignal(options.accountType),
     normalizeQaSignal(options.profileRole),
     ...(options.claims?.roles || []).map((role) => role.toLowerCase()),
+    // LAST on purpose. mapQaRole scans this list in priority order, so the
+    // track can only decide the role when nothing stronger already has: a
+    // business account or an admin claim still wins. "Normal" matches none of
+    // its branches and falls through to the default, so the common case is
+    // unaffected.
+    //
+    // This is what makes the CRM's track selector real. Without it the value
+    // persisted to QA and changed nothing a user could reach, while the CRM
+    // listed the tools it supposedly unlocked.
+    normalizeQaSignal(options.consumerType),
   ].filter((value): value is string => !!value)
 
   return mapQaRole({

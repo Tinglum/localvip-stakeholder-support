@@ -306,6 +306,14 @@ export interface QaUserProfile {
   lastName: string
   accountType: string
   role: string
+  /**
+   * Stakeholder track: Normal | Volunteer | Intern | LaunchTeamPartner |
+   * Influencer. Feeds role resolution, so setting a customer's track in the CRM
+   * actually changes what they can reach - before this was carried, the CRM
+   * could show an admin the tools a track unlocks while the session had no way
+   * to know the track existed.
+   */
+  consumerType?: string | null
   address1?: string | null
   address2?: string | null
   city?: string | null

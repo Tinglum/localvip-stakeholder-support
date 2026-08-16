@@ -16,8 +16,13 @@ import type { QaNodeDetail } from '@/lib/auth/qa-api'
 import { AccessTab } from '@/components/admin/access-tab'
 import { ROLE_TOOLS } from '@/lib/constants'
 import type { UserRole } from '@/lib/types/database'
+import { mapQaRoleFromSignals } from '@/lib/auth/qa-auth'
+import { CustomerAssignmentsPanel } from '@/components/crm/customer-assignments-panel'
+import { CustomerAdminActions } from '@/components/crm/customer-admin-actions'
+import { useStakeholderAssignments } from '@/lib/supabase/hooks'
+import { describeAssignmentImpact, roleUsesAssignments } from '@/lib/assignment-impact'
 
-type TabKey = 'overview' | 'network' | 'access'
+type TabKey = 'overview' | 'assignments' | 'manage' | 'network' | 'access'
 
 interface ConsumerTypeOption {
   id: number
@@ -37,13 +42,18 @@ function formatConsumerTypeName(name: string | null | undefined) {
   return name === 'LaunchTeamPartner' ? 'Launch Team Partner' : name
 }
 
+/**
+ * The role this track will actually produce at sign-in.
+ *
+ * Delegates to mapQaRoleFromSignals - the same function the session is built
+ * with - so this preview cannot drift from reality. A hand-written copy lived
+ * here and had already drifted: it returned 'intern' and 'volunteer' as roles,
+ * while sign-in produces role 'field' with a subtype. The CRM therefore listed
+ * ROLE_TOOLS.intern (starting "Outreach Scripts") for someone who would land on
+ * ROLE_TOOLS.field (starting "My Businesses").
+ */
 function mapConsumerTypeToRole(consumerType: string | null | undefined): UserRole {
-  const normalized = (consumerType || 'Normal').trim().toLowerCase()
-  if (normalized === 'intern') return 'intern'
-  if (normalized === 'volunteer') return 'volunteer'
-  if (normalized === 'launchteampartner') return 'launch_partner'
-  if (normalized === 'influencer') return 'influencer'
-  return 'community'
+  return mapQaRoleFromSignals({ consumerType: consumerType || 'Normal' }).role
 }
 
 export default function CustomerDetailPage() {
@@ -116,15 +126,44 @@ export default function CustomerDetailPage() {
   const isCustomer = node.type?.toLowerCase() === 'customer'
   const consumerTypeName = node.consumerTypeName || 'Normal'
   const trackRole = mapConsumerTypeToRole(consumerTypeName)
+  // Used to warn before a track change strands work this person owns.
+  const { data: assignments } = useStakeholderAssignments({ stakeholder_id: String(node.userId) })
 
   const TABS: { key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
+    { key: 'assignments', label: 'Assignments' },
+    { key: 'manage', label: 'Manage' },
     { key: 'network', label: 'Network' },
     { key: 'access', label: 'Access' },
   ]
 
   async function handleConsumerTypeChange(nextType: ConsumerTypeOption) {
     if (!isCustomer || !node) return
+
+    // A track change is a permission change. Assignments live on in the
+    // database when someone moves to a role that cannot reach them, so the
+    // person keeps owning cities and businesses they can no longer see and
+    // nothing on screen says so. Name the cost before it happens.
+    const impact = describeAssignmentImpact(
+      assignments,
+      trackRole,
+      mapConsumerTypeToRole(nextType.name),
+    )
+    if (impact.losesAccess) {
+      const ok = window.confirm(
+        `${node.name || 'This person'} currently holds ${impact.summary}.
+
+` +
+        `Moving them to ${formatConsumerTypeName(nextType.name)} removes the dashboard ` +
+        `that uses those assignments, so they will stay assigned but become unusable ` +
+        `until the track is changed back or the work is reassigned.
+
+` +
+        `Change the track anyway?`,
+      )
+      if (!ok) return
+    }
+
     setTypeSaving(true)
     setTypeMessage(null)
     try {
@@ -217,6 +256,31 @@ export default function CustomerDetailPage() {
           typeSaving={typeSaving}
           typeMessage={typeMessage}
           onConsumerTypeChange={handleConsumerTypeChange}
+        />
+      ) : null}
+      {tab === 'assignments' ? (
+        <CustomerAssignmentsPanel
+          stakeholderId={String(node.userId)}
+          stakeholderName={node.name}
+          currentRole={trackRole}
+          currentTrackLabel={formatConsumerTypeName(consumerTypeName)}
+          // Only the tracks that actually reach the assignment dashboards are
+          // offered as the fix - listing Normal here would suggest it helps.
+          assignableTracks={consumerTypes.filter((t) =>
+            roleUsesAssignments(mapConsumerTypeToRole(t.name)),
+          )}
+          onChangeTrack={handleConsumerTypeChange}
+        />
+      ) : null}
+      {tab === 'manage' ? (
+        <CustomerAdminActions
+          userId={node.userId}
+          email={node.contact.email}
+          firstName={node.contact.firstName}
+          lastName={node.contact.lastName}
+          phone={node.contact.phone}
+          isEnabled={node.status.isEnabled}
+          onChanged={() => void loadNode()}
         />
       ) : null}
       {tab === 'network' ? <NetworkTab node={node} /> : null}

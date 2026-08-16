@@ -215,6 +215,7 @@ function mergeQaProfileIntoSessionProfile(
     claims: qaClaims,
     accountType,
     profileRole,
+    consumerType: qaProfile?.consumerType ?? null,
   })
 
   const fullName = resolveDisplayName(qaProfile, baseProfile, nextRole.role, nextRole.roleSubtype)
@@ -233,6 +234,9 @@ function mergeQaProfileIntoSessionProfile(
       qa_subject: qaClaims.sub || null,
       qa_account_type: accountType,
       qa_profile_role: profileRole,
+      // Recorded so "why does this person have this role?" is answerable from
+      // the session alone - the track is now one of the inputs.
+      qa_consumer_type: qaProfile?.consumerType ?? null,
       qa_shared_url: sanitizeStakeholderUrl(qaProfile?.sharedURL),
       qa_referral_link: sanitizeStakeholderUrl(qaProfile?.referralLink),
       qa_email: qaProfile?.email || qaClaims.email || null,
