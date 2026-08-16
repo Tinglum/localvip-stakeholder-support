@@ -15,6 +15,7 @@ import {
   UserCircle2,
   LogIn,
   ExternalLink,
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -110,6 +111,10 @@ export default function CustomersPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 
   const [openingId, setOpeningId] = React.useState<number | string | null>(null)
+
+  const openAdminPage = React.useCallback((node: QaNodeListItem) => {
+    router.push(`/crm/contacts/${node.userId}`)
+  }, [router])
 
   // "Open in app": mint a token for the customer and open my.localvip.com already
   // signed in as them (the mobile-app experience).
@@ -249,13 +254,18 @@ export default function CustomersPage() {
                 const meta = typeMeta(node.type)
                 const location = [node.city, node.state].filter(Boolean).join(', ')
                 return (
-                  <tr key={`${node.type}-${node.accountId}`} className="bg-white transition-colors hover:bg-surface-50">
+                  <tr
+                    key={`${node.type}-${node.accountId}`}
+                    className="cursor-pointer bg-white transition-colors hover:bg-surface-50"
+                    onClick={() => openAdminPage(node)}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="text-surface-400">{meta.icon}</span>
                         <div className="min-w-0">
                           <Link
                             href={`/crm/contacts/${node.userId}`}
+                            onClick={(event) => event.stopPropagation()}
                             className="truncate font-medium text-surface-900 hover:text-brand-700 hover:underline"
                           >
                             {node.name || `Node ${node.accountId}`}
@@ -297,14 +307,36 @@ export default function CustomersPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => void handleOpenInApp(node)}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openAdminPage(node)
+                          }}
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                          Open admin
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void handleOpenInApp(node)
+                          }}
                           disabled={openingId === node.userId}
                           title={`Open my.localvip.com signed in as this ${meta.verb}`}
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
                           {openingId === node.userId ? 'Opening…' : 'Log in to webapp'}
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => { setLoginTarget(node); setLoginError(null) }}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setLoginTarget(node)
+                            setLoginError(null)
+                          }}
+                        >
                           <LogIn className="h-3.5 w-3.5" />
                           Log in as {meta.verb}
                         </Button>

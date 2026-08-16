@@ -11,11 +11,40 @@
 import * as React from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, ShieldCheck, Users, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ExternalLink, ShieldCheck, Users, AlertTriangle, RefreshCw } from 'lucide-react'
 import type { QaNodeDetail } from '@/lib/auth/qa-api'
 import { AccessTab } from '@/components/admin/access-tab'
+import { ROLE_TOOLS } from '@/lib/constants'
+import type { UserRole } from '@/lib/types/database'
 
 type TabKey = 'overview' | 'network' | 'access'
+
+interface ConsumerTypeOption {
+  id: number
+  name: string
+}
+
+const CONSUMER_TYPE_HINTS: Record<string, string> = {
+  Normal: 'Regular customer account with standard community access.',
+  Intern: 'Training and support workspace with tasks, scripts, and materials.',
+  Volunteer: 'Community support workspace with outreach tools and volunteer materials.',
+  LaunchTeamPartner: 'City-growth workspace with launch partner materials and community tools.',
+  Influencer: 'Referral and promotion workspace with links, stats, and share materials.',
+}
+
+function formatConsumerTypeName(name: string | null | undefined) {
+  if (!name) return 'Normal'
+  return name === 'LaunchTeamPartner' ? 'Launch Team Partner' : name
+}
+
+function mapConsumerTypeToRole(consumerType: string | null | undefined): UserRole {
+  const normalized = (consumerType || 'Normal').trim().toLowerCase()
+  if (normalized === 'intern') return 'intern'
+  if (normalized === 'volunteer') return 'volunteer'
+  if (normalized === 'launchteampartner') return 'launch_partner'
+  if (normalized === 'influencer') return 'influencer'
+  return 'community'
+}
 
 export default function CustomerDetailPage() {
   const params = useParams<{ id: string }>()
@@ -26,26 +55,53 @@ export default function CustomerDetailPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [tab, setTab] = React.useState<TabKey>('overview')
+  const [consumerTypes, setConsumerTypes] = React.useState<ConsumerTypeOption[]>([])
+  const [typeSaving, setTypeSaving] = React.useState(false)
+  const [typeMessage, setTypeMessage] = React.useState<string | null>(null)
+
+  const loadNode = React.useCallback(async () => {
+    if (!id) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/dashboard/nodes/${encodeURIComponent(id)}`, { cache: 'no-store' })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data?.error || 'The customer could not be loaded.')
+        setNode(null)
+        return
+      }
+      setNode(data as QaNodeDetail)
+    } catch {
+      setError('The customer could not be loaded.')
+      setNode(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
 
   React.useEffect(() => {
-    if (!id) return
+    void loadNode()
+  }, [loadNode])
+
+  React.useEffect(() => {
+    if (!node || node.type?.toLowerCase() !== 'customer') {
+      setConsumerTypes([])
+      return
+    }
+
     let cancelled = false
     void (async () => {
-      setLoading(true)
       try {
-        const res = await fetch(`/api/dashboard/nodes/${encodeURIComponent(id)}`, { cache: 'no-store' })
+        const res = await fetch('/api/qa/consumers/types', { cache: 'no-store' })
+        if (!res.ok) return
         const data = await res.json()
-        if (cancelled) return
-        if (!res.ok) setError(data?.error || 'The customer could not be loaded.')
-        else setNode(data as QaNodeDetail)
-      } catch {
-        if (!cancelled) setError('The customer could not be loaded.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+        if (!cancelled) setConsumerTypes(Array.isArray(data) ? data as ConsumerTypeOption[] : [])
+      } catch {}
     })()
+
     return () => { cancelled = true }
-  }, [id])
+  }, [node])
 
   if (loading) return <div className="p-6 text-sm text-surface-500">Loading…</div>
   if (error || !node) {
@@ -57,11 +113,38 @@ export default function CustomerDetailPage() {
     )
   }
 
+  const isCustomer = node.type?.toLowerCase() === 'customer'
+  const consumerTypeName = node.consumerTypeName || 'Normal'
+  const trackRole = mapConsumerTypeToRole(consumerTypeName)
+
   const TABS: { key: TabKey; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'network', label: 'Network' },
     { key: 'access', label: 'Access' },
   ]
+
+  async function handleConsumerTypeChange(nextType: ConsumerTypeOption) {
+    if (!isCustomer || !node) return
+    setTypeSaving(true)
+    setTypeMessage(null)
+    try {
+      const res = await fetch(`/api/qa/consumers/${node.userId}/consumer-type`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ consumerTypeId: nextType.id }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { error?: string }).error || 'The customer track could not be saved.')
+      }
+      setNode((current) => current ? { ...current, consumerTypeName: nextType.name } : current)
+      setTypeMessage(`Track updated to ${formatConsumerTypeName(nextType.name)}.`)
+    } catch (err) {
+      setTypeMessage(err instanceof Error ? err.message : 'The customer track could not be saved.')
+    } finally {
+      setTypeSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-5 p-6">
@@ -73,26 +156,40 @@ export default function CustomerDetailPage() {
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-surface-500">
             <Badge>{node.type}</Badge>
             <span>{node.contact.email || '—'}</span>
-            {node.consumerTypeName && node.consumerTypeName !== 'Normal' ? (
-              <Badge tone="brand">{node.consumerTypeName}</Badge>
-            ) : null}
+            {isCustomer ? <Badge tone="brand">{formatConsumerTypeName(consumerTypeName)}</Badge> : null}
             {!node.status.isEnabled ? <Badge tone="danger">Disabled</Badge> : null}
             {node.status.isLockedOut ? <Badge tone="danger">Locked out</Badge> : null}
           </p>
         </div>
-        <button
-          onClick={async () => {
-            await fetch('/api/admin/view-as', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ userId: node.userId }),
-            })
-            router.push('/')
-          }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-sm text-surface-700 hover:bg-surface-50"
-        >
-          <ExternalLink className="h-4 w-4" /> View as
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isCustomer ? (
+            <Link
+              href={`/crm/consumers/${node.userId}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-sm text-surface-700 hover:bg-surface-50"
+            >
+              Open consumer CRM <ArrowRight className="h-4 w-4" />
+            </Link>
+          ) : null}
+          <button
+            onClick={() => void loadNode()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-sm text-surface-700 hover:bg-surface-50"
+          >
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </button>
+          <button
+            onClick={async () => {
+              await fetch('/api/admin/view-as', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ userId: node.userId }),
+              })
+              router.push('/')
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-sm text-surface-700 hover:bg-surface-50"
+          >
+            <ExternalLink className="h-4 w-4" /> View as
+          </button>
+        </div>
       </header>
 
       <nav className="flex gap-1 border-b border-surface-200">
@@ -111,7 +208,17 @@ export default function CustomerDetailPage() {
         ))}
       </nav>
 
-      {tab === 'overview' ? <OverviewTab node={node} /> : null}
+      {tab === 'overview' ? (
+        <OverviewTab
+          node={node}
+          consumerTypeName={consumerTypeName}
+          consumerTypes={consumerTypes}
+          trackRole={trackRole}
+          typeSaving={typeSaving}
+          typeMessage={typeMessage}
+          onConsumerTypeChange={handleConsumerTypeChange}
+        />
+      ) : null}
       {tab === 'network' ? <NetworkTab node={node} /> : null}
       {tab === 'access' ? <AccessTab userId={node.userId} /> : null}
     </div>
@@ -144,17 +251,47 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({
+  title,
+  children,
+  description,
+}: {
+  title: string
+  children: React.ReactNode
+  description?: string
+}) {
   return (
     <section className="rounded-xl border border-surface-200 bg-white p-4">
-      <h2 className="mb-3 text-sm font-semibold text-surface-900">{title}</h2>
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-surface-900">{title}</h2>
+        {description ? <p className="mt-1 text-xs text-surface-500">{description}</p> : null}
+      </div>
       {children}
     </section>
   )
 }
 
-function OverviewTab({ node }: { node: QaNodeDetail }) {
+function OverviewTab({
+  node,
+  consumerTypeName,
+  consumerTypes,
+  trackRole,
+  typeSaving,
+  typeMessage,
+  onConsumerTypeChange,
+}: {
+  node: QaNodeDetail
+  consumerTypeName: string
+  consumerTypes: ConsumerTypeOption[]
+  trackRole: UserRole
+  typeSaving: boolean
+  typeMessage: string | null
+  onConsumerTypeChange: (nextType: ConsumerTypeOption) => Promise<void>
+}) {
   const c = node.contact
+  const isCustomer = node.type?.toLowerCase() === 'customer'
+  const roleTools = ROLE_TOOLS[trackRole] || []
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card title="Contact">
@@ -171,13 +308,83 @@ function OverviewTab({ node }: { node: QaNodeDetail }) {
       <Card title="Identity">
         <dl className="grid grid-cols-2 gap-3">
           <Field label="Account type" value={`${node.accountTypeName} (${node.accountType})`} />
-          <Field label="Consumer type" value={node.consumerTypeName ?? '—'} />
+          <Field label="Consumer type" value={isCustomer ? formatConsumerTypeName(consumerTypeName) : (node.consumerTypeName ?? '—')} />
           <Field label="Roles" value={node.roles.length ? node.roles.join(', ') : '—'} />
           <Field label="Joined" value={node.status.joinedAt ? new Date(node.status.joinedAt).toLocaleDateString() : '—'} />
           <Field label="Email confirmed" value={node.status.emailConfirmed ? 'Yes' : 'No'} />
           <Field label="Enabled" value={node.status.isEnabled ? 'Yes' : 'No'} />
         </dl>
       </Card>
+
+      {isCustomer ? (
+        <Card
+          title="Customer track"
+          description="Choose what kind of stakeholder this customer should be so they land in the right dashboard and get the right tools."
+        >
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {consumerTypes.map((type) => {
+                const isCurrent = type.name === consumerTypeName
+                return (
+                  <button
+                    key={type.id}
+                    type="button"
+                    disabled={typeSaving || isCurrent}
+                    onClick={() => void onConsumerTypeChange(type)}
+                    className={
+                      'rounded-full border px-3 py-1.5 text-xs font-medium transition ' +
+                      (isCurrent
+                        ? 'cursor-default border-brand-300 bg-brand-50 text-brand-800'
+                        : 'border-surface-300 bg-white text-surface-700 hover:border-brand-300 hover:bg-brand-50 disabled:opacity-50')
+                    }
+                  >
+                    {formatConsumerTypeName(type.name)}
+                    {isCurrent ? <span className="ml-1.5 text-brand-700">✓</span> : null}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-sm text-surface-600">
+              {CONSUMER_TYPE_HINTS[consumerTypeName] || CONSUMER_TYPE_HINTS.Normal}
+            </p>
+            <p className="rounded-lg bg-surface-50 px-3 py-2 text-xs text-surface-600">
+              Direct name, email, and phone edits still need a QA update endpoint. This page now handles the customer track, access grants, referral/network visibility, and direct links into the right workspace.
+            </p>
+            {typeMessage ? (
+              <p className={`text-sm ${typeMessage.toLowerCase().includes('could not') ? 'text-danger-700' : 'text-emerald-700'}`}>
+                {typeMessage}
+              </p>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
+
+      {isCustomer ? (
+        <Card
+          title="Unlocked tools"
+          description={`This customer currently maps to the ${ROLE_TOOLS[trackRole] ? trackRole.replace('_', ' ') : 'community'} workspace.`}
+        >
+          {roleTools.length ? (
+            <div className="space-y-2">
+              {roleTools.map((tool) => (
+                <Link
+                  key={`${trackRole}-${tool.href}`}
+                  href={tool.href}
+                  className="flex items-center justify-between rounded-lg border border-surface-200 px-3 py-2 transition hover:border-brand-200 hover:bg-brand-50"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-surface-900">{tool.label}</p>
+                    <p className="text-xs text-surface-500">{tool.description}</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-surface-400" />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-surface-500">No workspace shortcuts are configured for this customer type yet.</p>
+          )}
+        </Card>
+      ) : null}
 
       {node.account ? (
         <Card title="Linked account">
@@ -190,9 +397,7 @@ function OverviewTab({ node }: { node: QaNodeDetail }) {
               value={
                 node.account.latitude || node.account.longitude
                   ? `${node.account.latitude}, ${node.account.longitude}`
-                  : // Zero/absent coordinates hide a business from the consumer app's
-                    // distance-based deal listing, so call it out rather than show "0, 0".
-                    <span className="text-warning-700">Not geocoded</span>
+                  : <span className="text-warning-700">Not geocoded</span>
               }
             />
           </dl>
@@ -220,8 +425,6 @@ function NetworkTab({ node }: { node: QaNodeDetail }) {
             <Field label="Referrer code" value={n.referrer.referralCode} />
           </dl>
         ) : (
-          // No Referrals row = never placed by ReferralManager.AddReferral. Worth
-          // surfacing loudly: an orphaned node earns nobody and appears in no tree.
           <p className="flex items-start gap-2 rounded-lg bg-warning-50 p-3 text-sm text-warning-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
