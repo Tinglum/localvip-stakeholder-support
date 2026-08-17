@@ -116,34 +116,34 @@ function glyph(name, x, y, size = 64, color = INK, sw = 5) {
 function header({ m, org, sub }) {
   return `
   ${mark(m, 74, 28, 150)}
-  ${stack(org, 250, 82, { size: 34, weight: 800, cls: 'cond', gap: 40 })}
-  ${text(sub, 250, 172, { size: 19, weight: 800, cls: 'cond', fill: INK, ls: 0.4 })}
-  <line x1="655" y1="40" x2="655" y2="176" stroke="#c9d4e2" stroke-width="3"/>
-  <text x="700" y="104" font-size="46" font-weight="800" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" fill="${INK}">LOCAL<tspan font-weight="400">VIP</tspan></text>
-  ${text('POWERED BY LOCALVIP', 700, 142, { size: 16, weight: 700, cls: 'sb', fill: BODY, ls: 1 })}`
+  ${org.map((l, i) => text(l, 420, 74 + i * 42, { size: 34, weight: 800, cls: 'cond', anchor: 'middle' })).join('\n')}
+  ${text(sub, 420, 74 + org.length * 42, { size: 21, weight: 800, cls: 'cond', fill: INK, anchor: 'middle', ls: 0.4 })}
+  <line x1="640" y1="44" x2="640" y2="150" stroke="#c9d4e2" stroke-width="3"/>
+  <text x="690" y="98" font-size="54" font-weight="800" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" fill="${INK}">LOCAL<tspan font-weight="400">VIP</tspan></text>
+  ${text('POWERED BY LOCALVIP', 690, 132, { size: 16, weight: 700, cls: 'sb', fill: BODY, ls: 1 })}`
 }
 
 /** Navy-headed panel with a rounded top. */
 function panel(x, y, w, h, title) {
   const titleLines = title.split('|')
   return `
-  <path d="M${x} ${y + 18}a18 18 0 0 1 18-18h${w - 36}a18 18 0 0 1 18 18v72H${x}z" fill="${NAVY}"/>
-  <path d="M${x} ${y + 90}h${w}v${h - 108}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="#fff"/>
-  <path d="M${x} ${y + 90}h${w}v${h - 108}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="none" stroke="#e8c37a" stroke-width="2.5"/>
-  ${titleLines.map((t, i) => text(t, x + w / 2, y + (titleLines.length === 1 ? 56 : 40 + i * 32), { size: 23, weight: 800, cls: 'cond', fill: '#fff', anchor: 'middle' })).join('\n')}`
+  <path d="M${x} ${y + 18}a18 18 0 0 1 18-18h${w - 36}a18 18 0 0 1 18 18v56H${x}z" fill="${NAVY}"/>
+  <path d="M${x} ${y + 74}h${w}v${h - 92}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="#fff"/>
+  <path d="M${x} ${y + 74}h${w}v${h - 92}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="none" stroke="#e8c37a" stroke-width="2.5"/>
+  ${titleLines.map((t, i) => text(t, x + w / 2, y + (titleLines.length === 1 ? 46 : 32 + i * 28), { size: 23, weight: 800, cls: 'cond', fill: '#fff', anchor: 'middle' })).join('\n')}`
 }
 
 /** One icon + wrapped label row, with an optional connector arrow beneath. */
 function stepRow(x, y, icon, labelLines, withArrow) {
   return `
-  ${glyph(icon, x, y, 78, INK, 5)}
-  ${stack(labelLines, x + 86, y + (labelLines.length === 1 ? 36 : 22), { size: 20, weight: 400, fill: BODY, gap: 27 })}
-  ${withArrow ? `<g transform="translate(${x + 22} ${y + 70})" fill="#9fb0c4"><path d="M6 0h10v18h7L11 32 0 18h6z"/></g>` : ''}`
+  ${glyph(icon, x, y, 56, INK, 4)}
+  ${stack(labelLines, x + 74, y + (labelLines.length === 1 ? 36 : 22), { size: 20, weight: 400, fill: BODY, gap: 27 })}
+  ${withArrow ? `<g transform="translate(${x + 20} ${y + 62}) scale(.72)" fill="#c3ced9"><path d="M6 0h10v18h7L11 32 0 18h6z"/></g>` : ''}`
 }
 
 function keepGoingArrow(y, label) {
   return `
-  <g transform="translate(468 ${y})">
+  <g transform="translate(478 ${y})">
     <path d="M0 18h56V0l40 38-40 38V56H0z" fill="${GOLD}"/>
     ${label.split('|').map((t, i) => text(t, 40, 32 + i * 26, { size: 18, weight: 800, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}
   </g>`
@@ -158,10 +158,10 @@ function outcomeBox(x, y, w, linesArr) {
 
 function reassurance({ m, title, body }) {
   return `
-  ${mark(m, 96, 1000, 112)}
-  <line x1="240" y1="1004" x2="240" y2="1124" stroke="${GOLD}" stroke-width="3"/>
-  ${text(title, 272, 1040, { size: 25, weight: 800, cls: 'cond' })}
-  ${stack(body, 272, 1072, { size: 18, weight: 400, fill: BODY, gap: 25 })}`
+  ${mark(m, 96, 952, 100)}
+  <line x1="228" y1="956" x2="228" y2="1060" stroke="${GOLD}" stroke-width="3"/>
+  ${text(title, 258, 990, { size: 25, weight: 800, cls: 'cond' })}
+  ${stack(body, 258, 1022, { size: 18, weight: 400, fill: BODY, gap: 25 })}`
 }
 
 /**
@@ -170,23 +170,23 @@ function reassurance({ m, title, body }) {
  */
 function ctaBand({ headline, rows, footnote }) {
   return `
-  <rect x="0" y="1182" width="${W}" height="246" fill="${NAVY}"/>
-  <g transform="translate(108 1216)">
-    <rect x="-10" y="-10" width="174" height="216" rx="12" fill="none" stroke="${GOLD}" stroke-width="4"/>
-    <rect width="154" height="154" fill="#fff"/>
-    <rect x="6" y="6" width="142" height="142" rx="6" fill="#fff" stroke="${GOLD}" stroke-width="3" stroke-dasharray="9 7"/>
-    ${text('PLACE QR', 77, 72, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
-    ${text('CODE HERE', 77, 90, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
-    <rect x="-10" y="162" width="174" height="44" rx="8" fill="${GOLD}"/>
-    ${glyph('phone', 22, 168, 26, INK, 3)}
-    ${text('SCAN ME', 88, 192, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
+  <rect x="0" y="1120" width="${W}" height="308" fill="${NAVY}"/>
+  <g transform="translate(104 1170)">
+    <rect x="-10" y="-10" width="196" height="242" rx="12" fill="none" stroke="${GOLD}" stroke-width="4"/>
+    <rect width="176" height="176" fill="#fff"/>
+    <rect x="6" y="6" width="164" height="164" rx="6" fill="#fff" stroke="${GOLD}" stroke-width="3" stroke-dasharray="9 7"/>
+    ${text('PLACE QR', 88, 82, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
+    ${text('CODE HERE', 88, 102, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
+    <rect x="-10" y="184" width="196" height="46" rx="8" fill="${GOLD}"/>
+    ${glyph('phone', 30, 192, 28, INK, 3)}
+    ${text('SCAN ME', 104, 216, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
   </g>
-  <line x1="330" y1="1222" x2="330" y2="1400" stroke="#3a5170" stroke-width="2"/>
-  ${headline.map((t, i) => text(t, 366, 1238 + i * 42, { size: 38, weight: 800, cls: 'cond', fill: '#fff', fit: 560 })).join('\n')}
+  <line x1="336" y1="1170" x2="336" y2="1400" stroke="#3a5170" stroke-width="2"/>
+  ${headline.map((t, i) => text(t, 372, 1196 + i * 40, { size: 42, weight: 800, cls: 'cond', fill: '#fff', fit: 600 })).join('\n')}
   ${rows.map((r, i) => `
-    ${glyph(r.icon, 364, 1300 + i * 44, 36, '#fff', 4)}
-    ${text(r.label, 412, 1326 + i * 44, { size: 21, weight: 800, cls: 'cond', fill: '#fff' })}`).join('\n')}
-  ${text(footnote, 366, 1408, { size: 17, weight: 800, cls: 'cond', fill: GOLD })}`
+    ${glyph(r.icon, 372, 1248 + i * 48, 38, '#fff', 4)}
+    ${text(r.label, 424, 1276 + i * 48, { size: 21, weight: 800, cls: 'cond', fill: '#fff' })}`).join('\n')}
+  ${text(footnote, 372, 1396, { size: 17, weight: 800, cls: 'cond', fill: GOLD })}`
 }
 
 function footer(items) {
@@ -206,20 +206,20 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
   <rect width="${W}" height="${H}" fill="#fbfbfb"/>
   <rect x="10" y="10" width="${W - 20}" height="${H - 20}" rx="18" fill="none" stroke="#0b1c33" stroke-width="3"/>
   ${header(head)}
-  ${title.map((t, i) => text(t.text, W / 2, 268 + i * 74, { size: 62, weight: 800, cls: 'cond', anchor: 'middle', fill: INK, fit: t.fit })).join('\n')}
-  <line x1="60" y1="408" x2="230" y2="408" stroke="${GOLD}" stroke-width="3"/>
-  <line x1="${W - 230}" y1="408" x2="${W - 60}" y2="408" stroke="${GOLD}" stroke-width="3"/>
+  ${title.map((t, i) => text(t.text, W / 2, 262 + i * 66, { size: 74, weight: 800, cls: 'cond', anchor: 'middle', fill: INK, fit: t.fit })).join('\n')}
+  <line x1="62" y1="408" x2="162" y2="408" stroke="${GOLD}" stroke-width="3"/>
+  <line x1="${W - 162}" y1="408" x2="${W - 62}" y2="408" stroke="${GOLD}" stroke-width="3"/>
   ${text(subtitle, W / 2, 416, { size: 22, weight: 700, fill: BODY, anchor: 'middle', fit: 700 })}
-  ${panel(40, 446, 430, 472, leftTitle)}
-  ${leftSteps.map((s, i) => stepRow(76, 562 + i * 118, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
-  ${keepGoingArrow(676, arrowLabel)}
-  ${panel(580, 446, 430, 472, rightTitle)}
+  ${panel(40, 442, 452, 462, leftTitle)}
+  ${leftSteps.map((s, i) => stepRow(76, 548 + i * 112, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
+  ${keepGoingArrow(660, arrowLabel)}
+  ${panel(558, 442, 452, 462, rightTitle)}
   ${rightSteps.map((st, i) => `
-    ${glyph(st.icon, 620 + i * 128, 548, 90, INK, 5)}
-    ${st.lines.map((l, j) => text(l, 662 + i * 128, 664 + j * 26, { size: 17, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
-  <path d="M736 668h22M864 668h22" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
+    ${glyph(st.icon, 600 + i * 132, 534, 78, INK, 5)}
+    ${st.lines.map((l, j) => text(l, 639 + i * 132, 638 + j * 24, { size: 17, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
+  <path d="M690 573h26M822 573h26" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
   <path d="M806 720v14M798 728l8 10 8-10" stroke="${GOLD}" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  ${outcomeBox(600, 752, 390, outcome)}
+  ${outcomeBox(580, 740, 408, outcome)}
   ${reassurance(reassure)}
   ${ctaBand(cta)}
   ${footer(foot)}
@@ -228,7 +228,7 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
 
 const business = page({
   head: { m: owl, org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB' },
-  title: [{ text: 'MAKE ONE GIVEBACK DAY', fit: 700 }, { text: 'THE START OF SOMETHING BIGGER.', fit: 900 }],
+  title: [{ text: 'MAKE ONE GIVEBACK DAY', fit: 800 }, { text: 'THE START OF SOMETHING BIGGER.', fit: 940 }],
   subtitle: 'Bring in your community. Build relationships that can continue after the event.',
   leftTitle: 'THE GIVEBACK DAY|YOU ALREADY KNOW',
   leftSteps: [
@@ -252,7 +252,7 @@ const business = page({
       'involved and turns a single day into an ongoing connection.'],
   },
   cta: {
-    headline: ['ONGOING CONNECTION.', 'MORE WAYS TO WIN.'],
+    headline: ['ONGOING CONNECTION. MORE WAYS TO WIN.'],
     rows: [
       { icon: 'play', label: 'SCAN TO SEE THE 60-SECOND PLAN' },
       { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE SETUP CALL' },
@@ -268,7 +268,7 @@ const business = page({
 
 const parent = page({
   head: { m: owl, org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB' },
-  title: [{ text: 'YOUR NEXT LOCAL PURCHASE', fit: 830 }, { text: 'CAN SUPPORT OLATHE WEST.', fit: 830 }],
+  title: [{ text: 'YOUR NEXT LOCAL PURCHASE', fit: 900 }, { text: 'CAN SUPPORT OLATHE WEST.', fit: 880 }],
   subtitle: 'Shop where you already shop. Help our community keep winning.',
   leftTitle: 'THE SUPPORT|YOU ALREADY GIVE',
   leftSteps: [
@@ -292,7 +292,7 @@ const parent = page({
       'to create more value for everyone.'],
   },
   cta: {
-    headline: ['YOUR FAMILY. YOUR SCHOOL.', 'MORE WAYS TO MAKE AN IMPACT.'],
+    headline: ['YOUR FAMILY. MORE WAYS TO MAKE AN IMPACT.'],
     rows: [
       { icon: 'storefront', label: 'FIND PARTICIPATING BUSINESSES' },
       { icon: 'customers', label: 'JOIN THE OLATHE WEST COMMUNITY' },
@@ -308,7 +308,7 @@ const parent = page({
 
 const school = page({
   head: { m: district, org: ['OLATHE PUBLIC', 'SCHOOLS'], sub: 'COMMUNITY GIVEBACK' },
-  title: [{ text: 'TURN COMMUNITY TRUST', fit: 720 }, { text: 'INTO REPEATABLE LOCAL SUPPORT.', fit: 900 }],
+  title: [{ text: 'TURN COMMUNITY TRUST', fit: 800 }, { text: 'INTO REPEATABLE LOCAL SUPPORT.', fit: 940 }],
   subtitle: 'Start with one business and one Giveback Day. Build from there.',
   leftTitle: 'THE GIVEBACK MODEL|YOU KNOW',
   leftSteps: [
@@ -332,7 +332,7 @@ const school = page({
       'easier to launch and repeat.'],
   },
   cta: {
-    headline: ['YOUR SCHOOL. OUR COMMUNITY.', 'MORE WAYS TO GROW.'],
+    headline: ['YOUR SCHOOL. MORE WAYS TO GROW.'],
     rows: [
       { icon: 'play', label: 'SCAN TO SEE THE 60-SECOND OLATHE WEST PILOT' },
       { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE LAUNCH CALL' },
