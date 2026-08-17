@@ -37,6 +37,9 @@ export interface StripeSummary {
   last30DaysVolume?: number
   last30DaysCount?: number
   recentPayments?: StripeSummaryPayment[]
+  activeRiskCases?: number
+  unresolvedExposure?: number
+  payoutAttentionRequired?: boolean
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -96,6 +99,9 @@ export async function GET() {
       last30DaysVolume: toNumber(json.last30DaysVolume) ?? 0,
       last30DaysCount: toNumber(json.last30DaysCount) ?? 0,
       recentPayments: normalizePayments(json.recentPayments),
+      activeRiskCases: toNumber(json.activeRiskCases) ?? 0,
+      unresolvedExposure: toNumber(json.unresolvedExposure) ?? 0,
+      payoutAttentionRequired: json.payoutAttentionRequired === true,
     }
 
     return NextResponse.json(summary)

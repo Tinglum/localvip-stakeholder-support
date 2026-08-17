@@ -14,7 +14,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, ChevronDown, ChevronRight, CreditCard, Loader2 } from 'lucide-react'
+import { AlertTriangle, ArrowRight, ChevronDown, ChevronRight, CreditCard, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,6 +40,9 @@ interface StripeSummary {
   last30DaysVolume?: number
   last30DaysCount?: number
   recentPayments?: StripePayment[]
+  activeRiskCases?: number
+  unresolvedExposure?: number
+  payoutAttentionRequired?: boolean
 }
 
 function formatMoney(value: number | null | undefined, currency = 'USD') {
@@ -107,6 +110,20 @@ export function StripeFinancialCard() {
           </div>
         ) : (
           <>
+            {summary.payoutAttentionRequired ? (
+              <div className="rounded-2xl border border-danger-200 bg-danger-50 p-4 text-danger-900">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div>
+                    <p className="font-semibold">Payment recovery in progress</p>
+                    <p className="mt-1 text-sm leading-6">
+                      {summary.activeRiskCases ?? 0} payment {(summary.activeRiskCases ?? 0) === 1 ? 'case requires' : 'cases require'} attention,
+                      representing {formatMoney(summary.unresolvedExposure, currency)}. Contact LocalVIP support before relying on the next payout amount.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <MoneyFact label="Available now" value={formatMoney(summary.availableBalance, currency)} />
               <MoneyFact label="Pending" value={formatMoney(summary.pendingBalance, currency)} />
