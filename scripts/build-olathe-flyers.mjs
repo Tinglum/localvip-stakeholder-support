@@ -55,16 +55,15 @@ const fontFace = (family, file, weight) =>
   `src:url(data:font/ttf;base64,${fs.readFileSync(path.join(FONT_DIR, file)).toString('base64')}) format('truetype');}`
 
 const FONT_CSS = [
-  fontFace('BebasNeueEmbed', 'BebasNeue-Regular.ttf', 400),
-  fontFace('MontserratEmbed', 'Montserrat-Regular.ttf', 400),
-  fontFace('MontserratEmbed', 'Montserrat-SemiBold.ttf', 600),
-  fontFace('MontserratEmbed', 'Montserrat-Bold.ttf', 700),
+  fontFace('MontRegular', 'Montserrat-Regular.ttf', 400),
+  fontFace('MontBold', 'Montserrat-Bold.ttf', 700),
+  fontFace('MontXBold', 'Montserrat-ExtraBold.ttf', 800),
 ].join('')
 
 const esc = (v) => String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 
-const NAVY = '#0f2444'
-const GOLD = '#f5a623'
+const NAVY = '#12305c'
+const GOLD = '#f7a81b'
 const INK = '#12294c'
 const BODY = '#2a3c55'
 
@@ -80,7 +79,10 @@ function text(str, x, y, { size = 20, weight = 700, fill = INK, anchor = 'start'
   // ink: thicken the glyph by stroking it in its own colour. paint-order keeps
   // the stroke behind the fill so counters stay open.
   const heavy = ink ? ` stroke="${fill}" stroke-width="${ink}" stroke-linejoin="round" paint-order="stroke"` : ''
-  return `<text x="${x}" y="${y}" text-anchor="${anchor}" class="${cls}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}"${lock}${heavy}>${esc(str)}</text>`
+  const fam = cls === 'cond' ? "'MontXBold',Montserrat,Arial,sans-serif"
+    : cls === 'sb' ? "'MontBold',Montserrat,Arial,sans-serif"
+    : "'MontRegular',Montserrat,Arial,sans-serif"
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" class="${cls}" font-family="${fam}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}"${lock}${heavy}>${esc(str)}</text>`
 }
 
 function stack(linesArr, x, y, opts = {}) {
@@ -114,11 +116,11 @@ function glyph(name, x, y, size = 64, color = INK, sw = 5) {
 function header({ m, org, sub }) {
   return `
   ${mark(m, 74, 28, 150)}
-  ${stack(org, 250, 82, { size: 46, weight: 400, cls: 'cond', gap: 48, ink: 1.6 })}
-  ${text(sub, 250, 172, { size: 22, weight: 800, fill: INK, ls: 0.4 })}
+  ${stack(org, 250, 82, { size: 34, weight: 800, cls: 'cond', gap: 40 })}
+  ${text(sub, 250, 172, { size: 19, weight: 800, cls: 'cond', fill: INK, ls: 0.4 })}
   <line x1="655" y1="40" x2="655" y2="176" stroke="#c9d4e2" stroke-width="3"/>
-  <text x="700" y="104" class="sans" font-size="52" font-weight="900" fill="${INK}">LOCAL<tspan font-weight="400">VIP</tspan></text>
-  ${text('POWERED BY LOCALVIP', 700, 142, { size: 19, weight: 700, fill: BODY, ls: 1 })}`
+  <text x="700" y="104" font-size="46" font-weight="800" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" fill="${INK}">LOCAL<tspan font-weight="400">VIP</tspan></text>
+  ${text('POWERED BY LOCALVIP', 700, 142, { size: 16, weight: 700, cls: 'sb', fill: BODY, ls: 1 })}`
 }
 
 /** Navy-headed panel with a rounded top. */
@@ -128,14 +130,14 @@ function panel(x, y, w, h, title) {
   <path d="M${x} ${y + 18}a18 18 0 0 1 18-18h${w - 36}a18 18 0 0 1 18 18v72H${x}z" fill="${NAVY}"/>
   <path d="M${x} ${y + 90}h${w}v${h - 108}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="#fff"/>
   <path d="M${x} ${y + 90}h${w}v${h - 108}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="none" stroke="#e8c37a" stroke-width="2.5"/>
-  ${titleLines.map((t, i) => text(t, x + w / 2, y + (titleLines.length === 1 ? 56 : 40 + i * 32), { size: 28, weight: 400, cls: 'cond', fill: '#fff', anchor: 'middle', ink: 1.3 })).join('\n')}`
+  ${titleLines.map((t, i) => text(t, x + w / 2, y + (titleLines.length === 1 ? 56 : 40 + i * 32), { size: 23, weight: 800, cls: 'cond', fill: '#fff', anchor: 'middle' })).join('\n')}`
 }
 
 /** One icon + wrapped label row, with an optional connector arrow beneath. */
 function stepRow(x, y, icon, labelLines, withArrow) {
   return `
-  ${glyph(icon, x, y, 74, INK, 5)}
-  ${stack(labelLines, x + 86, y + (labelLines.length === 1 ? 36 : 22), { size: 22, weight: 600, fill: BODY, gap: 29 })}
+  ${glyph(icon, x, y, 78, INK, 5)}
+  ${stack(labelLines, x + 86, y + (labelLines.length === 1 ? 36 : 22), { size: 20, weight: 400, fill: BODY, gap: 27 })}
   ${withArrow ? `<g transform="translate(${x + 22} ${y + 70})" fill="#9fb0c4"><path d="M6 0h10v18h7L11 32 0 18h6z"/></g>` : ''}`
 }
 
@@ -143,7 +145,7 @@ function keepGoingArrow(y, label) {
   return `
   <g transform="translate(468 ${y})">
     <path d="M0 18h56V0l40 38-40 38V56H0z" fill="${GOLD}"/>
-    ${label.split('|').map((t, i) => text(t, 40, 32 + i * 26, { size: 23, weight: 400, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}
+    ${label.split('|').map((t, i) => text(t, 40, 32 + i * 26, { size: 18, weight: 800, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}
   </g>`
 }
 
@@ -151,15 +153,15 @@ function outcomeBox(x, y, w, linesArr) {
   const h = 40 + linesArr.length * 34
   return `
   <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#fff" stroke="${GOLD}" stroke-width="2.5"/>
-  ${linesArr.map((t, i) => text(t, x + w / 2, y + 40 + i * 34, { size: 26, weight: 400, cls: 'cond', fill: INK, anchor: 'middle', ink: 1.2 })).join('\n')}`
+  ${linesArr.map((t, i) => text(t, x + w / 2, y + 40 + i * 34, { size: 21, weight: 800, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}`
 }
 
 function reassurance({ m, title, body }) {
   return `
   ${mark(m, 96, 1000, 112)}
   <line x1="240" y1="1004" x2="240" y2="1124" stroke="${GOLD}" stroke-width="3"/>
-  ${text(title, 272, 1040, { size: 32, weight: 400, cls: 'cond', ink: 1.4 })}
-  ${stack(body, 272, 1072, { size: 20, weight: 500, fill: BODY, gap: 27 })}`
+  ${text(title, 272, 1040, { size: 25, weight: 800, cls: 'cond' })}
+  ${stack(body, 272, 1072, { size: 18, weight: 400, fill: BODY, gap: 25 })}`
 }
 
 /**
@@ -176,14 +178,15 @@ function ctaBand({ headline, rows, footnote }) {
     ${text('PLACE QR', 77, 72, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
     ${text('CODE HERE', 77, 90, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
     <rect x="-10" y="162" width="174" height="44" rx="8" fill="${GOLD}"/>
-    ${text('SCAN ME', 77, 192, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
+    ${glyph('phone', 22, 168, 26, INK, 3)}
+    ${text('SCAN ME', 88, 192, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
   </g>
   <line x1="330" y1="1222" x2="330" y2="1400" stroke="#3a5170" stroke-width="2"/>
-  ${headline.map((t, i) => text(t, 366, 1238 + i * 42, { size: 44, weight: 400, cls: 'cond', fill: '#fff', fit: 592, ink: 2.0 })).join('\n')}
+  ${headline.map((t, i) => text(t, 366, 1238 + i * 42, { size: 38, weight: 800, cls: 'cond', fill: '#fff', fit: 560 })).join('\n')}
   ${rows.map((r, i) => `
     ${glyph(r.icon, 364, 1300 + i * 44, 36, '#fff', 4)}
-    ${text(r.label, 412, 1326 + i * 44, { size: 26, weight: 400, cls: 'cond', fill: '#fff', ink: 1.2 })}`).join('\n')}
-  ${text(footnote, 366, 1408, { size: 21, weight: 400, cls: 'cond', fill: GOLD, ink: 1.0 })}`
+    ${text(r.label, 412, 1326 + i * 44, { size: 21, weight: 800, cls: 'cond', fill: '#fff' })}`).join('\n')}
+  ${text(footnote, 366, 1408, { size: 17, weight: 800, cls: 'cond', fill: GOLD })}`
 }
 
 function footer(items) {
@@ -193,17 +196,17 @@ function footer(items) {
   <line x1="0" y1="1428" x2="${W}" y2="1428" stroke="#dfe6ef" stroke-width="2"/>
   ${items.map((it, i) => `
     ${glyph(it.icon, i * slot + 52, 1442, 42, INK, 4.5)}
-    ${text(it.label, i * slot + 106, 1474, { size: 23, weight: 400, cls: 'cond', fill: INK, ink: 1.1 })}
+    ${text(it.label, i * slot + 106, 1474, { size: 18, weight: 800, cls: 'cond', fill: INK })}
     ${i > 0 ? `<line x1="${i * slot + 10}" y1="1446" x2="${i * slot + 10}" y2="1486" stroke="#dfe6ef" stroke-width="2"/>` : ''}`).join('\n')}`
 }
 
 function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSteps, arrowLabel, outcome, reassure, cta, foot }) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title.join(' '))}">
-  <defs><style>${FONT_CSS}.sans{font-family:'MontserratEmbed',Montserrat,Arial,sans-serif}.cond{font-family:'BebasNeueEmbed','Bebas Neue',Impact,sans-serif}</style></defs>
+  <defs><style>${FONT_CSS}.sans{font-family:'MontRegular',Montserrat,Arial,sans-serif}.cond{font-family:'MontXBold',Montserrat,Arial,sans-serif}.sb{font-family:'MontBold',Montserrat,Arial,sans-serif}</style></defs>
   <rect width="${W}" height="${H}" fill="#fbfbfb"/>
-  <rect x="3" y="3" width="${W - 6}" height="${H - 6}" fill="none" stroke="#0b1c33" stroke-width="6"/>
+  <rect x="10" y="10" width="${W - 20}" height="${H - 20}" rx="18" fill="none" stroke="#0b1c33" stroke-width="3"/>
   ${header(head)}
-  ${title.map((t, i) => text(t.text, W / 2, 268 + i * 74, { size: 82, weight: 400, cls: 'cond', anchor: 'middle', fill: INK, fit: t.fit, ink: 0.4 })).join('\n')}
+  ${title.map((t, i) => text(t.text, W / 2, 268 + i * 74, { size: 62, weight: 800, cls: 'cond', anchor: 'middle', fill: INK, fit: t.fit })).join('\n')}
   <line x1="60" y1="408" x2="230" y2="408" stroke="${GOLD}" stroke-width="3"/>
   <line x1="${W - 230}" y1="408" x2="${W - 60}" y2="408" stroke="${GOLD}" stroke-width="3"/>
   ${text(subtitle, W / 2, 416, { size: 22, weight: 700, fill: BODY, anchor: 'middle', fit: 700 })}
@@ -212,9 +215,9 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
   ${keepGoingArrow(676, arrowLabel)}
   ${panel(580, 446, 430, 472, rightTitle)}
   ${rightSteps.map((st, i) => `
-    ${glyph(st.icon, 622 + i * 128, 550, 84, INK, 5)}
-    ${st.lines.map((l, j) => text(l, 662 + i * 128, 664 + j * 26, { size: 19, weight: 700, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
-  <path d="M648 720h316" stroke="${GOLD}" stroke-width="2.5" fill="none"/>
+    ${glyph(st.icon, 620 + i * 128, 548, 90, INK, 5)}
+    ${st.lines.map((l, j) => text(l, 662 + i * 128, 664 + j * 26, { size: 17, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
+  <path d="M736 668h22M864 668h22" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
   <path d="M806 720v14M798 728l8 10 8-10" stroke="${GOLD}" stroke-width="2.5" fill="none" stroke-linecap="round"/>
   ${outcomeBox(600, 752, 390, outcome)}
   ${reassurance(reassure)}
@@ -254,7 +257,7 @@ const business = page({
       { icon: 'play', label: 'SCAN TO SEE THE 60-SECOND PLAN' },
       { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE SETUP CALL' },
     ],
-    footnote: 'CHOOSE A DATE. WE’LL HELP WITH THE REST.',
+    footnote: '★  CHOOSE A DATE. WE’LL HELP WITH THE REST.  ★',
   },
   foot: [
     { icon: 'storefront', label: 'YOUR BUSINESS.' },
@@ -294,7 +297,7 @@ const parent = page({
       { icon: 'storefront', label: 'FIND PARTICIPATING BUSINESSES' },
       { icon: 'customers', label: 'JOIN THE OLATHE WEST COMMUNITY' },
     ],
-    footnote: 'ONE SCAN SHOWS YOU WHERE TO START.',
+    footnote: '★  ONE SCAN SHOWS YOU WHERE TO START.  ★',
   },
   foot: [
     { icon: 'heart', label: 'YOUR FAMILY.' },
@@ -334,7 +337,7 @@ const school = page({
       { icon: 'play', label: 'SCAN TO SEE THE 60-SECOND OLATHE WEST PILOT' },
       { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE LAUNCH CALL' },
     ],
-    footnote: 'ONE CONVERSATION CAN GET THE FIRST DAY MOVING.',
+    footnote: '★  ONE CONVERSATION CAN GET THE FIRST DAY MOVING.  ★',
   },
   foot: [
     { icon: 'badge', label: 'YOUR SCHOOL.' },
