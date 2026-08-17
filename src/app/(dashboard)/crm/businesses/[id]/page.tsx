@@ -713,6 +713,9 @@ export default function BusinessDetailPage() {
                 <p className="text-sm text-surface-500">No school or cause linked yet.</p>
               )}
               <p className="text-xs text-surface-400">{linkedCause?.type || 'Click to link a cause and clarify the story.'}</p>
+              {linkedCause ? (
+                <p className="text-xs font-medium text-brand-700">Receives 2% of every sale, from the advertised cashback.</p>
+              ) : null}
             </CardContent>
           </button>
         </Card>
@@ -982,6 +985,26 @@ export default function BusinessDetailPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            {/* The cause link is not just a story tag - it moves money on every
+                sale, so the consequence has to be visible at the moment of the
+                choice rather than discovered later on a statement. */}
+            <div className="rounded-md border border-surface-200 bg-surface-50 p-3 text-xs leading-relaxed text-surface-600">
+              {pendingCauseId === '__none' ? (
+                <>
+                  <span className="font-medium text-surface-700">No cause contribution.</span>{' '}
+                  The full advertised cashback goes to the customer. This business pays
+                  exactly the same either way &mdash; the 2% is a split of money it has
+                  already committed, not an extra charge.
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-surface-700">2% of every sale goes to this cause.</span>{' '}
+                  It comes out of the cashback the business already advertises, so a 12%
+                  offer pays the customer 10% and the cause 2%. The business pays no more
+                  than it does today. Applies only to offers of 10% or higher.
+                </>
+              )}
             </div>
           </div>
           <DialogFooter className="gap-2">
