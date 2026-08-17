@@ -317,7 +317,7 @@ export default function MyWalletPage() {
           <div className="space-y-2">
             <p className="text-sm font-semibold text-surface-900">Start here</p>
             <p className="text-sm text-surface-600">
-              Check your cashback balance, choose PayPal or check for payouts, and request a payout when money is ready.
+              Check your available balance, choose PayPal or check for payouts, and request a payout when money is ready.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -349,11 +349,11 @@ export default function MyWalletPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <WalletTile
-          label="Cashback Available"
+          label="Available Balance"
           value={available}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption="Cashback ready to request"
+          caption="Settled wallet funds ready to request"
           loading={loading}
           emphasize
         />
@@ -589,8 +589,8 @@ export default function MyWalletPage() {
           </CardHeader>
           <CardContent className="space-y-3 pt-2 text-sm text-surface-600">
             <p>
-              <span className="font-medium text-surface-800">Cashback available</span> is the cashback amount
-              ready for you to request now.
+              <span className="font-medium text-surface-800">Available balance</span> is your settled cashback,
+              network earnings, and Pay It Forward received, less any wallet deductions.
             </p>
             <p>
               <span className="font-medium text-surface-800">Lifetime cashback</span> shows money back from
