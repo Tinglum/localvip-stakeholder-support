@@ -51,8 +51,11 @@ function mark(m, x, y, size) {
   return `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${m.viewBox}" preserveAspectRatio="xMidYMid meet">${m.body}</svg>`
 }
 
-function text(str, x, y, { size = 20, weight = 700, fill = INK, anchor = 'start', cls = 'sans', ls = 0 } = {}) {
-  return `<text x="${x}" y="${y}" text-anchor="${anchor}" class="${cls}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}">${esc(str)}</text>`
+function text(str, x, y, { size = 20, weight = 700, fill = INK, anchor = 'start', cls = 'sans', ls = 0, fit = 0 } = {}) {
+  // fit: force this line to an exact width. Without it the line width depends on
+  // whichever font the viewer happens to have, and the headline overflowed.
+  const lock = fit ? ` textLength="${fit}" lengthAdjust="spacingAndGlyphs"` : ''
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" class="${cls}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}"${lock}>${esc(str)}</text>`
 }
 
 function stack(linesArr, x, y, opts = {}) {
@@ -105,7 +108,7 @@ function panel(x, y, w, h, title) {
 /** One icon + wrapped label row, with an optional connector arrow beneath. */
 function stepRow(x, y, icon, labelLines, withArrow) {
   return `
-  ${glyph(icon, x, y, 58)}
+  ${glyph(icon, x, y, 70, INK, 3.4)}
   ${stack(labelLines, x + 86, y + (labelLines.length === 1 ? 36 : 22), { size: 21, weight: 600, fill: BODY, gap: 28 })}
   ${withArrow ? `<g transform="translate(${x + 22} ${y + 70})" fill="#9fb0c4"><path d="M6 0h10v18h7L11 32 0 18h6z"/></g>` : ''}`
 }
@@ -139,7 +142,7 @@ function reassurance({ m, title, body }) {
  */
 function ctaBand({ headline, rows, footnote }) {
   return `
-  <rect x="0" y="1190" width="${W}" height="238" fill="${NAVY}"/>
+  <rect x="0" y="1182" width="${W}" height="246" fill="${NAVY}"/>
   <g transform="translate(108 1216)">
     <rect x="-10" y="-10" width="174" height="216" rx="12" fill="none" stroke="${GOLD}" stroke-width="4"/>
     <rect width="154" height="154" fill="#fff"/>
@@ -150,12 +153,11 @@ function ctaBand({ headline, rows, footnote }) {
     ${text('SCAN ME', 77, 192, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
   </g>
   <line x1="330" y1="1222" x2="330" y2="1400" stroke="#3a5170" stroke-width="2"/>
-  ${text(headline, 366, 1268, { size: 40, weight: 900, fill: '#fff' })}
+  ${headline.map((t, i) => text(t, 366, 1238 + i * 42, { size: 36, weight: 900, fill: '#fff', fit: 592 })).join('\n')}
   ${rows.map((r, i) => `
-    ${glyph(r.icon, 366, 1296 + i * 54, 38, '#fff', 3)}
-    ${text(r.label, 420, 1326 + i * 54, { size: 23, weight: 900, fill: '#fff' })}
-    <line x1="446" y1="1340 " x2="1000" y2="1340" stroke="#3a5170" stroke-width="0"/>`).join('\n')}
-  ${text(footnote, 366, 1412, { size: 19, weight: 900, fill: GOLD })}`
+    ${glyph(r.icon, 366, 1302 + i * 44, 32, '#fff', 3)}
+    ${text(r.label, 412, 1326 + i * 44, { size: 23, weight: 900, fill: '#fff' })}`).join('\n')}
+  ${text(footnote, 366, 1408, { size: 19, weight: 900, fill: GOLD })}`
 }
 
 function footer(items) {
@@ -174,16 +176,20 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
   <defs><style>.sans{font-family:Inter,'Helvetica Neue',Arial,sans-serif}.cond{font-family:'Arial Narrow',Impact,Arial,sans-serif}</style></defs>
   <rect width="${W}" height="${H}" fill="#fbfbfb"/>
   ${header(head)}
-  ${title.map((t, i) => text(t, W / 2, 268 + i * 74, { size: 66, weight: 900, cls: 'cond', anchor: 'middle', fill: INK })).join('\n')}
+  ${title.map((t, i) => text(t.text, W / 2, 268 + i * 74, { size: 66, weight: 900, cls: 'cond', anchor: 'middle', fill: INK, fit: t.fit })).join('\n')}
   <line x1="60" y1="408" x2="230" y2="408" stroke="${GOLD}" stroke-width="3"/>
   <line x1="${W - 230}" y1="408" x2="${W - 60}" y2="408" stroke="${GOLD}" stroke-width="3"/>
-  ${text(subtitle, W / 2, 416, { size: 22, weight: 700, fill: BODY, anchor: 'middle' })}
+  ${text(subtitle, W / 2, 416, { size: 22, weight: 700, fill: BODY, anchor: 'middle', fit: 700 })}
   ${panel(40, 446, 430, 540, leftTitle)}
   ${leftSteps.map((s, i) => stepRow(76, 566 + i * 130, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
   ${keepGoingArrow(676, arrowLabel)}
   ${panel(580, 446, 430, 540, rightTitle)}
-  ${rightSteps.map((s, i) => stepRow(616, 560 + i * 110, s.icon, s.lines, false)).join('\n')}
-  ${outcomeBox(600, 852, 390, outcome)}
+  ${rightSteps.map((st, i) => `
+    ${glyph(st.icon, 624 + i * 128, 560, 76, INK, 3.4)}
+    ${st.lines.map((l, j) => text(l, 662 + i * 128, 672 + j * 26, { size: 19, weight: 600, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
+  <path d="M648 734h316" stroke="${GOLD}" stroke-width="2.5" fill="none"/>
+  <path d="M806 734v16M798 744l8 10 8-10" stroke="${GOLD}" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  ${outcomeBox(600, 782, 390, outcome)}
   ${reassurance(reassure)}
   ${ctaBand(cta)}
   ${footer(foot)}
@@ -192,7 +198,7 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
 
 const business = page({
   head: { m: owl, org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB' },
-  title: ['MAKE ONE GIVEBACK DAY', 'THE START OF SOMETHING BIGGER.'],
+  title: [{ text: 'MAKE ONE GIVEBACK DAY', fit: 700 }, { text: 'THE START OF SOMETHING BIGGER.', fit: 900 }],
   subtitle: 'Bring in your community. Build relationships that can continue after the event.',
   leftTitle: 'THE GIVEBACK DAY|YOU ALREADY KNOW',
   leftSteps: [
@@ -202,9 +208,9 @@ const business = page({
   ],
   rightTitle: 'WHAT DOES|LOCALVIP ADD',
   rightSteps: [
-    { icon: 'repeat', lines: ['Repeat visits - a reason', 'to come back, not just once'] },
-    { icon: 'customers', lines: ['Reward the customers', 'you already have'] },
-    { icon: 'network', lines: ['Reach the wider network', 'of local shoppers'] },
+    { icon: 'repeat', lines: ['Customers', 'come back'] },
+    { icon: 'customers', lines: ['Reward the ones', 'you already have'] },
+    { icon: 'network', lines: ['Reach the wider', 'local network'] },
   ],
   arrowLabel: 'KEEP IT|GOING',
   outcome: ['CHOOSE YOUR SLOWER DAY AND', 'GIVE PEOPLE A REASON TO', 'WALK IN WHEN YOU WANT THEM.'],
@@ -216,7 +222,7 @@ const business = page({
       'involved and turns a single day into an ongoing connection.'],
   },
   cta: {
-    headline: 'ONGOING CONNECTION. MORE WAYS TO WIN.',
+    headline: ['ONGOING CONNECTION.', 'MORE WAYS TO WIN.'],
     rows: [
       { icon: 'play', label: 'SCAN TO SEE THE 60-SECOND PLAN' },
       { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE SETUP CALL' },
@@ -224,15 +230,15 @@ const business = page({
     footnote: 'CHOOSE A DATE. WE’LL HELP WITH THE REST.',
   },
   foot: [
-    { icon: 'customers', label: 'SAME COMMUNITY.' },
-    { icon: 'heart', label: 'SAME GENEROSITY.' },
+    { icon: 'storefront', label: 'YOUR BUSINESS.' },
+    { icon: 'customers', label: 'OUR COMMUNITY.' },
     { icon: 'trophy', label: 'MORE WAYS TO WIN.' },
   ],
 })
 
 const parent = page({
   head: { m: owl, org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB' },
-  title: ['YOUR NEXT LOCAL PURCHASE', 'CAN SUPPORT OLATHE WEST.'],
+  title: [{ text: 'YOUR NEXT LOCAL PURCHASE', fit: 830 }, { text: 'CAN SUPPORT OLATHE WEST.', fit: 830 }],
   subtitle: 'Shop where you already shop. Help our community keep winning.',
   leftTitle: 'THE SUPPORT|YOU ALREADY GIVE',
   leftSteps: [
@@ -242,9 +248,9 @@ const parent = page({
   ],
   rightTitle: 'WHAT DOES|LOCALVIP ADD',
   rightSteps: [
-    { icon: 'phone', lines: ['Find participating', 'businesses near you'] },
-    { icon: 'customers', lines: ['Your family can', 'be rewarded too'] },
-    { icon: 'network', lines: ['Local businesses grow', 'alongside the school'] },
+    { icon: 'phone', lines: ['Find local', 'businesses'] },
+    { icon: 'customers', lines: ['Your family is', 'rewarded too'] },
+    { icon: 'network', lines: ['Local businesses', 'grow too'] },
   ],
   arrowLabel: 'MAKE IT|COUNT',
   outcome: ['EVERYDAY CHOICES CAN CREATE', 'SUPPORT THAT CONTINUES', 'BEYOND ONE EVENT.'],
@@ -256,7 +262,7 @@ const parent = page({
       'to create more value for everyone.'],
   },
   cta: {
-    headline: 'YOUR FAMILY. YOUR SCHOOL. MORE WAYS TO MAKE AN IMPACT.',
+    headline: ['YOUR FAMILY. YOUR SCHOOL.', 'MORE WAYS TO MAKE AN IMPACT.'],
     rows: [
       { icon: 'storefront', label: 'FIND PARTICIPATING BUSINESSES' },
       { icon: 'customers', label: 'JOIN THE OLATHE WEST COMMUNITY' },
@@ -264,15 +270,15 @@ const parent = page({
     footnote: 'ONE SCAN SHOWS YOU WHERE TO START.',
   },
   foot: [
-    { icon: 'customers', label: 'SAME COMMUNITY.' },
-    { icon: 'heart', label: 'SAME GENEROSITY.' },
+    { icon: 'heart', label: 'YOUR FAMILY.' },
+    { icon: 'customers', label: 'OUR COMMUNITY.' },
     { icon: 'trophy', label: 'MORE WAYS TO WIN.' },
   ],
 })
 
 const school = page({
   head: { m: district, org: ['OLATHE PUBLIC', 'SCHOOLS'], sub: 'COMMUNITY GIVEBACK' },
-  title: ['TURN COMMUNITY TRUST', 'INTO REPEATABLE LOCAL SUPPORT.'],
+  title: [{ text: 'TURN COMMUNITY TRUST', fit: 720 }, { text: 'INTO REPEATABLE LOCAL SUPPORT.', fit: 900 }],
   subtitle: 'Start with one business and one Giveback Day. Build from there.',
   leftTitle: 'THE GIVEBACK MODEL|YOU KNOW',
   leftSteps: [
@@ -282,9 +288,9 @@ const school = page({
   ],
   rightTitle: 'WHAT DOES|LOCALVIP ADD',
   rightSteps: [
-    { icon: 'badge', lines: ['Launch with your', 'school branding'] },
-    { icon: 'network', lines: ['Connect supporters', 'and businesses'] },
-    { icon: 'repeat', lines: ['Repeat it without', 'rebuilding it each time'] },
+    { icon: 'badge', lines: ['Your school', 'branding'] },
+    { icon: 'network', lines: ['Supporters and', 'businesses'] },
+    { icon: 'repeat', lines: ['Repeat without', 'rebuilding'] },
   ],
   arrowLabel: 'BUILD|ON IT',
   outcome: ['ONE TRUSTED EVENT CAN BECOME', 'AN ONGOING LOCAL', 'SUPPORT NETWORK.'],
@@ -296,7 +302,7 @@ const school = page({
       'easier to launch and repeat.'],
   },
   cta: {
-    headline: 'YOUR SCHOOL. OUR COMMUNITY. MORE WAYS TO GROW.',
+    headline: ['YOUR SCHOOL. OUR COMMUNITY.', 'MORE WAYS TO GROW.'],
     rows: [
       { icon: 'play', label: 'SCAN TO SEE THE 60-SECOND OLATHE WEST PILOT' },
       { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE LAUNCH CALL' },
@@ -304,8 +310,8 @@ const school = page({
     footnote: 'ONE CONVERSATION CAN GET THE FIRST DAY MOVING.',
   },
   foot: [
-    { icon: 'customers', label: 'YOUR SCHOOL.' },
-    { icon: 'heart', label: 'YOUR COMMUNITY.' },
+    { icon: 'badge', label: 'YOUR SCHOOL.' },
+    { icon: 'customers', label: 'OUR COMMUNITY.' },
     { icon: 'trophy', label: 'MORE WAYS TO GROW.' },
   ],
 })
