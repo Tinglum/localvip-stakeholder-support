@@ -8,7 +8,6 @@ import {
   Network,
   HeartHandshake,
   RefreshCw,
-  TrendingUp,
   Sparkles,
   AlertCircle,
   Mail,
@@ -161,33 +160,6 @@ function WalletTile({ label, value, icon, accent, caption, loading, emphasize }:
   )
 }
 
-interface BreakdownRowProps {
-  label: string
-  value: number | null
-  description: string
-  icon: React.ReactNode
-  loading?: boolean
-}
-
-function BreakdownRow({ label, value, description, icon, loading }: BreakdownRowProps) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-surface-100 py-3 last:border-0">
-      <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-surface-100 p-2 text-surface-500">{icon}</div>
-        <div>
-          <p className="text-sm font-medium text-surface-800">{label}</p>
-          <p className="text-xs text-surface-400">{description}</p>
-        </div>
-      </div>
-      {loading ? (
-        <div className="h-5 w-20 animate-pulse rounded bg-surface-100" />
-      ) : (
-        <p className="text-sm font-semibold tabular-nums text-surface-900">{formatUsd(value)}</p>
-      )}
-    </div>
-  )
-}
-
 export default function MyWalletPage() {
   const [data, setData] = React.useState<WalletResponse | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -257,7 +229,6 @@ export default function MyWalletPage() {
   const selectedCausesReceived = pickCauseImpactNumber(data?.causeImpact, ['selectedCausesReceivedLifetime'])
   const selectedCauses = data?.causeImpact?.selectedCauses ?? []
 
-  const lifetimeCashback = cashback
   const pendingPayoutTotal = payoutRequests
     .filter((request) => request.status === 'pending_admin_review')
     .reduce((sum, request) => sum + request.amount, 0)
@@ -379,10 +350,10 @@ export default function MyWalletPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <WalletTile
           label="Cashback Available"
-          value={requestableAvailable}
+          value={available}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption={pendingPayoutTotal > 0 ? `${formatUsd(pendingPayoutTotal)} already pending payout` : 'Cashback ready to request'}
+          caption="Cashback ready to request"
           loading={loading}
           emphasize
         />
@@ -610,59 +581,8 @@ export default function MyWalletPage() {
         </CardContent>
       </Card>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Cashback breakdown</CardTitle>
-                <CardDescription>Your own cashback only. Network earnings are shown separately.</CardDescription>
-              </div>
-              <Badge variant="info" className="gap-1">
-                <Sparkles className="h-3 w-3" />
-                Summary only
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-2">
-            <BreakdownRow
-              label="Lifetime cashback"
-              description="Money back you earned from buying through the platform"
-              value={cashback}
-              icon={<Coins className="h-4 w-4" />}
-              loading={loading}
-            />
-            <BreakdownRow
-              label="Lifetime network earnings"
-              description="Extra money earned because your network is active"
-              value={bonusCash}
-              icon={<Network className="h-4 w-4" />}
-              loading={loading}
-            />
-            <BreakdownRow
-              label="US cause contributions"
-              description="Aggregated cause contribution across the US since LocalVIP started"
-              value={usCauseContribution}
-              icon={<HeartHandshake className="h-4 w-4" />}
-              loading={loading}
-            />
-            <div className="mt-3 flex items-center justify-between rounded-lg bg-surface-50 px-3 py-3">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-brand-600" />
-                <p className="text-sm font-semibold text-surface-800">Total lifetime cashback</p>
-              </div>
-              {loading ? (
-                <div className="h-5 w-24 animate-pulse rounded bg-surface-100" />
-              ) : (
-                <p className="text-base font-bold tabular-nums text-surface-900">
-                  {formatUsd(lifetimeCashback)}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
+      <div className="mt-6">
+        <Card className="max-w-2xl">
           <CardHeader>
             <CardTitle>What these numbers mean</CardTitle>
             <CardDescription>Quick answers for first-time users.</CardDescription>

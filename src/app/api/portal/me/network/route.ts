@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server'
-import { fetchQaApi, parseQaResponse, type QaNetworkTree } from '@/lib/auth/qa-api'
+import {
+  fetchQaApi,
+  fetchQaApiWithAccessToken,
+  parseQaJsonResponse,
+  parseQaResponse,
+  type QaNetworkTree,
+} from '@/lib/auth/qa-api'
 import { enrichQaNetworkTreeWithSpend, resolveQaNetworkWindow, type QaNetworkPeriod } from '@/lib/server/qa-network'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
 
@@ -26,7 +32,23 @@ export async function GET(request: Request) {
     const params = new URLSearchParams({ depth: '10' })
     if (window.startDate) params.set('startDate', window.startDate)
     if (window.endDate) params.set('endDate', window.endDate)
-    const res = await fetchQaApi(`/api/mobile/v1/Network/Tree?${params.toString()}`)
+
+    let fetchForCustomer = fetchQaApi
+    const targetUserId = access.session.viewingAs?.targetUserId
+    if (targetUserId) {
+      const loginAsRes = await fetchQaApi('/api/dashboard/v1/Admin/LoginAs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targetUserId }),
+      })
+      const loginAs = await parseQaJsonResponse<{ accessToken: string }>(
+        loginAsRes,
+        'Unable to read the selected customer network.',
+      )
+      fetchForCustomer = (path, init) => fetchQaApiWithAccessToken(path, loginAs.accessToken, init)
+    }
+
+    const res = await fetchForCustomer(`/api/mobile/v1/Network/Tree?${params.toString()}`)
     const json = await parseQaResponse<QaNetworkTree>(res, 'Failed to load your network.')
     const enrichedTree = enrichQaNetworkTreeWithSpend(json ?? {
       rootId: 0,

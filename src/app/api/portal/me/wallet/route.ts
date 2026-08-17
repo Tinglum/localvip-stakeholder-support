@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
-import { fetchQaApi, parseQaJsonResponse } from '@/lib/auth/qa-api'
+import { fetchQaApi, fetchQaApiWithAccessToken, parseQaJsonResponse } from '@/lib/auth/qa-api'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
 
-async function readOptionalQaJson<T = Record<string, unknown>>(path: string): Promise<T | null> {
+type QaFetcher = (path: string) => Promise<Response>
+
+async function readOptionalQaJson<T = Record<string, unknown>>(
+  path: string,
+  fetcher: QaFetcher = fetchQaApi,
+): Promise<T | null> {
   try {
-    const res = await fetchQaApi(path)
+    const res = await fetcher(path)
     return await parseQaJsonResponse<T>(res, `Failed to load ${path}.`)
   } catch {
     return null
@@ -23,11 +28,26 @@ export async function GET() {
     return access.error
   }
 
+  let fetchForCustomer: QaFetcher = fetchQaApi
+  const targetUserId = access.session.viewingAs?.targetUserId
+  if (targetUserId) {
+    const loginAsRes = await fetchQaApi('/api/dashboard/v1/Admin/LoginAs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ targetUserId }),
+    })
+    const loginAs = await parseQaJsonResponse<{ accessToken: string }>(
+      loginAsRes,
+      'Unable to read the selected customer wallet.',
+    )
+    fetchForCustomer = (path) => fetchQaApiWithAccessToken(path, loginAs.accessToken)
+  }
+
   const [available, cashback, bonusCash, causeImpact] = await Promise.all([
-    readOptionalQaJson('/api/mobile/v1/Wallet/available').catch(() => null),
-    readOptionalQaJson('/api/mobile/v1/Payment/cashback/lifetime').catch(() => null),
-    readOptionalQaJson('/api/mobile/v1/Payment/bonuscash/lifetime').catch(() => null),
-    readOptionalQaJson('/api/mobile/v1/Payment/CauseImpactSummary').catch(() => null),
+    readOptionalQaJson('/api/mobile/v1/Wallet/available', fetchForCustomer).catch(() => null),
+    readOptionalQaJson('/api/mobile/v1/Payment/cashback/lifetime', fetchForCustomer).catch(() => null),
+    readOptionalQaJson('/api/mobile/v1/Payment/bonuscash/lifetime', fetchForCustomer).catch(() => null),
+    readOptionalQaJson('/api/mobile/v1/Payment/CauseImpactSummary', fetchForCustomer).catch(() => null),
   ])
 
   // Available balance should stay cashback-only. Network/bonus earnings are

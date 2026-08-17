@@ -17,10 +17,25 @@ type CachedQaToken = {
 
 const qaRefreshTokenCache = new Map<string, CachedQaToken>()
 
-function buildQaApiUrl(path: string) {
+export function buildQaApiUrl(path: string) {
   return path.startsWith('http')
     ? path
     : `${QA_AUTH_CONFIG.baseUrl}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+export async function fetchQaApiWithAccessToken(
+  path: string,
+  accessToken: string,
+  init?: RequestInit,
+) {
+  const headers = new Headers(init?.headers || {})
+  headers.set('authorization', `Bearer ${accessToken}`)
+
+  return fetch(buildQaApiUrl(path), {
+    ...init,
+    headers,
+    cache: 'no-store',
+  })
 }
 
 export async function getQaAccessToken() {

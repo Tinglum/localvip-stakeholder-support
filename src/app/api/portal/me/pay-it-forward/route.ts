@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { fetchQaApi, parseQaJsonResponse } from '@/lib/auth/qa-api'
+import { fetchQaApi, fetchQaApiWithAccessToken, parseQaJsonResponse } from '@/lib/auth/qa-api'
 import { qaRouteErrorResponse, requireQaRouteAccess } from '@/lib/server/qa-route'
 import { toQaNumber } from '@/lib/server/qa-consumer'
 
@@ -104,7 +104,22 @@ export async function GET() {
   if ('error' in access) return access.error
 
   try {
-    const res = await fetchQaApi(ENDPOINT)
+    let fetchForCustomer = fetchQaApi
+    const targetUserId = access.session.viewingAs?.targetUserId
+    if (targetUserId) {
+      const loginAsRes = await fetchQaApi('/api/dashboard/v1/Admin/LoginAs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targetUserId }),
+      })
+      const loginAs = await parseQaJsonResponse<{ accessToken: string }>(
+        loginAsRes,
+        'Unable to read the selected customer Pay it Forward circle.',
+      )
+      fetchForCustomer = (path, init) => fetchQaApiWithAccessToken(path, loginAs.accessToken, init)
+    }
+
+    const res = await fetchForCustomer(ENDPOINT)
     const payload = await parseQaJsonResponse<RawPayItForward>(
       res,
       'Your Pay it Forward circle could not be loaded.',
