@@ -703,6 +703,21 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
       if (!row.file_url && row.has_file) row.file_url = `/api/qa/material-asset?id=${row.id}&kind=file`
       if (!row.thumbnail_url && row.has_thumbnail) row.thumbnail_url = `/api/qa/material-asset?id=${row.id}&kind=thumbnail`
     }
+    // Uploaded material files are stored server-relative (/uploads/materials/...)
+    // exactly like generated_file_url above, and need the same treatment: the
+    // dashboard runs on a different origin, so the browser 404s on preview and
+    // the template renderer - which calls fetch() on this value from Node - fails
+    // outright, because a relative URL has no origin to resolve against there.
+    //
+    // Deliberately excludes the /api/qa/material-asset proxy paths set just above:
+    // those are dashboard-origin routes and must stay relative.
+    for (const key of ['file_url', 'thumbnail_url'] as const) {
+      const value = row[key]
+      if (typeof value === 'string' && value.startsWith('/') && !value.startsWith('/api/')) {
+        const base = (process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').replace(/\/$/, '')
+        row[key] = base + value
+      }
+    }
   },
   admin_tasks: (row) => {
     // Backend stores payload as a JSON string; frontend expects an object.
