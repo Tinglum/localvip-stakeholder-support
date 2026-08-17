@@ -406,7 +406,9 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node', build
               </div>
             ) : null}
             <div className="flex items-center gap-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{activeRangeLabel}</p>
+              {period !== 'all' ? (
+                <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{activeRangeLabel}</p>
+              ) : null}
               <Button variant="outline" size="sm" onClick={() => void load()}>
                 <TrendingUp className="h-4 w-4" /> Refresh
               </Button>
@@ -431,7 +433,7 @@ export function NetworkTreeView({ accountId, fetchUrl, nodeLabel = 'node', build
         />
         <SummaryCard
           label="Active levels"
-          value={`${activeLevels} / ${MAX_LEVELS}`}
+          value={formatNumber(activeLevels)}
           icon={<Layers className="h-5 w-5" />}
           hint="How many of the 10 levels currently have people in them"
         />
