@@ -25,17 +25,6 @@
       "args": [
         "mcp-server-git"
       ]
-    },
-
-    "netlify": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-fetch"
-      ],
-      "env": {
-        "NETLIFY_AUTH_TOKEN": "${NETLIFY_AUTH_TOKEN}"
-      }
     }
   }
 }

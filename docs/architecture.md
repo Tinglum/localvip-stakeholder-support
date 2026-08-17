@@ -36,9 +36,9 @@ Supabase was chosen because it provides four services the platform needs in a si
 4. **Storage** -- Materials (PDFs, images, QR code batches) are stored in Supabase Storage buckets with the same RLS policies, so file access is consistent with data access.
 5. **Edge Functions** -- Used for batch QR code generation and webhook processing without needing a separate serverless deployment.
 
-### Netlify
+### Self-hosted runtime
 
-Netlify deploys the Next.js app with zero configuration via `@netlify/plugin-nextjs`. The `netlify.toml` sets Node 20 and publishes the `.next` directory. Netlify handles CDN, HTTPS, preview deploys on PRs, and environment variable management. There is no container or server to manage.
+The Next.js app runs as `localvip-dashboard` under PM2 on the LocalVIP Ubuntu server. Nginx terminates HTTPS and proxies `dashboard.localvip.com` to the app on port 3001.
 
 ---
 
@@ -274,40 +274,20 @@ The sync layer is not yet implemented, but the schema is ready for it.
 
 ---
 
-## Deployment on Netlify
+## Self-hosted deployment
 
 ### Build Process
 
-```
-netlify.toml
-  [build]
-    command = "npm run build"
-    publish = ".next"
-  [build.environment]
-    NODE_VERSION = "20"
-  [[plugins]]
-    package = "@netlify/plugin-nextjs"
-```
-
-The `@netlify/plugin-nextjs` plugin handles:
-
-- Converting Next.js API routes to Netlify Functions
-- Setting up ISR (Incremental Static Regeneration) if used
-- Configuring the CDN for static assets
-- Handling Next.js image optimization
+Run `deploy-dashboard.ps1` from the repository root. The server checks out the requested commit, installs dependencies when the lockfile changes, runs `npm run build`, and restarts the PM2 process only after a successful build.
 
 ### Environment Variables
 
-Set in Netlify's dashboard under Site Settings > Environment Variables:
+Set in the server-only `/var/www/localvip-dashboard/.env.production` file:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-### Preview Deploys
-
-Every pull request gets an automatic preview deploy with its own URL. This uses the same Supabase project (or a staging project if configured via branch-specific environment variables).
-
 ### Production Deploy
 
-Merges to `main` trigger a production deploy. The deploy is atomic -- the new version replaces the old one with zero downtime.
+Deployments are explicit; a Git push alone does not change production. Nginx continues serving the existing PM2 build while the new commit is built, and the deployment script preserves a rollback build.

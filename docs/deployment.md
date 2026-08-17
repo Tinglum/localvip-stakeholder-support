@@ -7,9 +7,7 @@ deployment, database migrations, and seed data.
 
 ## Production deployment (read this first)
 
-**The dashboard is self-hosted. It is not on Netlify.** The `netlify.toml` and
-`.netlify/` directory in this repo are leftovers and have misled people into
-thinking a `git push` deploys the site. It does not — pushing to GitHub changes
+**The dashboard is self-hosted.** A `git push` does not deploy the site. It changes
 nothing in production until you run the deploy script.
 
 | | |
@@ -51,7 +49,6 @@ The QA backend is a separate deploy on a different machine — see
 Optional but recommended:
 
 - **Supabase account** at [supabase.com](https://supabase.com/) (free tier works for development)
-- **Netlify account** at [netlify.com](https://www.netlify.com/) (free tier works for preview deploys)
 
 ---
 
@@ -146,7 +143,7 @@ In the Supabase dashboard, go to **Authentication > Providers**:
 
 1. **Email** -- Enabled by default. Confirm that "Enable Email Signup" is on.
 2. **Confirm email** -- For development, you may want to disable email confirmation under **Authentication > Settings** to avoid needing a mail server. Re-enable for production.
-3. **Site URL** -- Set to your production URL (e.g., `https://your-site.netlify.app`). For local dev, add `http://localhost:3000` to the **Redirect URLs** list.
+3. **Site URL** -- Set to `https://dashboard.localvip.com`. For local dev, add `http://localhost:3000` to the **Redirect URLs** list.
 
 ### Configuring Storage
 
@@ -184,67 +181,13 @@ In the Supabase dashboard, go to **Authentication > Providers**:
 
 - Never commit `.env.local` to version control. It is already in `.gitignore`.
 - The `SUPABASE_SERVICE_ROLE_KEY` has full database access. Only use it in server-side code (`src/lib/supabase/server.ts` via `createServiceClient()`).
-- In Netlify, set environment variables through the dashboard, not in `netlify.toml`.
+- In production, set environment variables in the server-only `.env.production` file.
 
 ---
 
-## Netlify Deployment
+## Production deployment
 
-### Initial Setup
-
-1. Log in to [app.netlify.com](https://app.netlify.com/).
-2. Click **Add new site > Import an existing project**.
-3. Connect your Git provider and select the repository.
-4. Netlify auto-detects the `netlify.toml` configuration. Verify:
-   - **Build command:** `npm run build`
-   - **Publish directory:** `.next`
-   - **Node version:** 20
-5. Add environment variables under **Site settings > Environment variables**:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-6. Click **Deploy site**.
-
-### How It Works
-
-The `netlify.toml` configuration:
-
-```toml
-[build]
-  command = "npm run build"
-  publish = ".next"
-
-[build.environment]
-  NODE_VERSION = "20"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-```
-
-The `@netlify/plugin-nextjs` plugin handles:
-
-- Converting Next.js server-side rendering to Netlify Functions.
-- Setting up proper caching headers for static assets.
-- Handling API routes as serverless functions.
-- Image optimization passthrough.
-
-### Preview Deploys
-
-Every push to a non-production branch (and every pull request) gets an automatic preview deploy at a unique URL like `https://deploy-preview-42--your-site.netlify.app`. This is useful for QA before merging to `main`.
-
-To use a separate Supabase project for preview deploys, set branch-specific environment variables in Netlify pointing to a staging Supabase project.
-
-### Production Deploys
-
-Merges to `main` (or your configured production branch) trigger a production deploy. Deploys are atomic -- the old version serves traffic until the new build is fully ready, then switches instantly.
-
-### Custom Domain
-
-1. In Netlify, go to **Domain management > Add custom domain**.
-2. Enter your domain (e.g., `ops.localvip.com`).
-3. Configure DNS as directed (CNAME or Netlify DNS).
-4. Netlify provisions an SSL certificate automatically.
-5. Update Supabase Auth's **Site URL** and **Redirect URLs** to use the custom domain.
+Run `deploy-dashboard.ps1` from the repository root. It deploys the requested Git commit to `/var/www/localvip-dashboard`, builds on the LocalVIP Ubuntu server, and restarts PM2 after verification. Nginx serves the app at `https://dashboard.localvip.com`. See the production deployment section at the top of this document for commands and rollback instructions.
 
 ---
 

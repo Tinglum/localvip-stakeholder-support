@@ -202,7 +202,7 @@ Recommended admin batch endpoint:
 
 ### 7. File URL Handling
 
-Generated file URLs must be browser-accessible from the Netlify dashboard.
+Generated file URLs must be browser-accessible from the self-hosted dashboard.
 
 Acceptable:
 
@@ -248,4 +248,3 @@ This is complete when:
 - The generated material appears in My Materials.
 - The generated material can be previewed/downloaded.
 - The generated material can be deleted/deactivated without `gen-1 is not valid` errors.
-

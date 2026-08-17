@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const publicHost = new URL(publicOrigin).hostname
 
   // Only redirect when the browser is truly on a different public host.
-  // Netlify may report an internal origin through request.nextUrl.origin,
+  // A reverse proxy may report an internal origin through request.nextUrl.origin,
   // so we rely on forwarded host/proto headers instead.
   if (configuredHost && configuredHost !== publicHost && !debug) {
     const redirectUrl = new URL('/api/auth/qa/start', configuredAppUrl!)

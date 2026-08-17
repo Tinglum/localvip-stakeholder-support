@@ -132,7 +132,7 @@ supabase/
   config.toml             # Supabase local dev config
 scripts/
   seed.ts                 # TypeScript seed script
-netlify.toml              # Netlify build configuration
+deploy-dashboard.ps1     # Self-hosted PM2/nginx deployment
 tailwind.config.ts        # Extended color palette (brand, hato, semantic)
 ```
 

@@ -1,7 +1,7 @@
 # Deploys the dashboard to dashboard.localvip.com.
 #
-# The app is a Next.js server (NOT a static export and NOT Netlify, whatever the
-# older docs said) running under PM2 behind nginx on our own Ubuntu box:
+# The app is a self-hosted Next.js server running under PM2 behind nginx on our
+# own Ubuntu box. This is the only supported deployment target:
 #
 #   host    5.252.52.243  (root, key: ~/.ssh/contabo_localvip)
 #   path    /var/www/localvip-dashboard   (git checkout, detached HEAD at the
