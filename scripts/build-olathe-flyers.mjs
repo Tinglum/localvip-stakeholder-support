@@ -44,18 +44,21 @@ const esc = (v) => String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').re
 const NAVY = '#0f2444'
 const GOLD = '#f5a623'
 const INK = '#12294c'
-const BODY = '#33465f'
+const BODY = '#2a3c55'
 
 /** Place a traced mark with no backing plate. */
 function mark(m, x, y, size) {
   return `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${m.viewBox}" preserveAspectRatio="xMidYMid meet">${m.body}</svg>`
 }
 
-function text(str, x, y, { size = 20, weight = 700, fill = INK, anchor = 'start', cls = 'sans', ls = 0, fit = 0 } = {}) {
+function text(str, x, y, { size = 20, weight = 700, fill = INK, anchor = 'start', cls = 'sans', ls = 0, fit = 0, ink = 0 } = {}) {
   // fit: force this line to an exact width. Without it the line width depends on
   // whichever font the viewer happens to have, and the headline overflowed.
   const lock = fit ? ` textLength="${fit}" lengthAdjust="spacingAndGlyphs"` : ''
-  return `<text x="${x}" y="${y}" text-anchor="${anchor}" class="${cls}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}"${lock}>${esc(str)}</text>`
+  // ink: thicken the glyph by stroking it in its own colour. paint-order keeps
+  // the stroke behind the fill so counters stay open.
+  const heavy = ink ? ` stroke="${fill}" stroke-width="${ink}" stroke-linejoin="round" paint-order="stroke"` : ''
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" class="${cls}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}"${lock}${heavy}>${esc(str)}</text>`
 }
 
 function stack(linesArr, x, y, opts = {}) {
@@ -65,21 +68,22 @@ function stack(linesArr, x, y, opts = {}) {
 
 // ── line-art glyphs, drawn in a 64x64 box ────────────────────────────────────
 const G = {
-  megaphone: '<path d="M12 30v8a3 3 0 0 0 3 3h5l4 12h7l-4-12h3l16 10V18L26 28h-11a3 3 0 0 0-3 3z"/><path d="M52 26c4 3 4 11 0 14"/>',
-  bag: '<path d="M16 24h32l3 30H13z"/><path d="M24 24v-4a8 8 0 0 1 16 0v4"/>',
-  trophy: '<path d="M20 14h24v14a12 12 0 0 1-24 0z"/><path d="M20 18h-6a8 8 0 0 0 8 8M44 18h6a8 8 0 0 1-8 8"/><path d="M32 40v8M22 52h20"/><path d="M32 20l2 4 4 .6-3 2.8.7 4.2-3.7-2-3.7 2 .7-4.2-3-2.8 4-.6z" fill="currentColor" stroke="none"/>',
-  repeat: '<path d="M16 32a16 16 0 1 1 5 12"/><path d="M16 20v12h12"/>',
-  customers: '<circle cx="24" cy="22" r="8"/><path d="M10 48c0-8 6-14 14-14s14 6 14 14"/><path d="M44 16l2.6 5.4L52 22l-4 3.9.9 5.6-4.9-2.7-4.9 2.7.9-5.6-4-3.9 5.4-.6z"/>',
-  network: '<circle cx="32" cy="16" r="6"/><circle cx="14" cy="46" r="6"/><circle cx="50" cy="46" r="6"/><path d="M28 21L17 40M36 21l11 19M20 46h24"/>',
-  calendar: '<rect x="12" y="16" width="40" height="36" rx="4"/><path d="M12 28h40M22 12v8M42 12v8"/><path d="M24 38h6M34 38h6"/>',
-  storefront: '<path d="M14 28h36v24H14z"/><path d="M12 28l4-12h32l4 12"/><path d="M26 52V38h12v14"/>',
-  heart: '<path d="M32 50S12 38 12 26a10 10 0 0 1 20-4 10 10 0 0 1 20 4c0 12-20 24-20 24z"/>',
-  phone: '<rect x="20" y="10" width="24" height="44" rx="4"/><path d="M28 46h8"/>',
-  play: '<circle cx="32" cy="32" r="18"/><path d="M27 23l16 9-16 9z" fill="currentColor" stroke="none"/>',
-  badge: '<circle cx="32" cy="26" r="12"/><path d="M24 36l-4 16 12-6 12 6-4-16"/>',
+  megaphone: '<path d="M10 28v10a4 4 0 0 0 4 4h4l5 13h8l-5-13h2l18 11V14L28 26H14a4 4 0 0 0-4 4z"/><path d="M54 24c5 4 5 12 0 16"/>',
+  bag: '<path d="M14 23h36l3 32H11z"/><path d="M23 23v-4a9 9 0 0 1 18 0v4"/>',
+  trophy: '<path d="M19 12h26v15a13 13 0 0 1-26 0z"/><path d="M19 17h-7a9 9 0 0 0 9 9M45 17h7a9 9 0 0 1-9 9"/><path d="M32 40v9M21 53h22"/><path d="M32 18l2.4 4.8 5.3.8-3.8 3.7.9 5.3-4.8-2.5-4.8 2.5.9-5.3-3.8-3.7 5.3-.8z" fill="currentColor" stroke="none"/>',
+  repeat: '<path d="M15 32a17 17 0 1 1 5 12"/><path d="M15 19v13h13"/>',
+  customers: '<g fill="currentColor" stroke="none"><circle cx="32" cy="20" r="9"/><path d="M14 50c0-10 8-17 18-17s18 7 18 17z"/><circle cx="13" cy="26" r="7"/><circle cx="51" cy="26" r="7"/><path d="M2 46c0-7 5-11 11-11 2 0 4 .4 6 1-3 3-5 6-6 10zM62 46c0-7-5-11-11-11-2 0-4 .4-6 1 3 3 5 6 6 10z"/></g>',
+  network: '<g fill="currentColor" stroke="none"><circle cx="32" cy="14" r="7"/><circle cx="13" cy="48" r="7"/><circle cx="51" cy="48" r="7"/></g><path d="M28 20L18 41M36 20l10 21M20 48h24" stroke-width="4"/>',
+  chart: '<g fill="currentColor" stroke="none"><rect x="12" y="38" width="10" height="16"/><rect x="27" y="28" width="10" height="26"/><rect x="42" y="18" width="10" height="36"/></g><path d="M14 30l14-11 9 7 15-14" stroke-width="4"/><path d="M43 12h10v10" stroke-width="4"/>',
+  calendar: '<rect x="11" y="15" width="42" height="38" rx="5"/><path d="M11 28h42M22 11v8M42 11v8"/><path d="M23 38h7M34 38h7"/>',
+  storefront: '<path d="M13 27h38v26H13z"/><path d="M11 27l5-13h32l5 13"/><path d="M25 53V37h14v16"/>',
+  heart: '<path d="M32 51S11 38 11 25.5A11 11 0 0 1 32 21a11 11 0 0 1 21 4.5C53 38 32 51 32 51z"/>',
+  phone: '<rect x="19" y="9" width="26" height="46" rx="5"/><path d="M27 47h10"/>',
+  play: '<circle cx="32" cy="32" r="19"/><path d="M26 22l18 10-18 10z" fill="currentColor" stroke="none"/>',
+  badge: '<circle cx="32" cy="25" r="13"/><path d="M23 35l-5 18 14-7 14 7-5-18"/>',
 }
 
-function glyph(name, x, y, size = 64, color = INK, sw = 3) {
+function glyph(name, x, y, size = 64, color = INK, sw = 5) {
   const s = size / 64
   return `<g transform="translate(${x} ${y}) scale(${s})" fill="none" stroke="${color}" color="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${G[name]}</g>`
 }
@@ -88,7 +92,7 @@ function glyph(name, x, y, size = 64, color = INK, sw = 3) {
 function header({ m, org, sub }) {
   return `
   ${mark(m, 74, 28, 150)}
-  ${stack(org, 250, 82, { size: 40, weight: 900, gap: 46 })}
+  ${stack(org, 250, 82, { size: 40, weight: 900, gap: 46, ink: 1.4 })}
   ${text(sub, 250, 172, { size: 22, weight: 800, fill: INK, ls: 0.4 })}
   <line x1="655" y1="40" x2="655" y2="176" stroke="#c9d4e2" stroke-width="3"/>
   <text x="700" y="104" class="sans" font-size="52" font-weight="900" fill="${INK}">LOCAL<tspan font-weight="400">VIP</tspan></text>
@@ -101,15 +105,15 @@ function panel(x, y, w, h, title) {
   return `
   <path d="M${x} ${y + 18}a18 18 0 0 1 18-18h${w - 36}a18 18 0 0 1 18 18v72H${x}z" fill="${NAVY}"/>
   <path d="M${x} ${y + 90}h${w}v${h - 108}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="#fff"/>
-  <path d="M${x} ${y + 90}h${w}v${h - 108}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="none" stroke="#dfe6ef" stroke-width="2"/>
-  ${titleLines.map((t, i) => text(t, x + w / 2, y + (titleLines.length === 1 ? 56 : 40 + i * 32), { size: 25, weight: 900, fill: '#fff', anchor: 'middle' })).join('\n')}`
+  <path d="M${x} ${y + 90}h${w}v${h - 108}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="none" stroke="#e8c37a" stroke-width="2.5"/>
+  ${titleLines.map((t, i) => text(t, x + w / 2, y + (titleLines.length === 1 ? 56 : 40 + i * 32), { size: 25, weight: 900, fill: '#fff', anchor: 'middle', ink: 1.1 })).join('\n')}`
 }
 
 /** One icon + wrapped label row, with an optional connector arrow beneath. */
 function stepRow(x, y, icon, labelLines, withArrow) {
   return `
-  ${glyph(icon, x, y, 70, INK, 3.4)}
-  ${stack(labelLines, x + 86, y + (labelLines.length === 1 ? 36 : 22), { size: 21, weight: 600, fill: BODY, gap: 28 })}
+  ${glyph(icon, x, y, 74, INK, 5)}
+  ${stack(labelLines, x + 86, y + (labelLines.length === 1 ? 36 : 22), { size: 22, weight: 600, fill: BODY, gap: 29 })}
   ${withArrow ? `<g transform="translate(${x + 22} ${y + 70})" fill="#9fb0c4"><path d="M6 0h10v18h7L11 32 0 18h6z"/></g>` : ''}`
 }
 
@@ -125,15 +129,15 @@ function outcomeBox(x, y, w, linesArr) {
   const h = 40 + linesArr.length * 34
   return `
   <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#fff" stroke="${GOLD}" stroke-width="2.5"/>
-  ${linesArr.map((t, i) => text(t, x + w / 2, y + 40 + i * 34, { size: 23, weight: 900, fill: INK, anchor: 'middle' })).join('\n')}`
+  ${linesArr.map((t, i) => text(t, x + w / 2, y + 40 + i * 34, { size: 23, weight: 900, fill: INK, anchor: 'middle', ink: 1.2 })).join('\n')}`
 }
 
 function reassurance({ m, title, body }) {
   return `
-  ${mark(m, 96, 1046, 108)}
-  <line x1="236" y1="1050" x2="236" y2="1166" stroke="${GOLD}" stroke-width="3"/>
-  ${text(title, 268, 1084, { size: 27, weight: 900 })}
-  ${stack(body, 268, 1116, { size: 20, weight: 500, fill: BODY, gap: 28 })}`
+  ${mark(m, 96, 1000, 112)}
+  <line x1="240" y1="1004" x2="240" y2="1124" stroke="${GOLD}" stroke-width="3"/>
+  ${text(title, 272, 1040, { size: 28, weight: 900, ink: 1.3 })}
+  ${stack(body, 272, 1072, { size: 20, weight: 500, fill: BODY, gap: 27 })}`
 }
 
 /**
@@ -153,11 +157,11 @@ function ctaBand({ headline, rows, footnote }) {
     ${text('SCAN ME', 77, 192, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
   </g>
   <line x1="330" y1="1222" x2="330" y2="1400" stroke="#3a5170" stroke-width="2"/>
-  ${headline.map((t, i) => text(t, 366, 1238 + i * 42, { size: 36, weight: 900, fill: '#fff', fit: 592 })).join('\n')}
+  ${headline.map((t, i) => text(t, 366, 1238 + i * 42, { size: 36, weight: 900, fill: '#fff', fit: 592, ink: 1.8 })).join('\n')}
   ${rows.map((r, i) => `
-    ${glyph(r.icon, 366, 1302 + i * 44, 32, '#fff', 3)}
-    ${text(r.label, 412, 1326 + i * 44, { size: 23, weight: 900, fill: '#fff' })}`).join('\n')}
-  ${text(footnote, 366, 1408, { size: 19, weight: 900, fill: GOLD })}`
+    ${glyph(r.icon, 364, 1300 + i * 44, 36, '#fff', 4)}
+    ${text(r.label, 412, 1326 + i * 44, { size: 23, weight: 900, fill: '#fff', ink: 1.2 })}`).join('\n')}
+  ${text(footnote, 366, 1408, { size: 19, weight: 900, fill: GOLD, ink: 0.9 })}`
 }
 
 function footer(items) {
@@ -166,8 +170,8 @@ function footer(items) {
   <rect x="0" y="1428" width="${W}" height="72" fill="#fff"/>
   <line x1="0" y1="1428" x2="${W}" y2="1428" stroke="#dfe6ef" stroke-width="2"/>
   ${items.map((it, i) => `
-    ${glyph(it.icon, i * slot + 56, 1446, 38, INK, 3)}
-    ${text(it.label, i * slot + 108, 1474, { size: 20, weight: 900, fill: INK })}
+    ${glyph(it.icon, i * slot + 52, 1442, 42, INK, 4.5)}
+    ${text(it.label, i * slot + 106, 1474, { size: 20, weight: 900, fill: INK, ink: 1.1 })}
     ${i > 0 ? `<line x1="${i * slot + 10}" y1="1446" x2="${i * slot + 10}" y2="1486" stroke="#dfe6ef" stroke-width="2"/>` : ''}`).join('\n')}`
 }
 
@@ -175,21 +179,22 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title.join(' '))}">
   <defs><style>.sans{font-family:Inter,'Helvetica Neue',Arial,sans-serif}.cond{font-family:'Arial Narrow',Impact,Arial,sans-serif}</style></defs>
   <rect width="${W}" height="${H}" fill="#fbfbfb"/>
+  <rect x="3" y="3" width="${W - 6}" height="${H - 6}" fill="none" stroke="#0b1c33" stroke-width="6"/>
   ${header(head)}
-  ${title.map((t, i) => text(t.text, W / 2, 268 + i * 74, { size: 66, weight: 900, cls: 'cond', anchor: 'middle', fill: INK, fit: t.fit })).join('\n')}
+  ${title.map((t, i) => text(t.text, W / 2, 268 + i * 74, { size: 68, weight: 900, cls: 'cond', anchor: 'middle', fill: INK, fit: t.fit, ink: 3.2 })).join('\n')}
   <line x1="60" y1="408" x2="230" y2="408" stroke="${GOLD}" stroke-width="3"/>
   <line x1="${W - 230}" y1="408" x2="${W - 60}" y2="408" stroke="${GOLD}" stroke-width="3"/>
   ${text(subtitle, W / 2, 416, { size: 22, weight: 700, fill: BODY, anchor: 'middle', fit: 700 })}
-  ${panel(40, 446, 430, 540, leftTitle)}
-  ${leftSteps.map((s, i) => stepRow(76, 566 + i * 130, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
+  ${panel(40, 446, 430, 472, leftTitle)}
+  ${leftSteps.map((s, i) => stepRow(76, 562 + i * 118, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
   ${keepGoingArrow(676, arrowLabel)}
-  ${panel(580, 446, 430, 540, rightTitle)}
+  ${panel(580, 446, 430, 472, rightTitle)}
   ${rightSteps.map((st, i) => `
-    ${glyph(st.icon, 624 + i * 128, 560, 76, INK, 3.4)}
-    ${st.lines.map((l, j) => text(l, 662 + i * 128, 672 + j * 26, { size: 19, weight: 600, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
-  <path d="M648 734h316" stroke="${GOLD}" stroke-width="2.5" fill="none"/>
-  <path d="M806 734v16M798 744l8 10 8-10" stroke="${GOLD}" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  ${outcomeBox(600, 782, 390, outcome)}
+    ${glyph(st.icon, 622 + i * 128, 550, 84, INK, 5)}
+    ${st.lines.map((l, j) => text(l, 662 + i * 128, 664 + j * 26, { size: 19, weight: 700, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
+  <path d="M648 720h316" stroke="${GOLD}" stroke-width="2.5" fill="none"/>
+  <path d="M806 720v14M798 728l8 10 8-10" stroke="${GOLD}" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  ${outcomeBox(600, 752, 390, outcome)}
   ${reassurance(reassure)}
   ${ctaBand(cta)}
   ${footer(foot)}
@@ -204,13 +209,13 @@ const business = page({
   leftSteps: [
     { icon: 'megaphone', lines: ['Olathe West', 'promotes your business'] },
     { icon: 'bag', lines: ['Our supporters', 'shop with you'] },
-    { icon: 'trophy', lines: ['A successful', 'Giveback Day.'] },
+    { icon: 'trophy', lines: ['A successful', 'Giveback Day.', 'Great impact.'] },
   ],
   rightTitle: 'WHAT DOES|LOCALVIP ADD',
   rightSteps: [
     { icon: 'repeat', lines: ['Customers', 'come back'] },
     { icon: 'customers', lines: ['Reward the ones', 'you already have'] },
-    { icon: 'network', lines: ['Reach the wider', 'local network'] },
+    { icon: 'chart', lines: ['Reach the wider', 'local network'] },
   ],
   arrowLabel: 'KEEP IT|GOING',
   outcome: ['CHOOSE YOUR SLOWER DAY AND', 'GIVE PEOPLE A REASON TO', 'WALK IN WHEN YOU WANT THEM.'],
