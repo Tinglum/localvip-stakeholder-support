@@ -24,6 +24,9 @@ the original", these are the intended reasons why.
 | 6 | QR burnt into the artwork | **Blank labelled QR zone** | Otherwise it is one flyer per campaign. The dashboard stamps the right code per school |
 | 7 | Owl and apple on opaque white boxes | **Marks placed with no plate** | The white rectangles show against the #fbfbfb page |
 | 8 | One sheet, Olathe West only | **Three audiences, district-wide school version** | Avoids a separate flyer per campus |
+| 9 | "MAKE ONE GIVEBACK DAY / THE START OF SOMETHING BIGGER." + "Bring in your community." | **"MAKE YOUR SLOWEST DAY / THE ONE THEY COME BACK FOR."** + "You pick the day you want busier. LocalVIP helps you give local families an additional reason to choose you — and to come back." | The original headline was the school ASKING the business for something. Now leads on the lever the owner controls, matching what the right panel promises |
+| 10 | Reassurance: "You're still supporting Olathe West and helping our kids." | **"NOTHING CHANGES ABOUT HOW YOU RUN YOUR BUSINESS."** (business sheet only) | That is why the SCHOOL does this. Correct on the parent and district sheets; on a business flyer it answers a question the owner never asked |
+| 11 | Owl repeated in the reassurance strip | **Heart with OW inside** (Olathe West sheets) | The owl already appears in the header a few inches above |
 
 ---
 
@@ -93,11 +96,47 @@ Verified: the stamp lands pixel-exact on the zone.
 | Mark | Olathe West owl | Olathe West owl | Olathe Public Schools apple |
 | Org line | OLATHE WEST / 12TH MAN / FOOTBALL BOOSTER CLUB | OLATHE WEST | OLATHE PUBLIC SCHOOLS |
 | Right panel | Repeat visits, reward existing customers, wider network, slow-day lever | Connect, shop local, grow impact | Easy activation, local alignment, room to grow |
+| Headline | MAKE YOUR SLOWEST DAY / THE ONE THEY COME BACK FOR. | YOUR NEXT LOCAL PURCHASE / CAN SUPPORT OLATHE WEST. | TURN COMMUNITY TRUST / INTO REPEATABLE LOCAL SUPPORT. |
+| Reassurance mark | Heart with OW | Heart with OW | District apple |
+| Reassurance | NOTHING CHANGES ABOUT HOW YOU RUN YOUR BUSINESS. | NOTHING CHANGES ABOUT WHY WE SHOW UP. | YOU KEEP THE RELATIONSHIPS. WE ADD THE ENGINE. |
 | CTA close | **ONGOING CONNECTION. MORE WAYS TO WIN.** | **YOUR FAMILY. MORE WAYS TO MAKE AN IMPACT.** | **YOUR SCHOOL. MORE WAYS TO GROW.** |
 | Audience | Business owners | Parents and supporters | Principals, ADs, district leaders |
 
 The district sheet is deliberately **Olathe Public Schools**, not Olathe West, so
 it works across campuses without a flyer per school.
+
+---
+
+## 4b. COPY RULE — the reader acts, LocalVIP helps
+
+The single most common defect in this collateral, and the one that keeps
+creeping back. Copy inherited from the approved sheet is written in the
+**school's** voice, because that is who commissioned it. On the business flyer
+that voice argues the wrong side.
+
+**The rule: the reader is the one doing the thing. LocalVIP helps.**
+
+| Wrong | Right |
+|---|---|
+| "LocalVIP gives local families a reason to choose you" | "LocalVIP **helps you give** local families an **additional** reason" |
+| "LocalVIP makes it easier for everyday local choices to create value" | "LocalVIP helps **the choices you already make** go further" |
+| "Bring in your community" (asks the business for effort) | "You pick the day you want busier" (the owner's lever) |
+| "Help our community keep winning" (asks, and is vague) | "LocalVIP helps those everyday choices do more for Olathe West" |
+
+"Additional" is load-bearing. A business with regulars already has reasons
+people choose them; claiming to supply *the* reason overstates it.
+
+**Also: make no claim about prices, margins or cost.** The business funds the
+cashback it advertises, so "keep your margins" would be false. "Nothing changes
+about how you run your day" is both true and the thing an owner is actually
+wary of changing.
+
+**Where each voice is correct:**
+
+- "Supporting Olathe West and helping our kids" — right for **parents** and
+  **district**, wrong for **business**
+- The district sheet already passes: "You keep the relationships. We add the
+  engine." / "Your school remains at the center."
 
 ---
 
@@ -164,6 +203,10 @@ Honest list of what is still not identical:
 - **Icons are reconstructions**, matched for weight and silhouette, not the
   original icon files. If the source icons exist they should drop straight in.
 - **Headline typeface** — see §5.
+- **The OW heart is COMPOSED, not official.** The owl and the district apple are
+  traced from real marks; the heart-with-OW is built from a heart glyph plus
+  lettering because no official asset was supplied. If a real one turns up,
+  trace it and swap it in.
 - The final density pass (subtitle rules, panel and CTA tightening) shipped
   without a fresh visual check. The numbers are sound; it has not been eyeballed.
 
