@@ -214,7 +214,49 @@ function footer(items) {
     ${i > 0 ? `<line x1="${i * slot + 10}" y1="1446" x2="${i * slot + 10}" y2="1486" stroke="#dfe6ef" stroke-width="2"/>` : ''}`).join('\n')}`
 }
 
-function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSteps, arrowLabel, outcome, reassure, cta, foot }) {
+// ── alternate body layouts ───────────────────────────────────────────────────
+// Header, headline, reassurance, CTA and footer are shared furniture; only the
+// middle band changes. Both are drawn from the supplied reference options.
+
+/** Option B - four numbered steps plus a benefit strip. */
+function bodySteps({ steps, strip }) {
+  const cw = 226, gap = 22
+  return `
+  ${steps.map((st, i) => {
+    const x = 40 + i * (cw + gap)
+    return `<g transform="translate(${x} 442)">
+      <rect width="${cw}" height="296" rx="16" fill="#fff" stroke="#dfe6ef" stroke-width="2"/>
+      <rect width="${cw}" height="6" rx="3" fill="${GOLD}"/>
+      <circle cx="42" cy="52" r="24" fill="${NAVY}"/>
+      ${text(String(i + 1).padStart(2, '0'), 42, 60, { size: 20, weight: 800, cls: 'cond', fill: '#fff', anchor: 'middle' })}
+      ${glyph(st.icon, 132, 26, 54, INK, 5)}
+      ${stack(st.title.split('|'), 22, 118, { size: 17, weight: 800, cls: 'cond', gap: 21 })}
+      ${stack(st.lines, 22, 178, { size: 14, weight: 400, fill: BODY, gap: 20 })}
+    </g>`
+  }).join('\n')}
+  <rect x="40" y="762" width="970" height="142" rx="16" fill="#fdf6e6" stroke="${GOLD}" stroke-width="2"/>
+  ${strip.map((it, i) => {
+    const x = 64 + i * (970 / strip.length)
+    return `${glyph(it.icon, x, 800, 44, INK, 4.5)}
+    ${stack(it.lines, x + 58, 820, { size: 15, weight: 400, fill: BODY, gap: 21 })}`
+  }).join('\n')}`
+}
+
+/** Option C - three-way benefit diagram. */
+function bodyCircles({ circles, centre, outcome }) {
+  const pos = [[236, 600], [525, 540], [814, 600]]
+  return `
+  <path d="M320 540 Q525 468 730 540" fill="none" stroke="${GOLD}" stroke-width="3" stroke-dasharray="8 8"/>
+  ${circles.map((c, i) => `
+    <circle cx="${pos[i][0]}" cy="${pos[i][1]}" r="102" fill="#fff" stroke="${c.accent}" stroke-width="5"/>
+    ${glyph(c.icon, pos[i][0] - 27, pos[i][1] - 60, 54, c.accent, 5)}
+    ${stack(c.lines, pos[i][0], pos[i][1] + 18, { size: 16, weight: 800, cls: 'cond', anchor: 'middle', gap: 21 })}`).join('\n')}
+  ${glyph('heart', 497, 686, 56, GOLD, 5)}
+  ${stack(centre, 525, 782, { size: 19, weight: 800, cls: 'cond', anchor: 'middle', gap: 25 })}
+  ${outcomeBox(220, 826, 610, outcome)}`
+}
+
+function page({ head, title, subtitle, layout = 'compare', body, leftTitle, leftSteps, rightTitle, rightSteps, arrowLabel, outcome, reassure, cta, foot }) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title.join(' '))}">
   <defs><style>${FONT_CSS}.sans{font-family:'MontRegular',Montserrat,Arial,sans-serif}.cond{font-family:'MontXBold',Montserrat,Arial,sans-serif}.sb{font-family:'MontBold',Montserrat,Arial,sans-serif}</style></defs>
   <rect width="${W}" height="${H}" fill="#fbfbfb"/>
@@ -224,6 +266,7 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
   <line x1="52" y1="410" x2="96" y2="410" stroke="${GOLD}" stroke-width="3"/>
   <line x1="${W - 96}" y1="410" x2="${W - 52}" y2="410" stroke="${GOLD}" stroke-width="3"/>
   ${text(subtitle, W / 2, 418, { size: 25, weight: 400, fill: BODY, anchor: 'middle', fit: 840 })}
+  ${layout === 'steps' ? bodySteps(body) : layout === 'circles' ? bodyCircles(body) : `
   ${panel(40, 442, 452, 462, leftTitle)}
   ${leftSteps.map((s, i) => stepRow(76, 548 + i * 112, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
   ${keepGoingArrow(660, arrowLabel)}
@@ -234,13 +277,14 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
   <path d="M690 573h26M822 573h26" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
   <path d="M806 720v14M798 728l8 10 8-10" stroke="${GOLD}" stroke-width="2.5" fill="none" stroke-linecap="round"/>
   ${outcomeBox(580, 740, 408, outcome)}
+`}
   ${reassurance(reassure)}
   ${ctaBand(cta)}
   ${footer(foot)}
   </svg>`
 }
 
-const business = page({
+const businessCfg = {
   head: { m: owl, org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB' },
   // The original sheet's headline, carried over, was the SCHOOL asking the
   // business for something ("bring in your community"). This leads on the lever
@@ -293,9 +337,10 @@ const business = page({
     { icon: 'customers', label: 'OUR COMMUNITY.' },
     { icon: 'trophy', label: 'MORE WAYS TO WIN.' },
   ],
-})
+}
+const business = page(businessCfg)
 
-const parent = page({
+const parentCfg = {
   head: { m: owl, org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB' },
   title: [{ text: 'YOUR NEXT LOCAL PURCHASE', fit: 900 }, { text: 'CAN SUPPORT OLATHE WEST.', fit: 880 }],
   subtitle: 'Shop where you already shop. LocalVIP helps those everyday choices do more for Olathe West.',
@@ -333,9 +378,10 @@ const parent = page({
     { icon: 'customers', label: 'OUR COMMUNITY.' },
     { icon: 'trophy', label: 'MORE WAYS TO WIN.' },
   ],
-})
+}
+const parent = page(parentCfg)
 
-const school = page({
+const schoolCfg = {
   head: { m: district, org: ['OLATHE PUBLIC', 'SCHOOLS'], sub: 'COMMUNITY GIVEBACK' },
   title: [{ text: 'TURN COMMUNITY TRUST', fit: 800 }, { text: 'INTO REPEATABLE LOCAL SUPPORT.', fit: 940 }],
   subtitle: 'Start with one business and one Giveback Day. Build from there.',
@@ -373,13 +419,100 @@ const school = page({
     { icon: 'customers', label: 'OUR COMMUNITY.' },
     { icon: 'trophy', label: 'MORE WAYS TO GROW.' },
   ],
-})
+}
+const school = page(schoolCfg)
 
-for (const [name, svg] of Object.entries({
+// ── Options B and C ──────────────────────────────────────────────────────────
+// Same three audiences, same furniture and voice rules; different middle band.
+// B is the numbered-sequence treatment, C is the three-way benefit diagram.
+const variant = (base, layout, body, over = {}) =>
+  page({ ...base, layout, body, ...over })
+
+const cfg = { business: businessCfg, parent: parentCfg, school: schoolCfg }
+
+const stepsBody = {
+  business: {
+    steps: [
+      { icon: 'calendar', title: 'PICK|YOUR DAY', lines: ['Choose a day that', 'could use more', 'business.'] },
+      { icon: 'megaphone', title: 'WE RALLY|OLATHE WEST', lines: ['We promote you to', 'Olathe West families,', 'fans and supporters.'] },
+      { icon: 'customers', title: 'EVERYONE|BENEFITS', lines: ['You get customers.', 'Shoppers earn back.', 'Olathe West benefits.'] },
+      { icon: 'repeat', title: 'IT KEEPS|GOING', lines: ['That first day turns', 'into an ongoing', 'connection.'] },
+    ],
+    strip: [
+      { icon: 'storefront', lines: ['More local traffic on', 'the day you choose.'] },
+      { icon: 'heart', lines: ['Support for students', 'and our schools.'] },
+      { icon: 'chart', lines: ['A measured way to', 'market your business.'] },
+    ],
+  },
+  parent: {
+    steps: [
+      { icon: 'phone', title: 'JOIN YOUR|SCHOOL', lines: ['Connect through the', 'official Olathe West', 'campaign code.'] },
+      { icon: 'bag', title: 'SHOP AS|USUAL', lines: ['Choose participating', 'businesses you', 'already use.'] },
+      { icon: 'customers', title: 'EVERYONE|BENEFITS', lines: ['Your family earns.', 'Olathe West benefits.', 'Local shops grow.'] },
+      { icon: 'repeat', title: 'IT KEEPS|GOING', lines: ['Everyday choices keep', 'supporting the school', 'all year.'] },
+    ],
+    strip: [
+      { icon: 'heart', lines: ['Support for our kids', 'and their programmes.'] },
+      { icon: 'storefront', lines: ['Stronger businesses', 'in our own community.'] },
+      { icon: 'trophy', lines: ['Rewards that come', 'back to your family.'] },
+    ],
+  },
+  school: {
+    steps: [
+      { icon: 'calendar', title: 'START WITH|ONE CAMPUS', lines: ['One school, one', 'Giveback Day, one', 'QR code.'] },
+      { icon: 'megaphone', title: 'WE RALLY|THE COMMUNITY', lines: ['We promote taking', 'part to families and', 'local supporters.'] },
+      { icon: 'customers', title: 'EVERYONE|BENEFITS', lines: ['Businesses get', 'customers. Families', 'earn. Schools gain.'] },
+      { icon: 'network', title: 'THEN|IT SCALES', lines: ['Repeat it, and extend', 'the same framework', 'across the district.'] },
+    ],
+    strip: [
+      { icon: 'badge', lines: ['One consistent tool', 'for every campus.'] },
+      { icon: 'storefront', lines: ['Local partners you', 'already know.'] },
+      { icon: 'chart', lines: ['Less collateral to', 'build and maintain.'] },
+    ],
+  },
+}
+
+const circlesBody = {
+  business: {
+    circles: [
+      { icon: 'heart', accent: '#1f4fa3', lines: ['OLATHE WEST', 'BENEFITS'] },
+      { icon: 'customers', accent: '#b3202c', lines: ['CUSTOMERS', 'CAN BENEFIT'] },
+      { icon: 'storefront', accent: '#1f7a44', lines: ['YOUR BUSINESS', 'CAN BENEFIT'] },
+    ],
+    centre: ['GENEROSITY SHOULD NOT', 'BE ONE-WAY.'],
+    outcome: ['SAME GENEROSITY.', 'BETTER ECONOMICS.'],
+  },
+  parent: {
+    circles: [
+      { icon: 'heart', accent: '#1f4fa3', lines: ['OLATHE WEST', 'BENEFITS'] },
+      { icon: 'customers', accent: '#b3202c', lines: ['YOUR FAMILY', 'BENEFITS'] },
+      { icon: 'storefront', accent: '#1f7a44', lines: ['LOCAL BUSINESSES', 'BENEFIT'] },
+    ],
+    centre: ['THE SAME SHOPPING.', 'MORE PLACES IT LANDS.'],
+    outcome: ['SAME ROUTINE.', 'MORE IMPACT.'],
+  },
+  school: {
+    circles: [
+      { icon: 'badge', accent: '#1f4fa3', lines: ['YOUR SCHOOL', 'BENEFITS'] },
+      { icon: 'customers', accent: '#b3202c', lines: ['FAMILIES', 'BENEFIT'] },
+      { icon: 'storefront', accent: '#1f7a44', lines: ['LOCAL BUSINESSES', 'BENEFIT'] },
+    ],
+    centre: ['ONE FRAMEWORK.', 'THREE WAYS IT PAYS OFF.'],
+    outcome: ['ONE GIVEBACK DAY.', 'A LASTING LOCAL NETWORK.'],
+  },
+}
+
+const out = {
   'business-giveback-template.svg': business,
   'parent-supporter-template.svg': parent,
   'school-outreach-template.svg': school,
-})) {
+}
+for (const key of ['business', 'parent', 'school']) {
+  out[`${key}-option-b.svg`] = variant(cfg[key], 'steps', stepsBody[key])
+  out[`${key}-option-c.svg`] = variant(cfg[key], 'circles', circlesBody[key])
+}
+
+for (const [name, svg] of Object.entries(out)) {
   fs.writeFileSync(path.join(root, name), svg)
   console.log('Wrote', name)
 }

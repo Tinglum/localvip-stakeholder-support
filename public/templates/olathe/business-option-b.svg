@@ -10,72 +10,77 @@
   <line x1="640" y1="44" x2="640" y2="150" stroke="#c9d4e2" stroke-width="3"/>
   <text x="690" y="98" font-size="54" font-weight="800" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" fill="#12294c">LOCAL<tspan font-weight="400">VIP</tspan></text>
   <text x="690" y="132" text-anchor="start" class="sb" font-family="'MontBold',Montserrat,Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="1" fill="#2a3c55">POWERED BY LOCALVIP</text>
-  <text x="525" y="262" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="0" fill="#12294c" textLength="900" lengthAdjust="spacingAndGlyphs">YOUR NEXT LOCAL PURCHASE</text>
-<text x="525" y="328" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="0" fill="#12294c" textLength="880" lengthAdjust="spacingAndGlyphs">CAN SUPPORT OLATHE WEST.</text>
+  <text x="525" y="262" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="0" fill="#12294c" textLength="800" lengthAdjust="spacingAndGlyphs">MAKE YOUR SLOWEST DAY</text>
+<text x="525" y="328" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="0" fill="#12294c" textLength="940" lengthAdjust="spacingAndGlyphs">THE ONE THEY COME BACK FOR.</text>
   <line x1="52" y1="410" x2="96" y2="410" stroke="#f7a81b" stroke-width="3"/>
   <line x1="954" y1="410" x2="998" y2="410" stroke="#f7a81b" stroke-width="3"/>
-  <text x="525" y="418" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="25" font-weight="400" letter-spacing="0" fill="#2a3c55" textLength="840" lengthAdjust="spacingAndGlyphs">Shop where you already shop. LocalVIP helps those everyday choices do more for Olathe West.</text>
+  <text x="525" y="418" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="25" font-weight="400" letter-spacing="0" fill="#2a3c55" textLength="840" lengthAdjust="spacingAndGlyphs">You pick the day you want busier. LocalVIP helps you give local families an additional reason to choose you — and to come back.</text>
   
-  
-  <path d="M40 460a18 18 0 0 1 18-18h416a18 18 0 0 1 18 18v56H40z" fill="#12305c"/>
-  <path d="M40 516h452v370a18 18 0 0 1-18 18H58a18 18 0 0 1-18-18z" fill="#fff"/>
-  <path d="M40 516h452v370a18 18 0 0 1-18 18H58a18 18 0 0 1-18-18z" fill="none" stroke="#e8c37a" stroke-width="2.5"/>
-  <text x="266" y="474" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#fff">THE SUPPORT</text>
-<text x="266" y="502" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#fff">YOU ALREADY GIVE</text>
-  
-  <g transform="translate(76 548) scale(0.875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 27h38v26H13z"/><path d="M11 27l5-13h32l5 13"/><path d="M25 53V37h14v16"/></g>
-  <text x="150" y="570" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="20" font-weight="400" letter-spacing="0" fill="#2a3c55">Choose a participating</text>
-<text x="150" y="597" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="20" font-weight="400" letter-spacing="0" fill="#2a3c55">local business</text>
-  <g transform="translate(96 610) scale(.72)" fill="#c3ced9"><path d="M6 0h10v18h7L11 32 0 18h6z"/></g>
-
-  <g transform="translate(76 660) scale(0.875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 23h36l3 32H11z"/><path d="M23 23v-4a9 9 0 0 1 18 0v4"/></g>
-  <text x="150" y="682" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="20" font-weight="400" letter-spacing="0" fill="#2a3c55">Shop, visit,</text>
-<text x="150" y="709" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="20" font-weight="400" letter-spacing="0" fill="#2a3c55">or book as usual</text>
-  <g transform="translate(96 722) scale(.72)" fill="#c3ced9"><path d="M6 0h10v18h7L11 32 0 18h6z"/></g>
-
-  <g transform="translate(76 772) scale(0.875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M32 51S11 38 11 25.5A11 11 0 0 1 32 21a11 11 0 0 1 21 4.5C53 38 32 51 32 51z"/></g>
-  <text x="150" y="794" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="20" font-weight="400" letter-spacing="0" fill="#2a3c55">Support</text>
-<text x="150" y="821" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="20" font-weight="400" letter-spacing="0" fill="#2a3c55">Olathe West</text>
-  
-  
-  <g transform="translate(478 660)">
-    <path d="M0 18h56V0l40 38-40 38V56H0z" fill="#f7a81b"/>
-    <text x="40" y="32" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="18" font-weight="800" letter-spacing="0" fill="#12294c">MAKE IT</text>
-<text x="40" y="58" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="18" font-weight="800" letter-spacing="0" fill="#12294c">COUNT</text>
-  </g>
-  
-  <path d="M558 460a18 18 0 0 1 18-18h416a18 18 0 0 1 18 18v56H558z" fill="#12305c"/>
-  <path d="M558 516h452v370a18 18 0 0 1-18 18H576a18 18 0 0 1-18-18z" fill="#fff"/>
-  <path d="M558 516h452v370a18 18 0 0 1-18 18H576a18 18 0 0 1-18-18z" fill="none" stroke="#e8c37a" stroke-width="2.5"/>
-  <text x="784" y="474" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#fff">WHAT DOES</text>
-<text x="784" y="502" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#fff">LOCALVIP ADD</text>
-  
-    <g transform="translate(596 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="6" width="28" height="52" rx="6"/><path d="M27 13h10"/><path d="M28 50h8"/></g>
-    <text x="631" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">Find local</text>
-<text x="631" y="661" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">businesses</text>
-
-    <g transform="translate(736 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="20" r="9"/><path d="M14 50c0-10 8-17 18-17s18 7 18 17z"/><circle cx="13" cy="26" r="7"/><circle cx="51" cy="26" r="7"/><path d="M2 46c0-7 5-11 11-11 2 0 4 .4 6 1-3 3-5 6-6 10zM62 46c0-7-5-11-11-11-2 0-4 .4-6 1 3 3 5 6 6 10z"/></g></g>
-    <text x="771" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">Your family is</text>
-<text x="771" y="661" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">rewarded too</text>
-
-    <g transform="translate(876 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="14" r="7"/><circle cx="13" cy="48" r="7"/><circle cx="51" cy="48" r="7"/></g><path d="M28 20L18 41M36 20l10 21M20 48h24" stroke-width="4"/></g>
-    <text x="911" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">Local businesses</text>
-<text x="911" y="661" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">grow too</text>
-  <path d="M690 573h26M822 573h26" stroke="#f7a81b" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <path d="M806 720v14M798 728l8 10 8-10" stroke="#f7a81b" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  
-  <rect x="580" y="740" width="408" height="142" rx="10" fill="#fff" stroke="#f7a81b" stroke-width="2.5"/>
-  <text x="784" y="780" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#12294c">EVERYDAY CHOICES CAN CREATE</text>
-<text x="784" y="814" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#12294c">SUPPORT THAT CONTINUES</text>
-<text x="784" y="848" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#12294c">BEYOND ONE EVENT.</text>
-
+  <g transform="translate(40 442)">
+      <rect width="226" height="296" rx="16" fill="#fff" stroke="#dfe6ef" stroke-width="2"/>
+      <rect width="226" height="6" rx="3" fill="#f7a81b"/>
+      <circle cx="42" cy="52" r="24" fill="#12305c"/>
+      <text x="42" y="60" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="20" font-weight="800" letter-spacing="0" fill="#fff">01</text>
+      <g transform="translate(132 26) scale(0.84375)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="15" width="42" height="38" rx="5"/><path d="M11 28h42M22 11v8M42 11v8"/><path d="M23 38h7M34 38h7"/></g>
+      <text x="22" y="118" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#12294c">PICK</text>
+<text x="22" y="139" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#12294c">YOUR DAY</text>
+      <text x="22" y="178" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">Choose a day that</text>
+<text x="22" y="198" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">could use more</text>
+<text x="22" y="218" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">business.</text>
+    </g>
+<g transform="translate(288 442)">
+      <rect width="226" height="296" rx="16" fill="#fff" stroke="#dfe6ef" stroke-width="2"/>
+      <rect width="226" height="6" rx="3" fill="#f7a81b"/>
+      <circle cx="42" cy="52" r="24" fill="#12305c"/>
+      <text x="42" y="60" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="20" font-weight="800" letter-spacing="0" fill="#fff">02</text>
+      <g transform="translate(132 26) scale(0.84375)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 28v10a4 4 0 0 0 4 4h4l5 13h8l-5-13h2l18 11V14L28 26H14a4 4 0 0 0-4 4z"/><path d="M54 24c5 4 5 12 0 16"/></g>
+      <text x="22" y="118" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#12294c">WE RALLY</text>
+<text x="22" y="139" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#12294c">OLATHE WEST</text>
+      <text x="22" y="178" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">We promote you to</text>
+<text x="22" y="198" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">Olathe West families,</text>
+<text x="22" y="218" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">fans and supporters.</text>
+    </g>
+<g transform="translate(536 442)">
+      <rect width="226" height="296" rx="16" fill="#fff" stroke="#dfe6ef" stroke-width="2"/>
+      <rect width="226" height="6" rx="3" fill="#f7a81b"/>
+      <circle cx="42" cy="52" r="24" fill="#12305c"/>
+      <text x="42" y="60" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="20" font-weight="800" letter-spacing="0" fill="#fff">03</text>
+      <g transform="translate(132 26) scale(0.84375)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="20" r="9"/><path d="M14 50c0-10 8-17 18-17s18 7 18 17z"/><circle cx="13" cy="26" r="7"/><circle cx="51" cy="26" r="7"/><path d="M2 46c0-7 5-11 11-11 2 0 4 .4 6 1-3 3-5 6-6 10zM62 46c0-7-5-11-11-11-2 0-4 .4-6 1 3 3 5 6 6 10z"/></g></g>
+      <text x="22" y="118" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#12294c">EVERYONE</text>
+<text x="22" y="139" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#12294c">BENEFITS</text>
+      <text x="22" y="178" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">You get customers.</text>
+<text x="22" y="198" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">Shoppers earn back.</text>
+<text x="22" y="218" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">Olathe West benefits.</text>
+    </g>
+<g transform="translate(784 442)">
+      <rect width="226" height="296" rx="16" fill="#fff" stroke="#dfe6ef" stroke-width="2"/>
+      <rect width="226" height="6" rx="3" fill="#f7a81b"/>
+      <circle cx="42" cy="52" r="24" fill="#12305c"/>
+      <text x="42" y="60" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="20" font-weight="800" letter-spacing="0" fill="#fff">04</text>
+      <g transform="translate(132 26) scale(0.84375)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 32a17 17 0 1 1 5 12"/><path d="M15 19v13h13"/></g>
+      <text x="22" y="118" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#12294c">IT KEEPS</text>
+<text x="22" y="139" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#12294c">GOING</text>
+      <text x="22" y="178" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">That first day turns</text>
+<text x="22" y="198" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">into an ongoing</text>
+<text x="22" y="218" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="0" fill="#2a3c55">connection.</text>
+    </g>
+  <rect x="40" y="762" width="970" height="142" rx="16" fill="#fdf6e6" stroke="#f7a81b" stroke-width="2"/>
+  <g transform="translate(64 800) scale(0.6875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 27h38v26H13z"/><path d="M11 27l5-13h32l5 13"/><path d="M25 53V37h14v16"/></g>
+    <text x="122" y="820" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="15" font-weight="400" letter-spacing="0" fill="#2a3c55">More local traffic on</text>
+<text x="122" y="841" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="15" font-weight="400" letter-spacing="0" fill="#2a3c55">the day you choose.</text>
+<g transform="translate(387.3333333333333 800) scale(0.6875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M32 51S11 38 11 25.5A11 11 0 0 1 32 21a11 11 0 0 1 21 4.5C53 38 32 51 32 51z"/></g>
+    <text x="445.3333333333333" y="820" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="15" font-weight="400" letter-spacing="0" fill="#2a3c55">Support for students</text>
+<text x="445.3333333333333" y="841" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="15" font-weight="400" letter-spacing="0" fill="#2a3c55">and our schools.</text>
+<g transform="translate(710.6666666666666 800) scale(0.6875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><rect x="12" y="38" width="10" height="16"/><rect x="27" y="28" width="10" height="26"/><rect x="42" y="18" width="10" height="36"/></g><path d="M14 30l14-11 9 7 15-14" stroke-width="4"/><path d="M43 12h10v10" stroke-width="4"/></g>
+    <text x="768.6666666666666" y="820" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="15" font-weight="400" letter-spacing="0" fill="#2a3c55">A measured way to</text>
+<text x="768.6666666666666" y="841" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="15" font-weight="400" letter-spacing="0" fill="#2a3c55">market your business.</text>
   
   <svg x="96" y="952" width="100" height="100" viewBox="0 0 64 64" preserveAspectRatio="xMidYMid meet"><path d="M32 55S8 40 8 24.5A12.5 12.5 0 0 1 32 19a12.5 12.5 0 0 1 24 5.5C56 40 32 55 32 55z" fill="none" stroke="#12294c" stroke-width="4.5" stroke-linejoin="round"/><text x="32" y="41" text-anchor="middle" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="18" font-weight="800" fill="#12294c">OW</text></svg>
   <line x1="228" y1="956" x2="228" y2="1060" stroke="#f7a81b" stroke-width="3"/>
-  <text x="258" y="990" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#12294c" textLength="764" lengthAdjust="spacingAndGlyphs">NOTHING CHANGES ABOUT WHY WE SHOW UP.</text>
-  <text x="258" y="1022" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">You are still supporting Olathe West and helping our kids.</text>
-<text x="258" y="1047" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">LocalVIP simply helps the choices you already make go further</text>
-<text x="258" y="1072" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">— for the school, and for your family.</text>
+  <text x="258" y="990" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#12294c" textLength="764" lengthAdjust="spacingAndGlyphs">NOTHING CHANGES ABOUT HOW YOU RUN YOUR BUSINESS.</text>
+  <text x="258" y="1022" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">You keep the customers and the reputation you have already earned.</text>
+<text x="258" y="1047" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">LocalVIP does not change how you run your day — it adds another</text>
+<text x="258" y="1072" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">reason for people to choose you, come back, and tell others.</text>
   
   <rect x="0" y="1120" width="1050" height="308" fill="#12305c"/>
   <g transform="translate(104 1170)">
@@ -88,20 +93,20 @@
     <text x="88" y="216" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="21" font-weight="900" letter-spacing="0" fill="#12294c">SCAN ME</text>
   </g>
   <line x1="336" y1="1170" x2="336" y2="1400" stroke="#3a5170" stroke-width="2"/>
-  <text x="372" y="1196" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="42" font-weight="800" letter-spacing="0" fill="#fff" textLength="600" lengthAdjust="spacingAndGlyphs">YOUR FAMILY. MORE WAYS TO MAKE AN IMPACT.</text>
+  <text x="372" y="1196" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="42" font-weight="800" letter-spacing="0" fill="#fff" textLength="600" lengthAdjust="spacingAndGlyphs">ONGOING CONNECTION. MORE WAYS TO WIN.</text>
   
-    <g transform="translate(372 1248) scale(0.59375)" fill="none" stroke="#fff" color="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 27h38v26H13z"/><path d="M11 27l5-13h32l5 13"/><path d="M25 53V37h14v16"/></g>
-    <text x="424" y="1276" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#fff">FIND PARTICIPATING BUSINESSES</text>
+    <g transform="translate(372 1248) scale(0.59375)" fill="none" stroke="#fff" color="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="32" r="19"/><path d="M26 22l18 10-18 10z" fill="currentColor" stroke="none"/></g>
+    <text x="424" y="1276" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#fff">SCAN TO SEE THE 60-SECOND PLAN</text>
 
-    <g transform="translate(372 1296) scale(0.59375)" fill="none" stroke="#fff" color="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="20" r="9"/><path d="M14 50c0-10 8-17 18-17s18 7 18 17z"/><circle cx="13" cy="26" r="7"/><circle cx="51" cy="26" r="7"/><path d="M2 46c0-7 5-11 11-11 2 0 4 .4 6 1-3 3-5 6-6 10zM62 46c0-7-5-11-11-11-2 0-4 .4-6 1 3 3 5 6 6 10z"/></g></g>
-    <text x="424" y="1324" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#fff">JOIN THE OLATHE WEST COMMUNITY</text>
-  <text x="372" y="1396" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#f7a81b">★  ONE SCAN SHOWS YOU WHERE TO START.  ★</text>
+    <g transform="translate(372 1296) scale(0.59375)" fill="none" stroke="#fff" color="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="15" width="42" height="38" rx="5"/><path d="M11 28h42M22 11v8M42 11v8"/><path d="M23 38h7M34 38h7"/></g>
+    <text x="424" y="1324" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#fff">BOOK YOUR 15-MINUTE SETUP CALL</text>
+  <text x="372" y="1396" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="17" font-weight="800" letter-spacing="0" fill="#f7a81b">★  CHOOSE A DATE. WE’LL HELP WITH THE REST.  ★</text>
   
   <rect x="0" y="1428" width="1050" height="72" fill="#fff"/>
   <line x1="0" y1="1428" x2="1050" y2="1428" stroke="#dfe6ef" stroke-width="2"/>
   
-    <g transform="translate(52 1442) scale(0.65625)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M32 51S11 38 11 25.5A11 11 0 0 1 32 21a11 11 0 0 1 21 4.5C53 38 32 51 32 51z"/></g>
-    <text x="106" y="1474" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="18" font-weight="800" letter-spacing="0" fill="#12294c">YOUR FAMILY.</text>
+    <g transform="translate(52 1442) scale(0.65625)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 27h38v26H13z"/><path d="M11 27l5-13h32l5 13"/><path d="M25 53V37h14v16"/></g>
+    <text x="106" y="1474" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="18" font-weight="800" letter-spacing="0" fill="#12294c">YOUR BUSINESS.</text>
     
 
     <g transform="translate(402 1442) scale(0.65625)" fill="none" stroke="#12294c" color="#12294c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="20" r="9"/><path d="M14 50c0-10 8-17 18-17s18 7 18 17z"/><circle cx="13" cy="26" r="7"/><circle cx="51" cy="26" r="7"/><path d="M2 46c0-7 5-11 11-11 2 0 4 .4 6 1-3 3-5 6-6 10zM62 46c0-7-5-11-11-11-2 0-4 .4-6 1 3 3 5 6 6 10z"/></g></g>

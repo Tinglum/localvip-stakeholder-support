@@ -16,6 +16,7 @@
   <line x1="954" y1="410" x2="998" y2="410" stroke="#f7a81b" stroke-width="3"/>
   <text x="525" y="418" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="25" font-weight="400" letter-spacing="0" fill="#2a3c55" textLength="840" lengthAdjust="spacingAndGlyphs">You pick the day you want busier. LocalVIP helps you give local families an additional reason to choose you — and to come back.</text>
   
+  
   <path d="M40 460a18 18 0 0 1 18-18h416a18 18 0 0 1 18 18v56H40z" fill="#12305c"/>
   <path d="M40 516h452v370a18 18 0 0 1-18 18H58a18 18 0 0 1-18-18z" fill="#fff"/>
   <path d="M40 516h452v370a18 18 0 0 1-18 18H58a18 18 0 0 1-18-18z" fill="none" stroke="#e8c37a" stroke-width="2.5"/>
@@ -68,6 +69,7 @@
   <text x="784" y="780" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#12294c">CHOOSE YOUR SLOWER DAY AND</text>
 <text x="784" y="814" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#12294c">GIVE PEOPLE A REASON TO</text>
 <text x="784" y="848" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="21" font-weight="800" letter-spacing="0" fill="#12294c">WALK IN WHEN YOU WANT THEM.</text>
+
   
   <svg x="96" y="952" width="100" height="100" viewBox="0 0 64 64" preserveAspectRatio="xMidYMid meet"><path d="M32 55S8 40 8 24.5A12.5 12.5 0 0 1 32 19a12.5 12.5 0 0 1 24 5.5C56 40 32 55 32 55z" fill="none" stroke="#12294c" stroke-width="4.5" stroke-linejoin="round"/><text x="32" y="41" text-anchor="middle" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="18" font-weight="800" fill="#12294c">OW</text></svg>
   <line x1="228" y1="956" x2="228" y2="1060" stroke="#f7a81b" stroke-width="3"/>
