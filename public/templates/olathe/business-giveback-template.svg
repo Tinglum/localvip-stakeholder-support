@@ -14,7 +14,7 @@
 <text x="525" y="328" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="0" fill="#12294c" textLength="940" lengthAdjust="spacingAndGlyphs">THE ONE THEY COME BACK FOR.</text>
   <line x1="62" y1="408" x2="162" y2="408" stroke="#f7a81b" stroke-width="3"/>
   <line x1="888" y1="408" x2="988" y2="408" stroke="#f7a81b" stroke-width="3"/>
-  <text x="525" y="416" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="0" fill="#2a3c55" textLength="700" lengthAdjust="spacingAndGlyphs">You pick the day you want busier. LocalVIP gives local families a reason to choose you — and to come back.</text>
+  <text x="525" y="416" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="0" fill="#2a3c55" textLength="700" lengthAdjust="spacingAndGlyphs">You pick the day you want busier. LocalVIP helps you give local families an additional reason to choose you — and to come back.</text>
   
   <path d="M40 460a18 18 0 0 1 18-18h416a18 18 0 0 1 18 18v56H40z" fill="#12305c"/>
   <path d="M40 516h452v370a18 18 0 0 1-18 18H58a18 18 0 0 1-18-18z" fill="#fff"/>

@@ -248,7 +248,7 @@ const business = page({
   // the owner actually controls - choosing which day gets busier - and lands the
   // same promise the right panel makes.
   title: [{ text: 'MAKE YOUR SLOWEST DAY', fit: 800 }, { text: 'THE ONE THEY COME BACK FOR.', fit: 940 }],
-  subtitle: 'You pick the day you want busier. LocalVIP gives local families a reason to choose you — and to come back.',
+  subtitle: 'You pick the day you want busier. LocalVIP helps you give local families an additional reason to choose you — and to come back.',
   leftTitle: 'THE GIVEBACK DAY|YOU ALREADY KNOW',
   leftSteps: [
     { icon: 'megaphone', lines: ['Olathe West', 'promotes your business'] },
