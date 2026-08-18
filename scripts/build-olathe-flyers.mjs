@@ -299,7 +299,7 @@ const business = page({
 const parent = page({
   head: { m: owl, org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB' },
   title: [{ text: 'YOUR NEXT LOCAL PURCHASE', fit: 900 }, { text: 'CAN SUPPORT OLATHE WEST.', fit: 880 }],
-  subtitle: 'Shop where you already shop. Help our community keep winning.',
+  subtitle: 'Shop where you already shop. LocalVIP helps those everyday choices do more for Olathe West.',
   leftTitle: 'THE SUPPORT|YOU ALREADY GIVE',
   leftSteps: [
     { icon: 'storefront', lines: ['Choose a participating', 'local business'] },
@@ -318,8 +318,8 @@ const parent = page({
     m: owHeart,
     title: 'NOTHING CHANGES ABOUT WHY WE SHOW UP.',
     body: ['You are still supporting Olathe West and helping our kids.',
-      'LocalVIP simply makes it easier for everyday local choices',
-      'to create more value for everyone.'],
+      'LocalVIP simply helps the choices you already make go further',
+      '— for the school, and for your family.'],
   },
   cta: {
     headline: ['YOUR FAMILY. MORE WAYS TO MAKE AN IMPACT.'],

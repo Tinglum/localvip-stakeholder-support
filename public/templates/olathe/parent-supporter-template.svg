@@ -14,7 +14,7 @@
 <text x="525" y="328" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="0" fill="#12294c" textLength="880" lengthAdjust="spacingAndGlyphs">CAN SUPPORT OLATHE WEST.</text>
   <line x1="62" y1="408" x2="162" y2="408" stroke="#f7a81b" stroke-width="3"/>
   <line x1="888" y1="408" x2="988" y2="408" stroke="#f7a81b" stroke-width="3"/>
-  <text x="525" y="416" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="0" fill="#2a3c55" textLength="700" lengthAdjust="spacingAndGlyphs">Shop where you already shop. Help our community keep winning.</text>
+  <text x="525" y="416" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="0" fill="#2a3c55" textLength="700" lengthAdjust="spacingAndGlyphs">Shop where you already shop. LocalVIP helps those everyday choices do more for Olathe West.</text>
   
   <path d="M40 460a18 18 0 0 1 18-18h416a18 18 0 0 1 18 18v56H40z" fill="#12305c"/>
   <path d="M40 516h452v370a18 18 0 0 1-18 18H58a18 18 0 0 1-18-18z" fill="#fff"/>
@@ -72,8 +72,8 @@
   <line x1="228" y1="956" x2="228" y2="1060" stroke="#f7a81b" stroke-width="3"/>
   <text x="258" y="990" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="25" font-weight="800" letter-spacing="0" fill="#12294c">NOTHING CHANGES ABOUT WHY WE SHOW UP.</text>
   <text x="258" y="1022" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">You are still supporting Olathe West and helping our kids.</text>
-<text x="258" y="1047" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">LocalVIP simply makes it easier for everyday local choices</text>
-<text x="258" y="1072" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">to create more value for everyone.</text>
+<text x="258" y="1047" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">LocalVIP simply helps the choices you already make go further</text>
+<text x="258" y="1072" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">— for the school, and for your family.</text>
   
   <rect x="0" y="1120" width="1050" height="308" fill="#12305c"/>
   <g transform="translate(104 1170)">
