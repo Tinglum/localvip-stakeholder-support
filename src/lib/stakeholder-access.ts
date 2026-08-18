@@ -240,6 +240,10 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
       // the other material-engine operator tools rather than in the CRM.
       { label: 'Bulk Generate', href: '/admin/material-engine/bulk-generate', icon: 'Send', minLevel: 0 },
       { label: 'Users', href: '/admin/users', icon: 'Users', minLevel: 0 },
+      // Both review queues are SysAdmin-only, so they carry Settings' minLevel
+      // rather than the shell default the other admin children use.
+      { label: 'Ripple Moderation', href: '/admin/ripple-moderation', icon: 'ShieldAlert', minLevel: 100 },
+      { label: 'Business Nominations', href: '/admin/nominations', icon: 'Sparkles', minLevel: 100 },
       { label: 'Settings', href: '/admin/settings', icon: 'Settings', minLevel: 100 },
       { label: 'Bug Center', href: '/admin/bugs', icon: 'Bug', minLevel: 0 },
       { label: 'Audit Log', href: '/admin/audit', icon: 'ScrollText', minLevel: 0 },
