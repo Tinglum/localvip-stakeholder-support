@@ -1,5 +1,5 @@
 import type { QaConsumerListItem } from '@/lib/auth/qa-api'
-import { fetchQaApi, parseQaJsonResponse } from '@/lib/auth/qa-api'
+import { fetchQaApi, fetchQaApiWithAccessToken, parseQaJsonResponse } from '@/lib/auth/qa-api'
 import type { ResolvedAuthSession } from '@/lib/server/auth-session'
 
 type RawConsumerTransaction = {
@@ -11,6 +11,8 @@ type RawConsumerTransaction = {
   title?: string | null
   Amount?: number | string
   amount?: number | string
+  MerchantId?: number | string | null
+  merchantId?: number | string | null
   Tip?: number | string
   tip?: number | string
   Cashback?: number | string
@@ -100,7 +102,7 @@ export async function resolveCurrentConsumerId(session: ResolvedAuthSession) {
 export function normalizeQaConsumerTransaction(raw: RawConsumerTransaction, index: number): QaConsumerTransaction {
   return {
     id: Number(raw.Id ?? raw.id ?? index),
-    accountId: parseConsumerIdCandidate(raw.AccountId ?? raw.accountId),
+    accountId: parseConsumerIdCandidate(raw.AccountId ?? raw.accountId ?? raw.MerchantId ?? raw.merchantId),
     title: raw.Title ?? raw.title ?? null,
     amount: toQaNumber(raw.Amount ?? raw.amount),
     tip: toQaNumber(raw.Tip ?? raw.tip),
@@ -111,6 +113,44 @@ export function normalizeQaConsumerTransaction(raw: RawConsumerTransaction, inde
     transactionType: raw.TransactionType ?? raw.transactionType ?? null,
     dateTime: raw.DateTime ?? raw.dateTime ?? raw.CreatedDate ?? raw.createdDate ?? null,
   }
+}
+
+/**
+ * Read a consumer's transactions from the SAME endpoint the WebApp uses.
+ *
+ * Bug #114: the dashboard totalled tips from /api/dashboard/v1/Consumer/{id}/
+ * transactions while the WebApp read /api/mobile/v1/Payment/transactions. Two
+ * implementations, so two answers - that one capped at 1000 rows (the caller
+ * never passed a limit), applied no TransactionStatus filter, and did no
+ * timezone conversion. Rather than reconcile them, both surfaces now read the
+ * one endpoint, so the numbers agree by construction.
+ *
+ * The mobile endpoint resolves the consumer from the bearer token, not from a
+ * route id, so viewing another customer requires impersonating them through
+ * Admin/LoginAs - the same mechanism the wallet and causes routes use.
+ */
+export async function fetchQaConsumerTransactionsForSession(session: {
+  viewingAs?: { targetUserId?: number | null } | null
+}) {
+  let fetcher: (path: string) => Promise<Response> = fetchQaApi
+  const targetUserId = session.viewingAs?.targetUserId
+  if (targetUserId) {
+    const loginAsRes = await fetchQaApi('/api/dashboard/v1/Admin/LoginAs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ targetUserId }),
+    })
+    const loginAs = await parseQaJsonResponse<{ accessToken: string }>(
+      loginAsRes,
+      'Unable to read the selected customer transactions.',
+    )
+    fetcher = (path) => fetchQaApiWithAccessToken(path, loginAs.accessToken)
+  }
+
+  const res = await fetcher('/api/mobile/v1/Payment/transactions')
+  const payload = await parseQaJsonResponse<RawConsumerTransaction[]>(res, 'Failed to load transactions.')
+  const rows = Array.isArray(payload) ? payload : []
+  return rows.map(normalizeQaConsumerTransaction)
 }
 
 export async function fetchQaConsumerTransactions(consumerId: number) {

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { requireQaRouteAccess, qaRouteErrorResponse } from '@/lib/server/qa-route'
-import { fetchQaConsumerTransactions, resolveCurrentConsumerId } from '@/lib/server/qa-consumer'
+import { fetchQaConsumerTransactionsForSession, resolveCurrentConsumerId } from '@/lib/server/qa-consumer'
 
 export async function GET() {
-  const access = await requireQaRouteAccess(['consumer'])
+  const access = await requireQaRouteAccess(['consumer', 'admin', 'field', 'launch_partner', 'business'])
   if ('error' in access) return access.error
 
   try {
@@ -17,11 +17,11 @@ export async function GET() {
       })
     }
 
-    const transactions = await fetchQaConsumerTransactions(consumerId)
+    const transactions = await fetchQaConsumerTransactionsForSession(access.session)
 
     return NextResponse.json({
       ok: true,
-      endpoint: `/api/dashboard/v1/Consumer/${consumerId}/transactions`,
+      endpoint: '/api/mobile/v1/Payment/transactions',
       count: transactions.length,
       transactions,
     })
