@@ -303,3 +303,48 @@ the business case anywhere in the references.
 (business / parent / district). The references are *three visual options for one
 audience*. Confirm which before building — the difference is 6 flyers versus 6
 variants of the business sheet.
+
+---
+
+## 10. SOLVED — high-quality PNG rendering with real fonts
+
+Decision taken 2026-08-18: **move off SVG-as-the-deliverable to high-quality
+PNG.** This resolves §6 entirely.
+
+Headless Chrome renders the embedded `@font-face` correctly, unlike
+`@napi-rs/canvas`. Rendering the SVG through Chrome produces a print-resolution
+PNG with real Montserrat, and PNG templates already stamp QR codes correctly.
+
+```bash
+"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless --disable-gpu \
+  --hide-scrollbars --force-device-scale-factor=2 --window-size=1050,1500 \
+  --default-background-color=ffffff \
+  --screenshot=out.png "file:///ABSOLUTE/PATH/TO/flyer.svg"
+```
+
+Output: **2100 × 3000** PNG. Raise `--force-device-scale-factor` to 3 or 4 for
+larger print sizes. The SVG stays as the editable source; PNG becomes the
+artifact that ships.
+
+**This also unblocks photography** (§9.1 option C) — a Chrome-rendered template
+can contain photos, because the drop only happens in the napi-rs rasteriser.
+
+### 10.1 Defects this immediately exposed
+
+The fallback font was NARROWER than Montserrat, so it hid these. All four are
+real and must be fixed before the PNGs ship:
+
+1. **Right-panel labels collide** — "Reward the ones" and "Reach the wider" run
+   together as "oneReach". The three columns are spaced for the narrower
+   fallback; they need wider gutters or shorter labels.
+2. **Reassurance heading overflows the page** — "NOTHING CHANGES ABOUT HOW YOU
+   RUN YOUR BUSINESS." runs off the right edge. Needs a smaller size, a `fit`
+   width, or a two-line break.
+3. **Subtitle is far too small** relative to the headline now that both render
+   properly.
+4. **The SCAN ME phone glyph renders as tofu** (□). It is a text glyph, not a
+   path — replace it with the vector `phone` glyph already in `G`.
+
+**Every previous layout judgement in this document was made against the fallback
+font and is therefore suspect.** Re-check spacing decisions from a Chrome render,
+not from a napi-rs PNG.
