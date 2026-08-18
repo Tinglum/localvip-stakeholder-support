@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchQaApi, parseQaJsonResponse, parseQaResponse } from '@/lib/auth/qa-api'
+import { fetchQaApi, fetchQaApiWithAccessToken, parseQaJsonResponse, parseQaResponse } from '@/lib/auth/qa-api'
 import { parseJsonRequest, qaRouteErrorResponse, requireQaRouteAccess } from '@/lib/server/qa-route'
 
 // Mobile QA endpoints backing the consumer "My Causes" portal page.
@@ -52,9 +52,43 @@ function toNullableString(value: unknown): string | null {
   return null
 }
 
-async function readOptionalQaJson<T = Record<string, unknown>>(path: string): Promise<T | null> {
+
+type QaFetcher = (path: string, init?: RequestInit) => Promise<Response>
+
+/**
+ * Resolve the fetcher for the account actually being VIEWED.
+ *
+ * The QA endpoint reads ConsumerTenCauses for _currentUser.UserId, so calling it
+ * with the signed-in admin's token returns the ADMIN's causes - which is why this
+ * page showed nothing like what the customer picked in the WebApp. The wallet
+ * route already impersonates through Admin/LoginAs; causes was left on the
+ * caller's own token.
+ *
+ * Used for the write path too, deliberately: if GET showed the customer's
+ * selection while PUT saved against the admin's account, an edit made here would
+ * silently rewrite the wrong person's causes.
+ */
+async function resolveViewerFetcher(session: { viewingAs?: { targetUserId?: number | null } | null }): Promise<QaFetcher> {
+  const targetUserId = session.viewingAs?.targetUserId
+  if (!targetUserId) return fetchQaApi
+  const loginAsRes = await fetchQaApi('/api/dashboard/v1/Admin/LoginAs', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ targetUserId }),
+  })
+  const loginAs = await parseQaJsonResponse<{ accessToken: string }>(
+    loginAsRes,
+    'Unable to read the selected customer causes.',
+  )
+  return (path, init) => fetchQaApiWithAccessToken(path, loginAs.accessToken, init)
+}
+
+async function readOptionalQaJson<T = Record<string, unknown>>(
+  path: string,
+  fetcher: QaFetcher = fetchQaApi,
+): Promise<T | null> {
   try {
-    const res = await fetchQaApi(path)
+    const res = await fetcher(path)
     return await parseQaJsonResponse<T>(res, `Failed to load ${path}.`)
   } catch {
     return null
@@ -88,7 +122,7 @@ function mapSelectionItem(entry: unknown): CauseSelectionItem | null {
 }
 
 export async function GET(request: NextRequest) {
-  const access = await requireQaRouteAccess(['consumer'])
+  const access = await requireQaRouteAccess(['consumer', 'admin', 'field', 'launch_partner', 'business'])
   if ('error' in access) return access.error
 
   const search = request.nextUrl.searchParams.get('search')?.trim() || ''
@@ -97,10 +131,12 @@ export async function GET(request: NextRequest) {
   catalogQuery.set('pageSize', '500')
 
   try {
+    const fetchForViewer = await resolveViewerFetcher(access.session)
     const [catalogRes, selectionRes, causeImpact] = await Promise.all([
+      // The catalog is the same for everyone, so it stays on the caller's token.
       fetchQaApi(`${CAUSES_CATALOG_PATH}?${catalogQuery.toString()}`),
-      fetchQaApi(CAUSES_SELECTION_PATH),
-      readOptionalQaJson(CAUSE_IMPACT_SUMMARY_PATH),
+      fetchForViewer(CAUSES_SELECTION_PATH),
+      readOptionalQaJson(CAUSE_IMPACT_SUMMARY_PATH, fetchForViewer),
     ])
 
     const [catalogPayload, selectionPayload] = await Promise.all([
@@ -127,7 +163,7 @@ interface CausesPutBody {
 }
 
 export async function PUT(request: NextRequest) {
-  const access = await requireQaRouteAccess(['consumer'])
+  const access = await requireQaRouteAccess(['consumer', 'admin', 'field', 'launch_partner', 'business'])
   if ('error' in access) return access.error
 
   const body = await parseJsonRequest<CausesPutBody>(request)
@@ -151,7 +187,8 @@ export async function PUT(request: NextRequest) {
     .filter((entry) => Number.isFinite(entry.causeId) && entry.causeId > 0)
 
   try {
-    const res = await fetchQaApi(CAUSES_SELECTION_PATH, {
+    const fetchForViewer = await resolveViewerFetcher(access.session)
+    const res = await fetchForViewer(CAUSES_SELECTION_PATH, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(selection),
