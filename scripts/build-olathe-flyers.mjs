@@ -112,6 +112,21 @@ function glyph(name, x, y, size = 64, color = INK, sw = 5) {
   return `<g transform="translate(${x} ${y}) scale(${s})" fill="none" stroke="${color}" color="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${G[name]}</g>`
 }
 
+// Composed mark: heart outline with OW set inside it.
+//
+// NOT an official Olathe West asset - there is no supplied heart-with-OW file,
+// so this is built from the heart glyph plus lettering. Flagged deliberately:
+// the owl and the district apple are traced from the real marks, this one is
+// not. If an official version turns up, trace it and swap this out.
+//
+// Used in the reassurance strip on the two Olathe West sheets, where the owl was
+// simply repeating the header mark a few inches lower.
+const owHeart = {
+  viewBox: '0 0 64 64',
+  body: `<path d="M32 55S8 40 8 24.5A12.5 12.5 0 0 1 32 19a12.5 12.5 0 0 1 24 5.5C56 40 32 55 32 55z" fill="none" stroke="${INK}" stroke-width="4.5" stroke-linejoin="round"/>`
+    + `<text x="32" y="41" text-anchor="middle" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="18" font-weight="800" fill="${INK}">OW</text>`,
+}
+
 // ── page furniture ───────────────────────────────────────────────────────────
 function header({ m, org, sub }) {
   return `
@@ -228,8 +243,12 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
 
 const business = page({
   head: { m: owl, org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB' },
-  title: [{ text: 'MAKE ONE GIVEBACK DAY', fit: 800 }, { text: 'THE START OF SOMETHING BIGGER.', fit: 940 }],
-  subtitle: 'Bring in your community. Build relationships that can continue after the event.',
+  // The original sheet's headline, carried over, was the SCHOOL asking the
+  // business for something ("bring in your community"). This leads on the lever
+  // the owner actually controls - choosing which day gets busier - and lands the
+  // same promise the right panel makes.
+  title: [{ text: 'MAKE YOUR SLOWEST DAY', fit: 800 }, { text: 'THE ONE THEY COME BACK FOR.', fit: 940 }],
+  subtitle: 'You pick the day you want busier. LocalVIP gives local families a reason to choose you — and to come back.',
   leftTitle: 'THE GIVEBACK DAY|YOU ALREADY KNOW',
   leftSteps: [
     { icon: 'megaphone', lines: ['Olathe West', 'promotes your business'] },
@@ -245,11 +264,22 @@ const business = page({
   arrowLabel: 'KEEP IT|GOING',
   outcome: ['CHOOSE YOUR SLOWER DAY AND', 'GIVE PEOPLE A REASON TO', 'WALK IN WHEN YOU WANT THEM.'],
   reassure: {
-    m: owl,
-    title: 'NOTHING CHANGES ABOUT WHY WE DO THIS.',
-    body: ['You’re still supporting Olathe West and helping our kids.',
-      'LocalVIP simply makes the experience better for everyone',
-      'involved and turns a single day into an ongoing connection.'],
+    m: owHeart,
+    // Business audience. The original sheet's reassurance - "you're still
+    // supporting Olathe West and helping our kids" - is the SCHOOL's reason for
+    // doing this, and it stayed correct on the parent and district versions.
+    // On a flyer arguing business gain it answers a question the owner did not
+    // ask, so it argues the owner's reason instead: nothing about their
+    // operation changes.
+    //
+    // Deliberately makes no claim about prices, margins or cost. The business
+    // does fund the cashback it advertises, so "keep your margins" would be
+    // false; "how you run your day" is both true and the thing an owner is
+    // actually wary of changing.
+    title: 'NOTHING CHANGES ABOUT HOW YOU RUN YOUR BUSINESS.',
+    body: ['You keep the customers and the reputation you have already earned.',
+      'LocalVIP does not change how you run your day — it adds another',
+      'reason for people to choose you, come back, and tell others.'],
   },
   cta: {
     headline: ['ONGOING CONNECTION. MORE WAYS TO WIN.'],
@@ -285,7 +315,7 @@ const parent = page({
   arrowLabel: 'MAKE IT|COUNT',
   outcome: ['EVERYDAY CHOICES CAN CREATE', 'SUPPORT THAT CONTINUES', 'BEYOND ONE EVENT.'],
   reassure: {
-    m: owl,
+    m: owHeart,
     title: 'NOTHING CHANGES ABOUT WHY WE SHOW UP.',
     body: ['You are still supporting Olathe West and helping our kids.',
       'LocalVIP simply makes it easier for everyday local choices',
