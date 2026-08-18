@@ -12,9 +12,9 @@
   <text x="690" y="132" text-anchor="start" class="sb" font-family="'MontBold',Montserrat,Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="1" fill="#2a3c55">POWERED BY LOCALVIP</text>
   <text x="525" y="262" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="0" fill="#12294c" textLength="800" lengthAdjust="spacingAndGlyphs">MAKE YOUR SLOWEST DAY</text>
 <text x="525" y="328" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="0" fill="#12294c" textLength="940" lengthAdjust="spacingAndGlyphs">THE ONE THEY COME BACK FOR.</text>
-  <line x1="62" y1="408" x2="162" y2="408" stroke="#f7a81b" stroke-width="3"/>
-  <line x1="888" y1="408" x2="988" y2="408" stroke="#f7a81b" stroke-width="3"/>
-  <text x="525" y="416" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="0" fill="#2a3c55" textLength="700" lengthAdjust="spacingAndGlyphs">You pick the day you want busier. LocalVIP helps you give local families an additional reason to choose you — and to come back.</text>
+  <line x1="52" y1="410" x2="96" y2="410" stroke="#f7a81b" stroke-width="3"/>
+  <line x1="954" y1="410" x2="998" y2="410" stroke="#f7a81b" stroke-width="3"/>
+  <text x="525" y="418" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="25" font-weight="400" letter-spacing="0" fill="#2a3c55" textLength="840" lengthAdjust="spacingAndGlyphs">You pick the day you want busier. LocalVIP helps you give local families an additional reason to choose you — and to come back.</text>
   
   <path d="M40 460a18 18 0 0 1 18-18h416a18 18 0 0 1 18 18v56H40z" fill="#12305c"/>
   <path d="M40 516h452v370a18 18 0 0 1-18 18H58a18 18 0 0 1-18-18z" fill="#fff"/>
@@ -50,17 +50,17 @@
   <text x="784" y="474" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#fff">WHAT DOES</text>
 <text x="784" y="502" text-anchor="middle" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#fff">LOCALVIP ADD</text>
   
-    <g transform="translate(600 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 32a17 17 0 1 1 5 12"/><path d="M15 19v13h13"/></g>
-    <text x="639" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="17" font-weight="400" letter-spacing="0" fill="#2a3c55">Customers</text>
-<text x="639" y="662" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="17" font-weight="400" letter-spacing="0" fill="#2a3c55">come back</text>
+    <g transform="translate(596 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 32a17 17 0 1 1 5 12"/><path d="M15 19v13h13"/></g>
+    <text x="631" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">Customers</text>
+<text x="631" y="661" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">come back</text>
 
-    <g transform="translate(732 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="20" r="9"/><path d="M14 50c0-10 8-17 18-17s18 7 18 17z"/><circle cx="13" cy="26" r="7"/><circle cx="51" cy="26" r="7"/><path d="M2 46c0-7 5-11 11-11 2 0 4 .4 6 1-3 3-5 6-6 10zM62 46c0-7-5-11-11-11-2 0-4 .4-6 1 3 3 5 6 6 10z"/></g></g>
-    <text x="771" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="17" font-weight="400" letter-spacing="0" fill="#2a3c55">Reward the ones</text>
-<text x="771" y="662" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="17" font-weight="400" letter-spacing="0" fill="#2a3c55">you already have</text>
+    <g transform="translate(736 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="20" r="9"/><path d="M14 50c0-10 8-17 18-17s18 7 18 17z"/><circle cx="13" cy="26" r="7"/><circle cx="51" cy="26" r="7"/><path d="M2 46c0-7 5-11 11-11 2 0 4 .4 6 1-3 3-5 6-6 10zM62 46c0-7-5-11-11-11-2 0-4 .4-6 1 3 3 5 6 6 10z"/></g></g>
+    <text x="771" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">Reward the ones</text>
+<text x="771" y="661" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">you already have</text>
 
-    <g transform="translate(864 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><rect x="12" y="38" width="10" height="16"/><rect x="27" y="28" width="10" height="26"/><rect x="42" y="18" width="10" height="36"/></g><path d="M14 30l14-11 9 7 15-14" stroke-width="4"/><path d="M43 12h10v10" stroke-width="4"/></g>
-    <text x="903" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="17" font-weight="400" letter-spacing="0" fill="#2a3c55">Reach the wider</text>
-<text x="903" y="662" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="17" font-weight="400" letter-spacing="0" fill="#2a3c55">local network</text>
+    <g transform="translate(876 534) scale(1.21875)" fill="none" stroke="#12294c" color="#12294c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><rect x="12" y="38" width="10" height="16"/><rect x="27" y="28" width="10" height="26"/><rect x="42" y="18" width="10" height="36"/></g><path d="M14 30l14-11 9 7 15-14" stroke-width="4"/><path d="M43 12h10v10" stroke-width="4"/></g>
+    <text x="911" y="638" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">Reach the wider</text>
+<text x="911" y="661" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="16" font-weight="400" letter-spacing="0" fill="#2a3c55">local network</text>
   <path d="M690 573h26M822 573h26" stroke="#f7a81b" stroke-width="3" fill="none" stroke-linecap="round"/>
   <path d="M806 720v14M798 728l8 10 8-10" stroke="#f7a81b" stroke-width="2.5" fill="none" stroke-linecap="round"/>
   
@@ -71,7 +71,7 @@
   
   <svg x="96" y="952" width="100" height="100" viewBox="0 0 64 64" preserveAspectRatio="xMidYMid meet"><path d="M32 55S8 40 8 24.5A12.5 12.5 0 0 1 32 19a12.5 12.5 0 0 1 24 5.5C56 40 32 55 32 55z" fill="none" stroke="#12294c" stroke-width="4.5" stroke-linejoin="round"/><text x="32" y="41" text-anchor="middle" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="18" font-weight="800" fill="#12294c">OW</text></svg>
   <line x1="228" y1="956" x2="228" y2="1060" stroke="#f7a81b" stroke-width="3"/>
-  <text x="258" y="990" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="25" font-weight="800" letter-spacing="0" fill="#12294c">NOTHING CHANGES ABOUT HOW YOU RUN YOUR BUSINESS.</text>
+  <text x="258" y="990" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="0" fill="#12294c" textLength="764" lengthAdjust="spacingAndGlyphs">NOTHING CHANGES ABOUT HOW YOU RUN YOUR BUSINESS.</text>
   <text x="258" y="1022" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">You keep the customers and the reputation you have already earned.</text>
 <text x="258" y="1047" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">LocalVIP does not change how you run your day — it adds another</text>
 <text x="258" y="1072" text-anchor="start" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="18" font-weight="400" letter-spacing="0" fill="#2a3c55">reason for people to choose you, come back, and tell others.</text>
@@ -84,8 +84,7 @@
     <text x="88" y="82" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="900" letter-spacing="0" fill="#8b6500">PLACE QR</text>
     <text x="88" y="102" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="14" font-weight="900" letter-spacing="0" fill="#8b6500">CODE HERE</text>
     <rect x="-10" y="184" width="196" height="46" rx="8" fill="#f7a81b"/>
-    <g transform="translate(30 192) scale(0.4375)" fill="none" stroke="#12294c" color="#12294c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="19" y="9" width="26" height="46" rx="5"/><path d="M27 47h10"/></g>
-    <text x="104" y="216" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="21" font-weight="900" letter-spacing="0" fill="#12294c">SCAN ME</text>
+    <text x="88" y="216" text-anchor="middle" class="sans" font-family="'MontRegular',Montserrat,Arial,sans-serif" font-size="21" font-weight="900" letter-spacing="0" fill="#12294c">SCAN ME</text>
   </g>
   <line x1="336" y1="1170" x2="336" y2="1400" stroke="#3a5170" stroke-width="2"/>
   <text x="372" y="1196" text-anchor="start" class="cond" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="42" font-weight="800" letter-spacing="0" fill="#fff" textLength="600" lengthAdjust="spacingAndGlyphs">ONGOING CONNECTION. MORE WAYS TO WIN.</text>

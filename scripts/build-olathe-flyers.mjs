@@ -102,7 +102,7 @@ const G = {
   calendar: '<rect x="11" y="15" width="42" height="38" rx="5"/><path d="M11 28h42M22 11v8M42 11v8"/><path d="M23 38h7M34 38h7"/>',
   storefront: '<path d="M13 27h38v26H13z"/><path d="M11 27l5-13h32l5 13"/><path d="M25 53V37h14v16"/>',
   heart: '<path d="M32 51S11 38 11 25.5A11 11 0 0 1 32 21a11 11 0 0 1 21 4.5C53 38 32 51 32 51z"/>',
-  phone: '<rect x="19" y="9" width="26" height="46" rx="5"/><path d="M27 47h10"/>',
+  phone: '<rect x="18" y="6" width="28" height="52" rx="6"/><path d="M27 13h10"/><path d="M28 50h8"/>',
   play: '<circle cx="32" cy="32" r="19"/><path d="M26 22l18 10-18 10z" fill="currentColor" stroke="none"/>',
   badge: '<circle cx="32" cy="25" r="13"/><path d="M23 35l-5 18 14-7 14 7-5-18"/>',
 }
@@ -175,7 +175,7 @@ function reassurance({ m, title, body }) {
   return `
   ${mark(m, 96, 952, 100)}
   <line x1="228" y1="956" x2="228" y2="1060" stroke="${GOLD}" stroke-width="3"/>
-  ${text(title, 258, 990, { size: 25, weight: 800, cls: 'cond' })}
+  ${text(title, 258, 990, { size: 23, weight: 800, cls: 'cond', fit: 764 })}
   ${stack(body, 258, 1022, { size: 18, weight: 400, fill: BODY, gap: 25 })}`
 }
 
@@ -193,8 +193,7 @@ function ctaBand({ headline, rows, footnote }) {
     ${text('PLACE QR', 88, 82, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
     ${text('CODE HERE', 88, 102, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
     <rect x="-10" y="184" width="196" height="46" rx="8" fill="${GOLD}"/>
-    ${glyph('phone', 30, 192, 28, INK, 3)}
-    ${text('SCAN ME', 104, 216, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
+    ${text('SCAN ME', 88, 216, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
   </g>
   <line x1="336" y1="1170" x2="336" y2="1400" stroke="#3a5170" stroke-width="2"/>
   ${headline.map((t, i) => text(t, 372, 1196 + i * 40, { size: 42, weight: 800, cls: 'cond', fill: '#fff', fit: 600 })).join('\n')}
@@ -222,16 +221,16 @@ function page({ head, title, subtitle, leftTitle, leftSteps, rightTitle, rightSt
   <rect x="10" y="10" width="${W - 20}" height="${H - 20}" rx="18" fill="none" stroke="#0b1c33" stroke-width="3"/>
   ${header(head)}
   ${title.map((t, i) => text(t.text, W / 2, 262 + i * 66, { size: 74, weight: 800, cls: 'cond', anchor: 'middle', fill: INK, fit: t.fit })).join('\n')}
-  <line x1="62" y1="408" x2="162" y2="408" stroke="${GOLD}" stroke-width="3"/>
-  <line x1="${W - 162}" y1="408" x2="${W - 62}" y2="408" stroke="${GOLD}" stroke-width="3"/>
-  ${text(subtitle, W / 2, 416, { size: 22, weight: 700, fill: BODY, anchor: 'middle', fit: 700 })}
+  <line x1="52" y1="410" x2="96" y2="410" stroke="${GOLD}" stroke-width="3"/>
+  <line x1="${W - 96}" y1="410" x2="${W - 52}" y2="410" stroke="${GOLD}" stroke-width="3"/>
+  ${text(subtitle, W / 2, 418, { size: 25, weight: 400, fill: BODY, anchor: 'middle', fit: 840 })}
   ${panel(40, 442, 452, 462, leftTitle)}
   ${leftSteps.map((s, i) => stepRow(76, 548 + i * 112, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
   ${keepGoingArrow(660, arrowLabel)}
   ${panel(558, 442, 452, 462, rightTitle)}
   ${rightSteps.map((st, i) => `
-    ${glyph(st.icon, 600 + i * 132, 534, 78, INK, 5)}
-    ${st.lines.map((l, j) => text(l, 639 + i * 132, 638 + j * 24, { size: 17, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
+    ${glyph(st.icon, 596 + i * 140, 534, 78, INK, 5)}
+    ${st.lines.map((l, j) => text(l, 631 + i * 140, 638 + j * 23, { size: 16, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
   <path d="M690 573h26M822 573h26" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
   <path d="M806 720v14M798 728l8 10 8-10" stroke="${GOLD}" stroke-width="2.5" fill="none" stroke-linecap="round"/>
   ${outcomeBox(580, 740, 408, outcome)}
