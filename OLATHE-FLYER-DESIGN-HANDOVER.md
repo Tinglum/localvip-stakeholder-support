@@ -229,3 +229,77 @@ Bebas Neue Regular, all SIL OFL and legal to embed and redistribute.
 
 The original approved raster artwork is in the same folder as `*.png`. It has the
 correct look, but the pre-revision copy and the white-plated logos.
+
+---
+
+## 9. BRIEF — two more sets, from the six reference options
+
+Six reference designs supplied 2026-08-18. What to take, and the decision that
+gates the work.
+
+### 9.1 BLOCKING DECISION — photography
+
+Two of the six references (Option 2 in both sets) are **photo-led heroes**:
+team on the field, crowd under lights, families with the OW flag. Set 2 Option 3
+also uses a photo strip.
+
+**These cannot be built as SVG templates.** `@napi-rs/canvas` drops nested
+`<image>` elements silently (§6) — the hero would render blank in the stamped
+output while looking perfect in a browser preview. This is not a styling
+problem; it is the same failure that already cost several rounds.
+
+Pick one before designing:
+
+| Option | Consequence |
+|---|---|
+| **A — keep SVG templates** | No photography. Vector/illustrative only. Everything works today, QR stamping unchanged |
+| **B — browser-based render** | Photography works, full design freedom. Requires replacing the QR stamp path with a headless-browser renderer |
+| **C — pre-rasterised PNG templates** | Photography works, QR stamping works today (PNG templates already render — the original artwork does). Cost: no longer editable vector, and text is baked in |
+
+**C is the pragmatic answer if photography matters**, because PNG source
+templates already stamp correctly — that is exactly how the original approved
+artwork worked before the vector rebuild.
+
+### 9.2 What is worth taking from the references
+
+Ranked by how much they add:
+
+1. **Numbered step badges** (`01 02 03`) with connecting arrows — Set 2 Opt 1.
+   Clearer sequence than the current unnumbered icon rows.
+2. **The comparison block** — "TRADITIONAL GIVEBACK DAYS **vs** WITH LOCALVIP",
+   Set 2 Opt 1. The single strongest idea in the six: it makes the *delta*
+   explicit rather than describing the programme. Fits our two-panel structure
+   directly.
+3. **The three-circle benefit diagram** — Olathe West / Customers / Your
+   business, Set 2 Opt 2. Shows the three-way split better than a row of icons,
+   and matches how the economics actually work.
+4. **Four-column icon row** with a wide gold band beneath — Set 1 Opt 3.
+5. **Handwritten script accents** — "Let's work together!", "We'll handle the
+   promotion. You focus on your business." Warmth without extra copy. Needs a
+   script face (Caveat / Kalam are OFL) added to the embedded set.
+6. **Gold CTA block** rather than navy — Set 1 Opt 2. Higher contrast on the
+   action.
+7. **Torn-paper section edges** — Set 1 Opt 2. Cheap in SVG, adds texture.
+8. **"LOCAL VIP" with the map-pin O** — appears in all six. Confirm whether this
+   is the current brand lockup; our sheets use plain LOCALVIP.
+
+### 9.3 Copy angles worth keeping
+
+These reference headlines are stronger than what we shipped and follow §4b:
+
+- "YOU KNOW GIVEBACK DAYS. **THIS ONE WORKS HARDER.**" — leads from what they
+  already do
+- "YOU'VE GIVEN BACK TO OUR KIDS. **NOW GIVING BACK CAN GIVE BACK TO YOU.**" —
+  reciprocity; strongest emotional angle of the six
+- "**BUSINESSES LIKE YOURS MAKE OUR COMMUNITY STRONGER.**" — flattery-led open
+- "SAME GENEROSITY. **BETTER ECONOMICS.**" — best sub-head in the set
+
+Note "GENEROSITY SHOULDN'T BE ONE-WAY" (Set 2 Opt 2) — the clearest statement of
+the business case anywhere in the references.
+
+### 9.4 Open question
+
+"Two more sets" is ambiguous. A set has meant *three audiences*
+(business / parent / district). The references are *three visual options for one
+audience*. Confirm which before building — the difference is 6 flyers versus 6
+variants of the business sheet.
