@@ -119,7 +119,7 @@ const shell = (inner, bg = '#fbfbfb') => `<svg xmlns="http://www.w3.org/2000/svg
     </radialGradient>
     <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
       <rect width="22" height="22" fill="#fbfbfb"/>
-      <circle cx="1.6" cy="1.6" r="1.1" fill="#e7ecf3"/>
+      <circle cx="1.6" cy="1.6" r="1.3" fill="#dde5ef"/>
     </pattern>
     <filter id="drop" x="-30%" y="-30%" width="180%" height="180%">
       <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#04102a" flood-opacity=".35"/>
@@ -149,13 +149,13 @@ const lockup = (m, org, sub, dark) => {
 
 /** QR block, dark or light trim. */
 const qrBlock = (x, y, dark) => `<g transform="translate(${x} ${y})">
-  <rect x="-8" y="-8" width="182" height="224" rx="12" fill="${dark ? '#fff' : NAVY}"/>
+  <rect x="-8" y="-8" width="182" height="232" rx="14" fill="${dark ? '#fff' : NAVY}"/>
   <rect width="166" height="166" fill="#fff"/>
   <rect x="6" y="6" width="154" height="154" rx="6" fill="#fff" stroke="${GOLD}" stroke-width="3" stroke-dasharray="9 7"/>
   ${text('PLACE QR', 83, 78, { size: 13, weight: 800, fam: 'x', fill: '#8b6500', anchor: 'middle' })}
   ${text('CODE HERE', 83, 96, { size: 13, weight: 800, fam: 'x', fill: '#8b6500', anchor: 'middle' })}
-  <rect x="-8" y="170" width="182" height="46" rx="8" fill="${GOLD}"/>
-  ${text('SCAN ME', 83, 201, { size: 20, weight: 800, fam: 'x', fill: INK, anchor: 'middle' })}
+  <rect x="-8" y="174" width="182" height="46" rx="8" fill="${GOLD}"/>
+  ${text('SCAN ME', 83, 205, { size: 20, weight: 800, fam: 'x', fill: INK, anchor: 'middle' })}
 </g>`
 
 import { makeStyles } from './olathe-styles-layouts.mjs'

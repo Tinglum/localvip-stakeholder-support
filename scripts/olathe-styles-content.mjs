@@ -23,7 +23,7 @@ const rowsBiz = [
 ]
 const rowsFam = [
   { icon: 'play', label: 'SEE HOW IT WORKS IN 60 SECONDS' },
-  { icon: 'calendar', label: 'JOIN THE OLATHE WEST CAMPAIGN' },
+  { icon: 'calendar', label: 'SCAN TO JOIN IN 30 SECONDS' },
 ]
 const rowsSch = [
   { icon: 'play', label: 'WATCH THE 60-SECOND OVERVIEW' },
@@ -115,12 +115,13 @@ const E = {
     quote: 'One day of goodwill, or a customer for the season.',
     ctaTitle: ['CLAIM YOUR NEXT', 'GIVEBACK DAY'],
     ctaRows: rowsBiz,
+    ctaAside: 'Pick a slow day.',
     foot: footBiz,
   }),
   parent: styleE({
-    ...OW, band: CROWD, band2: COMMUNITY, band3: TEAM,
+    ...OW, band: COMMUNITY, band2: CROWD, band3: TEAM,
     kicker: 'FOR PARENTS, FAMILIES AND SUPPORTERS',
-    title: ['THE SHOPPING YOU', 'ALREADY DO. DOING MORE.'],
+    title: ['THE SHOPPING YOU', 'ALREADY DO. WORKING HARDER.'],
     script: 'Same routine. More impact.',
     blurb: ['No extra spending and nothing new to remember. Just the coffee,', 'the haircut and the dinner out you were having anyway.'],
     steps: [
@@ -131,6 +132,7 @@ const E = {
     quote: 'The same money, doing two jobs instead of one.',
     ctaTitle: ['JOIN THE OLATHE', 'WEST CAMPAIGN'],
     ctaRows: rowsFam,
+    ctaAside: 'Takes one minute.',
     foot: footFam,
   }),
   school: styleE({
@@ -147,6 +149,7 @@ const E = {
     quote: 'One flyer for the district, not one per campus.',
     ctaTitle: ['BRING IT TO', 'YOUR CAMPUS'],
     ctaRows: rowsSch,
+    ctaAside: 'Start with one school.',
     foot: footSch,
   }),
 }

@@ -17,7 +17,7 @@
     </radialGradient>
     <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
       <rect width="22" height="22" fill="#fbfbfb"/>
-      <circle cx="1.6" cy="1.6" r="1.1" fill="#e7ecf3"/>
+      <circle cx="1.6" cy="1.6" r="1.3" fill="#dde5ef"/>
     </pattern>
     <filter id="drop" x="-30%" y="-30%" width="180%" height="180%">
       <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#04102a" flood-opacity=".35"/>
@@ -102,13 +102,13 @@
     <rect x="0" y="1120" width="1050" height="260" fill="#f7a81b"/>
     <path d="M0 1100 L1050 1072" stroke="#ffffff" stroke-width="3" opacity=".38"/>
     <g filter="url(#drop)"><g transform="translate(52 1156)">
-  <rect x="-8" y="-8" width="182" height="224" rx="12" fill="#12305c"/>
+  <rect x="-8" y="-8" width="182" height="232" rx="14" fill="#12305c"/>
   <rect width="166" height="166" fill="#fff"/>
   <rect x="6" y="6" width="154" height="154" rx="6" fill="#fff" stroke="#f7a81b" stroke-width="3" stroke-dasharray="9 7"/>
   <text x="83" y="78" text-anchor="middle" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="13" font-weight="800" letter-spacing="0" fill="#8b6500">PLACE QR</text>
   <text x="83" y="96" text-anchor="middle" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="13" font-weight="800" letter-spacing="0" fill="#8b6500">CODE HERE</text>
-  <rect x="-8" y="170" width="182" height="46" rx="8" fill="#f7a81b"/>
-  <text x="83" y="201" text-anchor="middle" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="20" font-weight="800" letter-spacing="0" fill="#12294c">SCAN ME</text>
+  <rect x="-8" y="174" width="182" height="46" rx="8" fill="#f7a81b"/>
+  <text x="83" y="205" text-anchor="middle" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="20" font-weight="800" letter-spacing="0" fill="#12294c">SCAN ME</text>
 </g></g>
     <text x="268" y="1198" text-anchor="start" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="36" font-weight="800" letter-spacing="0" fill="#20160a">BRING IT TO</text>
 <text x="268" y="1237" text-anchor="start" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="36" font-weight="800" letter-spacing="0" fill="#20160a">YOUR CAMPUS</text>
@@ -117,19 +117,19 @@
 <g transform="translate(268 1306) scale(0.4375)" fill="none" stroke="#20160a" color="#20160a" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="15" width="42" height="38" rx="5"/><path d="M11 28h42M22 11v8M42 11v8"/></g>
       <text x="310" y="1327" text-anchor="start" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="16.5" font-weight="800" letter-spacing="0" fill="#20160a">BOOK YOUR 15-MINUTE LAUNCH CALL</text>
     <g transform="rotate(-3 700 1352)">
-      <text x="700" y="1350" text-anchor="start" font-family="'Script',cursive" font-size="34" font-weight="600" letter-spacing="0" fill="#6f4700">We'll make it easy to run.</text>
+      <text x="700" y="1350" text-anchor="start" font-family="'Script',cursive" font-size="34" font-weight="600" letter-spacing="0" fill="#1f4fa3">We'll make it easy to run.</text>
       <path d="M700 1364 q75 -9 137.5 -2 q62.5 7 112.5 -4"
-       fill="none" stroke="#6f4700" stroke-width="4" stroke-linecap="round" opacity=".95"/>
+       fill="none" stroke="#1f4fa3" stroke-width="4" stroke-linecap="round" opacity=".95"/>
      <path d="M708 1372 q87.5 -7 200 -3"
-       fill="none" stroke="#6f4700" stroke-width="2.4" stroke-linecap="round" opacity=".5"/>
+       fill="none" stroke="#1f4fa3" stroke-width="2.4" stroke-linecap="round" opacity=".5"/>
     </g>
     <rect x="0" y="1380" width="1050" height="120" fill="#0b1c33"/>
     
     <line x1="40" y1="1420" x2="1010" y2="1420" stroke="#2b4468" stroke-width="2"/>
-    <g transform="translate(46 1434) scale(0.46875)" fill="none" stroke="#fff" color="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="25" r="13"/><path d="M23 35l-5 18 14-7 14 7-5-18"/></g>
+    <g transform="translate(46 1432) scale(0.53125)" fill="none" stroke="#fff" color="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="25" r="13"/><path d="M23 35l-5 18 14-7 14 7-5-18"/></g>
       <text x="88" y="1456" text-anchor="start" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="14.5" font-weight="800" letter-spacing="0" fill="#fff">YOUR SCHOOL.</text>
-<g transform="translate(382 1434) scale(0.46875)" fill="none" stroke="#fff" color="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 27h38v26H13z"/><path d="M11 27l5-13h32l5 13"/><path d="M25 53V37h14v16"/></g>
+<g transform="translate(382 1432) scale(0.53125)" fill="none" stroke="#fff" color="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 27h38v26H13z"/><path d="M11 27l5-13h32l5 13"/><path d="M25 53V37h14v16"/></g>
       <text x="424" y="1456" text-anchor="start" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="14.5" font-weight="800" letter-spacing="0" fill="#fff">LOCAL PARTNERS.</text>
-<g transform="translate(718 1434) scale(0.46875)" fill="none" stroke="#fff" color="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="14" r="7"/><circle cx="13" cy="48" r="7"/><circle cx="51" cy="48" r="7"/></g><path d="M28 20L18 41M36 20l10 21M20 48h24" stroke-width="4"/></g>
+<g transform="translate(718 1432) scale(0.53125)" fill="none" stroke="#fff" color="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"><g fill="currentColor" stroke="none"><circle cx="32" cy="14" r="7"/><circle cx="13" cy="48" r="7"/><circle cx="51" cy="48" r="7"/></g><path d="M28 20L18 41M36 20l10 21M20 48h24" stroke-width="4"/></g>
       <text x="760" y="1456" text-anchor="start" font-family="'MontXBold',Montserrat,Arial,sans-serif" font-size="14.5" font-weight="800" letter-spacing="0" fill="#fff">BUILT TO REPEAT.</text>
 </svg>

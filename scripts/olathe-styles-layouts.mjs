@@ -31,7 +31,7 @@ export function makeStyles(k) {
 
   const footRow = (items, y, fg, ruleColor) => `
     <line x1="40" y1="${y - 44}" x2="${W - 40}" y2="${y - 44}" stroke="${ruleColor}" stroke-width="2"/>
-    ${items.map((f, i) => `${glyph(f.icon, 46 + i * 336, y - 30, 30, fg, 4)}
+    ${items.map((f, i) => `${glyph(f.icon, 46 + i * 336, y - 32, 34, fg, 4.6)}
       ${text(f.label, 88 + i * 336, y - 8, { size: 14.5, weight: 800, fam: 'x', fill: fg })}`).join('\n')}`
 
   // ── STYLE D — "Friday night" ───────────────────────────────────────────────
@@ -74,49 +74,54 @@ export function makeStyles(k) {
     ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1256 + i * 50, 28, '#20160a', 3.4)}
       ${text(r.label, 310, 1277 + i * 50, { size: 16.5, weight: 800, fam: 'x', fill: '#20160a' })}`).join('\n')}
     <g transform="rotate(-3 700 1352)">
-      ${text(script, 700, 1350, { size: 34, weight: 600, fam: 's', fill: '#6f4700' })}
-      ${swash(700, 1364, 250, '#6f4700')}
+      ${text(script, 700, 1350, { size: 34, weight: 600, fam: 's', fill: '#1f4fa3' })}
+      ${swash(700, 1364, 250, '#1f4fa3')}
     </g>
     <rect x="0" y="1380" width="${W}" height="120" fill="#0b1c33"/>
     ${footRow(foot, 1464, '#fff', '#2b4468')}`, '#0b1c33')
   }
 
   // ── STYLE E — "Editorial" ──────────────────────────────────────────────────
-  function styleE({ m, org, sub, band, band2, band3, kicker, title, blurb, steps, script, quote, ctaTitle, ctaRows, foot }) {
+  function styleE({ m, org, sub, band, band2, band3, kicker, title, blurb, steps, script, quote, ctaTitle, ctaRows, ctaAside, foot }) {
     return shell(`
     <rect x="0" y="0" width="${W}" height="${H}" fill="url(#dots)"/>
-    <line x1="26" y1="180" x2="26" y2="1140" stroke="#e8edf4" stroke-width="2"/>
+    <line x1="26" y1="180" x2="26" y2="1140" stroke="#d7dfea" stroke-width="2"/>
     ${lockup(m, org, sub, false)}
     <line x1="40" y1="160" x2="${W - 40}" y2="160" stroke="#e3e9f1" stroke-width="2"/>
-    ${kickerRule(kicker, 40, 212, GOLD)}
+    ${kickerRule(kicker, 40, 212, '#1f6fd0')}
     ${title.map((t, i) => text(t, 40, 280 + i * 66, { size: 60, weight: 800, fam: 'x', fill: INK })).join('\n')}
     <g transform="rotate(-2 40 412)">
-      ${text(script, 40, 424, { size: 37, weight: 600, fam: 's', fill: '#1f4fa3' })}
-      ${swash(40, 436, 320, '#1f4fa3')}
+      ${text(script, 40, 420, { size: 37, weight: 600, fam: 's', fill: '#1f4fa3' })}
+      ${swash(40, 432, 320, '#1f4fa3')}
     </g>
-    ${stack(blurb, 40, 486, { size: 18.5, weight: 400, fill: BODY, gap: 26 })}
-    <image href="${band}" x="0" y="548" width="${Math.round(W * 0.52)}" height="212" preserveAspectRatio="xMidYMid slice" clip-path="url(#b1)"/>
+    ${stack(blurb, 40, 484, { size: 18.5, weight: 400, fill: BODY, gap: 26 })}
+    <image href="${band}" x="0" y="548" width="${Math.round(W * 0.52)}" height="212" preserveAspectRatio="xMidYMin slice" clip-path="url(#b1)"/>
     <image href="${band2}" x="${Math.round(W * 0.53)}" y="548" width="${Math.round(W * 0.23)}" height="212" preserveAspectRatio="xMidYMid slice" clip-path="url(#b2)"/><rect x="${Math.round(W * 0.52)}" y="548" width="7" height="212" fill="#fbfbfb"/>
-    <image href="${band3}" x="${Math.round(W * 0.77)}" y="548" width="${Math.round(W * 0.23)}" height="212" preserveAspectRatio="xMidYMid slice" clip-path="url(#b3)"/><rect x="${Math.round(W * 0.76)}" y="548" width="7" height="212" fill="#fbfbfb"/>
+    <image href="${band3}" x="${Math.round(W * 0.77)}" y="548" width="${Math.round(W * 0.23)}" height="212" preserveAspectRatio="xMidYMin slice" clip-path="url(#b3)"/><rect x="${Math.round(W * 0.76)}" y="548" width="7" height="212" fill="#fbfbfb"/>
     <rect x="0" y="756" width="${W}" height="4" fill="${GOLD}"/>
-    <path d="M40 800 v206" stroke="#dfe6ef" stroke-width="2" stroke-dasharray="2 8"/>
+    <rect x="0" y="548" width="${W}" height="212" fill="none" stroke="#0b1c33" stroke-opacity=".18" stroke-width="2"/>
+    <path d="M40 800 v176" stroke="#dfe6ef" stroke-width="2" stroke-dasharray="2 8"/>
     ${steps.map((st, i) => {
-      const y = 800 + i * 104
-      return `${i % 2 === 0 ? `<rect x="16" y="${y - 34}" width="${W - 32}" height="86" rx="12" fill="#f4f7fb"/>` : ''}
-      ${badge(i + 1, 40, y, 23, GOLD, INK)}
+      const y = 800 + i * 88
+      return `${i % 2 === 0 ? `<rect x="16" y="${y - 30}" width="${W - 32}" height="76" rx="14" fill="#f2f6fb"/>` : ''}
+      ${badge(i + 1, 40, y, 23, '#1f6fd0', '#fff')}
       ${text(st.title, 84, y + 2, { size: 21.5, weight: 800, fam: 'x', fill: INK })}
-      <line x1="84" y1="${y + 12}" x2="${84 + st.title.length * 7}" y2="${y + 12}" stroke="${GOLD}" stroke-width="2.5"/>
+      <line x1="84" y1="${y + 12}" x2="${84 + Math.min(Math.max(st.title.length * 7, 70), 210)}" y2="${y + 12}" stroke="${GOLD}" stroke-width="2.5"/>
       ${text(st.line, 84, y + 36, { size: 16, weight: 400, fill: BODY })}`
     }).join('\n')}
-    <rect x="40" y="1056" width="${W - 80}" height="84" rx="12" fill="#fdf6e6" stroke="${GOLD}" stroke-width="2"/>
-    ${text('“', 62, 1118, { size: 62, weight: 800, fam: 'x', fill: GOLD })}
-    ${text(quote, 106, 1106, { size: 19, weight: 700, fam: 'b', fill: INK })}
-    <path d="M0 1188 L${W} 1160 L${W} 1500 L0 1500 Z" fill="${NAVY}"/>
-    <g filter="url(#drop)">${qrBlock(52, 1210, true)}</g>
-    ${stack(ctaTitle, 268, 1250, { size: 33, weight: 800, fam: 'x', fill: '#fff', gap: 38 })}
-    ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1310 + i * 46, 26, GOLD, 3.2)}
-      ${text(r.label, 306, 1330 + i * 46, { size: 16, weight: 800, fam: 'x', fill: '#fff' })}`).join('\n')}
-    ${footRow(foot, 1478, '#dbe6f5', '#2a4368')}`)
+    <rect x="40" y="1044" width="${W - 80}" height="84" rx="14" fill="#fdf6e6" stroke="${GOLD}" stroke-width="2"/>
+    ${text('“', 62, 1106, { size: 62, weight: 800, fam: 'x', fill: GOLD })}
+    ${text(quote, 106, 1094, { size: 20, weight: 700, fam: 'b', fill: INK })}
+    <path d="M0 1172 L${W} 1144 L${W} 1500 L0 1500 Z" fill="${NAVY}"/>
+    <g filter="url(#drop)">${qrBlock(52, 1198, true)}</g>
+    ${stack(ctaTitle, 268, 1240, { size: 34, weight: 800, fam: 'x', fill: '#fff', gap: 38 })}
+    ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1300 + i * 46, 26, GOLD, 3.2)}
+      ${text(r.label, 306, 1320 + i * 46, { size: 16, weight: 800, fam: 'x', fill: '#fff' })}`).join('\n')}
+    <g transform="rotate(-3 800 1300)">
+      ${text(ctaAside || 'One scan. That is it.', 800, 1300, { size: 30, weight: 600, fam: 's', fill: '#ffd77a' })}
+    </g>
+    ${mark(owlMark, 872, 1330, 74)}
+    ${footRow(foot, 1470, '#dbe6f5', '#2a4368')}`)
   }
 
   // ── STYLE F — "Statement" ──────────────────────────────────────────────────
@@ -145,7 +150,7 @@ export function makeStyles(k) {
       ${glyph(b.icon, off + 52, y + 37, 44, i % 2 ? NAVY : '#9a6a00', 4.4)}
       ${badge(i + 1, off + 128, y + 34, 15, i % 2 ? NAVY : GOLD, i % 2 ? '#fff' : '#20160a')}
       ${text(b.title, off + 154, y + 42, { size: 22, weight: 800, fam: 'x', fill: INK })}
-      <line x1="${off + 154}" y1="${y + 52}" x2="${off + 154 + b.title.length * 7.4}" y2="${y + 52}" stroke="${GOLD}" stroke-width="2.5"/>
+      <line x1="${off + 154}" y1="${y + 52}" x2="${off + 154 + Math.min(Math.max(b.title.length * 7.4, 70), 230)}" y2="${y + 52}" stroke="${GOLD}" stroke-width="2.5"/>
       ${text(b.line, off + 154, y + 80, { size: 16, weight: 400, fill: BODY })}
       ${i < blocks.length - 1 ? `<path d="M${W / 2} ${y + 120} v13 m-9 -3 l9 9 9 -9" stroke="${GOLD}" stroke-width="3.4" fill="none" stroke-linecap="round"/>` : ''}`
     }).join('\n')}
@@ -158,7 +163,7 @@ export function makeStyles(k) {
     ${stack(ctaTitle, 268, 1218, { size: 34, weight: 800, fam: 'x', fill: '#20160a', gap: 38 })}
     ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1278 + i * 48, 28, '#20160a', 3.3)}
       ${text(r.label, 310, 1299 + i * 48, { size: 16.5, weight: 800, fam: 'x', fill: '#20160a' })}`).join('\n')}
-    ${text(signoff, W - 40, 1352, { size: 29, weight: 600, fam: 's', fill: '#6f4700', anchor: 'end' })}
+    ${text(signoff, W - 40, 1352, { size: 29, weight: 600, fam: 's', fill: '#1f4fa3', anchor: 'end' })}
     ${footRow(foot, 1462, INK, '#dfe6ef')}
     ${mark(owlMark, W - 102, 1392, 62)}`)
   }
