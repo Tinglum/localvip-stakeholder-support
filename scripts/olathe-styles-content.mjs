@@ -59,7 +59,7 @@ const D = {
       { icon: 'calendar', title: 'YOU PICK|THE DAY', lines: ['A Tuesday, a slow', 'afternoon, whatever', 'needs the traffic.'] },
       { icon: 'megaphone', title: 'WE FILL|THE ROOM', lines: ['Email, socials and', 'game-night reach to', 'Olathe West families.'] },
       { icon: 'customers', title: 'THEY WALK|THROUGH THE DOOR', lines: ['You get customers.', 'They earn back.', 'Olathe West gains.'] },
-      { icon: 'infinity', title: 'THEY COME|BACK AFTER', lines: ['One day becomes a', 'reason to return all', 'season.'] },
+      { icon: 'infinity', title: 'THEY KEEP|COMING BACK', lines: ['One day becomes a', 'reason to return all', 'season.'] },
     ],
     ctaTitle: ['CLAIM YOUR', 'GIVEBACK DAY'],
     ctaRows: rowsBiz,
@@ -69,7 +69,7 @@ const D = {
   parent: styleD({
     ...OW, hero: CROWD,
     kicker: 'SHOP LOCAL. LIFT OLATHE WEST.',
-    title: [{ t: 'THE SHOPPING' }, { t: "YOU'RE ALREADY DOING." }, { t: 'DOING MORE.', gold: true }],
+    title: [{ t: 'THE SHOPPING' }, { t: 'YOU ALREADY DO.' }, { t: 'WORKING HARDER.', gold: true }],
     blurb: ['Nothing extra to buy and nothing extra to remember.', 'The same coffee, haircut and dinner out.'],
     cols: [
       { icon: 'badge', title: 'JOIN ONCE|TAKES A MINUTE', lines: ['Scan the Olathe West', 'code. That is the', 'whole setup.'] },
@@ -90,7 +90,7 @@ const D = {
     cols: [
       { icon: 'calendar', title: 'ONE SCHOOL|ONE DAY', lines: ['A single campus and', 'a single QR code to', 'start.'] },
       { icon: 'megaphone', title: 'WE REACH|YOUR FAMILIES', lines: ['We promote taking', 'part to families and', 'local supporters.'] },
-      { icon: 'customers', title: 'THREE SIDES|ALL GAIN', lines: ['Businesses get trade.', 'Families earn back.', 'The school benefits.'] },
+      { icon: 'customers', title: 'EVERY SIDE|COMES OUT AHEAD', lines: ['Businesses get trade.', 'Families earn back.', 'The school benefits.'] },
       { icon: 'network', title: 'THEN ROLL|IT OUT', lines: ['Same framework, new', 'campus, no new', 'collateral.'] },
     ],
     ctaTitle: ['BRING IT TO', 'YOUR CAMPUS'],
@@ -110,7 +110,7 @@ const E = {
     steps: [
       { title: 'PICK YOUR GIVEBACK DAY', line: 'The slow Tuesday, not the busy Saturday.' },
       { title: 'WE RALLY OLATHE WEST', line: 'Families, fans and supporters hear about it.' },
-      { title: 'THE GENEROSITY KEEPS PAYING', line: 'Customers return long after the day is over.' },
+      { title: 'IT PAYS AFTER THE DAY', line: 'Those customers come back next week, and the week after.' },
     ],
     quote: 'One day of goodwill, or a customer for the season.',
     ctaTitle: ['CLAIM YOUR NEXT', 'GIVEBACK DAY'],
@@ -156,7 +156,7 @@ const F = {
     ...OW,
     big: [{ t: 'GENEROSITY' }, { t: "SHOULDN'T BE" }, { t: 'ONE-WAY.', gold: true }],
     sub2: "You've given to Olathe West for years. This gives something back.",
-    chip: 'YOU CHOOSE THE DAY',
+    chip: 'YOU PICK THE DAY',
     blocks: [
       { icon: 'repeat', title: 'THEY COME BACK', line: 'A reason to return, not just to visit once.' },
       { icon: 'customers', title: 'YOUR REGULARS EARN', line: 'The people already loyal to you get something for it.' },

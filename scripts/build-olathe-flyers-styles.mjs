@@ -75,9 +75,10 @@ const FAM = {
   s: "'Script',cursive",
 }
 function text(str, x, y, o = {}) {
-  const { size = 20, weight = 700, fill = INK, anchor = 'start', fam = 'r', ls = 0, fit = 0 } = o
+  const { size = 20, weight = 700, fill = INK, anchor = 'start', fam = 'r', ls = 0, fit = 0, shadow = false } = o
   const lock = fit ? ` textLength="${fit}" lengthAdjust="spacingAndGlyphs"` : ''
-  return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="${FAM[fam]}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}"${lock}>${esc(str)}</text>`
+  const sh = shadow ? ' filter="url(#txt)"' : ''
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="${FAM[fam]}" font-size="${size}" font-weight="${weight}" letter-spacing="${ls}" fill="${fill}"${lock}${sh}>${esc(str)}</text>`
 }
 const stack = (arr, x, y, o = {}) =>
   arr.map((l, i) => text(l, x, y + i * (o.gap || 30), o)).join('\n')
@@ -122,6 +123,9 @@ const shell = (inner, bg = '#fbfbfb') => `<svg xmlns="http://www.w3.org/2000/svg
     </pattern>
     <filter id="drop" x="-30%" y="-30%" width="180%" height="180%">
       <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#04102a" flood-opacity=".35"/>
+    </filter>
+    <filter id="txt" x="-15%" y="-30%" width="130%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="9" flood-color="#02091a" flood-opacity=".62"/>
     </filter>
     <filter id="soft" x="-20%" y="-40%" width="150%" height="200%">
       <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0b1c33" flood-opacity=".10"/>
