@@ -107,7 +107,25 @@ const shell = (inner, bg = '#fbfbfb') => `<svg xmlns="http://www.w3.org/2000/svg
       <stop offset="1" stop-color="#04102a" stop-opacity=".97"/>
     </linearGradient>
     <clipPath id="heroClip"><rect x="0" y="0" width="${W}" height="640"/></clipPath>
+    <clipPath id="heroClipD"><rect x="0" y="0" width="${W}" height="720"/></clipPath>
     <clipPath id="bandClip"><rect x="40" y="540" width="${W - 80}" height="196" rx="14"/></clipPath>
+    <clipPath id="b1"><rect x="0" y="548" width="${Math.round(W * 0.52)}" height="212"/></clipPath>
+    <clipPath id="b2"><rect x="${Math.round(W * 0.53)}" y="548" width="${Math.round(W * 0.23)}" height="212"/></clipPath>
+    <clipPath id="b3"><rect x="${Math.round(W * 0.77)}" y="548" width="${Math.round(W * 0.23)}" height="212"/></clipPath>
+    <radialGradient id="vig" cx="0.5" cy="0.45" r="0.78">
+      <stop offset="0.55" stop-color="#04102a" stop-opacity="0"/>
+      <stop offset="1" stop-color="#04102a" stop-opacity=".55"/>
+    </radialGradient>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <rect width="22" height="22" fill="#fbfbfb"/>
+      <circle cx="1.6" cy="1.6" r="1.1" fill="#e7ecf3"/>
+    </pattern>
+    <filter id="drop" x="-30%" y="-30%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#04102a" flood-opacity=".35"/>
+    </filter>
+    <filter id="soft" x="-20%" y="-40%" width="150%" height="200%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0b1c33" flood-opacity=".10"/>
+    </filter>
   </defs>
   <rect width="${W}" height="${H}" fill="${bg}"/>
   ${inner}
@@ -136,85 +154,10 @@ const qrBlock = (x, y, dark) => `<g transform="translate(${x} ${y})">
   ${text('SCAN ME', 83, 201, { size: 20, weight: 800, fam: 'x', fill: INK, anchor: 'middle' })}
 </g>`
 
-// ── STYLE D — "Friday night" ─────────────────────────────────────────────────
-function styleD({ m, org, sub, hero, kicker, title, blurb, cols, ctaTitle, ctaRows, script, foot }) {
-  return shell(`
-  <g clip-path="url(#heroClip)">
-    <image href="${hero}" x="0" y="0" width="${W}" height="640" preserveAspectRatio="xMidYMid slice"/>
-    <rect x="0" y="0" width="${W}" height="640" fill="url(#fade)"/>
-  </g>
-  <rect x="0" y="0" width="${W}" height="170" fill="#04102a" opacity=".55"/>
-  ${lockup(m, org, sub, true)}
-  ${text(kicker, 40, 300, { size: 16, weight: 800, fam: 'x', fill: GOLD, ls: 3 })}
-  ${title.map((t, i) => text(t.t, 40, 356 + i * 62, { size: 56, weight: 800, fam: 'x', fill: t.gold ? GOLD : '#fff' })).join('\n')}
-  ${stack(blurb, 40, 522, { size: 19, weight: 400, fill: '#dbe6f5', gap: 27 })}
-  <path d="M0 640 L${W} 612 L${W} 660 L0 688 Z" fill="#0b1c33"/>
-  <rect x="0" y="660" width="${W}" height="332" fill="#0b1c33"/>
-  ${cols.map((c, i) => {
-    const x = 44 + i * 246
-    return `${glyph(c.icon, x, 700, 50, GOLD, 4.5)}
-    ${stack(c.title.split('|'), x, 792, { size: 16, weight: 800, fam: 'x', fill: '#fff', gap: 21 })}
-    ${stack(c.lines, x, 848, { size: 13.5, weight: 400, fill: '#b9c8dd', gap: 19 })}`
-  }).join('\n')}
-  <path d="M0 992 L${W} 1016 L${W} 1060 L0 1036 Z" fill="${GOLD}"/>
-  <rect x="0" y="1050" width="${W}" height="330" fill="${GOLD}"/>
-  ${qrBlock(52, 1094, false)}
-  ${stack(ctaTitle, 268, 1136, { size: 33, weight: 800, fam: 'x', fill: INK, gap: 40 })}
-  ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1206 + i * 52, 30, INK, 3.4)}
-    ${text(r.label, 312, 1229 + i * 52, { size: 17, weight: 800, fam: 'x', fill: INK })}`).join('\n')}
-  ${text(script, 268, 1350, { size: 30, weight: 600, fam: 's', fill: '#7a4f00' })}
-  <rect x="0" y="1380" width="${W}" height="120" fill="#0b1c33"/>
-  ${foot.map((f, i) => text(f, 40 + i * 340, 1440, { size: 15, weight: 800, fam: 'x', fill: '#fff' })).join('\n')}`, '#0b1c33')
-}
+import { makeStyles } from './olathe-styles-layouts.mjs'
 
-// ── STYLE E — "Editorial" ────────────────────────────────────────────────────
-function styleE({ m, org, sub, band, kicker, title, blurb, steps, script, ctaTitle, ctaRows, foot }) {
-  return shell(`
-  ${lockup(m, org, sub, false)}
-  <line x1="40" y1="158" x2="${W - 40}" y2="158" stroke="#e3e9f1" stroke-width="2"/>
-  ${text(kicker, 40, 208, { size: 15, weight: 800, fam: 'x', fill: GOLD, ls: 3 })}
-  ${title.map((t, i) => text(t, 40, 268 + i * 58, { size: 52, weight: 800, fam: 'x', fill: INK })).join('\n')}
-  ${text(script, 40, 400, { size: 34, weight: 600, fam: 's', fill: '#1f4fa3' })}
-  ${stack(blurb, 40, 452, { size: 18, weight: 400, fill: BODY, gap: 26 })}
-  <image href="${band}" x="40" y="540" width="${W - 80}" height="196" preserveAspectRatio="xMidYMid slice" clip-path="url(#bandClip)"/>
-  <rect x="40" y="540" width="${W - 80}" height="196" rx="14" fill="none" stroke="#e3e9f1" stroke-width="2"/>
-  <line x1="70" y1="812" x2="70" y2="1000" stroke="#e3e9f1" stroke-width="3"/>
-  ${steps.map((st, i) => {
-    const y = 790 + i * 104
-    return `<circle cx="70" cy="${y}" r="21" fill="${NAVY}"/>
-    ${text(String(i + 1), 70, y + 7, { size: 18, weight: 800, fam: 'x', fill: '#fff', anchor: 'middle' })}
-    ${text(st.title, 118, y + 2, { size: 20, weight: 800, fam: 'x', fill: INK })}
-    ${text(st.line, 118, y + 30, { size: 16, weight: 400, fill: BODY })}`
-  }).join('\n')}
-  <rect x="0" y="1088" width="${W}" height="292" fill="${NAVY}"/>
-  ${qrBlock(52, 1140, true)}
-  ${stack(ctaTitle, 268, 1182, { size: 30, weight: 800, fam: 'x', fill: '#fff', gap: 38 })}
-  ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1246 + i * 48, 26, GOLD, 3.2)}
-    ${text(r.label, 306, 1267 + i * 48, { size: 16, weight: 800, fam: 'x', fill: '#fff' })}`).join('\n')}
-  ${foot.map((f, i) => text(f, 40 + i * 340, 1444, { size: 15, weight: 800, fam: 'x', fill: INK })).join('\n')}`)
-}
-
-// ── STYLE F — "Statement" ────────────────────────────────────────────────────
-function styleF({ m, org, sub, big, sub2, blocks, ctaTitle, ctaRows, script, foot }) {
-  return shell(`
-  ${lockup(m, org, sub, false)}
-  <rect x="0" y="166" width="${W}" height="368" fill="${NAVY}"/>
-  ${big.map((t, i) => text(t.t, 40, 258 + i * 74, { size: 66, weight: 800, fam: 'x', fill: t.gold ? GOLD : '#fff' })).join('\n')}
-  ${text(sub2, 40, 486, { size: 19, weight: 400, fill: '#c9d8ec' })}
-  ${blocks.map((b, i) => {
-    const y = 566 + i * 132
-    return `<rect x="40" y="${y}" width="${W - 80}" height="116" rx="14" fill="${i % 2 ? '#f2f6fb' : '#fdf6e6'}" stroke="${i % 2 ? '#dbe4ef' : GOLD}" stroke-width="2"/>
-    ${glyph(b.icon, 76, y + 30, 52, i % 2 ? NAVY : '#9a6a00', 4.6)}
-    ${text(b.title, 156, y + 48, { size: 21, weight: 800, fam: 'x', fill: INK })}
-    ${text(b.line, 156, y + 80, { size: 16, weight: 400, fill: BODY })}`
-  }).join('\n')}
-  ${text(script, 40, 1064, { size: 32, weight: 600, fam: 's', fill: '#1f4fa3' })}
-  <rect x="0" y="1100" width="${W}" height="280" fill="${GOLD}"/>
-  ${qrBlock(52, 1136, false)}
-  ${stack(ctaTitle, 268, 1180, { size: 31, weight: 800, fam: 'x', fill: INK, gap: 38 })}
-  ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1240 + i * 48, 28, INK, 3.3)}
-    ${text(r.label, 310, 1261 + i * 48, { size: 16.5, weight: 800, fam: 'x', fill: INK })}`).join('\n')}
-  ${foot.map((f, i) => text(f, 40 + i * 340, 1444, { size: 15, weight: 800, fam: 'x', fill: INK })).join('\n')}`)
-}
+const { styleD, styleE, styleF } = makeStyles({
+  W, H, NAVY, GOLD, INK, BODY, shell, lockup, qrBlock, mark, text, stack, glyph, owlMark: owl,
+})
 
 export { styleD, styleE, styleF, owl, district, CROWD, TEAM, COMMUNITY, W, H }

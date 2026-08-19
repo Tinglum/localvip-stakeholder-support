@@ -4,6 +4,10 @@
 // The voice rule from the design handover applies throughout: the READER is the
 // one doing the thing and LocalVIP helps, and nothing claims anything about
 // prices, margins or cost.
+//
+// Copy pass 2 - five changes per sheet. The pattern across all nine: cut the
+// abstract nouns, name the thing that actually happens, and make the CTA an
+// instruction rather than a description.
 import fs from 'node:fs'
 import path from 'node:path'
 import { styleD, styleE, styleF, owl, district, CROWD, TEAM, COMMUNITY } from './build-olathe-flyers-styles.mjs'
@@ -18,7 +22,7 @@ const rowsBiz = [
   { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE SETUP CALL' },
 ]
 const rowsFam = [
-  { icon: 'play', label: 'WATCH HOW IT WORKS' },
+  { icon: 'play', label: 'SEE HOW IT WORKS IN 60 SECONDS' },
   { icon: 'calendar', label: 'JOIN THE OLATHE WEST CAMPAIGN' },
 ]
 const rowsSch = [
@@ -26,102 +30,124 @@ const rowsSch = [
   { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE LAUNCH CALL' },
 ]
 
+const footBiz = [
+  { icon: 'storefront', label: 'YOUR BUSINESS.' },
+  { icon: 'customers', label: 'OUR COMMUNITY.' },
+  { icon: 'chart', label: 'MORE WAYS TO WIN.' },
+]
+const footFam = [
+  { icon: 'bag', label: 'SAME SHOPPING.' },
+  { icon: 'heart', label: 'MORE FOR OUR KIDS.' },
+  { icon: 'customers', label: 'REWARDS FOR YOU.' },
+]
+const footSch = [
+  { icon: 'badge', label: 'YOUR SCHOOL.' },
+  { icon: 'storefront', label: 'LOCAL PARTNERS.' },
+  { icon: 'network', label: 'BUILT TO REPEAT.' },
+]
+
 const D = {
+  // Copy: (1) kicker states the offer instead of naming it, (2) blurb names who
+  // sees it, (3) col 3 leads with the owner's outcome, (4) CTA is an
+  // instruction, (5) footer says what each party gets.
   business: styleD({
     ...OW, hero: TEAM,
-    kicker: 'HOST AN OLATHE WEST GIVEBACK DAY',
+    kicker: 'PICK A DAY. WE BRING THE CROWD.',
     title: [{ t: 'YOUR BUSINESS.' }, { t: 'OUR COMMUNITY.' }, { t: "LET'S WIN TOGETHER.", gold: true }],
-    blurb: ['Pick the day you want busier. We rally Olathe West families,', 'fans and supporters behind it.'],
+    blurb: ['Choose the day you want busier. We put it in front of Olathe West', 'families, fans and season-ticket holders.'],
     cols: [
-      { icon: 'calendar', title: 'YOU PICK|THE DAY', lines: ['Choose a day that', 'makes sense for', 'your business.'] },
-      { icon: 'megaphone', title: 'WE PROMOTE|YOU', lines: ['We rally Olathe West', 'families, fans and', 'supporters.'] },
-      { icon: 'customers', title: 'THEY SHOP.|EVERYONE GAINS.', lines: ['You get customers.', 'Shoppers earn back.', 'Olathe West benefits.'] },
-      { icon: 'infinity', title: 'THE IMPACT|CONTINUES.', lines: ['That first day turns', 'into an ongoing', 'connection.'] },
+      { icon: 'calendar', title: 'YOU PICK|THE DAY', lines: ['A Tuesday, a slow', 'afternoon, whatever', 'needs the traffic.'] },
+      { icon: 'megaphone', title: 'WE FILL|THE ROOM', lines: ['Email, socials and', 'game-night reach to', 'Olathe West families.'] },
+      { icon: 'customers', title: 'THEY WALK|THROUGH THE DOOR', lines: ['You get customers.', 'They earn back.', 'Olathe West gains.'] },
+      { icon: 'infinity', title: 'THEY COME|BACK AFTER', lines: ['One day becomes a', 'reason to return all', 'season.'] },
     ],
-    ctaTitle: ["LET'S PLAN YOUR FIRST", 'OLATHE WEST GIVEBACK DAY'],
+    ctaTitle: ['CLAIM YOUR', 'GIVEBACK DAY'],
     ctaRows: rowsBiz,
     script: "We'll handle the promotion.",
-    foot: ['LOCAL BUSINESS.', 'LOCAL FAMILIES.', 'LOCAL IMPACT.'],
+    foot: footBiz,
   }),
   parent: styleD({
     ...OW, hero: CROWD,
-    kicker: 'OLATHE WEST GIVEBACK DAYS',
-    title: [{ t: 'SHOP WHERE YOU' }, { t: 'ALREADY SHOP.' }, { t: 'HELP WHERE IT COUNTS.', gold: true }],
-    blurb: ['Your everyday choices already support local business.', 'LocalVIP helps them do more for Olathe West.'],
+    kicker: 'SHOP LOCAL. LIFT OLATHE WEST.',
+    title: [{ t: 'THE SHOPPING' }, { t: "YOU'RE ALREADY DOING." }, { t: 'DOING MORE.', gold: true }],
+    blurb: ['Nothing extra to buy and nothing extra to remember.', 'The same coffee, haircut and dinner out.'],
     cols: [
-      { icon: 'badge', title: 'JOIN YOUR|SCHOOL', lines: ['Connect through the', 'official campaign', 'code.'] },
-      { icon: 'bag', title: 'SHOP AS|USUAL', lines: ['Choose participating', 'businesses you', 'already use.'] },
-      { icon: 'customers', title: 'EVERYONE|BENEFITS', lines: ['Your family earns.', 'Olathe West gains.', 'Local shops grow.'] },
-      { icon: 'infinity', title: 'ALL YEAR|LONG', lines: ['Not one day. Every', 'ordinary week after', 'it.'] },
+      { icon: 'badge', title: 'JOIN ONCE|TAKES A MINUTE', lines: ['Scan the Olathe West', 'code. That is the', 'whole setup.'] },
+      { icon: 'bag', title: 'SHOP WHERE|YOU ALWAYS DO', lines: ['Local places you', 'already know and', 'already trust.'] },
+      { icon: 'customers', title: 'YOUR FAMILY|EARNS BACK', lines: ['Rewards land with', 'the people doing', 'the shopping.'] },
+      { icon: 'infinity', title: 'AND IT|KEEPS GOING', lines: ['Not one night. Every', 'ordinary week after', 'it.'] },
     ],
-    ctaTitle: ['JOIN THE OLATHE WEST', 'GIVEBACK CAMPAIGN'],
+    ctaTitle: ['JOIN THE OLATHE', 'WEST CAMPAIGN'],
     ctaRows: rowsFam,
-    script: 'Same shopping. More impact.',
-    foot: ['SAME COMMUNITY.', 'SAME GENEROSITY.', 'MORE WAYS TO WIN.'],
+    script: 'Same routine. More impact.',
+    foot: footFam,
   }),
   school: styleD({
     ...OPS, hero: COMMUNITY,
-    kicker: 'A DISTRICT-READY COMMUNITY MODEL',
+    kicker: 'START WITH ONE CAMPUS. THEN SCALE.',
     title: [{ t: 'ONE GIVEBACK DAY.' }, { t: 'ONE FRAMEWORK.' }, { t: 'EVERY CAMPUS.', gold: true }],
-    blurb: ['Start with one school and one day. Repeat it without', 'building new collateral each time.'],
+    blurb: ['Run it once at one school. Repeat it without designing', 'anything new for the next.'],
     cols: [
-      { icon: 'calendar', title: 'START WITH|ONE CAMPUS', lines: ['One school, one day,', 'one QR code.'] },
-      { icon: 'megaphone', title: 'WE RALLY|THE COMMUNITY', lines: ['We promote taking', 'part to families and', 'supporters.'] },
-      { icon: 'customers', title: 'EVERYONE|BENEFITS', lines: ['Businesses gain.', 'Families earn.', 'Schools benefit.'] },
-      { icon: 'network', title: 'THEN|IT SCALES', lines: ['Extend the same', 'framework across the', 'district.'] },
+      { icon: 'calendar', title: 'ONE SCHOOL|ONE DAY', lines: ['A single campus and', 'a single QR code to', 'start.'] },
+      { icon: 'megaphone', title: 'WE REACH|YOUR FAMILIES', lines: ['We promote taking', 'part to families and', 'local supporters.'] },
+      { icon: 'customers', title: 'THREE SIDES|ALL GAIN', lines: ['Businesses get trade.', 'Families earn back.', 'The school benefits.'] },
+      { icon: 'network', title: 'THEN ROLL|IT OUT', lines: ['Same framework, new', 'campus, no new', 'collateral.'] },
     ],
     ctaTitle: ['BRING IT TO', 'YOUR CAMPUS'],
     ctaRows: rowsSch,
     script: "We'll make it easy to run.",
-    foot: ['YOUR SCHOOL.', 'OUR COMMUNITY.', 'MORE WAYS TO GROW.'],
+    foot: footSch,
   }),
 }
 
 const E = {
   business: styleE({
-    ...OW, band: TEAM,
+    ...OW, band: TEAM, band2: CROWD, band3: COMMUNITY,
     kicker: 'FOR LOCAL BUSINESS OWNERS',
     title: ['YOU KNOW GIVEBACK DAYS.', 'THIS ONE WORKS HARDER.'],
     script: 'Same generosity. Better economics.',
-    blurb: ["You've supported Olathe West before. LocalVIP takes what already", 'works and adds a reason for those customers to come back.'],
+    blurb: ["You've backed Olathe West before. This keeps what already works", 'and adds a reason for those customers to come back next week.'],
     steps: [
-      { title: 'PICK YOUR GIVEBACK DAY', line: 'Choose a day that could use more business.' },
-      { title: 'WE RALLY OLATHE WEST', line: 'We promote you to families, fans and supporters.' },
-      { title: 'GENEROSITY KEEPS PAYING', line: 'Customers come back long after the day is over.' },
+      { title: 'PICK YOUR GIVEBACK DAY', line: 'The slow Tuesday, not the busy Saturday.' },
+      { title: 'WE RALLY OLATHE WEST', line: 'Families, fans and supporters hear about it.' },
+      { title: 'THE GENEROSITY KEEPS PAYING', line: 'Customers return long after the day is over.' },
     ],
+    quote: 'One day of goodwill, or a customer for the season.',
     ctaTitle: ['CLAIM YOUR NEXT', 'GIVEBACK DAY'],
     ctaRows: rowsBiz,
-    foot: ['YOUR BUSINESS.', 'OUR COMMUNITY.', 'MORE WAYS TO WIN.'],
+    foot: footBiz,
   }),
   parent: styleE({
-    ...OW, band: CROWD,
+    ...OW, band: CROWD, band2: COMMUNITY, band3: TEAM,
     kicker: 'FOR PARENTS, FAMILIES AND SUPPORTERS',
     title: ['THE SHOPPING YOU', 'ALREADY DO. DOING MORE.'],
     script: 'Same routine. More impact.',
-    blurb: ['Nothing extra to buy and nothing extra to remember. LocalVIP helps', 'the choices you already make go further for Olathe West.'],
+    blurb: ['No extra spending and nothing new to remember. Just the coffee,', 'the haircut and the dinner out you were having anyway.'],
     steps: [
-      { title: 'JOIN YOUR SCHOOL', line: 'Connect through the official Olathe West campaign code.' },
-      { title: 'SHOP AS USUAL', line: 'Choose participating businesses you already use.' },
-      { title: 'IT KEEPS GIVING', line: 'Everyday choices keep supporting the school.' },
+      { title: 'JOIN ONCE', line: 'Scan the Olathe West code. That is the setup.' },
+      { title: 'SHOP WHERE YOU ALWAYS DO', line: 'Local places you already know and trust.' },
+      { title: 'IT KEEPS GIVING', line: 'Every ordinary week, not just one night.' },
     ],
+    quote: 'The same money, doing two jobs instead of one.',
     ctaTitle: ['JOIN THE OLATHE', 'WEST CAMPAIGN'],
     ctaRows: rowsFam,
-    foot: ['YOUR FAMILY.', 'YOUR SCHOOL.', 'MORE WAYS TO GIVE.'],
+    foot: footFam,
   }),
   school: styleE({
-    ...OPS, band: COMMUNITY,
+    ...OPS, band: COMMUNITY, band2: TEAM, band3: CROWD,
     kicker: 'FOR PRINCIPALS, ADS AND DISTRICT LEADERS',
     title: ['ONE GIVEBACK DAY CAN', 'BECOME MORE THAN ONE DAY.'],
     script: 'Same idea. Built to repeat.',
-    blurb: ['The message stays consistent across Olathe Public Schools. Each admin', 'adds the QR code for the right campus or campaign.'],
+    blurb: ['The message stays the same across Olathe Public Schools. Each admin', 'adds the QR code for their own campus or campaign.'],
     steps: [
-      { title: 'START WITH ONE CAMPUS', line: 'One school, one Giveback Day, one QR code.' },
-      { title: 'KEEP IT CONSISTENT', line: 'The same framework for every school.' },
-      { title: 'THEN EXTEND IT', line: 'Roll it out district-wide without new collateral.' },
+      { title: 'START WITH ONE CAMPUS', line: 'One school, one day, one QR code.' },
+      { title: 'KEEP IT CONSISTENT', line: 'The same sheet works for every school.' },
+      { title: 'THEN EXTEND IT', line: 'District-wide without new collateral.' },
     ],
+    quote: 'One flyer for the district, not one per campus.',
     ctaTitle: ['BRING IT TO', 'YOUR CAMPUS'],
     ctaRows: rowsSch,
-    foot: ['YOUR SCHOOL.', 'OUR COMMUNITY.', 'MORE WAYS TO GROW.'],
+    foot: footSch,
   }),
 }
 
@@ -130,43 +156,49 @@ const F = {
     ...OW,
     big: [{ t: 'GENEROSITY' }, { t: "SHOULDN'T BE" }, { t: 'ONE-WAY.', gold: true }],
     sub2: "You've given to Olathe West for years. This gives something back.",
+    chip: 'YOU CHOOSE THE DAY',
     blocks: [
-      { icon: 'repeat', title: 'CUSTOMERS COME BACK', line: 'A reason to return, not just to visit once.' },
-      { icon: 'customers', title: 'REWARD THE ONES YOU HAVE', line: 'Your regulars earn something for the loyalty they already show.' },
-      { icon: 'chart', title: 'REACH THE WIDER NETWORK', line: "Local families who haven't found you yet." },
+      { icon: 'repeat', title: 'THEY COME BACK', line: 'A reason to return, not just to visit once.' },
+      { icon: 'customers', title: 'YOUR REGULARS EARN', line: 'The people already loyal to you get something for it.' },
+      { icon: 'chart', title: 'NEW FACES FIND YOU', line: 'Olathe West families who have not walked in yet.' },
     ],
     script: 'You pick the day. We do the rest.',
-    ctaTitle: ['ONGOING CONNECTION.', 'MORE WAYS TO WIN.'],
+    signoff: 'See you on game night.',
+    ctaTitle: ['CLAIM YOUR', 'GIVEBACK DAY'],
     ctaRows: rowsBiz,
-    foot: ['YOUR BUSINESS.', 'OUR COMMUNITY.', 'MORE WAYS TO WIN.'],
+    foot: footBiz,
   }),
   parent: styleF({
     ...OW,
     big: [{ t: 'YOUR NEXT' }, { t: 'LOCAL PURCHASE' }, { t: 'CAN DO MORE.', gold: true }],
-    sub2: 'No extra spending. No extra steps. Just the shops you already choose.',
+    sub2: 'No extra spending. No extra steps. The shops you already choose.',
+    chip: 'TAKES ONE MINUTE TO JOIN',
     blocks: [
-      { icon: 'bag', title: 'SHOP WHERE YOU ALREADY SHOP', line: 'Participating businesses you know and trust.' },
-      { icon: 'heart', title: 'OLATHE WEST BENEFITS', line: 'Support reaches the school from ordinary purchases.' },
-      { icon: 'customers', title: 'YOUR FAMILY EARNS TOO', line: 'Rewards come back to the people doing the shopping.' },
+      { icon: 'bag', title: 'SHOP AS USUAL', line: 'Local places you already know and trust.' },
+      { icon: 'heart', title: 'OLATHE WEST GAINS', line: 'Support reaches the school from ordinary purchases.' },
+      { icon: 'customers', title: 'YOUR FAMILY EARNS', line: 'Rewards land with the people doing the shopping.' },
     ],
     script: 'Same routine. More impact.',
-    ctaTitle: ['YOUR FAMILY.', 'MORE WAYS TO MAKE AN IMPACT.'],
+    signoff: 'Go Owls.',
+    ctaTitle: ['JOIN THE OLATHE', 'WEST CAMPAIGN'],
     ctaRows: rowsFam,
-    foot: ['SAME COMMUNITY.', 'SAME GENEROSITY.', 'MORE WAYS TO WIN.'],
+    foot: footFam,
   }),
   school: styleF({
     ...OPS,
     big: [{ t: 'ONE FRAMEWORK.' }, { t: 'EVERY CAMPUS.' }, { t: 'BUILT TO REPEAT.', gold: true }],
     sub2: 'Less collateral to maintain, and a programme families recognise.',
+    chip: 'ONE SHEET FOR THE DISTRICT',
     blocks: [
-      { icon: 'badge', title: 'EASY ACTIVATION', line: 'Add the right school QR without redesigning anything.' },
-      { icon: 'storefront', title: 'LOCAL ALIGNMENT', line: 'Connect each campus with nearby business partners.' },
+      { icon: 'badge', title: 'EASY TO ACTIVATE', line: 'Add your school QR. Nothing else changes.' },
+      { icon: 'storefront', title: 'LOCAL PARTNERS', line: 'Connect each campus with businesses nearby.' },
       { icon: 'network', title: 'ROOM TO GROW', line: 'Start with one school and extend across the district.' },
     ],
-    script: "We'll make it easy to run.",
-    ctaTitle: ['YOUR SCHOOL.', 'MORE WAYS TO GROW.'],
+    script: 'Same idea. Built to repeat.',
+    signoff: "We'll help you launch.",
+    ctaTitle: ['BRING IT TO', 'YOUR CAMPUS'],
     ctaRows: rowsSch,
-    foot: ['YOUR SCHOOL.', 'OUR COMMUNITY.', 'MORE WAYS TO GROW.'],
+    foot: footSch,
   }),
 }
 
