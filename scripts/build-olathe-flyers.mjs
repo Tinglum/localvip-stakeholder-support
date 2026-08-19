@@ -63,7 +63,7 @@ const FONT_CSS = [
 
 const esc = (v) => String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 
-const NAVY = '#12305c'
+const NAVY = '#031328'
 const GOLD = '#f7a81b'
 const INK = '#12294c'
 const BODY = '#2a3c55'
@@ -160,9 +160,9 @@ function stepRow(x, y, icon, labelLines, withArrow) {
 
 function keepGoingArrow(y, label) {
   return `
-  <g transform="translate(444 ${y - 26})">
-    <path d="M0 26h84V0l84 62-84 62V98H0z" fill="${GOLD}"/>
-    ${label.split('|').map((t, i) => text(t, 52, 54 + i * 30, { size: 21, weight: 800, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}
+  <g transform="translate(445 ${y})">
+    <path d="M0 30h64V0l55 75-55 75V120H0z" fill="${GOLD}"/>
+    ${label.split('|').map((t, i) => text(t, 34, 66 + i * 28, { size: 20, weight: 800, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}
   </g>`
 }
 
@@ -175,10 +175,10 @@ function outcomeBox(x, y, w, linesArr) {
 
 function reassurance({ m, title, body }) {
   return `
-  ${mark(m, 88, 946, 118)}
-  <line x1="240" y1="950" x2="240" y2="1064" stroke="${GOLD}" stroke-width="3"/>
-  ${text(title, 272, 992, { size: 23, weight: 800, cls: 'cond', fit: 764 })}
-  ${stack(body, 272, 1026, { size: 18, weight: 400, fill: BODY, gap: 25 })}`
+  ${mark(m, 60, 1006, 104)}
+  <line x1="188" y1="1010" x2="188" y2="1114" stroke="${GOLD}" stroke-width="3"/>
+  ${text(title, 214, 1046, { size: 23, weight: 800, cls: 'cond', fit: 764 })}
+  ${stack(body, 214, 1078, { size: 18, weight: 400, fill: BODY, gap: 25 })}`
 }
 
 /**
@@ -187,30 +187,30 @@ function reassurance({ m, title, body }) {
  */
 function ctaBand({ headline, rows, footnote }) {
   return `
-  <rect x="0" y="1120" width="${W}" height="308" fill="${NAVY}"/>
-  <g transform="translate(104 1170)">
-    <rect x="-12" y="-12" width="220" height="266" rx="12" fill="none" stroke="${GOLD}" stroke-width="5"/>
-    <rect width="196" height="196" fill="#fff"/>
-    <rect x="6" y="6" width="184" height="184" rx="6" fill="#fff" stroke="${GOLD}" stroke-width="3" stroke-dasharray="9 7"/>
-    ${text('PLACE QR', 98, 92, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
-    ${text('CODE HERE', 98, 112, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
-    <rect x="-12" y="204" width="220" height="50" rx="8" fill="${GOLD}"/>
-    ${text('SCAN ME', 98, 238, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
+  <rect x="0" y="1148" width="${W}" height="279" fill="${NAVY}"/>
+  <g transform="translate(81 1167)">
+    <rect x="0" y="0" width="222" height="241" rx="10" fill="none" stroke="${GOLD}" stroke-width="5"/>
+    <rect x="9" y="9" width="204" height="189" fill="#fff"/>
+    <rect x="17" y="17" width="188" height="173" rx="6" fill="#fff" stroke="${GOLD}" stroke-width="3" stroke-dasharray="9 7"/>
+    ${text('PLACE QR', 111, 96, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
+    ${text('CODE HERE', 111, 118, { size: 14, weight: 900, fill: '#8b6500', anchor: 'middle' })}
+    <rect x="0" y="198" width="222" height="43" rx="8" fill="${GOLD}"/>
+    ${text('SCAN ME', 111, 228, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
   </g>
-  <line x1="366" y1="1160" x2="366" y2="1408" stroke="#3a5170" stroke-width="2"/>
-  ${headline.map((t, i) => text(t, 400, 1196 + i * 40, { size: 46, weight: 700, cls: 'hd', fill: '#fff', fit: 600 })).join('\n')}
+  <line x1="336" y1="1176" x2="336" y2="1400" stroke="#3a5170" stroke-width="2"/>
+  ${headline.map((t, i) => text(t, 372, 1216 + i * 40, { size: 46, weight: 700, cls: 'hd', fill: '#fff', fit: 600 })).join('\n')}
   ${rows.map((r, i) => `
-    ${glyph(r.icon, 400, 1248 + i * 48, 38, '#fff', 4)}
-    ${text(r.label, 452, 1276 + i * 48, { size: 21, weight: 800, cls: 'cond', fill: '#fff' })}
-    <line x1="452" y1="${1290 + i * 48}" x2="${W - 74}" y2="${1290 + i * 48}" stroke="${GOLD}" stroke-width="2" opacity=".85"/>`).join('\n')}
-  ${text(footnote, 400, 1396, { size: 17, weight: 800, cls: 'cond', fill: GOLD })}`
+    ${glyph(r.icon, 372, 1268 + i * 50, 38, '#fff', 4)}
+    ${text(r.label, 424, 1296 + i * 50, { size: 21, weight: 800, cls: 'cond', fill: '#fff' })}
+    <line x1="424" y1="${1310 + i * 50}" x2="${W - 60}" y2="${1310 + i * 50}" stroke="${GOLD}" stroke-width="2" opacity=".85"/>`).join('\n')}
+  ${text(footnote, 372, 1400, { size: 17, weight: 800, cls: 'cond', fill: GOLD })}`
 }
 
 function footer(items) {
   const slot = W / items.length
   return `
-  <rect x="0" y="1428" width="${W}" height="72" fill="#fff"/>
-  <line x1="0" y1="1428" x2="${W}" y2="1428" stroke="#dfe6ef" stroke-width="2"/>
+  <rect x="0" y="1427" width="${W}" height="73" fill="#fff"/>
+  <line x1="0" y1="1427" x2="${W}" y2="1427" stroke="#dfe6ef" stroke-width="2"/>
   ${items.map((it, i) => `
     ${glyph(it.icon, i * slot + 46, 1440, 46, INK, 4.8)}
     ${text(it.label, i * slot + 104, 1474, { size: 18, weight: 800, cls: 'cond', fill: INK })}
@@ -270,16 +270,20 @@ function page({ head, title, subtitle, layout = 'compare', body, leftTitle, left
   <line x1="${W - 96}" y1="410" x2="${W - 52}" y2="410" stroke="${GOLD}" stroke-width="3"/>
   ${text(subtitle, W / 2, 418, { size: 25, weight: 400, fill: BODY, anchor: 'middle', fit: 840 })}
   ${layout === 'steps' ? bodySteps(body) : layout === 'circles' ? bodyCircles(body) : `
-  ${panel(38, 436, 448, 508, leftTitle)}
-  ${leftSteps.map((s, i) => stepRow(74, 556 + i * 140, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
-  ${keepGoingArrow(660, arrowLabel)}
-  ${panel(564, 436, 448, 508, rightTitle)}
+  ${panel(39, 466, 406, 520, leftTitle)}
+  ${leftSteps.map((s, i) => stepRow(72, 576 + i * 148, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
+  ${keepGoingArrow(656, arrowLabel)}
+  ${panel(550, 466, 462, 520, rightTitle)}
   ${rightSteps.map((st, i) => `
-    ${glyph(st.icon, 596 + i * 142, 520, 96, INK, 5.2)}
-    ${st.lines.map((l, j) => text(l, 644 + i * 142, 648 + j * 25, { size: 17.5, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
-  <path d="M706 566h26M848 566h26" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <path d="M806 720v14M798 728l8 10 8-10" stroke="${GOLD}" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  ${outcomeBox(580, 764, 416, outcome)}
+    ${glyph(st.icon, 592 + i * 148, 548, 92, INK, 5.2)}
+    ${st.lines.map((l, j) => text(l, 638 + i * 148, 676 + j * 25, { size: 17.5, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
+  <path d="M700 594h30M848 594h30" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- Gold bracket collecting all three columns, then the arrow down into the
+       outcome box. The approved sheet draws this as one connected device; ours
+       had only the arrow, so the three columns read as unrelated. -->
+  <path d="M612 742v16h330v-16" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M777 758v20M769 770l8 10 8-10" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
+  ${outcomeBox(576, 800, 410, outcome)}
 `}
   ${reassurance(reassure)}
   ${ctaBand(cta)}
