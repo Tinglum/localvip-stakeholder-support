@@ -502,7 +502,56 @@ const circlesBody = {
   },
 }
 
+
+// ── Faithful reproduction of the approved 12th Man sheet ─────────────────────
+// Every copy line, panel heading, icon and footer label matches the approved
+// artwork. The revised business/parent/district sheets deliberately depart from
+// it (see OLATHE-FLYER-DESIGN-HANDOVER.md section 1); this one deliberately does
+// not, so the two can be compared side by side and so there is a like-for-like
+// vector version of the sheet everyone already signed off.
+//
+// The only intentional differences from the raster original, both structural
+// rather than editorial:
+//   - the QR is a blank labelled zone, because the dashboard stamps the correct
+//     campaign code per school; and
+//   - the owl carries no white plate behind it, which the raster had and which
+//     showed as a rectangle against the page.
+const originalCfg = {
+  ...businessCfg,
+  title: [{ text: 'MAKE ONE GIVEBACK DAY', fit: 830 }, { text: 'THE START OF SOMETHING BIGGER.', fit: 960 }],
+  subtitle: 'Bring in your community. Build relationships that can continue after the event.',
+  rightTitle: 'HOW LOCALVIP|HELPS IT GROW',
+  rightSteps: [
+    { icon: 'heart', lines: ['Olathe West', 'benefits'] },
+    { icon: 'customers', lines: ['Customers can', 'be rewarded'] },
+    { icon: 'chart', lines: ['Your business', 'can benefit'] },
+  ],
+  outcome: ['THE RELATIONSHIP CONTINUES', 'AND THE IMPACT CAN GROW', 'BEYOND THE DAY.'],
+  reassure: {
+    m: owl,
+    title: 'NOTHING CHANGES ABOUT WHY WE DO THIS.',
+    body: ['You\u2019re still supporting Olathe West and helping our kids.',
+      'LocalVIP simply makes the experience better for everyone',
+      'involved and turns a single day into an ongoing connection.'],
+  },
+  cta: {
+    headline: ['CHOOSE YOUR GIVEBACK DAY'],
+    rows: [
+      { icon: 'play', label: 'SCAN TO SEE THE 60-SECOND PLAN' },
+      { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE SETUP CALL' },
+    ],
+    footnote: '\u2605  CHOOSE A DATE. WE\u2019LL HELP WITH THE REST.  \u2605',
+  },
+  foot: [
+    { icon: 'customers', label: 'SAME COMMUNITY.' },
+    { icon: 'heart', label: 'SAME GENEROSITY.' },
+    { icon: 'trophy', label: 'MORE WAYS TO WIN.' },
+  ],
+}
+const originalSheet = page(originalCfg)
+
 const out = {
+  'olathe-west-original.svg': originalSheet,
   'business-giveback-template.svg': business,
   'parent-supporter-template.svg': parent,
   'school-outreach-template.svg': school,
