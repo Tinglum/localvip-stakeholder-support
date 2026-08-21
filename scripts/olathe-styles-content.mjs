@@ -30,6 +30,10 @@ const rowsSch = [
   { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE LAUNCH CALL' },
 ]
 
+const ctaBiz = ['ONGOING CONNECTION.', 'MORE WAYS TO WIN.']
+const ctaFam = ['YOUR FAMILY. OUR COMMUNITY.', 'MORE WAYS TO MAKE AN IMPACT.']
+const ctaSch = ['YOUR SCHOOL. OUR COMMUNITY.', 'MORE WAYS TO GROW.']
+
 const footBiz = [
   { icon: 'storefront', label: 'YOUR BUSINESS.' },
   { icon: 'customers', label: 'OUR COMMUNITY.' },
@@ -54,14 +58,14 @@ const D = {
     ...OW, hero: TEAM,
     kicker: 'PICK A DAY. WE BRING THE CROWD.',
     title: [{ t: 'YOUR BUSINESS.' }, { t: 'OUR COMMUNITY.' }, { t: "LET'S WIN TOGETHER.", gold: true }],
-    blurb: ['Choose the day you want busier. We put it in front of Olathe West', 'families, fans and season-ticket holders.'],
+    blurb: ['Choose the day you want busier. Put it in front of Olathe West', 'families, fans and local supporters.'],
     cols: [
       { icon: 'calendar', title: 'YOU PICK|THE DAY', lines: ['A Tuesday, a slow', 'afternoon, whatever', 'needs the traffic.'] },
-      { icon: 'megaphone', title: 'WE FILL|THE ROOM', lines: ['Email, socials and', 'game-night reach to', 'Olathe West families.'] },
+      { icon: 'megaphone', title: 'WE HELP|RALLY SUPPORT', lines: ['Email, socials and', 'game-night reach to', 'Olathe West families.'] },
       { icon: 'customers', title: 'THEY WALK|THROUGH THE DOOR', lines: ['You get customers.', 'They earn back.', 'Olathe West gains.'] },
       { icon: 'infinity', title: 'THEY KEEP|COMING BACK', lines: ['One day becomes a', 'reason to return all', 'season.'] },
     ],
-    ctaTitle: ['CLAIM YOUR', 'GIVEBACK DAY'],
+    ctaTitle: ctaBiz,
     ctaRows: rowsBiz,
     script: "We'll handle the promotion.",
     foot: footBiz,
@@ -77,7 +81,7 @@ const D = {
       { icon: 'customers', title: 'YOUR FAMILY|EARNS BACK', lines: ['Rewards land with', 'the people doing', 'the shopping.'] },
       { icon: 'infinity', title: 'AND IT|KEEPS GOING', lines: ['Not one night. Every', 'ordinary week after', 'it.'] },
     ],
-    ctaTitle: ['JOIN THE OLATHE', 'WEST CAMPAIGN'],
+    ctaTitle: ctaFam,
     ctaRows: rowsFam,
     script: 'Same routine. More impact.',
     foot: footFam,
@@ -93,7 +97,7 @@ const D = {
       { icon: 'customers', title: 'EVERY SIDE|COMES OUT AHEAD', lines: ['Businesses get trade.', 'Families earn back.', 'The school benefits.'] },
       { icon: 'network', title: 'THEN ROLL|IT OUT', lines: ['Same framework, new', 'campus, no new', 'collateral.'] },
     ],
-    ctaTitle: ['BRING IT TO', 'YOUR CAMPUS'],
+    ctaTitle: ctaSch,
     ctaRows: rowsSch,
     script: "We'll make it easy to run.",
     foot: footSch,
@@ -105,15 +109,15 @@ const E = {
     ...OW, band: TEAM, band2: CROWD, band3: COMMUNITY,
     kicker: 'FOR LOCAL BUSINESS OWNERS',
     title: ['YOU KNOW GIVEBACK DAYS.', 'THIS ONE WORKS HARDER.'],
-    script: 'Same generosity. Better economics.',
+    script: 'Same generosity. More ways to win.',
     blurb: ["You've backed Olathe West before. This keeps what already works", 'and adds a reason for those customers to come back next week.'],
     steps: [
       { title: 'PICK YOUR GIVEBACK DAY', line: 'The slow Tuesday, not the busy Saturday.' },
       { title: 'WE RALLY OLATHE WEST', line: 'Families, fans and supporters hear about it.' },
-      { title: 'IT PAYS AFTER THE DAY', line: 'Those customers come back next week, and the week after.' },
+      { title: 'THE CONNECTION CAN CONTINUE', line: 'Give those customers another reason to come back.' },
     ],
-    quote: 'One day of goodwill, or a customer for the season.',
-    ctaTitle: ['CLAIM YOUR NEXT', 'GIVEBACK DAY'],
+    quote: 'One Giveback Day. More reasons to come back.',
+    ctaTitle: ctaBiz,
     ctaRows: rowsBiz,
     ctaAside: 'Pick a slow day.',
     foot: footBiz,
@@ -130,14 +134,14 @@ const E = {
       { title: 'IT KEEPS GIVING', line: 'Every ordinary week, not just one night.' },
     ],
     quote: 'The same money, doing two jobs instead of one.',
-    ctaTitle: ['JOIN THE OLATHE', 'WEST CAMPAIGN'],
+    ctaTitle: ctaFam,
     ctaRows: rowsFam,
     ctaAside: 'Takes one minute.',
     foot: footFam,
   }),
   school: styleE({
     ...OPS, band: COMMUNITY, band2: TEAM, band3: CROWD,
-    kicker: 'FOR PRINCIPALS, ADS AND DISTRICT LEADERS',
+    kicker: 'FOR PRINCIPALS, ATHLETIC DIRECTORS AND DISTRICT LEADERS',
     title: ['ONE GIVEBACK DAY CAN', 'BECOME MORE THAN ONE DAY.'],
     script: 'Same idea. Built to repeat.',
     blurb: ['The message stays the same across Olathe Public Schools. Each admin', 'adds the QR code for their own campus or campaign.'],
@@ -147,7 +151,7 @@ const E = {
       { title: 'THEN EXTEND IT', line: 'District-wide without new collateral.' },
     ],
     quote: 'One flyer for the district, not one per campus.',
-    ctaTitle: ['BRING IT TO', 'YOUR CAMPUS'],
+    ctaTitle: ctaSch,
     ctaRows: rowsSch,
     ctaAside: 'Start with one school.',
     foot: footSch,
@@ -167,7 +171,7 @@ const F = {
     ],
     script: 'You pick the day. We do the rest.',
     signoff: 'See you on game night.',
-    ctaTitle: ['CLAIM YOUR', 'GIVEBACK DAY'],
+    ctaTitle: ctaBiz,
     ctaRows: rowsBiz,
     foot: footBiz,
   }),
@@ -183,7 +187,7 @@ const F = {
     ],
     script: 'Same routine. More impact.',
     signoff: 'Go Owls.',
-    ctaTitle: ['JOIN THE OLATHE', 'WEST CAMPAIGN'],
+    ctaTitle: ctaFam,
     ctaRows: rowsFam,
     foot: footFam,
   }),
@@ -199,16 +203,96 @@ const F = {
     ],
     script: 'Same idea. Built to repeat.',
     signoff: "We'll help you launch.",
-    ctaTitle: ['BRING IT TO', 'YOUR CAMPUS'],
+    ctaTitle: ctaSch,
     ctaRows: rowsSch,
     foot: footSch,
   }),
 }
 
+const productionNames = {
+  d: 'photo-led',
+  e: 'editorial',
+  f: 'bold-modular',
+}
+
 for (const [style, set] of Object.entries({ d: D, e: E, f: F })) {
   for (const [aud, svg] of Object.entries(set)) {
-    const name = `${aud}-option-${style}.svg`
-    fs.writeFileSync(path.join(root, name), svg)
-    console.log('Wrote', name)
+    const optionName = `${aud}-option-${style}.svg`
+    const productionName = `${aud}-${productionNames[style]}.svg`
+    const cleanSvg = svg.replace(/[ \t]+$/gm, '')
+    fs.writeFileSync(path.join(root, optionName), cleanSvg)
+    fs.writeFileSync(path.join(root, productionName), cleanSvg)
+    console.log('Wrote', productionName)
   }
 }
+
+const audienceDetails = {
+  business: {
+    label: 'Business',
+    description: 'Business-facing Olathe West flyer focused on repeat visits, existing customers, slower-day traffic, and LocalVIP network reach.',
+    stakeholderTypes: ['business'],
+    audienceTags: ['olathe', 'olathe-west', 'business', 'giveback-day'],
+  },
+  parent: {
+    label: 'Parent & Supporter',
+    description: 'Parent and supporter flyer connecting everyday local shopping, family rewards, and ongoing support for Olathe West.',
+    stakeholderTypes: ['community', 'cause'],
+    audienceTags: ['olathe', 'olathe-west', 'parents', 'supporters'],
+  },
+  school: {
+    label: 'School & District',
+    description: 'School and district flyer for launching a repeatable community-giveback programme with campus-specific QR codes.',
+    stakeholderTypes: ['school', 'cause', 'community'],
+    audienceTags: ['olathe', 'olathe-public-schools', 'school', 'district'],
+  },
+}
+
+const designDetails = {
+  approved: { label: 'Approved 12th Man Layout', slug: 'approved-layout', qr: { x: 8.5714, y: 78.4, size: 19.4286 } },
+  d: { label: 'Photo-Led Campaign', slug: 'photo-led', qr: { x: 4.9524, y: 77.0667, size: 15.8095 } },
+  e: { label: 'Editorial Explainer', slug: 'editorial', qr: { x: 4.9524, y: 79.8667, size: 15.8095 } },
+}
+
+const manifest = []
+for (const [style, design] of Object.entries(designDetails)) {
+  for (const [audience, details] of Object.entries(audienceDetails)) {
+    const fileName = `${audience}-${design.slug}.svg`
+    manifest.push({
+      key: `olathe-${audience}-${design.slug}`,
+      title: `Olathe ${details.label} — ${design.label}`,
+      description: details.description,
+      audience,
+      design: design.slug,
+      fileName,
+      publicPath: `/templates/olathe/${fileName}`,
+      mimeType: 'image/svg+xml',
+      type: 'flyer',
+      brand: 'localvip',
+      category: 'olathe-community-giveback',
+      useCase: audience === 'business' ? 'business_outreach' : audience === 'parent' ? 'parent_supporter_outreach' : 'school_outreach',
+      targetRoles: audience === 'business' ? ['business'] : ['community'],
+      targetSubtypes: audience === 'school' ? ['school'] : audience === 'parent' ? ['cause'] : [],
+      causeAccountIds: audience === 'school' ? [190045, 190046] : [190046],
+      metadata: {
+        collection: 'olathe-community-giveback',
+        template_key: `olathe-${audience}-${design.slug}`,
+        audience,
+        design_system: design.slug,
+        allowed_cause_account_ids: audience === 'school' ? [190045, 190046] : [190046],
+        qr_placement: { id: `olathe_${audience}_${style}_qr`, page: 1, ...design.qr },
+        qr_placements: [{ id: `olathe_${audience}_${style}_qr`, page: 1, ...design.qr }],
+        automation_template: {
+          enabled: true,
+          is_active: true,
+          stakeholder_types: details.stakeholderTypes,
+          audience_tags: details.audienceTags,
+          library_folder: 'share_with_customers',
+          qr_zone_count: 1,
+        },
+      },
+    })
+  }
+}
+
+fs.writeFileSync(path.join(root, 'olathe-template-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+console.log('Wrote olathe-template-manifest.json')

@@ -175,7 +175,11 @@ export function MaterialGenerateLauncher({
 
   // Not fetched until the button is pressed: onboarding renders many of these at
   // once and the template list is one detail request per template server-side.
-  const { templates, loading, error, unusableCount } = usePortalTemplates({ enabled: picking })
+  const { templates, loading, error, unusableCount } = usePortalTemplates({
+    enabled: picking,
+    entityType: scope?.entityType,
+    accountId: scope?.accountId,
+  })
 
   if (!scope) {
     return (
@@ -428,7 +432,12 @@ export function EnablerMaterialsPage() {
   const [selectedKey, setSelectedKey] = React.useState('')
   const [active, setActive] = React.useState<PortalTemplate | null>(null)
   const [generatedNonce, setGeneratedNonce] = React.useState(0)
-  const { templates, unusableCount, loading, error, reload } = usePortalTemplates()
+  const selected = accounts.find((account) => account.key === selectedKey) || null
+  const { templates, unusableCount, loading, error, reload } = usePortalTemplates({
+    enabled: !!selected,
+    entityType: selected?.entityType,
+    accountId: selected?.accountId,
+  })
 
   // Auto-select when there is exactly one — with several, leaving it blank is
   // deliberate: silently defaulting to the first is how a material gets pushed
@@ -437,7 +446,6 @@ export function EnablerMaterialsPage() {
     if (!selectedKey && accounts.length === 1) setSelectedKey(accounts[0].key)
   }, [accounts, selectedKey])
 
-  const selected = accounts.find((account) => account.key === selectedKey) || null
   const scope = React.useMemo<MaterialGenerateScope | null>(
     () => (selected
       ? { entityType: selected.entityType, accountId: selected.accountId, name: accountLabel(selected) }

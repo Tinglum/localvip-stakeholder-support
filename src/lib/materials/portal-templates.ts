@@ -8,8 +8,8 @@ import * as React from 'react'
  * This was inlined in `TemplateLibraryPage`, which meant the Enabler Materials
  * tab and the onboarding "Generate materials" action would each have grown their
  * own copy of the same fetch — and with it their own idea of what counts as an
- * unusable template. `/api/portal/templates` is authenticated-only (it is not
- * business-scoped), so every role that can reach a generate surface can list it.
+ * unusable template. Account-scoped callers include their verified business or
+ * cause target so private campaign templates do not leak into other libraries.
  */
 export interface PortalTemplate {
   id: number | string
@@ -31,8 +31,14 @@ export interface PortalTemplatesResult {
   reload: () => void
 }
 
-export function usePortalTemplates(options?: { enabled?: boolean }): PortalTemplatesResult {
+export function usePortalTemplates(options?: {
+  enabled?: boolean
+  entityType?: 'business' | 'cause' | null
+  accountId?: string | number | null
+}): PortalTemplatesResult {
   const enabled = options?.enabled ?? true
+  const entityType = options?.entityType ?? null
+  const accountId = options?.accountId == null ? null : String(options.accountId)
   const [templates, setTemplates] = React.useState<PortalTemplate[]>([])
   const [unusableCount, setUnusableCount] = React.useState(0)
   const [loading, setLoading] = React.useState(enabled)
@@ -46,7 +52,12 @@ export function usePortalTemplates(options?: { enabled?: boolean }): PortalTempl
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/portal/templates', { cache: 'no-store' })
+      const params = new URLSearchParams()
+      if (entityType && accountId) {
+        params.set('entityType', entityType)
+        params.set('accountId', accountId)
+      }
+      const res = await fetch(`/api/portal/templates${params.size ? `?${params}` : ''}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Could not load templates.')
       setTemplates(json.templates || [])
@@ -56,7 +67,7 @@ export function usePortalTemplates(options?: { enabled?: boolean }): PortalTempl
     } finally {
       setLoading(false)
     }
-  }, [enabled])
+  }, [accountId, enabled, entityType])
 
   React.useEffect(() => { void reload() }, [reload])
 

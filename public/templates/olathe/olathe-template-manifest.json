@@ -1,0 +1,578 @@
+[
+  {
+    "key": "olathe-business-approved-layout",
+    "title": "Olathe Business — Approved 12th Man Layout",
+    "description": "Business-facing Olathe West flyer focused on repeat visits, existing customers, slower-day traffic, and LocalVIP network reach.",
+    "audience": "business",
+    "design": "approved-layout",
+    "fileName": "business-approved-layout.svg",
+    "publicPath": "/templates/olathe/business-approved-layout.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "business_outreach",
+    "targetRoles": [
+      "business"
+    ],
+    "targetSubtypes": [],
+    "causeAccountIds": [
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-business-approved-layout",
+      "audience": "business",
+      "design_system": "approved-layout",
+      "allowed_cause_account_ids": [
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_business_approved_qr",
+        "page": 1,
+        "x": 8.5714,
+        "y": 78.4,
+        "size": 19.4286
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_business_approved_qr",
+          "page": 1,
+          "x": 8.5714,
+          "y": 78.4,
+          "size": 19.4286
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "business"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-west",
+          "business",
+          "giveback-day"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  },
+  {
+    "key": "olathe-parent-approved-layout",
+    "title": "Olathe Parent & Supporter — Approved 12th Man Layout",
+    "description": "Parent and supporter flyer connecting everyday local shopping, family rewards, and ongoing support for Olathe West.",
+    "audience": "parent",
+    "design": "approved-layout",
+    "fileName": "parent-approved-layout.svg",
+    "publicPath": "/templates/olathe/parent-approved-layout.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "parent_supporter_outreach",
+    "targetRoles": [
+      "community"
+    ],
+    "targetSubtypes": [
+      "cause"
+    ],
+    "causeAccountIds": [
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-parent-approved-layout",
+      "audience": "parent",
+      "design_system": "approved-layout",
+      "allowed_cause_account_ids": [
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_parent_approved_qr",
+        "page": 1,
+        "x": 8.5714,
+        "y": 78.4,
+        "size": 19.4286
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_parent_approved_qr",
+          "page": 1,
+          "x": 8.5714,
+          "y": 78.4,
+          "size": 19.4286
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "community",
+          "cause"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-west",
+          "parents",
+          "supporters"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  },
+  {
+    "key": "olathe-school-approved-layout",
+    "title": "Olathe School & District — Approved 12th Man Layout",
+    "description": "School and district flyer for launching a repeatable community-giveback programme with campus-specific QR codes.",
+    "audience": "school",
+    "design": "approved-layout",
+    "fileName": "school-approved-layout.svg",
+    "publicPath": "/templates/olathe/school-approved-layout.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "school_outreach",
+    "targetRoles": [
+      "community"
+    ],
+    "targetSubtypes": [
+      "school"
+    ],
+    "causeAccountIds": [
+      190045,
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-school-approved-layout",
+      "audience": "school",
+      "design_system": "approved-layout",
+      "allowed_cause_account_ids": [
+        190045,
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_school_approved_qr",
+        "page": 1,
+        "x": 8.5714,
+        "y": 78.4,
+        "size": 19.4286
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_school_approved_qr",
+          "page": 1,
+          "x": 8.5714,
+          "y": 78.4,
+          "size": 19.4286
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "school",
+          "cause",
+          "community"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-public-schools",
+          "school",
+          "district"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  },
+  {
+    "key": "olathe-business-photo-led",
+    "title": "Olathe Business — Photo-Led Campaign",
+    "description": "Business-facing Olathe West flyer focused on repeat visits, existing customers, slower-day traffic, and LocalVIP network reach.",
+    "audience": "business",
+    "design": "photo-led",
+    "fileName": "business-photo-led.svg",
+    "publicPath": "/templates/olathe/business-photo-led.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "business_outreach",
+    "targetRoles": [
+      "business"
+    ],
+    "targetSubtypes": [],
+    "causeAccountIds": [
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-business-photo-led",
+      "audience": "business",
+      "design_system": "photo-led",
+      "allowed_cause_account_ids": [
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_business_d_qr",
+        "page": 1,
+        "x": 4.9524,
+        "y": 77.0667,
+        "size": 15.8095
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_business_d_qr",
+          "page": 1,
+          "x": 4.9524,
+          "y": 77.0667,
+          "size": 15.8095
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "business"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-west",
+          "business",
+          "giveback-day"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  },
+  {
+    "key": "olathe-parent-photo-led",
+    "title": "Olathe Parent & Supporter — Photo-Led Campaign",
+    "description": "Parent and supporter flyer connecting everyday local shopping, family rewards, and ongoing support for Olathe West.",
+    "audience": "parent",
+    "design": "photo-led",
+    "fileName": "parent-photo-led.svg",
+    "publicPath": "/templates/olathe/parent-photo-led.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "parent_supporter_outreach",
+    "targetRoles": [
+      "community"
+    ],
+    "targetSubtypes": [
+      "cause"
+    ],
+    "causeAccountIds": [
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-parent-photo-led",
+      "audience": "parent",
+      "design_system": "photo-led",
+      "allowed_cause_account_ids": [
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_parent_d_qr",
+        "page": 1,
+        "x": 4.9524,
+        "y": 77.0667,
+        "size": 15.8095
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_parent_d_qr",
+          "page": 1,
+          "x": 4.9524,
+          "y": 77.0667,
+          "size": 15.8095
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "community",
+          "cause"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-west",
+          "parents",
+          "supporters"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  },
+  {
+    "key": "olathe-school-photo-led",
+    "title": "Olathe School & District — Photo-Led Campaign",
+    "description": "School and district flyer for launching a repeatable community-giveback programme with campus-specific QR codes.",
+    "audience": "school",
+    "design": "photo-led",
+    "fileName": "school-photo-led.svg",
+    "publicPath": "/templates/olathe/school-photo-led.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "school_outreach",
+    "targetRoles": [
+      "community"
+    ],
+    "targetSubtypes": [
+      "school"
+    ],
+    "causeAccountIds": [
+      190045,
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-school-photo-led",
+      "audience": "school",
+      "design_system": "photo-led",
+      "allowed_cause_account_ids": [
+        190045,
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_school_d_qr",
+        "page": 1,
+        "x": 4.9524,
+        "y": 77.0667,
+        "size": 15.8095
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_school_d_qr",
+          "page": 1,
+          "x": 4.9524,
+          "y": 77.0667,
+          "size": 15.8095
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "school",
+          "cause",
+          "community"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-public-schools",
+          "school",
+          "district"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  },
+  {
+    "key": "olathe-business-editorial",
+    "title": "Olathe Business — Editorial Explainer",
+    "description": "Business-facing Olathe West flyer focused on repeat visits, existing customers, slower-day traffic, and LocalVIP network reach.",
+    "audience": "business",
+    "design": "editorial",
+    "fileName": "business-editorial.svg",
+    "publicPath": "/templates/olathe/business-editorial.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "business_outreach",
+    "targetRoles": [
+      "business"
+    ],
+    "targetSubtypes": [],
+    "causeAccountIds": [
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-business-editorial",
+      "audience": "business",
+      "design_system": "editorial",
+      "allowed_cause_account_ids": [
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_business_e_qr",
+        "page": 1,
+        "x": 4.9524,
+        "y": 79.8667,
+        "size": 15.8095
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_business_e_qr",
+          "page": 1,
+          "x": 4.9524,
+          "y": 79.8667,
+          "size": 15.8095
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "business"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-west",
+          "business",
+          "giveback-day"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  },
+  {
+    "key": "olathe-parent-editorial",
+    "title": "Olathe Parent & Supporter — Editorial Explainer",
+    "description": "Parent and supporter flyer connecting everyday local shopping, family rewards, and ongoing support for Olathe West.",
+    "audience": "parent",
+    "design": "editorial",
+    "fileName": "parent-editorial.svg",
+    "publicPath": "/templates/olathe/parent-editorial.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "parent_supporter_outreach",
+    "targetRoles": [
+      "community"
+    ],
+    "targetSubtypes": [
+      "cause"
+    ],
+    "causeAccountIds": [
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-parent-editorial",
+      "audience": "parent",
+      "design_system": "editorial",
+      "allowed_cause_account_ids": [
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_parent_e_qr",
+        "page": 1,
+        "x": 4.9524,
+        "y": 79.8667,
+        "size": 15.8095
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_parent_e_qr",
+          "page": 1,
+          "x": 4.9524,
+          "y": 79.8667,
+          "size": 15.8095
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "community",
+          "cause"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-west",
+          "parents",
+          "supporters"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  },
+  {
+    "key": "olathe-school-editorial",
+    "title": "Olathe School & District — Editorial Explainer",
+    "description": "School and district flyer for launching a repeatable community-giveback programme with campus-specific QR codes.",
+    "audience": "school",
+    "design": "editorial",
+    "fileName": "school-editorial.svg",
+    "publicPath": "/templates/olathe/school-editorial.svg",
+    "mimeType": "image/svg+xml",
+    "type": "flyer",
+    "brand": "localvip",
+    "category": "olathe-community-giveback",
+    "useCase": "school_outreach",
+    "targetRoles": [
+      "community"
+    ],
+    "targetSubtypes": [
+      "school"
+    ],
+    "causeAccountIds": [
+      190045,
+      190046
+    ],
+    "metadata": {
+      "collection": "olathe-community-giveback",
+      "template_key": "olathe-school-editorial",
+      "audience": "school",
+      "design_system": "editorial",
+      "allowed_cause_account_ids": [
+        190045,
+        190046
+      ],
+      "qr_placement": {
+        "id": "olathe_school_e_qr",
+        "page": 1,
+        "x": 4.9524,
+        "y": 79.8667,
+        "size": 15.8095
+      },
+      "qr_placements": [
+        {
+          "id": "olathe_school_e_qr",
+          "page": 1,
+          "x": 4.9524,
+          "y": 79.8667,
+          "size": 15.8095
+        }
+      ],
+      "automation_template": {
+        "enabled": true,
+        "is_active": true,
+        "stakeholder_types": [
+          "school",
+          "cause",
+          "community"
+        ],
+        "audience_tags": [
+          "olathe",
+          "olathe-public-schools",
+          "school",
+          "district"
+        ],
+        "library_folder": "share_with_customers",
+        "qr_zone_count": 1
+      }
+    }
+  }
+]

@@ -314,7 +314,7 @@ const businessCfg = {
   arrowLabel: 'KEEP IT|GOING',
   outcome: ['CHOOSE YOUR SLOWER DAY AND', 'GIVE PEOPLE A REASON TO', 'WALK IN WHEN YOU WANT THEM.'],
   reassure: {
-    m: owHeart,
+    m: owl,
     // Business audience. The original sheet's reassurance - "you're still
     // supporting Olathe West and helping our kids" - is the SCHOOL's reason for
     // doing this, and it stayed correct on the parent and district versions.
@@ -366,7 +366,7 @@ const parentCfg = {
   arrowLabel: 'MAKE IT|COUNT',
   outcome: ['EVERYDAY CHOICES CAN CREATE', 'SUPPORT THAT CONTINUES', 'BEYOND ONE EVENT.'],
   reassure: {
-    m: owHeart,
+    m: owl,
     title: 'NOTHING CHANGES ABOUT WHY WE SHOW UP.',
     body: ['You are still supporting Olathe West and helping our kids.',
       'LocalVIP simply helps the choices you already make go further',
@@ -562,6 +562,9 @@ const out = {
   'business-giveback-template.svg': business,
   'parent-supporter-template.svg': parent,
   'school-outreach-template.svg': school,
+  'business-approved-layout.svg': business,
+  'parent-approved-layout.svg': parent,
+  'school-approved-layout.svg': school,
 }
 for (const key of ['business', 'parent', 'school']) {
   out[`${key}-option-b.svg`] = variant(cfg[key], 'steps', stepsBody[key])
@@ -569,6 +572,6 @@ for (const key of ['business', 'parent', 'school']) {
 }
 
 for (const [name, svg] of Object.entries(out)) {
-  fs.writeFileSync(path.join(root, name), svg)
+  fs.writeFileSync(path.join(root, name), svg.replace(/[ \t]+$/gm, ''))
   console.log('Wrote', name)
 }

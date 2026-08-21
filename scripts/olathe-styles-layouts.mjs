@@ -50,7 +50,7 @@ export function makeStyles(k) {
     <path d="M-40 286 L566 252 L566 322 L-40 356 Z" fill="${GOLD}"/>
     ${text(kicker, 40, 314, { size: 15, weight: 800, fam: 'x', fill: '#20160a', ls: 2.6 })}
     ${title.map((t, i) => text(t.t, 40, 392 + i * 74, {
-      size: t.gold ? 76 : 60, weight: 800, fam: 'x', fill: t.gold ? GOLD : '#fff', shadow: true })).join('\n')}
+      size: t.gold ? 82 : 68, weight: 400, fam: 'd', fill: t.gold ? GOLD : '#fff', shadow: true })).join('\n')}
     <line x1="42" y1="600" x2="42" y2="672" stroke="${GOLD}" stroke-width="4"/>
     ${stack(blurb, 66, 626, { size: 20, weight: 400, fill: '#e8f0fb', gap: 29 })}
     <path d="M0 ${HERO} L${W} ${HERO - 46} L${W} ${HERO + 22} L0 ${HERO + 60} Z" fill="#0b1c33"/>
@@ -70,7 +70,7 @@ export function makeStyles(k) {
     <rect x="0" y="1120" width="${W}" height="260" fill="${GOLD}"/>
     <path d="M0 1100 L${W} 1072" stroke="#ffffff" stroke-width="3" opacity=".38"/>
     <g filter="url(#drop)">${qrBlock(52, 1156, false)}</g>
-    ${stack(ctaTitle, 268, 1198, { size: 36, weight: 800, fam: 'x', fill: '#20160a', gap: 39 })}
+    ${stack(ctaTitle, 268, 1198, { size: 44, weight: 400, fam: 'd', fill: '#20160a', gap: 43 })}
     ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1256 + i * 50, 28, '#20160a', 3.4)}
       ${text(r.label, 310, 1277 + i * 50, { size: 16.5, weight: 800, fam: 'x', fill: '#20160a' })}`).join('\n')}
     <g transform="rotate(-3 700 1352)">
@@ -89,7 +89,7 @@ export function makeStyles(k) {
     ${lockup(m, org, sub, false)}
     <line x1="40" y1="160" x2="${W - 40}" y2="160" stroke="#e3e9f1" stroke-width="2"/>
     ${kickerRule(kicker, 40, 212, '#1f6fd0')}
-    ${title.map((t, i) => text(t, 40, 280 + i * 66, { size: 60, weight: 800, fam: 'x', fill: INK })).join('\n')}
+    ${title.map((t, i) => text(t, 40, 280 + i * 66, { size: 68, weight: 400, fam: 'd', fill: INK })).join('\n')}
     <g transform="rotate(-2 40 412)">
       ${text(script, 40, 420, { size: 37, weight: 600, fam: 's', fill: '#1f4fa3' })}
       ${swash(40, 432, 320, '#1f4fa3')}
@@ -114,7 +114,7 @@ export function makeStyles(k) {
     ${text(quote, 106, 1094, { size: 20, weight: 700, fam: 'b', fill: INK })}
     <path d="M0 1172 L${W} 1144 L${W} 1500 L0 1500 Z" fill="${NAVY}"/>
     <g filter="url(#drop)">${qrBlock(52, 1198, true)}</g>
-    ${stack(ctaTitle, 268, 1240, { size: 34, weight: 800, fam: 'x', fill: '#fff', gap: 38 })}
+    ${stack(ctaTitle, 268, 1240, { size: 42, weight: 400, fam: 'd', fill: '#fff', gap: 42 })}
     ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1300 + i * 46, 26, GOLD, 3.2)}
       ${text(r.label, 306, 1320 + i * 46, { size: 16, weight: 800, fam: 'x', fill: '#fff' })}`).join('\n')}
     <g transform="rotate(-3 800 1300)">
@@ -132,7 +132,7 @@ export function makeStyles(k) {
     <text x="${W - 30}" y="500" text-anchor="end" font-family="'MontXBold',Montserrat,sans-serif"
       font-size="190" font-weight="800" fill="#ffffff" opacity=".07">OW</text>
     ${big.map((t, i) => text(t.t, 40, 268 + i * 78, {
-      size: t.gold ? 80 : 64, weight: 800, fam: 'x', fill: t.gold ? GOLD : '#fff' })).join('\n')}
+      size: t.gold ? 88 : 74, weight: 400, fam: 'd', fill: t.gold ? GOLD : '#fff' })).join('\n')}
     ${text(sub2, 40, 508, { size: 18.5, weight: 400, fill: '#c9d8ec' })}
     <g transform="translate(${W - 300} 560)">
       <rect width="260" height="46" rx="23" fill="#fdf6e6" stroke="${GOLD}" stroke-width="2"/>
@@ -160,7 +160,7 @@ export function makeStyles(k) {
     </g>
     <path d="M0 1148 L${W} 1120 L${W} 1380 L0 1380 Z" fill="${GOLD}"/>
     <g filter="url(#drop)">${qrBlock(52, 1176, false)}</g>
-    ${stack(ctaTitle, 268, 1218, { size: 34, weight: 800, fam: 'x', fill: '#20160a', gap: 38 })}
+    ${stack(ctaTitle, 268, 1218, { size: 42, weight: 400, fam: 'd', fill: '#20160a', gap: 42 })}
     ${ctaRows.map((r, i) => `${glyph(r.icon, 268, 1278 + i * 48, 28, '#20160a', 3.3)}
       ${text(r.label, 310, 1299 + i * 48, { size: 16.5, weight: 800, fam: 'x', fill: '#20160a' })}`).join('\n')}
     ${text(signoff, W - 40, 1352, { size: 29, weight: 600, fam: 's', fill: '#1f4fa3', anchor: 'end' })}

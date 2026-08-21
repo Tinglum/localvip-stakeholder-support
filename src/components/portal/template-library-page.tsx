@@ -52,7 +52,11 @@ type QrChoice = 'default' | 'new' | string
 export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { templates, unusableCount, loading, error, reload: load } = usePortalTemplates()
+  const { profile } = useAuth()
+  const { templates, unusableCount, loading, error, reload: load } = usePortalTemplates({
+    entityType: profile.business_id ? 'business' : null,
+    accountId: profile.business_id,
+  })
   const [doneIds, setDoneIds] = React.useState<Set<string>>(new Set())
   const [active, setActive] = React.useState<PortalTemplate | null>(null)
 

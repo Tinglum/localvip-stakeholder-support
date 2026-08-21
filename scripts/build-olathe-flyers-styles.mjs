@@ -40,6 +40,7 @@ const face = (fam, file, wt) =>
   `@font-face{font-family:'${fam}';font-weight:${wt};font-style:normal;` +
   `src:url(data:font/ttf;base64,${b64(file)}) format('truetype');}`
 const FONT_CSS = [
+  face('Bebas', 'BebasNeue-Regular.ttf', 400),
   face('MontRegular', 'Montserrat-Regular.ttf', 400),
   face('MontBold', 'Montserrat-Bold.ttf', 700),
   face('MontXBold', 'Montserrat-ExtraBold.ttf', 800),
@@ -69,6 +70,7 @@ const mark = (m, x, y, size) =>
   `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${m.viewBox}" preserveAspectRatio="xMidYMid meet">${m.body}</svg>`
 
 const FAM = {
+  d: "'Bebas',Impact,'Arial Narrow',sans-serif",
   x: "'MontXBold',Montserrat,Arial,sans-serif",
   b: "'MontBold',Montserrat,Arial,sans-serif",
   r: "'MontRegular',Montserrat,Arial,sans-serif",
