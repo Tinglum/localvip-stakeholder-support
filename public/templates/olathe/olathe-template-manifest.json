@@ -30,17 +30,17 @@
       "qr_placement": {
         "id": "olathe_business_approved_qr",
         "page": 1,
-        "x": 8.5714,
-        "y": 78.4,
-        "size": 19.4286
+        "x": 9.9548,
+        "y": 84.1814,
+        "size": 13.2730
       },
       "qr_placements": [
         {
           "id": "olathe_business_approved_qr",
           "page": 1,
-          "x": 8.5714,
-          "y": 78.4,
-          "size": 19.4286
+          "x": 9.9548,
+          "y": 84.1814,
+          "size": 13.2730
         }
       ],
       "automation_template": {
@@ -93,17 +93,17 @@
       "qr_placement": {
         "id": "olathe_parent_approved_qr",
         "page": 1,
-        "x": 8.5714,
-        "y": 78.4,
-        "size": 19.4286
+        "x": 9.9548,
+        "y": 84.1814,
+        "size": 13.2730
       },
       "qr_placements": [
         {
           "id": "olathe_parent_approved_qr",
           "page": 1,
-          "x": 8.5714,
-          "y": 78.4,
-          "size": 19.4286
+          "x": 9.9548,
+          "y": 84.1814,
+          "size": 13.2730
         }
       ],
       "automation_template": {
@@ -159,17 +159,17 @@
       "qr_placement": {
         "id": "olathe_school_approved_qr",
         "page": 1,
-        "x": 8.5714,
-        "y": 78.4,
-        "size": 19.4286
+        "x": 9.9548,
+        "y": 84.1814,
+        "size": 13.2730
       },
       "qr_placements": [
         {
           "id": "olathe_school_approved_qr",
           "page": 1,
-          "x": 8.5714,
-          "y": 78.4,
-          "size": 19.4286
+          "x": 9.9548,
+          "y": 84.1814,
+          "size": 13.2730
         }
       ],
       "automation_template": {
