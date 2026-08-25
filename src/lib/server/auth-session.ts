@@ -189,6 +189,45 @@ async function applyPortalBusinessSelection(session: ResolvedAuthSession): Promi
   }
 }
 
+async function applyPortalCauseSelection(session: ResolvedAuthSession): Promise<ResolvedAuthSession> {
+  const viewAs = session.viewingAs
+  if (!viewAs || viewAs.targetCauseAccountId) return session
+  if (session.profile.role !== 'cause_leader' && session.profile.role !== 'school_leader') return session
+
+  const response = await withTimeout(
+    fetchQaApi(`/api/dashboard/v1/Nonprofit/by-user/${viewAs.targetUserId}/accounts`),
+    AUTH_IO_TIMEOUT_MS,
+    'cause account selection',
+  ).catch(() => null)
+  if (!response?.ok) return session
+
+  const raw = await response.json().catch(() => null) as unknown
+  const envelope = (raw ?? {}) as { accounts?: unknown; items?: unknown }
+  const accounts: unknown[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray(envelope.accounts)
+      ? envelope.accounts
+      : Array.isArray(envelope.items)
+        ? envelope.items
+        : []
+  const first = accounts[0] as Record<string, unknown> | undefined
+  const candidate = first?.accountId ?? first?.AccountId ?? first?.id
+  const causeAccountId = typeof candidate === 'number' ? candidate : Number(candidate)
+  if (!Number.isSafeInteger(causeAccountId) || causeAccountId <= 0) return session
+
+  return {
+    ...session,
+    profile: {
+      ...session.profile,
+      metadata: {
+        ...((session.profile.metadata as Record<string, unknown> | null) || {}),
+        view_as_cause_account_id: causeAccountId,
+      },
+    },
+    viewingAs: { ...viewAs, targetCauseAccountId: causeAccountId },
+  }
+}
+
 /**
  * Display name for the session profile. See `lib/auth/display-name` — the same
  * helper is used by the View As override, which is the other place full_name is set.
@@ -323,7 +362,8 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     }
 
     const viewAs = await getViewAsPayload(cookieStore)
-    return applyPortalBusinessSelection(viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession)
+    const selectedCauseSession = await applyPortalCauseSelection(viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession)
+    return applyPortalBusinessSelection(selectedCauseSession)
   }
 
   return null
