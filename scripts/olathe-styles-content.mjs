@@ -294,5 +294,45 @@ for (const [style, design] of Object.entries(designDetails)) {
   }
 }
 
+// School-dashboard template for business outreach. The source deliberately
+// leaves the QR zone blank; the material engine inserts the selected school's
+// campaign QR when a school user generates a copy.
+manifest.push({
+  key: 'olathe-business-community-win',
+  title: 'Olathe West — Business Giveback Day Flyer',
+  description: 'Business-facing Olathe West Giveback Day flyer for schools to share with prospective local business partners.',
+  audience: 'business',
+  design: 'community-win',
+  fileName: 'business-community-win.svg',
+  publicPath: '/templates/olathe/business-community-win.svg',
+  mimeType: 'image/svg+xml',
+  type: 'flyer',
+  brand: 'localvip',
+  category: 'olathe-community-giveback',
+  useCase: 'business_outreach',
+  targetRoles: ['community'],
+  targetSubtypes: ['school'],
+  causeAccountIds: [190045, 190046],
+  metadata: {
+    collection: 'olathe-community-giveback',
+    template_key: 'olathe-business-community-win',
+    audience: 'business',
+    flyer_type: 'business',
+    material_tags: ['business-flyer', 'business-outreach'],
+    design_system: 'community-win',
+    allowed_cause_account_ids: [190045, 190046],
+    qr_placement: { id: 'olathe_business_community_win_qr', page: 1, x: 4.0952, y: 86.8, size: 12.0952 },
+    qr_placements: [{ id: 'olathe_business_community_win_qr', page: 1, x: 4.0952, y: 86.8, size: 12.0952 }],
+    automation_template: {
+      enabled: true,
+      is_active: true,
+      stakeholder_types: ['school', 'cause', 'community'],
+      audience_tags: ['olathe', 'olathe-west', 'businesses', 'giveback-day'],
+      library_folder: 'share_with_businesses',
+      qr_zone_count: 1,
+    },
+  },
+})
+
 fs.writeFileSync(path.join(root, 'olathe-template-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 console.log('Wrote olathe-template-manifest.json')
