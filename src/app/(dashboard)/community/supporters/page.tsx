@@ -35,6 +35,10 @@ export default function CommunitySupportersPage() {
     return <div className="flex min-h-[320px] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-brand-500" /></div>
   }
 
+  if (!cause) {
+    return <EmptyState icon={<Users className="h-8 w-8" />} title="No cause linked" description="A cause or school must be linked to your account to see supporters." />
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader title="Supporters" description="Rally your community, share supporter flyers, and track the people who join you." />
@@ -78,7 +82,7 @@ export default function CommunitySupportersPage() {
           <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-brand-600" /> Supporter flyers & materials</CardTitle>
           <p className="text-sm text-surface-500">Approved materials designed to grow family and community support.</p>
         </CardHeader>
-        <CardContent><CommunityMaterialGallery audience="supporter" /></CardContent>
+        <CardContent><CommunityMaterialGallery audience="supporter" cause={cause} /></CardContent>
       </Card>
     </div>
   )

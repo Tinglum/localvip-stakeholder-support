@@ -136,9 +136,9 @@ export default function CommunityBusinessesPage() {
       <Card id="materials" className="scroll-mt-24">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-brand-600" /> Business flyers & materials</CardTitle>
-          <p className="text-sm text-surface-500">Approved materials for approaching local businesses and planning an Olathe West Giveback Day.</p>
+          <p className="text-sm text-surface-500">Create school-branded business flyers, add your QR code, and download finished materials.</p>
         </CardHeader>
-        <CardContent><CommunityMaterialGallery audience="business" /></CardContent>
+        <CardContent><CommunityMaterialGallery audience="business" cause={scopedCause} /></CardContent>
       </Card>
     </div>
   )
