@@ -16,9 +16,16 @@ function materialAudience(material: Material): CommunityMaterialAudience {
   const metadata = (material.metadata as Record<string, unknown> | null) || {}
   const flyerType = typeof metadata.flyer_type === 'string' ? metadata.flyer_type.toLowerCase() : ''
   const useCase = (material.use_case || '').toLowerCase()
-  const roles = material.target_roles || []
-  if (flyerType === 'business' || roles.includes('business') || useCase.includes('business')) return 'business'
+  if (flyerType === 'business' || useCase.includes('business')) return 'business'
   return 'supporter'
+}
+
+function isIntentionalAudienceTemplate(material: Material, audience: CommunityMaterialAudience) {
+  const metadata = (material.metadata as Record<string, unknown> | null) || {}
+  const flyerType = typeof metadata.flyer_type === 'string' ? metadata.flyer_type.toLowerCase() : ''
+  const useCase = (material.use_case || '').toLowerCase()
+  if (audience === 'business') return flyerType === 'business' || useCase.includes('business')
+  return ['supporter', 'parent', 'school', 'community'].some(value => flyerType.includes(value) || useCase.includes(value))
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -86,7 +93,7 @@ function TemplateCustomizer({ material, cause, onClose, onSaved }: { material: M
 export function CommunityMaterialGallery({ audience, cause }: { audience: CommunityMaterialAudience; cause: Cause }) {
   const { data: materials, loading, refetch } = useMaterials()
   const [customizing, setCustomizing] = React.useState<Material | null>(null)
-  const templates = materials.filter(material => material.is_template && material.status === 'active' && materialAudience(material) === audience)
+  const templates = materials.filter(material => material.is_template && material.status === 'active' && materialAudience(material) === audience && isIntentionalAudienceTemplate(material, audience))
   const finished = materials.filter(material => { const metadata = (material.metadata || {}) as Record<string, unknown>; return !material.is_template && material.status === 'active' && String(metadata.cause_id || '') === cause.id && metadata.audience === audience })
   if (loading) return <div className="flex min-h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-brand-500" /></div>
   const cards = (rows: Material[], finishedRows = false) => <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{rows.map(material => <div key={material.id} className="overflow-hidden rounded-2xl border border-surface-200 bg-white"><div className="aspect-[7/9] bg-surface-100">{material.thumbnail_url || material.file_url ? <img src={material.thumbnail_url || material.file_url || ''} alt={material.title} className="h-full w-full object-cover object-top" /> : <div className="flex h-full items-center justify-center"><FileText className="h-10 w-10 text-surface-300" /></div>}</div><div className="space-y-3 p-4"><div><p className="line-clamp-2 text-sm font-semibold text-surface-900">{material.title}</p><div className="mt-2 flex gap-1.5"><Badge variant="default">Flyer</Badge><Badge variant="outline">{finishedRows ? 'Finished' : 'Template'}</Badge></div></div>{finishedRows || audience === 'supporter' ? <Button asChild variant="outline" size="sm" className="w-full"><a href={material.file_url || ''} target="_blank" rel="noopener noreferrer"><Download className="h-3.5 w-3.5" /> {finishedRows ? 'Download' : 'Open flyer'}</a></Button> : <Button size="sm" className="w-full" onClick={() => setCustomizing(material)}><Pencil className="h-3.5 w-3.5" /> Customize</Button>}</div></div>)}</div>
