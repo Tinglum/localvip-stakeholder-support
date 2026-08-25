@@ -10,7 +10,7 @@ import {
   type QaSession,
 } from '@/lib/auth/qa-auth'
 import { getDemoProfileByEmail, getDemoSessionEmailFromCookieStore } from '@/lib/auth/demo-auth'
-import { fetchQaUserProfile, resolveQaSessionWithRefresh } from '@/lib/auth/qa-api'
+import { fetchQaApi, fetchQaUserProfile, resolveQaSessionWithRefresh } from '@/lib/auth/qa-api'
 import { sanitizeStakeholderCodeValue, sanitizeStakeholderUrl } from '@/lib/stakeholder-codes'
 import { asUuid } from '@/lib/uuid'
 import { isSuperAdminRole, resolveUserDisplayName } from '@/lib/auth/display-name'
