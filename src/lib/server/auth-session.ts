@@ -52,6 +52,7 @@ export interface ResolvedAuthSession {
      * verifies the target user really belongs to the account before honouring it.
      */
     targetBusinessAccountId?: number
+    targetCauseAccountId?: number
   }
   /**
    * Business account explicitly selected for this portal session (see
@@ -70,6 +71,7 @@ interface ViewAsCookiePayload {
   role: string
   accountType?: string | number
   consumerType?: string
+  causeAccountId?: number
   since: string
 }
 
@@ -129,6 +131,7 @@ function applyViewAsOverride(
       view_as_target_email: payload.email,
       view_as_account_type: payload.accountType ?? null,
       view_as_consumer_type: payload.consumerType ?? null,
+      view_as_cause_account_id: payload.causeAccountId ?? null,
     },
   }
 
@@ -141,6 +144,7 @@ function applyViewAsOverride(
       targetName: payload.name,
       targetRole: payload.role,
       targetConsumerType: payload.consumerType ?? null,
+      targetCauseAccountId: payload.causeAccountId,
       adminId: original.id,
       adminEmail: original.email,
     },

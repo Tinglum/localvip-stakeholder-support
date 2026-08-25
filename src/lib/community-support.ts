@@ -37,6 +37,37 @@ function getCauseMetadata(cause: Cause | null | undefined) {
   return cause.metadata as Record<string, unknown>
 }
 
+function getCauseQaAccountId(cause: Cause): string | null {
+  if (cause.external_id && /^\d+$/.test(cause.external_id.trim())) return cause.external_id.trim()
+
+  const metadata = getCauseMetadata(cause)
+  const candidate = metadata.qaAccountId ?? metadata.qaCauseId ?? metadata.qa_account_id
+  if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) return String(candidate)
+  if (typeof candidate === 'string' && /^\d+$/.test(candidate.trim())) return candidate.trim()
+  return null
+}
+
+export function resolveCommunityCause(causes: Cause[], profile: Profile): Cause | null {
+  const profileMetadata = (profile.metadata as Record<string, unknown> | null) || {}
+  const selectedAccountId = profileMetadata.view_as_cause_account_id
+  const selectedId =
+    typeof selectedAccountId === 'number' && Number.isFinite(selectedAccountId) && selectedAccountId > 0
+      ? String(selectedAccountId)
+      : typeof selectedAccountId === 'string' && /^\d+$/.test(selectedAccountId.trim())
+        ? selectedAccountId.trim()
+        : null
+
+  if (selectedId) {
+    const selectedCause = causes.find((cause) => getCauseQaAccountId(cause) === selectedId)
+    if (selectedCause) return selectedCause
+  }
+
+  return causes.find((cause) => (
+    cause.owner_id === profile.id
+    || (!!profile.organization_id && cause.organization_id === profile.organization_id)
+  )) || null
+}
+
 export function getCommunitySupportCaptureData(cause: Cause | null | undefined): CommunitySupportCaptureData {
   const metadata = getCauseMetadata(cause)
   const capture = metadata.supporter_capture

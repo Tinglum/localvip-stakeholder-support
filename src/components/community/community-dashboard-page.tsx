@@ -61,6 +61,7 @@ import {
 } from '@/lib/cause-execution'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS, getMaterialLibraryFolderMeta } from '@/lib/material-engine'
 import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constants'
+import { resolveCommunityCause } from '@/lib/community-support'
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
 
@@ -86,8 +87,8 @@ export function CommunityDashboardPage() {
   const { data: businesses } = useBusinesses()
 
   const scopedCause = React.useMemo(
-    () => causes.find((cause) => cause.owner_id === profile.id || cause.organization_id === profile.organization_id) || null,
-    [causes, profile.id, profile.organization_id]
+    () => resolveCommunityCause(causes, profile),
+    [causes, profile]
   )
 
   const supporterContacts = React.useMemo(

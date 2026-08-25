@@ -276,7 +276,10 @@ export async function POST(request: NextRequest) {
     })
     response.cookies.set({
       name: COOKIE_NAME,
-      value: await signViewAsPayload(payload),
+      value: await signViewAsPayload({
+        ...payload,
+        causeAccountId: causeAccountId ?? undefined,
+      }),
       httpOnly: true,
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',

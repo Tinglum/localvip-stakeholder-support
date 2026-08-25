@@ -656,6 +656,7 @@ export interface ViewAsSignedPayload {
   role: string
   accountType?: string | number
   consumerType?: string
+  causeAccountId?: number
   since: string
 }
 
@@ -689,6 +690,10 @@ export async function readSignedViewAsPayload(value: string | null | undefined):
       role: payload.role,
       accountType: payload.accountType,
       consumerType: typeof payload.consumerType === 'string' ? payload.consumerType : undefined,
+      causeAccountId:
+        typeof payload.causeAccountId === 'number' && Number.isFinite(payload.causeAccountId) && payload.causeAccountId > 0
+          ? payload.causeAccountId
+          : undefined,
       since: payload.since,
     }
   } catch {

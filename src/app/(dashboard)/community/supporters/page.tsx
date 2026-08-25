@@ -8,12 +8,13 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
 import { getContactDisplayName, getContactPrimaryChannel } from '@/lib/business-portal'
 import { useCauses, useContacts } from '@/lib/supabase/hooks'
+import { resolveCommunityCause } from '@/lib/community-support'
 
 export default function CommunitySupportersPage() {
   const { profile } = useAuth()
   const { data: causes } = useCauses()
   const { data: contacts } = useContacts()
-  const cause = causes.find((item) => item.owner_id === profile.id || item.organization_id === profile.organization_id) || null
+  const cause = React.useMemo(() => resolveCommunityCause(causes, profile), [causes, profile])
   const supporters = contacts.filter((contact) => contact.cause_id === cause?.id)
 
   return (

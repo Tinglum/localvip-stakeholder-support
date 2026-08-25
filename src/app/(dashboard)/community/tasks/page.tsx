@@ -24,14 +24,15 @@ import {
 } from '@/lib/supabase/hooks'
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
+import { resolveCommunityCause } from '@/lib/community-support'
 
 export default function CommunityTasksPage() {
   const { profile } = useAuth()
   const { data: causes } = useCauses()
 
   const scopedCause = React.useMemo(
-    () => causes.find(c => c.owner_id === profile.id || c.organization_id === profile.organization_id) || null,
-    [causes, profile.id, profile.organization_id],
+    () => resolveCommunityCause(causes, profile),
+    [causes, profile],
   )
 
   const { data: tasks, refetch: refetchTasks } = useTasks({ entity_id: scopedCause?.id || '__none__' })

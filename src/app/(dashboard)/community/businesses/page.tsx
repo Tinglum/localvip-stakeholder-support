@@ -18,6 +18,7 @@ import { StatCard } from '@/components/ui/stat-card'
 import { useAuth } from '@/lib/auth/context'
 import { useBusinesses, useCauses } from '@/lib/supabase/hooks'
 import { COMMUNITY_BUSINESS_STATUS } from '@/lib/constants'
+import { resolveCommunityCause } from '@/lib/community-support'
 
 export default function CommunityBusinessesPage() {
   const { profile } = useAuth()
@@ -25,8 +26,8 @@ export default function CommunityBusinessesPage() {
   const { data: businesses } = useBusinesses()
 
   const scopedCause = React.useMemo(
-    () => causes.find(c => c.owner_id === profile.id || c.organization_id === profile.organization_id) || null,
-    [causes, profile.id, profile.organization_id],
+    () => resolveCommunityCause(causes, profile),
+    [causes, profile],
   )
 
   const supportingBusinesses = React.useMemo(

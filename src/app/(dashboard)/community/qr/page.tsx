@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { CommunitySupportQrCard } from '@/components/community/community-support-qr-card'
 import { useAuth } from '@/lib/auth/context'
 import { useCauses, useContacts, useQrCodes } from '@/lib/supabase/hooks'
+import { resolveCommunityCause } from '@/lib/community-support'
 
 export default function CommunityQrPage() {
   const { profile } = useAuth()
@@ -22,8 +23,8 @@ export default function CommunityQrPage() {
   const { data: contacts } = useContacts()
 
   const scopedCause = React.useMemo(
-    () => causes.find(c => c.owner_id === profile.id || c.organization_id === profile.organization_id) || null,
-    [causes, profile.id, profile.organization_id],
+    () => resolveCommunityCause(causes, profile),
+    [causes, profile],
   )
 
   const supporterContacts = React.useMemo(
