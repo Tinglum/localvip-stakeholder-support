@@ -38,6 +38,11 @@ const nextConfig = {
       { source: '/portal/activity/:path*', destination: '/dashboard', permanent: false },
       { source: '/portal/templates', destination: '/portal/materials?tab=templates', permanent: false },
       { source: '/portal/templates/:path*', destination: '/portal/materials?tab=templates', permanent: false },
+      { source: '/community/materials', destination: '/community/businesses#materials', permanent: false },
+      { source: '/community/qr', destination: '/community/supporters#rally', permanent: false },
+      { source: '/community/share', destination: '/community/supporters#rally', permanent: false },
+      { source: '/community/activity', destination: '/community/supporters#activity', permanent: false },
+      { source: '/community/tasks', destination: '/dashboard', permanent: false },
     ]
   },
 

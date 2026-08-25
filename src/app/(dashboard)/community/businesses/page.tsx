@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   ArrowRight,
   CheckCircle2,
+  FileText,
   Megaphone,
   Rocket,
   Store,
@@ -19,6 +20,7 @@ import { useAuth } from '@/lib/auth/context'
 import { useBusinesses, useCauses } from '@/lib/supabase/hooks'
 import { COMMUNITY_BUSINESS_STATUS } from '@/lib/constants'
 import { resolveCommunityCause } from '@/lib/community-support'
+import { CommunityMaterialGallery } from '@/components/community/community-material-gallery'
 
 export default function CommunityBusinessesPage() {
   const { profile } = useAuth()
@@ -48,12 +50,12 @@ export default function CommunityBusinessesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Supporting Businesses"
-        description={isSchool ? 'Businesses supporting your school fundraising' : 'Businesses supporting your cause'}
+        title="Business"
+        description={isSchool ? 'Track local business support and use the right flyers to bring more businesses in.' : 'Track business support and use the right flyers to bring more businesses in.'}
         actions={
-          <Button asChild size="sm">
-            <Link href="/community/materials">
-              <Megaphone className="h-4 w-4" /> View outreach materials
+          <Button asChild size="sm" variant="outline">
+            <Link href="#materials">
+              <Megaphone className="h-4 w-4" /> Business flyers
             </Link>
           </Button>
         }
@@ -79,7 +81,7 @@ export default function CommunityBusinessesPage() {
               </p>
               <div className="mt-4">
                 <Button asChild size="sm">
-                  <Link href="/community/materials">
+                  <Link href="#materials">
                     <Megaphone className="h-4 w-4" /> Open outreach materials
                   </Link>
                 </Button>
@@ -125,6 +127,14 @@ export default function CommunityBusinessesPage() {
           })}
         </div>
       )}
+
+      <Card id="materials" className="scroll-mt-24">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-brand-600" /> Business flyers & materials</CardTitle>
+          <p className="text-sm text-surface-500">Approved materials for approaching local businesses and planning an Olathe West Giveback Day.</p>
+        </CardHeader>
+        <CardContent><CommunityMaterialGallery audience="business" /></CardContent>
+      </Card>
     </div>
   )
 }
