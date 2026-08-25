@@ -73,9 +73,11 @@ export function resolveCommunityCause(causes: Cause[], profile: Profile): Cause 
         ? [previewedUserId.trim()]
         : []),
   ])
+  const profileEmail = profile.email?.trim().toLowerCase() || null
 
   return causes.find((cause) => (
     (!!cause.owner_id && ownerIds.has(cause.owner_id))
+    || (!!profileEmail && cause.email?.trim().toLowerCase() === profileEmail)
     || (!!profile.organization_id && cause.organization_id === profile.organization_id)
   )) || null
 }
