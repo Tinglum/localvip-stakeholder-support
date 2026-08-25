@@ -64,8 +64,18 @@ export function resolveCommunityCause(causes: Cause[], profile: Profile): Cause 
     if (selectedCause) return selectedCause
   }
 
+  const previewedUserId = profileMetadata.view_as_target_user_id
+  const ownerIds = new Set([
+    profile.id,
+    ...(typeof previewedUserId === 'number' && Number.isFinite(previewedUserId) && previewedUserId > 0
+      ? [String(previewedUserId)]
+      : typeof previewedUserId === 'string' && previewedUserId.trim()
+        ? [previewedUserId.trim()]
+        : []),
+  ])
+
   return causes.find((cause) => (
-    cause.owner_id === profile.id
+    (!!cause.owner_id && ownerIds.has(cause.owner_id))
     || (!!profile.organization_id && cause.organization_id === profile.organization_id)
   )) || null
 }
