@@ -5,7 +5,7 @@ import { qaRouteErrorResponse, requireQaRouteAccess } from '@/lib/server/qa-rout
 import { filterQaBusinessesForAccess } from '@/lib/server/qa-business-access'
 
 export async function GET(request: NextRequest) {
-  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'business'])
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'business', 'community'])
   if ('error' in access) return access.error
 
   try {

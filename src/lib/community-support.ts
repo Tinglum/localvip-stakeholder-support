@@ -58,7 +58,9 @@ export function resolveCommunityCause(causes: Cause[], profile: Profile): Cause 
         : null
 
   if (selectedId) {
-    const selectedCause = causes.find((cause) => getCauseQaAccountId(cause) === selectedId)
+    const selectedCause = causes.find((cause) => (
+      cause.id === selectedId || getCauseQaAccountId(cause) === selectedId
+    ))
     if (selectedCause) return selectedCause
   }
 
