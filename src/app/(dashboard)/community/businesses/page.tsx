@@ -6,6 +6,7 @@ import {
   ArrowRight,
   CheckCircle2,
   FileText,
+  Loader2,
   Megaphone,
   Rocket,
   Store,
@@ -24,7 +25,7 @@ import { CommunityMaterialGallery } from '@/components/community/community-mater
 
 export default function CommunityBusinessesPage() {
   const { profile } = useAuth()
-  const { data: causes } = useCauses()
+  const { data: causes, loading: causesLoading } = useCauses()
   const { data: businesses } = useBusinesses()
 
   const scopedCause = React.useMemo(
@@ -38,6 +39,10 @@ export default function CommunityBusinessesPage() {
   )
 
   const isSchool = scopedCause?.type === 'school'
+
+  if (causesLoading) {
+    return <div className="flex min-h-[320px] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-brand-500" /></div>
+  }
 
   if (!scopedCause) {
     return <EmptyState icon={<Store className="h-8 w-8" />} title="No cause linked" description="A cause or school must be linked to your account to see businesses." />

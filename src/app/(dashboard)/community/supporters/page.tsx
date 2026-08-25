@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Copy, FileText, Megaphone, QrCode, Users } from 'lucide-react'
+import { Copy, FileText, Loader2, Megaphone, QrCode, Users } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -15,7 +15,7 @@ import { CommunityMaterialGallery } from '@/components/community/community-mater
 
 export default function CommunitySupportersPage() {
   const { profile } = useAuth()
-  const { data: causes } = useCauses()
+  const { data: causes, loading: causesLoading } = useCauses()
   const { data: contacts } = useContacts()
   const cause = React.useMemo(() => resolveCommunityCause(causes, profile), [causes, profile])
   const supporters = contacts.filter((contact) => contact.cause_id === cause?.id)
@@ -29,6 +29,10 @@ export default function CommunitySupportersPage() {
     await navigator.clipboard.writeText(rallyMessage)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  if (causesLoading) {
+    return <div className="flex min-h-[320px] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-brand-500" /></div>
   }
 
   return (
