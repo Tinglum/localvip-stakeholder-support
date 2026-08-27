@@ -308,7 +308,7 @@ function buildQaSessionProfile(
 
 export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | null> {
   const cookieStore = cookies()
-  const demoSessionEmail = getDemoSessionEmailFromCookieStore(cookieStore)
+  const demoSessionEmail = await getDemoSessionEmailFromCookieStore(cookieStore)
   // Refresh an expired access token rather than treating it as "no session".
   // Previously an expired token logged the user straight out to QA even though a
   // valid refresh token was sitting in the cookie.

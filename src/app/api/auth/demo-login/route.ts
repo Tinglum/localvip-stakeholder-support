@@ -20,7 +20,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'That demo account is not available.' }, { status: 400 })
   }
 
-  if (password && password !== 'demo1234') {
+  // A missing password used to pass this check outright: 'password &&' made the
+  // whole comparison optional, so POSTing just an email minted a session for any
+  // demo account — the super-admin one included.
+  if (password !== 'demo1234') {
     return NextResponse.json({ ok: false, error: 'Use password demo1234 for manual demo login.' }, { status: 401 })
   }
 
@@ -33,6 +36,6 @@ export async function POST(request: NextRequest) {
     },
   })
 
-  setDemoSessionCookie(response, profile.email)
+  await setDemoSessionCookie(response, profile.email)
   return response
 }

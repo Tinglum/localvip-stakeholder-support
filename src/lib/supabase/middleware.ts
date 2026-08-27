@@ -21,7 +21,7 @@ export async function updateSession(request: NextRequest) {
   // refresh could never run. Authorization is still enforced downstream by
   // getAuthenticatedSession, which redirects if the refresh actually fails.
   const hasQaAuth = hasRefreshableQaSession(request)
-  const hasDemoAuth = hasDemoSession(request)
+  const hasDemoAuth = await hasDemoSession(request)
   const response = NextResponse.next({
     request: { headers: request.headers },
   })

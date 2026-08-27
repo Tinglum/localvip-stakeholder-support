@@ -5,6 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BRANDS } from '@/lib/constants'
 
+// The demo password is not a secret — it is printed on this page. The real gate
+// is the server's ENABLE_DEMO_LOGIN flag; the password now simply has to be sent,
+// because the route used to accept a request that omitted it entirely.
+const DEMO_PASSWORD = 'demo1234'
+
 const DEMO_ACCOUNTS = [
   { email: 'kenneth@localvip.com', name: 'Kenneth', role: 'Super Admin' },
   { email: 'rick@localvip.com', name: 'Rick', role: 'Internal Admin' },
@@ -67,7 +72,7 @@ export function DemoLoginPage() {
     setError('')
 
     try {
-      await loginWithDemoSession({ email: demoEmail })
+      await loginWithDemoSession({ email: demoEmail, password: DEMO_PASSWORD })
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : 'Demo login failed.')
       setLoading(false)

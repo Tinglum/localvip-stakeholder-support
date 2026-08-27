@@ -1,5 +1,6 @@
 import type { NextRequest, NextResponse } from 'next/server'
 import { DEMO_PROFILES } from '@/lib/auth/demo-profiles'
+import { readSignedDemoSessionPayload, signDemoSessionPayload } from '@/lib/auth/qa-auth'
 import type { Profile } from '@/lib/types/database'
 
 type CookieSource = {
@@ -12,6 +13,16 @@ export const DEMO_COOKIE_NAMES = {
 
 function normalizeEmail(value: string | null | undefined) {
   return value?.trim().toLowerCase() || null
+}
+
+/**
+ * Demo login issues a real session from a static password, so the kill switch has
+ * to hold on every read as well as at login. Checking it only in the login route
+ * left an already-issued cookie working forever — including after the flag was
+ * turned off, and in any environment that inherited the cookie.
+ */
+export function isDemoLoginEnabled() {
+  return process.env.ENABLE_DEMO_LOGIN === 'true'
 }
 
 function cloneDemoProfile(profile: Profile): Profile {
@@ -34,21 +45,36 @@ export function getDemoProfileByEmail(email: string | null | undefined): Profile
   return profile ? cloneDemoProfile(profile) : null
 }
 
-export function getDemoSessionEmailFromCookieStore(cookieStore: CookieSource) {
-  return normalizeEmail(cookieStore.get(DEMO_COOKIE_NAMES.email)?.value)
+/**
+ * The demo session email, or null.
+ *
+ * Async because the cookie is HMAC-signed (see `signDemoSessionPayload`): it used
+ * to be a plaintext email, so anyone could mint an admin session with a single
+ * `document.cookie` write. A value that fails signature verification, or names an
+ * account that is no longer a demo profile, is treated as no session at all.
+ */
+export async function getDemoSessionEmailFromCookieStore(cookieStore: CookieSource): Promise<string | null> {
+  if (!isDemoLoginEnabled()) return null
+
+  const payload = await readSignedDemoSessionPayload(cookieStore.get(DEMO_COOKIE_NAMES.email)?.value)
+  const normalized = normalizeEmail(payload?.email)
+  if (!normalized || !DEMO_PROFILES_BY_EMAIL.has(normalized)) return null
+  return normalized
 }
 
-export function hasDemoSession(request: NextRequest) {
-  return !!getDemoSessionEmailFromCookieStore(request.cookies)
+export async function hasDemoSession(request: NextRequest) {
+  return !!(await getDemoSessionEmailFromCookieStore(request.cookies))
 }
 
-export function setDemoSessionCookie(response: NextResponse, email: string) {
+export async function setDemoSessionCookie(response: NextResponse, email: string) {
   const normalized = normalizeEmail(email)
   if (!normalized || !DEMO_PROFILES_BY_EMAIL.has(normalized)) {
     throw new Error('Invalid demo account.')
   }
 
-  response.cookies.set(DEMO_COOKIE_NAMES.email, normalized, {
+  const value = await signDemoSessionPayload({ email: normalized, since: new Date().toISOString() })
+
+  response.cookies.set(DEMO_COOKIE_NAMES.email, value, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

@@ -1202,3 +1202,44 @@ export async function resolveProfileForQaSession(
 
   return buildFallbackQaProfile(claims)
 }
+
+/**
+ * Signed demo-session payload.
+ *
+ * The demo cookie used to be the plaintext email of a demo profile, which any
+ * browser could set by hand — including `kenneth@localvip.com`, the super-admin
+ * demo account. It now carries the same HMAC-SHA256 signature as the View-As and
+ * portal-business cookies, so a hand-written value verifies as garbage and is
+ * ignored. `since` keeps two cookies for the same account from being identical.
+ */
+export interface DemoSessionSignedPayload {
+  email: string
+  since: string
+}
+
+export async function signDemoSessionPayload(payload: DemoSessionSignedPayload): Promise<string> {
+  const payloadBase64Url = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)))
+  const signature = await signQaStatePayload(payloadBase64Url)
+  return `${payloadBase64Url}.${signature}`
+}
+
+export async function readSignedDemoSessionPayload(
+  value: string | null | undefined,
+): Promise<DemoSessionSignedPayload | null> {
+  if (!value) return null
+
+  const [payloadBase64Url, signature] = value.split('.')
+  if (!payloadBase64Url || !signature) return null
+
+  const expectedSignature = await signQaStatePayload(payloadBase64Url)
+  if (signature !== expectedSignature) return null
+
+  try {
+    const payload = JSON.parse(base64UrlToString(payloadBase64Url)) as Partial<DemoSessionSignedPayload>
+    if (typeof payload.email !== 'string' || !payload.email) return null
+    if (typeof payload.since !== 'string') return null
+    return { email: payload.email, since: payload.since }
+  } catch {
+    return null
+  }
+}
