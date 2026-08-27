@@ -39,6 +39,15 @@ export interface QaEntityConfig {
   endpoint: string
   /** If the GET list response is wrapped (e.g. { items: [...], totalCount }), this is the wrapper key */
   listWrapperKey?: string
+  /**
+   * Endpoint for single-record operations (GET/PUT/PATCH/DELETE by id), when it
+   * differs from the list endpoint. Some controllers expose the collection under
+   * a named action (e.g. .../User/list) while the by-id route lives at the
+   * controller root (.../User/{id}); without this the detail request would be
+   * built as .../User/list/{id}, which no route template matches.
+   * Defaults to `endpoint`.
+   */
+  detailEndpoint?: string
 }
 
 /**
@@ -64,7 +73,11 @@ export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
   deals: { endpoint: '/api/dashboard/v1/Deal', listWrapperKey: 'items' },
   audit_logs: { endpoint: '/api/dashboard/v1/AuditLog', listWrapperKey: 'items' },
   notifications: { endpoint: '/api/dashboard/v1/Notification' },
-  profiles: { endpoint: '/api/dashboard/v1/User/list', listWrapperKey: 'items' },
+  profiles: {
+    endpoint: '/api/dashboard/v1/User/list',
+    detailEndpoint: '/api/dashboard/v1/User',
+    listWrapperKey: 'items',
+  },
   qr_code_collections: { endpoint: '/api/dashboard/v1/QrCodeCollection', listWrapperKey: 'items' },
   outreach_scripts: { endpoint: '/api/dashboard/v1/OutreachScript', listWrapperKey: 'items' },
   material_assignments: { endpoint: '/api/dashboard/v1/MaterialAssignment', listWrapperKey: 'items' },

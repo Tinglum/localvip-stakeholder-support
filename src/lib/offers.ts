@@ -39,7 +39,7 @@ export function resolveBusinessOffer(
     business_id: business.id,
     offer_type: 'capture',
     status: portal.capture_offer_title || portal.offer_title ? 'active' : 'draft',
-    headline: portal.capture_offer_title || portal.offer_title || 'Join our list and get access to exclusive offers',
+    headline: portal.capture_offer_title || portal.offer_title || 'Join our list and get access to exclusive VIP savings',
     description: portal.capture_offer_description || portal.offer_description || 'This offer is only used to collect your first 100 customers before you go live.',
     value_type: 'label',
     value_label: portal.capture_offer_value || portal.offer_value || null,

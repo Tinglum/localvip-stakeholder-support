@@ -27,7 +27,11 @@ async function call(
   }
 
   const config = QA_ENTITY_MAP[table]
-  const url = `${config.endpoint}/${id}`
+  // Some controllers expose the collection under a named action while the by-id
+  // route lives at the controller root, so the detail path can't be derived from
+  // the list path. `profiles` is the case that bit us: /User/list/{id} matches no
+  // route template and 404s, which the user detail page renders as "User not found".
+  const url = `${config.detailEndpoint ?? config.endpoint}/${id}`
 
   const init: RequestInit = { method }
   if (method === 'PUT' || method === 'PATCH') {

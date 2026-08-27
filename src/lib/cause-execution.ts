@@ -6,6 +6,38 @@ import type {
   QrCode,
   StakeholderCode,
 } from '@/lib/types/database'
+import type { QaAccountFields } from '@/lib/crm-api'
+
+// ─── Profile completeness ───────────────────────────────────
+
+/**
+ * A cause as the CRM sees it: the local record plus the QA account fields the
+ * detail response merges in.
+ */
+export type CauseProfileInput = Cause &
+  Partial<Pick<QaAccountFields, 'city_name' | 'owner_email' | 'owner_phone'>>
+
+/**
+ * A cause profile is complete when it has a location and at least one way to
+ * reach it.
+ *
+ * QA is the source of truth for both: location arrives as the `city_name`
+ * string and contact as `owner_email` / `owner_phone`. The local `city_id`,
+ * `email` and `phone` columns are only populated for causes that predate the QA
+ * import, so either side counts. Checking `city_id` alone marked every
+ * QA-imported cause incomplete even while the header showed its city.
+ */
+export function isCauseProfileComplete(cause: CauseProfileInput): boolean {
+  const hasLocation = !!(cause.city_id || cause.city_name?.trim())
+  const hasContact = !!(
+    cause.owner_email ||
+    cause.email ||
+    cause.owner_phone ||
+    cause.phone ||
+    cause.website
+  )
+  return hasLocation && hasContact
+}
 
 // ─── Step keys ──────────────────────────────────────────────
 
@@ -56,7 +88,7 @@ export function getCauseExecutionStepKey(step: OnboardingStep, index: number): C
 // ─── Compute execution steps ────────────────────────────────
 
 export function computeCauseExecutionSteps(input: {
-  cause: Cause
+  cause: CauseProfileInput
   steps: OnboardingStep[]
   codes: StakeholderCode | null
   generatedMaterials: GeneratedMaterial[]
@@ -78,7 +110,7 @@ export function computeCauseExecutionSteps(input: {
     let blocker: string | null = null
     switch (key) {
       case 'initial_connection':
-        if (!input.cause.city_id || !(input.cause.email || input.cause.phone || input.cause.website)) {
+        if (!isCauseProfileComplete(input.cause)) {
           blocker = 'Add a city and at least one contact path before completing this step.'
         }
         break
@@ -146,7 +178,7 @@ export interface CauseReadinessScore {
 }
 
 export function computeCauseReadiness(input: {
-  cause: Cause
+  cause: CauseProfileInput
   steps: OnboardingStep[]
   codes: StakeholderCode | null
   generatedMaterials: GeneratedMaterial[]
@@ -156,7 +188,7 @@ export function computeCauseReadiness(input: {
 }): CauseReadinessScore {
   const isSchool = input.cause.type === 'school'
   const checks: Array<{ label: string; met: boolean }> = [
-    { label: 'Profile complete', met: !!(input.cause.city_id && (input.cause.email || input.cause.phone)) },
+    { label: 'Profile complete', met: isCauseProfileComplete(input.cause) },
     { label: 'Codes entered', met: !!(input.codes?.referral_code && input.codes?.connection_code) },
     { label: 'Materials generated', met: input.generatedMaterials.filter((m) => m.generation_status === 'generated').length > 0 },
     { label: 'QR assets ready', met: input.qrCodes.length > 0 },

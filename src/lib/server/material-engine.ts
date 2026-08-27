@@ -18,6 +18,10 @@ import {
   renderMaterialAssetTemplate,
   syncMaterialAssetTemplatesForStakeholder,
 } from '@/lib/server/material-asset-template-engine'
+import {
+  CORE_CAMPAIGN_TEMPLATE_NAMES,
+  ensureCoreCampaignStructuredTemplates,
+} from '@/lib/server/core-campaign-templates'
 import type { createServiceClient } from '@/lib/supabase/server'
 import { asUuid, pickFirstUuid } from '@/lib/uuid'
 import { generateShortCode } from '@/lib/utils'
@@ -73,19 +77,35 @@ interface TemplateCopyDefinition {
   headline: string
   subheadline: string
   body: string
+  comparisonSummary?: string
   cta: string
   footer: string
   qrCaption: string
+  noteHeadline?: string
+  layoutStyle?: 'comparison_master'
   titlePattern: string
   descriptionPattern: string
+  sectionLabel?: string
+  sectionTitle?: string
+  sectionBody?: string
+  proofLabel?: string
+  ctaSubline?: string
+  footerBadges?: string[]
+  steps?: Array<{ title: string; body: string }>
+  proofItems?: Array<{ title: string; body: string }>
   accentColor?: string
   highlightColor?: string
   backgroundColor?: string
   panelColor?: string
   textColor?: string
-  variant?: 'poster' | 'flyer' | 'card'
+  variant?: 'poster' | 'flyer' | 'card' | 'campaign_sheet'
   canvasWidth?: number
   canvasHeight?: number
+}
+
+interface FilledTemplateCard {
+  title: string
+  body: string
 }
 
 interface GenerationResult {
@@ -139,6 +159,18 @@ interface StructuredTemplateRenderState {
   subheadlineLines: string[]
   bodyLines: string[]
   footerLines: string[]
+  noteHeadlineLines: string[]
+  sectionLabel: string
+  sectionTitleLines: string[]
+  sectionBodyLines: string[]
+  proofLabel: string
+  ctaSublineLines: string[]
+  steps: FilledTemplateCard[]
+  proofItems: FilledTemplateCard[]
+  footerBadges: string[]
+  primaryLogoUrl: string | null
+  primaryMark: string
+  secondaryMark: string
 }
 
 const DEFAULT_QR_POSITION = {
@@ -696,6 +728,108 @@ export async function regenerateSingleGeneratedMaterial(
   })
 }
 
+export async function renderStructuredTemplatePreviewPng(
+  template: MaterialTemplate,
+  options: {
+    stakeholderName: string
+    stakeholderType?: StakeholderType
+    brand?: 'localvip' | 'hato'
+    ownerName?: string
+    cityName?: string
+    referralCode?: string
+    connectionCode?: string
+    joinUrl?: string
+    displayUrl?: string
+    captureOfferHeadline?: string
+    captureOfferDescription?: string
+    captureOfferValue?: string
+    cashbackLabel?: string
+    supportLabel?: string
+    logoUrl?: string | null
+    coverPhotoUrl?: string | null
+    metadata?: Record<string, unknown> | null
+  },
+) {
+  const now = new Date().toISOString()
+  const stakeholderType = options.stakeholderType || template.stakeholder_types[0] || 'school'
+  const fallbackCode = normalizeStakeholderCode(options.referralCode || options.stakeholderName || 'localvip')
+  const joinUrl = options.joinUrl || buildStakeholderJoinUrl(stakeholderType, fallbackCode)
+  const displayUrl = options.displayUrl || toDisplayUrl(joinUrl)
+  const metadata = options.metadata || null
+
+  const stakeholder: Stakeholder = {
+    id: 'preview-stakeholder',
+    type: stakeholderType,
+    name: options.stakeholderName,
+    city_id: null,
+    owner_user_id: null,
+    profile_id: null,
+    business_id: null,
+    cause_id: stakeholderType === 'business' ? null : 'preview-cause',
+    organization_id: null,
+    status: 'active',
+    metadata,
+    created_at: now,
+    updated_at: now,
+  }
+
+  const causeRecord = stakeholderType === 'business'
+    ? null
+    : {
+      id: 'preview-cause',
+      name: options.stakeholderName,
+      type: stakeholderType === 'school' ? 'school' : 'cause',
+      logo_url: options.logoUrl || null,
+      cover_photo_url: options.coverPhotoUrl || null,
+      metadata,
+    }
+
+  const context: StakeholderMaterialContext = {
+    stakeholder,
+    codes: {
+      id: 'preview-code',
+      stakeholder_id: stakeholder.id,
+      referral_code: options.referralCode || fallbackCode,
+      connection_code: options.connectionCode || fallbackCode,
+      join_url: joinUrl,
+      created_at: now,
+      updated_at: now,
+    },
+    business: null,
+    cause: causeRecord as Cause | null,
+    profile: null,
+    organization: null,
+    city: null,
+    offers: [],
+    brand: options.brand || 'localvip',
+    joinUrl,
+    displayUrl,
+    ownerName: options.ownerName || 'LocalVIP',
+    cityName: options.cityName || '',
+    captureOfferHeadline: options.captureOfferHeadline || 'Support your local community.',
+    captureOfferDescription: options.captureOfferDescription || getDefaultDescriptionForStakeholder(stakeholder),
+    captureOfferValue: options.captureOfferValue || 'Local impact',
+    cashbackLabel: options.cashbackLabel || 'Rewards available',
+    supportLabel: options.supportLabel || 'Community support',
+  }
+
+  let qrDataUrl = await QRCode.toDataURL(joinUrl, {
+    width: 1024,
+    margin: 1,
+    color: {
+      dark: '#0f172a',
+      light: '#ffffff',
+    },
+    errorCorrectionLevel: 'H',
+  })
+
+  if (options.logoUrl) {
+    qrDataUrl = await embedLogoIntoQr(qrDataUrl, options.logoUrl)
+  }
+
+  return renderStructuredTemplatePng(template, context, qrDataUrl)
+}
+
 async function generateOneMaterial(
   supabase: ServiceSupabaseClient,
   context: StakeholderMaterialContext,
@@ -1121,6 +1255,9 @@ async function getTemplatesForStakeholder(
   },
 ) {
   const tier = options?.tier || 'auto'
+  if (['school', 'cause', 'community'].includes(stakeholderType)) {
+    await ensureCoreCampaignStructuredTemplates(supabase)
+  }
   const syncedAssetTemplates = options?.includeAssetTemplates === false
     ? []
     : await syncMaterialAssetTemplatesForStakeholder(supabase, stakeholderType, templateId)
@@ -1173,6 +1310,18 @@ async function getTemplatesForStakeholder(
 
   // Apply template rules from the rules engine
   const rulesFiltered = await applyTemplateRules(supabase, scopeFiltered, stakeholderType, options?.cityId, options?.campaignId)
+
+  if (['school', 'cause', 'community'].includes(stakeholderType)) {
+    const nonFallbackTemplates = rulesFiltered.filter((template) => {
+      const isLegacyFallback = /^(school|cause|community)-default-auto-template$/i.test(template.name)
+      const isCoreCampaign = CORE_CAMPAIGN_TEMPLATE_NAMES.includes(template.name)
+      return isCoreCampaign || !isLegacyFallback
+    })
+    const hasCoreCampaignTemplates = nonFallbackTemplates.some((template) => CORE_CAMPAIGN_TEMPLATE_NAMES.includes(template.name))
+    if (hasCoreCampaignTemplates) {
+      return nonFallbackTemplates
+    }
+  }
 
   if (rulesFiltered.length > 0) {
     return rulesFiltered
@@ -1875,6 +2024,104 @@ function getDefaultDescriptionForStakeholder(stakeholder: Stakeholder) {
   return 'Connect with this LocalVIP stakeholder and take the next step.'
 }
 
+function getEntityMetadata(context: StakeholderMaterialContext) {
+  const records = [
+    context.cause?.metadata,
+    context.business?.metadata,
+    context.organization?.metadata,
+    context.stakeholder.metadata,
+  ]
+
+  for (const record of records) {
+    if (record && typeof record === 'object') return record as Record<string, unknown>
+  }
+
+  return {} as Record<string, unknown>
+}
+
+function readMetadataString(metadata: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = metadata[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+function getStakeholderKindLabel(context: StakeholderMaterialContext) {
+  if (context.cause?.type === 'school' || context.stakeholder.type === 'school') return 'school'
+  if (context.cause?.type === 'church') return 'church'
+  if (context.stakeholder.type === 'cause' || context.stakeholder.type === 'community') return 'cause'
+  return context.stakeholder.type
+}
+
+function getCampaignTokenValues(context: StakeholderMaterialContext) {
+  const metadata = getEntityMetadata(context)
+  const stakeholderKind = getStakeholderKindLabel(context)
+  const shortName = readMetadataString(metadata, 'short_name', 'community_short_name', 'school_short_name')
+    || context.stakeholder.name
+  const supportFocus = readMetadataString(metadata, 'support_focus', 'campaign_support_focus', 'team_label')
+    || (stakeholderKind === 'school' ? 'our school' : 'our community')
+  const communityGroup = readMetadataString(metadata, 'community_group', 'supporter_group', 'family_group')
+    || (stakeholderKind === 'school'
+      ? 'families, supporters, and booster families'
+      : 'supporters and community members')
+  const peerGroupLabel = readMetadataString(metadata, 'peer_group_label', 'peer_group', 'school_outreach_label')
+    || (stakeholderKind === 'school' ? 'YOUR SCHOOL' : 'YOUR ORGANIZATION')
+
+  return {
+    community_short_name: shortName,
+    support_focus: supportFocus,
+    community_group: communityGroup,
+    peer_group_label: peerGroupLabel,
+    stakeholder_kind_label: stakeholderKind,
+  }
+}
+
+function parseTemplateCards(raw: unknown) {
+  if (!Array.isArray(raw)) return [] as FilledTemplateCard[]
+  return raw
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const record = entry as Record<string, unknown>
+      const title = typeof record.title === 'string' ? record.title : ''
+      const body = typeof record.body === 'string' ? record.body : ''
+      if (!title.trim() && !body.trim()) return null
+      return { title, body }
+    })
+    .filter((entry): entry is FilledTemplateCard => !!entry)
+}
+
+function fillTemplateCards(
+  cards: FilledTemplateCard[],
+  valueMap: Record<string, string | null | undefined>,
+) {
+  return cards.map((card) => ({
+    title: fillTemplateText(card.title, valueMap),
+    body: fillTemplateText(card.body, valueMap),
+  }))
+}
+
+function getTemplateBranding(context: StakeholderMaterialContext) {
+  const metadata = getEntityMetadata(context)
+  const raw = metadata.template_branding
+  const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : metadata
+  const readColor = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = source[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+    return undefined
+  }
+
+  return {
+    accent: readColor('primaryColor', 'primary_color', 'accentColor', 'accent_color'),
+    soft: readColor('secondaryColor', 'secondary_color', 'highlightColor', 'highlight_color'),
+    background: readColor('backgroundColor', 'background_color'),
+    panel: readColor('panelColor', 'panel_color'),
+    text: readColor('textColor', 'text_color'),
+  }
+}
+
 function getTemplateCopy(template: MaterialTemplate): TemplateCopyDefinition {
   const metadata = (template.metadata as Record<string, unknown> | null) || {}
   return {
@@ -1882,11 +2129,24 @@ function getTemplateCopy(template: MaterialTemplate): TemplateCopyDefinition {
     headline: `${metadata.headline || '{{stakeholder_name}}'}`,
     subheadline: `${metadata.subheadline || '{{capture_offer_headline}}'}`,
     body: `${metadata.body || '{{capture_offer_description}}'}`,
+    comparisonSummary: metadata.comparisonSummary ? `${metadata.comparisonSummary}` : undefined,
     cta: `${metadata.cta || 'Scan to get started'}`,
     footer: `${metadata.footer || '{{support_label}}'}`,
     qrCaption: `${metadata.qrCaption || 'Scan with your phone'}`,
+    noteHeadline: metadata.noteHeadline ? `${metadata.noteHeadline}` : undefined,
+    layoutStyle: metadata.layoutStyle === 'comparison_master' ? 'comparison_master' : undefined,
     titlePattern: `${metadata.titlePattern || '{{stakeholder_name}} - {{template_name}}'}`,
     descriptionPattern: `${metadata.descriptionPattern || '{{capture_offer_headline}}'}`,
+    sectionLabel: metadata.sectionLabel ? `${metadata.sectionLabel}` : undefined,
+    sectionTitle: metadata.sectionTitle ? `${metadata.sectionTitle}` : undefined,
+    sectionBody: metadata.sectionBody ? `${metadata.sectionBody}` : undefined,
+    proofLabel: metadata.proofLabel ? `${metadata.proofLabel}` : undefined,
+    ctaSubline: metadata.ctaSubline ? `${metadata.ctaSubline}` : undefined,
+    footerBadges: Array.isArray(metadata.footerBadges)
+      ? metadata.footerBadges.map((item) => `${item}`)
+      : undefined,
+    steps: parseTemplateCards(metadata.steps),
+    proofItems: parseTemplateCards(metadata.proofItems),
     accentColor: metadata.accentColor ? `${metadata.accentColor}` : undefined,
     highlightColor: metadata.highlightColor ? `${metadata.highlightColor}` : undefined,
     backgroundColor: metadata.backgroundColor ? `${metadata.backgroundColor}` : undefined,
@@ -1899,6 +2159,7 @@ function getTemplateCopy(template: MaterialTemplate): TemplateCopyDefinition {
 }
 
 function getTemplateValueMap(context: StakeholderMaterialContext) {
+  const campaignValues = getCampaignTokenValues(context)
   return {
     stakeholder_name: context.stakeholder.name,
     stakeholder_type: context.stakeholder.type,
@@ -1917,6 +2178,7 @@ function getTemplateValueMap(context: StakeholderMaterialContext) {
     cause_name: context.cause?.name || context.stakeholder.name,
     organization_name: context.organization?.name || context.stakeholder.name,
     template_name: '',
+    ...campaignValues,
   }
 }
 
@@ -2034,7 +2296,7 @@ function buildStructuredTemplateRenderState(
   const qrPosition = normalizeQrPosition(template.qr_position_json)
   const width = copy.canvasWidth || qrPosition.canvas_width || DEFAULT_QR_POSITION.canvas_width
   const height = copy.canvasHeight || qrPosition.canvas_height || DEFAULT_QR_POSITION.canvas_height
-  const palette = getPalette(context.brand, copy)
+  const palette = getPalette(context.brand, copy, context)
 
   return {
     copy,
@@ -2043,10 +2305,26 @@ function buildStructuredTemplateRenderState(
     width,
     height,
     palette,
-    headlineLines: wrapText(fillTemplateText(copy.headline, valueMap), 18),
-    subheadlineLines: wrapText(fillTemplateText(copy.subheadline, valueMap), 24),
+    headlineLines: copy.variant === 'campaign_sheet'
+      ? wrapText(fillTemplateText(copy.headline, valueMap), 22).slice(0, 4)
+      : wrapText(fillTemplateText(copy.headline, valueMap), 18),
+    subheadlineLines: copy.variant === 'campaign_sheet'
+      ? wrapText(fillTemplateText(copy.subheadline, valueMap), 34).slice(0, 3)
+      : wrapText(fillTemplateText(copy.subheadline, valueMap), 24),
     bodyLines: wrapText(fillTemplateText(copy.body, valueMap), 44),
     footerLines: wrapText(fillTemplateText(copy.footer, valueMap), 36),
+    noteHeadlineLines: wrapText(fillTemplateText(copy.noteHeadline || '', valueMap), 38),
+    sectionLabel: fillTemplateText(copy.sectionLabel || '', valueMap),
+    sectionTitleLines: wrapText(fillTemplateText(copy.sectionTitle || '', valueMap), 26),
+    sectionBodyLines: wrapText(fillTemplateText(copy.sectionBody || '', valueMap), 46),
+    proofLabel: fillTemplateText(copy.proofLabel || '', valueMap),
+    ctaSublineLines: wrapText(fillTemplateText(copy.ctaSubline || '', valueMap), 40),
+    steps: fillTemplateCards(copy.steps || [], valueMap),
+    proofItems: fillTemplateCards(copy.proofItems || [], valueMap),
+    footerBadges: (copy.footerBadges || []).map((badge) => fillTemplateText(badge, valueMap)),
+    primaryLogoUrl: context.cause?.logo_url || context.business?.logo_url || null,
+    primaryMark: context.stakeholder.name,
+    secondaryMark: context.brand === 'hato' ? 'POWERED BY HATO' : 'POWERED BY LOCALVIP',
   }
 }
 
@@ -2069,7 +2347,48 @@ async function drawStructuredTemplateOnContext(
     subheadlineLines,
     bodyLines,
     footerLines,
+    sectionLabel,
+    sectionTitleLines,
+    sectionBodyLines,
+    proofLabel,
+    ctaSublineLines,
+    noteHeadlineLines,
+    steps,
+    proofItems,
+    footerBadges,
+    primaryLogoUrl,
+    primaryMark,
+    secondaryMark,
   } = renderState
+
+  if (copy.variant === 'campaign_sheet') {
+    await drawCampaignSheetOnContext(ctx, {
+      copy,
+      palette,
+      width,
+      height,
+      headlineLines,
+      subheadlineLines,
+      sectionLabel,
+      sectionTitleLines,
+      sectionBodyLines,
+      proofLabel,
+      ctaSublineLines,
+      noteHeadlineLines,
+      steps,
+      proofItems,
+      footerBadges,
+      qrPosition,
+      qrDataUrl,
+      loadImage,
+      coverPhotoUrl: template.source_path || coverPhotoUrl || null,
+      primaryLogoUrl,
+      primaryMark,
+      secondaryMark,
+      valueMap,
+    })
+    return
+  }
 
   const backgroundGradient = ctx.createLinearGradient(0, 0, width, height)
   backgroundGradient.addColorStop(0, palette.background)
@@ -2134,6 +2453,929 @@ async function drawStructuredTemplateOnContext(
   drawTextBlockCanvas(ctx, footerLines, 88, height - 76, 24, palette.text, 500)
 }
 
+async function drawCampaignSheetOnContext(
+  ctx: any,
+  input: {
+    copy: TemplateCopyDefinition
+    palette: ReturnType<typeof getPalette>
+    width: number
+    height: number
+    headlineLines: string[]
+    subheadlineLines: string[]
+    sectionLabel: string
+    sectionTitleLines: string[]
+    sectionBodyLines: string[]
+    proofLabel: string
+    ctaSublineLines: string[]
+    noteHeadlineLines: string[]
+    steps: FilledTemplateCard[]
+    proofItems: FilledTemplateCard[]
+    footerBadges: string[]
+    qrPosition: StructuredTemplateRenderState['qrPosition']
+    qrDataUrl: string
+    loadImage: RuntimeCanvasModule['loadImage']
+    coverPhotoUrl: string | null
+    primaryLogoUrl: string | null
+    primaryMark: string
+    secondaryMark: string
+    valueMap: Record<string, string | null | undefined>
+  },
+) {
+  const {
+    copy,
+    palette,
+    width,
+    height,
+    headlineLines,
+    subheadlineLines,
+    sectionLabel,
+    sectionTitleLines,
+    sectionBodyLines,
+    proofLabel,
+    ctaSublineLines,
+    noteHeadlineLines,
+    steps,
+    proofItems,
+    footerBadges,
+    qrPosition,
+    qrDataUrl,
+    loadImage,
+    coverPhotoUrl,
+    primaryLogoUrl,
+    primaryMark,
+    secondaryMark,
+    valueMap,
+  } = input
+
+  if (copy.layoutStyle === 'comparison_master') {
+    await drawComparisonMasterCampaignSheetOnContext(ctx, input)
+    return
+  }
+
+  const navy = palette.accent
+  const gold = '#ddab3d'
+  const ink = '#14213f'
+  const muted = '#4d5a77'
+  const paper = '#fbfaf6'
+  const sheet = '#ffffff'
+
+  const backgroundGradient = ctx.createLinearGradient(0, 0, width, height)
+  backgroundGradient.addColorStop(0, paper)
+  backgroundGradient.addColorStop(1, '#f4f6fb')
+  ctx.fillStyle = backgroundGradient
+  ctx.fillRect(0, 0, width, height)
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(20, 33, 63, 0.035)'
+  ctx.lineWidth = 2
+  for (let offset = -height; offset < width; offset += 34) {
+    ctx.beginPath()
+    ctx.moveTo(offset, 0)
+    ctx.lineTo(offset + height, height)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  if (coverPhotoUrl) {
+    try {
+      const backgroundImage = await loadImage(coverPhotoUrl)
+      ctx.save()
+      ctx.globalAlpha = 0.05
+      drawCoverImage(ctx, backgroundImage, width, height)
+      ctx.restore()
+    } catch {}
+  }
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(20, 33, 63, 0.10)'
+  ctx.shadowBlur = 24
+  roundRect(ctx, 36, 34, width - 72, height - 68, 18, sheet)
+  ctx.restore()
+
+  const brandTop = 84
+  const brandDividerX = width / 2
+  const eyebrow = fillTemplateText(copy.eyebrow, valueMap).toUpperCase()
+  const normalizedEyebrow = eyebrow.replace(/\s+/g, ' ').trim()
+  const normalizedPrimaryMark = primaryMark.toUpperCase().replace(/\s+/g, ' ').trim()
+  const showEyebrow = normalizedEyebrow && normalizedEyebrow !== normalizedPrimaryMark
+  const primaryMarkLines = wrapText(primaryMark, 24).slice(0, 3)
+
+  await drawCampaignLogo(ctx, loadImage, primaryLogoUrl, primaryMark, 86, brandTop, 96, '#ffffff', navy)
+
+  ctx.fillStyle = ink
+  ctx.font = '700 23px Arial'
+  primaryMarkLines.forEach((line, index) => {
+    ctx.fillText(line.toUpperCase(), 200, 110 + (index * 28))
+  })
+  if (showEyebrow) {
+    ctx.fillStyle = muted
+    ctx.font = '600 15px Arial'
+    ctx.fillText(eyebrow, 200, 110 + (primaryMarkLines.length * 28) + 8)
+  }
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(20, 33, 63, 0.15)'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(brandDividerX, 82)
+  ctx.lineTo(brandDividerX, 176)
+  ctx.stroke()
+  ctx.restore()
+
+  ctx.textAlign = 'right'
+  ctx.fillStyle = ink
+  ctx.font = '700 26px Arial'
+  ctx.fillText('LOCALVIP', width - 90, 118)
+  ctx.fillStyle = gold
+  ctx.beginPath()
+  ctx.arc(width - 220, 106, 8, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = muted
+  ctx.font = '600 14px Arial'
+  ctx.fillText(secondaryMark, width - 90, 144)
+  ctx.textAlign = 'start'
+
+  const heroTop = 214
+  drawCenteredTextBlockCanvas(ctx, headlineLines.slice(0, 4), width / 2, heroTop, 56, ink, 800)
+
+  const subheadlineStartY = heroTop + (headlineLines.slice(0, 4).length * 56) + 22
+  const subheadlineVisible = subheadlineLines.slice(0, 2)
+  const dividerY = subheadlineStartY - 14
+  ctx.save()
+  ctx.strokeStyle = gold
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(92, dividerY)
+  ctx.lineTo(234, dividerY)
+  ctx.moveTo(width - 234, dividerY)
+  ctx.lineTo(width - 92, dividerY)
+  ctx.stroke()
+  ctx.restore()
+  drawCenteredTextBlockCanvas(ctx, subheadlineVisible, width / 2, subheadlineStartY, 24, muted, 600)
+
+  const panelTop = 450
+  const panelWidth = 422
+  const panelHeight = 452
+  const leftX = 54
+  const rightX = width - panelWidth - 54
+  drawCampaignComparisonPanel(ctx, {
+    x: leftX,
+    y: panelTop,
+    width: panelWidth,
+    height: panelHeight,
+    header: sectionLabel || 'HOW IT WORKS',
+    items: steps,
+    accent: navy,
+    ink,
+    muted,
+    side: 'left',
+    gold,
+  })
+  drawCampaignComparisonPanel(ctx, {
+    x: rightX,
+    y: panelTop,
+    width: panelWidth,
+    height: panelHeight,
+    header: proofLabel || 'WHY IT MATTERS',
+    items: proofItems,
+    accent: navy,
+    ink,
+    muted,
+    side: 'right',
+    gold,
+  })
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(20, 33, 63, 0.12)'
+  ctx.shadowBlur = 12
+  ctx.beginPath()
+  ctx.arc(width / 2, panelTop + 226, 34, 0, Math.PI * 2)
+  ctx.fillStyle = navy
+  ctx.fill()
+  ctx.restore()
+  ctx.beginPath()
+  ctx.arc(width / 2, panelTop + 226, 34, 0, Math.PI * 2)
+  ctx.lineWidth = 4
+  ctx.strokeStyle = gold
+  ctx.stroke()
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'center'
+  ctx.font = '700 22px Arial'
+  ctx.fillText('VS.', width / 2, panelTop + 234)
+  ctx.textAlign = 'start'
+
+  const noteTop = 926
+  const noteHeight = 124
+  roundRect(ctx, 76, noteTop, width - 152, noteHeight, 18, '#fffdf8')
+  ctx.save()
+  ctx.strokeStyle = gold
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(190, noteTop + 22)
+  ctx.lineTo(190, noteTop + noteHeight - 22)
+  ctx.stroke()
+  ctx.restore()
+  await drawCampaignLogo(ctx, loadImage, primaryLogoUrl, primaryMark, 96, noteTop + 26, 72, '#fff9ec', gold)
+  const visibleNoteHeadlineLines = noteHeadlineLines.slice(0, 2)
+  drawTextBlockCanvas(ctx, visibleNoteHeadlineLines, 216, noteTop + 42, 22, ink, 700)
+  const noteBodyStartY = noteTop + 42 + (visibleNoteHeadlineLines.length * 22) + 12
+  drawTextBlockCanvas(ctx, wrapText(fillTemplateText(copy.footer, valueMap), 62).slice(0, 3), 216, noteBodyStartY, 18, muted, 500)
+
+  const bandTop = 1084
+  const bandHeight = 172
+  roundRect(ctx, 56, bandTop, width - 112, bandHeight, 14, navy)
+  ctx.save()
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)'
+  ctx.lineWidth = 2
+  for (let offset = -40; offset < width; offset += 24) {
+    ctx.beginPath()
+    ctx.moveTo(offset, bandTop + bandHeight)
+    ctx.lineTo(offset + 120, bandTop)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  const qrSize = 114
+  const qrX = 86
+  const qrY = bandTop + 24
+  roundRectWithStroke(ctx, qrX - 10, qrY - 10, qrSize + 20, qrSize + 20, 10, '#ffffff', '#d8dee9', 3)
+  const qrImage = await loadImage(qrDataUrl)
+  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '700 13px Arial'
+  wrapText(fillTemplateText(copy.qrCaption, valueMap), 18).slice(0, 1).forEach((line, index) => {
+    ctx.fillText(line, qrX + (qrSize / 2), qrY + qrSize + 18 + (index * 14))
+  })
+  ctx.textAlign = 'start'
+
+  ctx.save()
+  ctx.strokeStyle = gold
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(230, bandTop + 20)
+  ctx.lineTo(230, bandTop + bandHeight - 20)
+  ctx.stroke()
+  ctx.restore()
+
+  const ctaLines = wrapText(fillTemplateText(copy.cta, valueMap), 30).slice(0, 2)
+  drawTextBlockCanvas(ctx, ctaLines, 260, bandTop + 56, 32, '#ffffff', 800, 'Arial Narrow')
+
+  const ctaSublineText = fillTemplateText(copy.ctaSubline || '', valueMap)
+  const ctaSentenceCount = ctaSublineText
+    .split(/[.!?]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .length
+  const ctaRows = splitCampaignCtaRows(ctaSublineText, ctaSublineLines)
+  ctaRows.slice(0, 2).forEach((line, index) => {
+    const rowY = bandTop + 108 + (index * 30)
+    if (ctaSentenceCount >= 2) {
+      drawCampaignActionIcon(ctx, 262, rowY - 12, 18, gold, index === 0 ? 'play' : 'calendar')
+    } else {
+      ctx.beginPath()
+      ctx.fillStyle = gold
+      ctx.arc(271, rowY - 4, 5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.fillStyle = '#f8fafc'
+    ctx.font = '600 14px Arial'
+    ctx.fillText(line, ctaSentenceCount >= 2 ? 290 : 286, rowY)
+  })
+
+  const badgeY = 1360
+  footerBadges.slice(0, 3).forEach((badge, index) => {
+    const badgeRegionWidth = (width - 120) / 3
+    const centerX = 60 + (badgeRegionWidth * index) + (badgeRegionWidth / 2)
+    ctx.fillStyle = ink
+    ctx.textAlign = 'center'
+    ctx.font = '700 13px Arial'
+    ctx.fillText(badge, centerX, badgeY)
+    ctx.beginPath()
+    ctx.fillStyle = gold
+    ctx.arc(centerX - (Math.min(120, ctx.measureText(badge).width / 2 + 18)), badgeY - 4, 4, 0, Math.PI * 2)
+    ctx.fill()
+  })
+  ctx.textAlign = 'start'
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(20, 33, 63, 0.12)'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(width / 3, 1338)
+  ctx.lineTo(width / 3, 1376)
+  ctx.moveTo((width / 3) * 2, 1338)
+  ctx.lineTo((width / 3) * 2, 1376)
+  ctx.stroke()
+  ctx.restore()
+}
+
+async function drawComparisonMasterCampaignSheetOnContext(
+  ctx: any,
+  input: Parameters<typeof drawCampaignSheetOnContext>[1],
+) {
+  const {
+    copy,
+    palette,
+    width,
+    height,
+    headlineLines,
+    subheadlineLines,
+    sectionLabel,
+    proofLabel,
+    ctaSublineLines,
+    noteHeadlineLines,
+    steps,
+    proofItems,
+    footerBadges,
+    qrDataUrl,
+    loadImage,
+    coverPhotoUrl,
+    primaryLogoUrl,
+    primaryMark,
+    secondaryMark,
+    valueMap,
+  } = input
+
+  const navy = palette.accent
+  const gold = '#dda328'
+  const ink = '#16264d'
+  const muted = '#56698f'
+  const paper = '#fbfaf7'
+  const sheet = '#ffffff'
+  const line = '#d9dee9'
+
+  ctx.fillStyle = paper
+  ctx.fillRect(0, 0, width, height)
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(22, 38, 77, 0.04)'
+  ctx.lineWidth = 2
+  for (let offset = -height; offset < width; offset += 30) {
+    ctx.beginPath()
+    ctx.moveTo(offset, 0)
+    ctx.lineTo(offset + height, height)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  if (coverPhotoUrl) {
+    try {
+      const backgroundImage = await loadImage(coverPhotoUrl)
+      ctx.save()
+      ctx.globalAlpha = 0.035
+      drawCoverImage(ctx, backgroundImage, width, height)
+      ctx.restore()
+    } catch {}
+  }
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(22, 38, 77, 0.10)'
+  ctx.shadowBlur = 18
+  roundRect(ctx, 16, 14, width - 32, height - 28, 2, sheet)
+  ctx.restore()
+
+  if (primaryLogoUrl) {
+    await drawCampaignLogo(ctx, loadImage, primaryLogoUrl, primaryMark, 92, 30, 96, sheet, navy)
+  } else {
+    ctx.beginPath()
+    ctx.fillStyle = navy
+    ctx.arc(140, 76, 42, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    ctx.textAlign = 'center'
+    ctx.font = '800 25px Arial'
+    ctx.fillText(getInitials(primaryMark), 140, 85)
+    ctx.textAlign = 'start'
+  }
+  ctx.fillStyle = ink
+  ctx.font = '700 22px Arial'
+  wrapText(primaryMark, 20).slice(0, 3).forEach((lineText, index) => {
+    ctx.fillText(lineText.toUpperCase(), 202, 64 + (index * 24))
+  })
+  ctx.fillStyle = muted
+  ctx.font = '700 12px Arial'
+  ctx.fillText('COMMUNITY PARTNER', 202, 116)
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(22, 38, 77, 0.18)'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(width / 2, 36)
+  ctx.lineTo(width / 2, 124)
+  ctx.stroke()
+  ctx.restore()
+
+  ctx.textAlign = 'right'
+  ctx.fillStyle = ink
+  ctx.font = '700 26px Arial'
+  ctx.fillText('LOCALVIP', width - 92, 66)
+  ctx.fillStyle = gold
+  ctx.beginPath()
+  ctx.arc(width - 226, 54, 8, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = muted
+  ctx.font = '600 14px Arial'
+  ctx.fillText(secondaryMark, width - 92, 94)
+  ctx.textAlign = 'start'
+
+  const masterHeadline = ['ONE GIVEBACK DAY CAN', 'BECOME MORE THAN ONE DAY.']
+  drawCenteredTextBlockCanvas(ctx, masterHeadline, width / 2, 146, 58, ink, 800, 'Arial Black')
+
+  const heroSubY = 284
+  ctx.save()
+  ctx.strokeStyle = gold
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(54, heroSubY - 10)
+  ctx.lineTo(178, heroSubY - 10)
+  ctx.moveTo(width - 178, heroSubY - 10)
+  ctx.lineTo(width - 54, heroSubY - 10)
+  ctx.stroke()
+  ctx.restore()
+  drawCenteredTextBlockCanvas(ctx, subheadlineLines.slice(0, 2), width / 2, heroSubY, 24, muted, 600, 'Arial')
+
+  const leftBox = { x: 54, y: 326, w: 414, h: 548 }
+  const rightBox = { x: width - 54 - 414, y: 326, w: 414, h: 548 }
+  drawComparisonMasterBox(ctx, leftBox.x, leftBox.y, leftBox.w, leftBox.h, sectionLabel || 'THE GIVEBACK DAY YOU ALREADY KNOW', navy, line)
+  drawComparisonMasterBox(ctx, rightBox.x, rightBox.y, rightBox.w, rightBox.h, proofLabel || 'WHAT LOCALVIP ADDS', navy, line)
+
+  const leftRows = [0, 1, 2].map((index) => ({
+    y: leftBox.y + 126 + (index * 132),
+    icon: (['megaphone', 'bag', 'trophy'] as CampaignPanelIcon[])[index],
+    text: fillTemplateText(steps[index]?.title || '', valueMap),
+    body: fillTemplateText(steps[index]?.body || '', valueMap),
+  }))
+  leftRows.forEach((row, index) => {
+    drawCampaignPanelIcon(ctx, leftBox.x + 70, row.y, row.icon, navy)
+    drawTextBlockCanvas(ctx, wrapText(row.text, 18).slice(0, 3), leftBox.x + 126, row.y - 2, 20, ink, 600)
+    if (row.body) {
+      drawTextBlockCanvas(ctx, wrapText(row.body, 23).slice(0, 3), leftBox.x + 92, row.y + 34, 18, muted, 500)
+    }
+    if (index < leftRows.length - 1) {
+      drawComparisonDownArrow(ctx, leftBox.x + 68, row.y + 38, '#b8b8b8')
+    }
+  })
+
+  const rightTopRows = [0, 1].map((index) => ({
+    y: rightBox.y + 126 + (index * 102),
+    icon: (['megaphone', 'bag'] as CampaignPanelIcon[])[index],
+    text: fillTemplateText(steps[index]?.title || '', valueMap),
+  }))
+  rightTopRows.forEach((row, index) => {
+    drawCampaignPanelIcon(ctx, rightBox.x + 70, row.y, row.icon, navy)
+    drawTextBlockCanvas(ctx, wrapText(row.text, 18).slice(0, 2), rightBox.x + 126, row.y + 2, 18, ink, 500)
+    if (index < rightTopRows.length - 1) {
+      drawComparisonDownArrow(ctx, rightBox.x + 68, row.y + 30, '#b8b8b8')
+    }
+  })
+
+  drawComparisonDownArrow(ctx, rightBox.x + (rightBox.w / 2), rightBox.y + 252, '#b8b8b8')
+
+  const benefitIcons: CampaignPanelIcon[] = ['heart', 'people', 'chart']
+  proofItems.slice(0, 3).forEach((item, index) => {
+    const startX = rightBox.x + 14 + (index * 128)
+    const iconY = rightBox.y + 326
+    drawCampaignPanelIcon(ctx, startX + 24, iconY, benefitIcons[index], navy)
+    drawCenteredTextBlockCanvas(
+      ctx,
+      wrapText(fillTemplateText(item.title, valueMap), 14).slice(0, 3),
+      startX + 40,
+      iconY + 42,
+      15,
+      ink,
+      600,
+      'Arial',
+    )
+  })
+
+  ctx.save()
+  ctx.strokeStyle = '#b8b8b8'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(rightBox.x + 76, rightBox.y + 414)
+  ctx.lineTo(rightBox.x + rightBox.w - 76, rightBox.y + 414)
+  ctx.stroke()
+  ctx.restore()
+
+  drawCenteredTextBlockCanvas(
+    ctx,
+    wrapText(fillTemplateText(copy.comparisonSummary || '', valueMap), 36).slice(0, 2),
+    rightBox.x + (rightBox.w / 2),
+    rightBox.y + 470,
+    18,
+    ink,
+    700,
+    'Arial',
+  )
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(22, 38, 77, 0.12)'
+  ctx.shadowBlur = 12
+  ctx.beginPath()
+  ctx.arc(width / 2, 590, 32, 0, Math.PI * 2)
+  ctx.fillStyle = navy
+  ctx.fill()
+  ctx.restore()
+  ctx.beginPath()
+  ctx.arc(width / 2, 590, 32, 0, Math.PI * 2)
+  ctx.lineWidth = 4
+  ctx.strokeStyle = gold
+  ctx.stroke()
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'center'
+  ctx.font = '700 20px Arial'
+  ctx.fillText('VS.', width / 2, 598)
+  ctx.textAlign = 'start'
+
+  const noteTop = 890
+  roundRect(ctx, 76, noteTop, width - 152, 108, 2, '#ffffff')
+  drawCampaignPanelIcon(ctx, 116, noteTop + 34, 'heart', navy)
+  ctx.save()
+  ctx.strokeStyle = gold
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(182, noteTop + 18)
+  ctx.lineTo(182, noteTop + 86)
+  ctx.stroke()
+  ctx.restore()
+  drawTextBlockCanvas(ctx, noteHeadlineLines.slice(0, 2), 210, noteTop + 40, 22, ink, 700)
+  drawTextBlockCanvas(ctx, wrapText(fillTemplateText(copy.footer, valueMap), 72).slice(0, 3), 210, noteTop + 72, 17, muted, 500)
+
+  const bandTop = 1010
+  roundRect(ctx, 16, bandTop, width - 32, 194, 0, navy)
+  ctx.save()
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+  ctx.lineWidth = 2
+  for (let offset = -40; offset < width; offset += 22) {
+    ctx.beginPath()
+    ctx.moveTo(offset, bandTop + 166)
+    ctx.lineTo(offset + 118, bandTop)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  const qrSize = 142
+  const qrX = 136
+  const qrY = bandTop + 24
+  roundRectWithStroke(ctx, qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 8, '#ffffff', '#d9dee9', 3)
+  const qrImage = await loadImage(qrDataUrl)
+  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#ffffff'
+  ctx.font = '700 12px Arial'
+  ctx.fillText(fillTemplateText(copy.qrCaption, valueMap), qrX + (qrSize / 2), qrY + qrSize + 24)
+  ctx.textAlign = 'start'
+
+  ctx.save()
+  ctx.strokeStyle = gold
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(314, bandTop + 20)
+  ctx.lineTo(314, bandTop + 174)
+  ctx.stroke()
+  ctx.restore()
+
+  drawTextBlockCanvas(ctx, wrapText(fillTemplateText(copy.cta, valueMap), 30).slice(0, 2), 346, bandTop + 55, 32, '#ffffff', 800, 'Arial Black')
+  const ctaRows = splitCampaignCtaRows(fillTemplateText(copy.ctaSubline || '', valueMap), ctaSublineLines).slice(0, 2)
+  ctaRows.forEach((row, index) => {
+    const rowY = bandTop + 118 + (index * 42)
+    drawCampaignActionIcon(ctx, 348, rowY - 14, 20, '#ffffff', index === 0 ? 'play' : 'calendar')
+    ctx.fillStyle = '#ffffff'
+    ctx.font = '700 15px Arial'
+    ctx.fillText(row, 382, rowY)
+  })
+
+  const badgeY = 1260
+  footerBadges.slice(0, 3).forEach((badge, index) => {
+    const badgeRegionWidth = (width - 120) / 3
+    const centerX = 60 + (badgeRegionWidth * index) + (badgeRegionWidth / 2)
+    ctx.beginPath()
+    ctx.fillStyle = gold
+    ctx.arc(centerX - 92, badgeY - 5, 4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = ink
+    ctx.textAlign = 'center'
+    ctx.font = '700 14px Arial'
+    ctx.fillText(badge, centerX, badgeY)
+  })
+  ctx.textAlign = 'start'
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(22, 38, 77, 0.14)'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(width / 3, 1228)
+  ctx.lineTo(width / 3, 1282)
+  ctx.moveTo((width / 3) * 2, 1228)
+  ctx.lineTo((width / 3) * 2, 1282)
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawComparisonMasterBox(
+  ctx: any,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  header: string,
+  accent: string,
+  stroke: string,
+) {
+  ctx.save()
+  ctx.shadowColor = 'rgba(22, 38, 77, 0.08)'
+  ctx.shadowBlur = 14
+  roundRect(ctx, x, y, width, height, 14, '#ffffff')
+  ctx.restore()
+  roundRectWithStroke(ctx, x, y, width, height, 14, '#ffffff', stroke, 2)
+  roundRect(ctx, x, y, width, 66, 14, accent)
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'center'
+  ctx.font = '700 18px Arial'
+  const lines = wrapText(header.toUpperCase(), 28).slice(0, 2)
+  lines.forEach((line, index) => {
+    ctx.fillText(line, x + (width / 2), y + 34 + (index * 18))
+  })
+  ctx.textAlign = 'start'
+}
+
+function drawComparisonDownArrow(ctx: any, x: number, y: number, stroke: string) {
+  ctx.save()
+  ctx.strokeStyle = stroke
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(x, y)
+  ctx.lineTo(x, y + 32)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(x - 5, y + 26)
+  ctx.lineTo(x, y + 32)
+  ctx.lineTo(x + 5, y + 26)
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawCenteredTextBlockCanvas(
+  ctx: any,
+  lines: string[],
+  centerX: number,
+  startY: number,
+  lineHeight: number,
+  fill: string,
+  fontWeight: number,
+  fontFamily = 'Arial Narrow',
+) {
+  ctx.fillStyle = fill
+  const fontSize = lineHeight - 4
+  ctx.font = `${fontWeight} ${fontSize}px "${fontFamily}"`
+  lines.forEach((line, index) => {
+    const width = ctx.measureText(line).width
+    ctx.fillText(line, centerX - (width / 2), startY + (index * lineHeight))
+  })
+}
+
+function drawCampaignComparisonPanel(
+  ctx: any,
+  input: {
+    x: number
+    y: number
+    width: number
+    height: number
+    header: string
+    items: FilledTemplateCard[]
+    accent: string
+    ink: string
+    muted: string
+    side: 'left' | 'right'
+    gold: string
+  },
+) {
+  const { x, y, width, height, header, items, accent, ink, muted, side, gold } = input
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(20, 33, 63, 0.10)'
+  ctx.shadowBlur = 16
+  roundRect(ctx, x, y, width, height, 16, '#ffffff')
+  ctx.restore()
+  roundRectWithStroke(ctx, x, y, width, height, 16, '#ffffff', 'rgba(20, 33, 63, 0.08)', 2)
+  roundRect(ctx, x, y, width, 66, 16, accent)
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'center'
+  let headerFontSize = 23
+  ctx.font = `700 ${headerFontSize}px Arial`
+  while (headerFontSize > 17 && ctx.measureText(header.toUpperCase()).width > width - 28) {
+    headerFontSize -= 1
+    ctx.font = `700 ${headerFontSize}px Arial`
+  }
+  ctx.fillText(header.toUpperCase(), x + (width / 2), y + 42)
+  ctx.textAlign = 'start'
+
+  const visibleItems = items.slice(0, 3)
+  const rowStartY = y + 100
+  const rowGap = 114
+  visibleItems.forEach((item, index) => {
+    const itemY = rowStartY + (index * rowGap)
+    drawCampaignPanelIcon(ctx, x + 44, itemY + 4, side === 'left' ? ['megaphone', 'bag', 'trophy'][index] as CampaignPanelIcon : ['heart', 'people', 'chart'][index] as CampaignPanelIcon, accent)
+    const titleLines = wrapText(item.title, 20).slice(0, 2)
+    drawTextBlockCanvas(ctx, titleLines, x + 84, itemY + 2, 22, ink, 700)
+    const bodyStartY = itemY + 2 + (titleLines.length * 22) + 12
+    drawTextBlockCanvas(ctx, wrapText(item.body, 24).slice(0, 3), x + 84, bodyStartY, 18, muted, 500)
+
+    if (index < visibleItems.length - 1) {
+      const arrowX = x + 44
+      const arrowTop = itemY + 38
+      ctx.save()
+      ctx.strokeStyle = 'rgba(20, 33, 63, 0.18)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(arrowX, arrowTop)
+      ctx.lineTo(arrowX, arrowTop + 36)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(arrowX - 5, arrowTop + 30)
+      ctx.lineTo(arrowX, arrowTop + 36)
+      ctx.lineTo(arrowX + 5, arrowTop + 30)
+      ctx.stroke()
+      ctx.restore()
+    }
+  })
+}
+
+type CampaignPanelIcon = 'megaphone' | 'bag' | 'trophy' | 'heart' | 'people' | 'chart'
+
+function drawCampaignPanelIcon(
+  ctx: any,
+  x: number,
+  y: number,
+  icon: CampaignPanelIcon,
+  stroke: string,
+) {
+  ctx.save()
+  ctx.strokeStyle = stroke
+  ctx.fillStyle = 'transparent'
+  ctx.lineWidth = 2.5
+  const w = 28
+  const h = 28
+
+  if (icon === 'megaphone') {
+    ctx.beginPath()
+    ctx.moveTo(x - 10, y + 6)
+    ctx.lineTo(x, y + 2)
+    ctx.lineTo(x + 8, y + 2)
+    ctx.lineTo(x + 14, y - 4)
+    ctx.lineTo(x + 14, y + 18)
+    ctx.lineTo(x + 8, y + 12)
+    ctx.lineTo(x, y + 12)
+    ctx.lineTo(x - 10, y + 8)
+    ctx.closePath()
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(x - 2, y + 12)
+    ctx.lineTo(x + 2, y + 20)
+    ctx.stroke()
+  } else if (icon === 'bag') {
+    ctx.beginPath()
+    ctx.rect(x - 10, y + 4, 20, 18)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(x, y + 4, 6, Math.PI, 0)
+    ctx.stroke()
+  } else if (icon === 'trophy') {
+    ctx.beginPath()
+    ctx.moveTo(x - 8, y)
+    ctx.lineTo(x + 8, y)
+    ctx.lineTo(x + 5, y + 10)
+    ctx.lineTo(x - 5, y + 10)
+    ctx.closePath()
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(x, y + 10)
+    ctx.lineTo(x, y + 18)
+    ctx.moveTo(x - 6, y + 22)
+    ctx.lineTo(x + 6, y + 22)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(x - 9, y + 4, 4, Math.PI / 2, (Math.PI * 3) / 2)
+    ctx.arc(x + 9, y + 4, 4, (Math.PI * 3) / 2, Math.PI / 2)
+    ctx.stroke()
+  } else if (icon === 'heart') {
+    ctx.beginPath()
+    ctx.moveTo(x, y + 18)
+    ctx.bezierCurveTo(x - 16, y + 8, x - 10, y - 6, x, y + 1)
+    ctx.bezierCurveTo(x + 10, y - 6, x + 16, y + 8, x, y + 18)
+    ctx.stroke()
+  } else if (icon === 'people') {
+    ctx.beginPath()
+    ctx.arc(x - 6, y + 4, 4, 0, Math.PI * 2)
+    ctx.arc(x + 6, y + 4, 4, 0, Math.PI * 2)
+    ctx.arc(x, y - 1, 4.5, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(x - 13, y + 20)
+    ctx.quadraticCurveTo(x - 6, y + 12, x + 1, y + 20)
+    ctx.moveTo(x - 1, y + 20)
+    ctx.quadraticCurveTo(x + 6, y + 12, x + 13, y + 20)
+    ctx.stroke()
+  } else if (icon === 'chart') {
+    ctx.beginPath()
+    ctx.moveTo(x - 10, y + 20)
+    ctx.lineTo(x - 10, y + 8)
+    ctx.lineTo(x - 2, y + 8)
+    ctx.lineTo(x - 2, y + 20)
+    ctx.moveTo(x + 2, y + 20)
+    ctx.lineTo(x + 2, y + 2)
+    ctx.lineTo(x + 10, y + 2)
+    ctx.lineTo(x + 10, y + 20)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(x - 12, y + 22)
+    ctx.lineTo(x + 12, y + 22)
+    ctx.stroke()
+  }
+
+  ctx.restore()
+}
+
+function splitCampaignCtaRows(text: string, fallbackLines: string[]) {
+  const sentenceParts = text
+    .split(/[.!?]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (sentenceParts.length >= 2) return sentenceParts.slice(0, 2)
+  if (sentenceParts.length === 1) return wrapText(sentenceParts[0], 34).slice(0, 2)
+  return fallbackLines.slice(0, 2)
+}
+
+function drawCampaignActionIcon(
+  ctx: any,
+  x: number,
+  y: number,
+  size: number,
+  stroke: string,
+  icon: 'play' | 'calendar',
+) {
+  ctx.save()
+  ctx.lineWidth = 2
+  ctx.strokeStyle = stroke
+  ctx.beginPath()
+  ctx.arc(x + (size / 2), y + (size / 2), size / 2, 0, Math.PI * 2)
+  ctx.stroke()
+
+  if (icon === 'play') {
+    ctx.beginPath()
+    ctx.moveTo(x + 7, y + 5)
+    ctx.lineTo(x + 7, y + size - 5)
+    ctx.lineTo(x + size - 4, y + (size / 2))
+    ctx.closePath()
+    ctx.stroke()
+  } else {
+    ctx.beginPath()
+    ctx.rect(x + 4, y + 6, size - 8, size - 10)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(x + 4, y + 11)
+    ctx.lineTo(x + size - 4, y + 11)
+    ctx.moveTo(x + 7, y + 4)
+    ctx.lineTo(x + 7, y + 8)
+    ctx.moveTo(x + size - 7, y + 4)
+    ctx.lineTo(x + size - 7, y + 8)
+    ctx.stroke()
+  }
+
+  ctx.restore()
+}
+
+async function drawCampaignLogo(
+  ctx: any,
+  loadImage: RuntimeCanvasModule['loadImage'],
+  logoUrl: string | null,
+  label: string,
+  x: number,
+  y: number,
+  size: number,
+  background: string,
+  fallbackFill: string,
+) {
+  roundRect(ctx, x, y, size, size, 22, background)
+
+  if (logoUrl) {
+    try {
+      const logo = await loadImage(logoUrl)
+      const inset = 12
+      drawContainImage(ctx, logo, x + inset, y + inset, size - (inset * 2), size - (inset * 2))
+      return
+    } catch {}
+  }
+
+  ctx.fillStyle = fallbackFill
+  ctx.textAlign = 'center'
+  ctx.font = '700 28px Arial'
+  ctx.fillText(getInitials(label), x + (size / 2), y + (size / 2) + 10)
+  ctx.textAlign = 'start'
+}
+
 function normalizeQrPosition(raw: unknown) {
   if (raw && typeof raw === 'object') {
     const value = raw as Record<string, unknown>
@@ -2150,23 +3392,28 @@ function normalizeQrPosition(raw: unknown) {
   return { ...DEFAULT_QR_POSITION }
 }
 
-function getPalette(brand: 'localvip' | 'hato', copy: TemplateCopyDefinition) {
+function getPalette(
+  brand: 'localvip' | 'hato',
+  copy: TemplateCopyDefinition,
+  context?: StakeholderMaterialContext,
+) {
+  const branding = context ? getTemplateBranding(context) : null
   if (brand === 'hato') {
     return {
-      accent: copy.accentColor || '#ec8012',
-      soft: copy.highlightColor || '#fff3e6',
-      background: copy.backgroundColor || '#fffaf5',
-      panel: copy.panelColor || '#ffffff',
-      text: copy.textColor || '#1f2937',
+      accent: branding?.accent || copy.accentColor || '#ec8012',
+      soft: branding?.soft || copy.highlightColor || '#fff3e6',
+      background: branding?.background || copy.backgroundColor || '#fffaf5',
+      panel: branding?.panel || copy.panelColor || '#ffffff',
+      text: branding?.text || copy.textColor || '#1f2937',
     }
   }
 
   return {
-    accent: copy.accentColor || '#2563eb',
-    soft: copy.highlightColor || '#edf4ff',
-    background: copy.backgroundColor || '#f8fbff',
-    panel: copy.panelColor || '#ffffff',
-    text: copy.textColor || '#0f172a',
+    accent: branding?.accent || copy.accentColor || '#2563eb',
+    soft: branding?.soft || copy.highlightColor || '#edf4ff',
+    background: branding?.background || copy.backgroundColor || '#f8fbff',
+    panel: branding?.panel || copy.panelColor || '#ffffff',
+    text: branding?.text || copy.textColor || '#0f172a',
   }
 }
 
@@ -2203,10 +3450,11 @@ function drawTextBlockCanvas(
   lineHeight: number,
   fill: string,
   fontWeight: number,
+  fontFamily = 'Arial',
 ) {
   ctx.fillStyle = fill
   const fontSize = lineHeight === 66 ? 64 : lineHeight - 4
-  ctx.font = `${fontWeight} ${fontSize}px Arial`
+  ctx.font = `${fontWeight} ${fontSize}px "${fontFamily}"`
 
   lines.forEach((line, index) => {
     ctx.fillText(line, x, startY + (index * lineHeight))
@@ -2277,6 +3525,33 @@ function drawCoverImage(
   const x = (width - drawWidth) / 2
   const y = (height - drawHeight) / 2
   ctx.drawImage(image, x, y, drawWidth, drawHeight)
+}
+
+function drawContainImage(
+  ctx: any,
+  image: { width: number; height: number },
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const scale = Math.min(width / image.width, height / image.height)
+  const drawWidth = image.width * scale
+  const drawHeight = image.height * scale
+  const drawX = x + ((width - drawWidth) / 2)
+  const drawY = y + ((height - drawHeight) / 2)
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight)
+}
+
+function getInitials(value: string) {
+  const letters = value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('')
+
+  return letters || 'LV'
 }
 
 function getRuntimeCanvasModule(): RuntimeCanvasModule {

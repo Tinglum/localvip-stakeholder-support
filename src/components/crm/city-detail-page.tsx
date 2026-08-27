@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import {
   CheckCircle2,
   ClipboardList,
@@ -10,7 +10,9 @@ import {
   Loader2,
   MapPin,
   Megaphone,
+  Pencil,
   Store,
+  Trash2,
   TrendingUp,
   Users,
 } from 'lucide-react'
@@ -18,6 +20,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ONBOARDING_STAGES, ROLES } from '@/lib/constants'
 import { getEntityTheme } from '@/lib/entity-themes'
@@ -26,6 +29,8 @@ import {
   useBusinesses,
   useCampaigns,
   useCauses,
+  useCityDelete,
+  useCityUpdate,
   useOutreach,
   useProfiles,
   useRecord,
@@ -108,8 +113,76 @@ function entityHref(entityType: string | null | undefined, entityId: string | nu
 
 export default function CityDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const cityId = params.id as string
   const { data: city, loading } = useRecord<City>('cities', cityId)
+  const { update: updateCity } = useCityUpdate()
+  const { remove: deleteCity, getLastError: getDeleteError } = useCityDelete()
+
+  // This page was read-only: there was no way to edit or retire a city once it
+  // existed. Delete is guarded server-side (409 naming the campaigns/offers/
+  // materials still pointing at it), so the error text has to reach the screen.
+  const [editing, setEditing] = React.useState(false)
+  const [form, setForm] = React.useState({ name: '', state: '', country: '', status: 'active' })
+  const [busy, setBusy] = React.useState(false)
+  const [actionError, setActionError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (!city) return
+    setForm({
+      name: city.name || '',
+      state: city.state || '',
+      country: city.country || '',
+      status: city.status || 'active',
+    })
+  }, [city])
+
+  async function handleSaveCity() {
+    setActionError(null)
+    if (!form.name.trim()) {
+      setActionError('A city needs a name.')
+      return
+    }
+    setBusy(true)
+    try {
+      const saved = await updateCity(cityId, {
+        name: form.name.trim(),
+        state: form.state.trim(),
+        country: form.country.trim(),
+        status: form.status,
+      } as Partial<City>)
+      if (!saved) {
+        setActionError('The city could not be saved.')
+        return
+      }
+      window.location.reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDeleteCity() {
+    setActionError(null)
+    const confirmed = window.confirm(
+      `Delete ${city?.name}? This cannot be undone. If the city still has campaigns, offers or materials, the delete will be refused - archive it instead.`,
+    )
+    if (!confirmed) return
+    setBusy(true)
+    try {
+      const ok = await deleteCity(cityId)
+      if (!ok) {
+        // The backend names what is in the way; prefer that over a generic line.
+        setActionError(
+          getDeleteError()
+          || 'This city could not be deleted. It is usually still referenced by campaigns, offers or materials - set its status to archived instead.',
+        )
+        return
+      }
+      router.push('/crm/cities')
+    } finally {
+      setBusy(false)
+    }
+  }
   const { data: businesses } = useBusinesses()
   const { data: causes } = useCauses()
   const { data: campaigns } = useCampaigns()
@@ -213,15 +286,89 @@ export default function CityDetailPage() {
           { label: city.name },
         ]}
         actions={
-          cityCampaigns[0] ? (
-            <Link href={`/campaigns/${cityCampaigns[0].id}`}>
-              <Button>
-                <Megaphone className="h-4 w-4" /> Open Campaign
-              </Button>
-            </Link>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {cityCampaigns[0] ? (
+              <Link href={`/campaigns/${cityCampaigns[0].id}`}>
+                <Button>
+                  <Megaphone className="h-4 w-4" /> Open Campaign
+                </Button>
+              </Link>
+            ) : null}
+            <Button variant="outline" onClick={() => setEditing((open) => !open)} disabled={busy}>
+              <Pencil className="h-4 w-4" /> {editing ? 'Cancel edit' : 'Edit city'}
+            </Button>
+            <Button variant="outline" onClick={handleDeleteCity} disabled={busy}>
+              <Trash2 className="h-4 w-4" /> Delete
+            </Button>
+          </div>
         }
       />
+
+      {actionError && (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
+          {actionError}
+        </div>
+      )}
+
+      {editing && (
+        <Card>
+          <CardContent className="space-y-4 pt-6">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-surface-600" htmlFor="city-name">Name</label>
+                <Input
+                  id="city-name"
+                  value={form.name}
+                  onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-surface-600" htmlFor="city-state">State</label>
+                <Input
+                  id="city-state"
+                  value={form.state}
+                  onChange={(event) => setForm((prev) => ({ ...prev, state: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-surface-600" htmlFor="city-country">Country</label>
+                <Input
+                  id="city-country"
+                  value={form.country}
+                  onChange={(event) => setForm((prev) => ({ ...prev, country: event.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs font-medium text-surface-600">Status</span>
+              <div className="flex gap-2">
+                {['active', 'archived'].map((status) => (
+                  <Button
+                    key={status}
+                    type="button"
+                    variant={form.status === status ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setForm((prev) => ({ ...prev, status }))}
+                  >
+                    {status === 'active' ? 'Active' : 'Archived'}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-surface-500">
+                Archiving retires a city that still has campaigns, offers or materials attached to it.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleSaveCity} disabled={busy}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save changes
+              </Button>
+              <Button variant="outline" onClick={() => setEditing(false)} disabled={busy}>
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="overflow-hidden border-surface-200">
         <div className="bg-gradient-to-r from-surface-100 via-white to-surface-50 px-6 py-6">

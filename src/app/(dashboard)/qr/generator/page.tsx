@@ -628,8 +628,14 @@ export default function QRGeneratorPage() {
 
   // Generate final QR code and save to Supabase
   async function handleGenerate() {
-    if (!name.trim()) return
     setFormError(null)
+    // A bare `return` here meant clicking Generate with an empty name did nothing
+    // at all: no error, no spinner, no code. Every refusal on this path has to say
+    // why, or the button reads as broken.
+    if (!name.trim()) {
+      setFormError('Give this QR code a name before generating it.')
+      return
+    }
 
     // The QA backend requires every QR code to be attached to an entity
     // (EntityType + EntityId). Resolve it from the selected business/cause or
@@ -741,7 +747,16 @@ export default function QRGeneratorPage() {
         window.location.assign(`${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`)
       }
     } catch (err) {
+      // Anything thrown in here - the styled-QR render, the linked-QR write, a
+      // network fault - used to reach the console only, so the spinner stopped and
+      // the screen was unchanged. The insert path already surfaces saveError; this
+      // covers every other throw.
       console.error('QR generation failed:', err)
+      setFormError(
+        err instanceof Error && err.message
+          ? `QR generation failed: ${err.message}`
+          : 'QR generation failed. Please try again, and tell us what you were doing if it keeps happening.',
+      )
     } finally {
       setIsGenerating(false)
     }

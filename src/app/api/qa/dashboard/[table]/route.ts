@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi, parseQaResponse, QaApiError } from '@/lib/auth/qa-api'
+import { ensureCoreCampaignStructuredTemplates } from '@/lib/server/core-campaign-templates'
+import { createServiceClient } from '@/lib/supabase/server'
 import {
   EMPTY_FALLBACK_TABLES,
   FIELD_ALIASES,
@@ -47,6 +49,16 @@ export async function GET(
 ) {
   const { table } = params
 
+  if (table === 'material_templates') {
+    try {
+      const supabase = createServiceClient()
+      await ensureCoreCampaignStructuredTemplates(supabase)
+    } catch {
+      // If template seeding fails, keep the read path alive and fall through to
+      // the backend fetch rather than breaking the template list entirely.
+    }
+  }
+
   // Frontend-only tables that have no QA backend equivalent: return empty
   if (EMPTY_FALLBACK_TABLES.has(table)) {
     return NextResponse.json([])
@@ -85,8 +97,21 @@ export async function GET(
       items = (json as Record<string, unknown>)[config.listWrapperKey]
     }
 
+    // The envelope's totalCount is the only honest row count: the backend pages
+    // (User/list defaults to 50), so counting the returned array under-reports any
+    // table bigger than one page. Unwrapping to a bare array is load-bearing for
+    // every existing caller, so the total rides along as a header instead.
+    const totalCount =
+      json && typeof json === 'object' && !Array.isArray(json)
+        ? (json as Record<string, unknown>).totalCount
+        : undefined
+
     const shaped = toFrontendShape(table, items)
-    return NextResponse.json(shaped ?? [])
+    const headers =
+      typeof totalCount === 'number' && Number.isFinite(totalCount)
+        ? { 'x-qa-total-count': String(totalCount) }
+        : undefined
+    return NextResponse.json(shaped ?? [], headers ? { headers } : undefined)
   } catch (error) {
     if (error instanceof QaApiError) {
       if (table === 'stakeholder_assignments' || table === 'generated_materials') {

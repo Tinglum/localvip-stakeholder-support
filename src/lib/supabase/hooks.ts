@@ -373,16 +373,43 @@ function useQaUpdate<T>(table: string) {
 }
 
 function useQaDelete(table: string) {
+  // A refused delete carries the reason (e.g. the City endpoint answers 409 naming
+  // the campaigns/offers/materials still pointing at the row). Returning a bare
+  // boolean threw that away and left callers guessing, so keep the message too.
+  const [error, setError] = React.useState<string | null>(null)
+  // State set during an await is not visible to the caller's closure on the next
+  // line, so mirror it in a ref for callers that need the reason immediately.
+  const errorRef = React.useRef<string | null>(null)
+  const record = (message: string | null) => {
+    errorRef.current = message
+    setError(message)
+  }
+
   const remove = React.useCallback(async (id: string | number): Promise<boolean> => {
+    record(null)
     try {
       const res = await fetch(`/api/qa/dashboard/${table}/${id}`, { method: 'DELETE' })
-      return res.ok
-    } catch {
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        let msg = `${table} delete failed with ${res.status}`
+        try {
+          const parsed = JSON.parse(text)
+          msg = parsed?.error || msg
+        } catch {
+          if (text) msg = text
+        }
+        record(msg)
+        return false
+      }
+      return true
+    } catch (err) {
+      record(err instanceof Error ? err.message : `Failed to delete ${table}.`)
       return false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table])
 
-  return { remove }
+  return { remove, error, getLastError: () => errorRef.current }
 }
 
 // ─── Typed hooks (drop-in replacements for the original Supabase hooks) ────
@@ -738,6 +765,11 @@ export function useCities(options?: UseQueryOptions) {
   return useQaQuery<City>('cities', { orderBy: 'name', orderAsc: true, enabled: options?.enabled })
 }
 export function useCityInsert() { return useQaInsert<City>('cities') }
+export function useCityUpdate() { return useQaUpdate<City>('cities') }
+// The backend refuses a delete that would orphan campaigns/offers/materials and
+// returns 409 naming the blockers, so callers must surface the error text rather
+// than assume success.
+export function useCityDelete() { return useQaDelete('cities') }
 
 export function useOrganizations(_filters?: Record<string, string>) {
   return useQaQuery<Organization>('organizations')
@@ -846,6 +878,92 @@ export function useQrCodeCollectionUpdate() { return useQaUpdate<QrCodeCollectio
 export function useQrCodeInsert() { return useQaInsert<QrCode>('qr_codes') }
 export function useQrCodeDelete() { return useQaDelete('qr_codes') }
 
+// A business's QR codes are not stored under a single entity_type: the CRM
+// links one as `business`, the generator writes `business_custom`, and the
+// capture/referral flows write their own types. The backend QrCode controller
+// filters EntityType with an exact match (App/Controllers/Dashboard/
+// QrCodeController.cs GetAll), so one query per type is the only way to get
+// them all. Mirrors the type list already used by /api/portal/qrcodes.
+const BUSINESS_QR_ENTITY_TYPES = [
+  'business',
+  'business_custom',
+  'business_capture',
+  'business_network_referral',
+] as const
+
+export function useBusinessQrCodes(
+  qaBusinessId: string | number | null | undefined,
+  options?: UseQueryOptions,
+): UseQueryResult<QrCode> {
+  const enabled = (options?.enabled ?? true) && qaBusinessId != null && qaBusinessId !== ''
+  const [data, setData] = React.useState<QrCode[]>([])
+  const [loading, setLoading] = React.useState(enabled)
+  const [error, setError] = React.useState<string | null>(null)
+  const [refetchKey, setRefetchKey] = React.useState(0)
+  const silentRefetchRef = React.useRef(false)
+  const entityId = qaBusinessId == null ? '' : String(qaBusinessId)
+
+  React.useEffect(() => {
+    if (!enabled) {
+      setLoading(false)
+      setError(null)
+      setData([])
+      return
+    }
+
+    let cancelled = false
+
+    async function run() {
+      if (!silentRefetchRef.current) setLoading(true)
+      setError(null)
+
+      try {
+        const batches = await Promise.all(BUSINESS_QR_ENTITY_TYPES.map(async (entityType) => {
+          const qs = buildQueryString({ entity_type: entityType, entity_id: entityId, pageSize: 200 })
+          const res = await withTimeout(
+            fetch(`/api/qa/dashboard/qr_codes${qs}`, { cache: 'no-store' }),
+            'qr_codes query',
+          )
+          if (!res.ok) {
+            const text = await res.text().catch(() => '')
+            throw new Error(readApiErrorMessage(text, 'qr_codes', res.status))
+          }
+          const json = await res.json().catch(() => [])
+          return Array.isArray(json) ? (json as QrCode[]) : []
+        }))
+
+        if (cancelled) return
+
+        // The same QR can come back from more than one type query once the CRM
+        // has linked it, so dedupe before sorting newest-first.
+        const byId = new Map<string, QrCode>()
+        batches.flat().forEach((row) => { byId.set(String(row.id), row) })
+        setData([...byId.values()].sort((a, b) =>
+          String(b.created_at || '').localeCompare(String(a.created_at || ''))))
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Failed to load qr_codes.')
+        setData([])
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+          silentRefetchRef.current = false
+        }
+      }
+    }
+
+    run()
+    return () => { cancelled = true }
+  }, [enabled, entityId, refetchKey])
+
+  const refetch = React.useCallback((opts?: { silent?: boolean }) => {
+    silentRefetchRef.current = !!opts?.silent
+    setRefetchKey((k) => k + 1)
+  }, [])
+
+  return { data, loading, error, refetch }
+}
+
 export function useMaterials(_filters?: Record<string, string>, _options?: UseQueryOptions) {
   return useQaQuery<Material>('materials')
 }
@@ -923,7 +1041,18 @@ export function useCount(table: string, filters?: Record<string, string | number
         if (!res.ok) return
         const json = await res.json()
         const arr = Array.isArray(json) ? json : Array.isArray(json?.items) ? json.items : []
-        if (!cancelled) setCount(arr.length)
+        // Prefer the backend's own total. The list endpoints page (User/list
+        // defaults to 50), so arr.length silently caps the tile and made the
+        // overview disagree with User Management, which asks for 250.
+        const rawTotal = res.headers.get('x-qa-total-count')
+        const headerTotal = rawTotal === null ? Number.NaN : Number(rawTotal)
+        const total =
+          Number.isFinite(headerTotal) && headerTotal >= 0
+            ? headerTotal
+            : typeof json?.totalCount === 'number'
+              ? json.totalCount
+              : arr.length
+        if (!cancelled) setCount(total)
       } catch {
         if (!cancelled) setCount(0)
       }

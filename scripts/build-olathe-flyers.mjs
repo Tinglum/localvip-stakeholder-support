@@ -58,7 +58,7 @@ const FONT_CSS = [
   fontFace('MontRegular', 'Montserrat-Regular.ttf', 400),
   fontFace('MontBold', 'Montserrat-Bold.ttf', 700),
   fontFace('MontXBold', 'Montserrat-ExtraBold.ttf', 800),
-  fontFace('HeadCond', 'ArchivoNarrow-Bold.ttf', 700),
+  fontFace('HeadCond', 'BebasNeue-Regular.ttf', 400),
 ].join('')
 
 const esc = (v) => String(v).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -132,7 +132,7 @@ const owHeart = {
 // ── page furniture ───────────────────────────────────────────────────────────
 function header({ m, org, sub }) {
   return `
-  ${mark(m, 74, 28, 150)}
+  ${mark(m, 120, 28, 150)}
   ${org.map((l, i) => text(l, 420, 74 + i * 42, { size: 34, weight: 800, cls: 'cond', anchor: 'middle' })).join('\n')}
   ${text(sub, 420, 74 + org.length * 42, { size: 21, weight: 800, cls: 'cond', fill: INK, anchor: 'middle', ls: 0.4 })}
   <line x1="640" y1="44" x2="640" y2="150" stroke="#c9d4e2" stroke-width="3"/>
@@ -147,7 +147,7 @@ function panel(x, y, w, h, title) {
   <path d="M${x} ${y + 18}a18 18 0 0 1 18-18h${w - 36}a18 18 0 0 1 18 18v56H${x}z" fill="${NAVY}"/>
   <path d="M${x} ${y + 74}h${w}v${h - 92}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="#fff"/>
   <path d="M${x} ${y + 74}h${w}v${h - 92}a18 18 0 0 1-18 18H${x + 18}a18 18 0 0 1-18-18z" fill="none" stroke="#e8c37a" stroke-width="2.5"/>
-  ${titleLines.map((t, i) => text(t, x + w / 2, y + (titleLines.length === 1 ? 46 : 32 + i * 28), { size: 23, weight: 800, cls: 'cond', fill: '#fff', anchor: 'middle' })).join('\n')}`
+  ${titleLines.map((t, i) => text(t, x + w / 2, y + (titleLines.length === 1 ? 48 : 33 + i * 29), { size: 30, weight: 400, cls: 'hd', fill: '#fff', anchor: 'middle' })).join('\n')}`
 }
 
 /** One icon + wrapped label row, with an optional connector arrow beneath. */
@@ -161,8 +161,8 @@ function stepRow(x, y, icon, labelLines, withArrow) {
 function keepGoingArrow(y, label) {
   return `
   <g transform="translate(445 ${y})">
-    <path d="M0 30h64V0l55 75-55 75V120H0z" fill="${GOLD}"/>
-    ${label.split('|').map((t, i) => text(t, 34, 66 + i * 28, { size: 20, weight: 800, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}
+    <path d="M0 30h54V0l46 75-46 75V120H0z" fill="${GOLD}"/>
+    ${label.split('|').map((t, i) => text(t, 29, 66 + i * 28, { size: 20, weight: 800, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}
   </g>`
 }
 
@@ -170,15 +170,15 @@ function outcomeBox(x, y, w, linesArr) {
   const h = 40 + linesArr.length * 34
   return `
   <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#fff" stroke="${GOLD}" stroke-width="2.5"/>
-  ${linesArr.map((t, i) => text(t, x + w / 2, y + 40 + i * 34, { size: 21, weight: 800, cls: 'cond', fill: INK, anchor: 'middle' })).join('\n')}`
+  ${linesArr.map((t, i) => text(t, x + w / 2, y + 41 + i * 34, { size: 28, weight: 400, cls: 'hd', fill: INK, anchor: 'middle' })).join('\n')}`
 }
 
 function reassurance({ m, title, body }) {
   return `
-  ${mark(m, 60, 1006, 104)}
-  <line x1="188" y1="1010" x2="188" y2="1114" stroke="${GOLD}" stroke-width="3"/>
-  ${text(title, 214, 1046, { size: 23, weight: 800, cls: 'cond', fit: 764 })}
-  ${stack(body, 214, 1078, { size: 18, weight: 400, fill: BODY, gap: 25 })}`
+  ${mark(m, 146, 1006, 104)}
+  <line x1="320" y1="1010" x2="320" y2="1114" stroke="${GOLD}" stroke-width="3"/>
+  ${text(title, 346, 1046, { size: 29, weight: 400, cls: 'hd', fit: 650 })}
+  ${stack(body, 346, 1078, { size: 18, weight: 400, fill: BODY, gap: 25 })}`
 }
 
 /**
@@ -198,12 +198,12 @@ function ctaBand({ headline, rows, footnote }) {
     ${text('SCAN ME', 111, 228, { size: 21, weight: 900, fill: INK, anchor: 'middle' })}
   </g>
   <line x1="336" y1="1176" x2="336" y2="1400" stroke="#3a5170" stroke-width="2"/>
-  ${headline.map((t, i) => text(t, 372, 1216 + i * 40, { size: 46, weight: 700, cls: 'hd', fill: '#fff', fit: 600 })).join('\n')}
+  ${headline.map((t, i) => text(t, 372, 1216 + i * 40, { size: 54, weight: 400, cls: 'hd', fill: '#fff', fit: 600 })).join('\n')}
   ${rows.map((r, i) => `
     ${glyph(r.icon, 372, 1268 + i * 50, 38, '#fff', 4)}
-    ${text(r.label, 424, 1296 + i * 50, { size: 21, weight: 800, cls: 'cond', fill: '#fff' })}
+    ${text(r.label, 424, 1296 + i * 50, { size: 25, weight: 400, cls: 'hd', fill: '#fff' })}
     <line x1="424" y1="${1310 + i * 50}" x2="${W - 60}" y2="${1310 + i * 50}" stroke="${GOLD}" stroke-width="2" opacity=".85"/>`).join('\n')}
-  ${text(footnote, 372, 1400, { size: 17, weight: 800, cls: 'cond', fill: GOLD })}`
+  ${text(footnote, 372, 1400, { size: 21, weight: 400, cls: 'hd', fill: GOLD })}`
 }
 
 function footer(items) {
@@ -265,29 +265,30 @@ function page({ head, title, subtitle, layout = 'compare', body, leftTitle, left
   <rect width="${W}" height="${H}" fill="#fbfbfb"/>
   
   ${header(head)}
-  ${title.map((t, i) => text(t.text, W / 2, 256 + i * 72, { size: 88, weight: 700, cls: 'hd', anchor: 'middle', fill: INK, fit: t.fit })).join('\n')}
+  ${title.map((t, i) => text(t.text, W / 2, 290 + i * 98, { size: 88, weight: 400, cls: 'hd', anchor: 'middle', fill: INK, fit: t.fit })).join('\n')}
   <line x1="52" y1="410" x2="96" y2="410" stroke="${GOLD}" stroke-width="3"/>
   <line x1="${W - 96}" y1="410" x2="${W - 52}" y2="410" stroke="${GOLD}" stroke-width="3"/>
   ${text(subtitle, W / 2, 418, { size: 25, weight: 400, fill: BODY, anchor: 'middle', fit: 840 })}
   ${layout === 'steps' ? bodySteps(body) : layout === 'circles' ? bodyCircles(body) : `
   ${panel(39, 466, 406, 520, leftTitle)}
-  ${leftSteps.map((s, i) => stepRow(72, 576 + i * 148, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
-  ${keepGoingArrow(656, arrowLabel)}
+  ${leftSteps.map((s, i) => stepRow(104, 582 + i * 132, s.icon, s.lines, i < leftSteps.length - 1)).join('\n')}
+  ${keepGoingArrow(630, arrowLabel)}
   ${panel(550, 466, 462, 520, rightTitle)}
   ${rightSteps.map((st, i) => `
-    ${glyph(st.icon, 592 + i * 148, 548, 92, INK, 5.2)}
-    ${st.lines.map((l, j) => text(l, 638 + i * 148, 676 + j * 25, { size: 17.5, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
-  <path d="M700 594h30M848 594h30" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
+    ${glyph(st.icon, 592 + i * 148, 620, 92, INK, 5.2)}
+    ${st.lines.map((l, j) => text(l, 638 + i * 148, 730 + j * 25, { size: 17.5, weight: 400, fill: BODY, anchor: 'middle' })).join('\n')}`).join('\n')}
+  <path d="M700 666h30M848 666h30" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
   <!-- Gold bracket collecting all three columns, then the arrow down into the
        outcome box. The approved sheet draws this as one connected device; ours
        had only the arrow, so the three columns read as unrelated. -->
-  <path d="M612 742v16h330v-16" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M777 758v20M769 770l8 10 8-10" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
-  ${outcomeBox(576, 800, 410, outcome)}
+  <path d="M612 790v16h330v-16" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M777 806v20M769 818l8 10 8-10" stroke="${GOLD}" stroke-width="3" fill="none" stroke-linecap="round"/>
+  ${outcomeBox(576, 840, 410, outcome)}
 `}
   ${reassurance(reassure)}
   ${ctaBand(cta)}
   ${footer(foot)}
+  <rect x="1.5" y="1.5" width="${W - 3}" height="${H - 3}" rx="22" fill="none" stroke="#111" stroke-width="3"/>
   </svg>`
 }
 
@@ -297,8 +298,8 @@ const businessCfg = {
   // business for something ("bring in your community"). This leads on the lever
   // the owner actually controls - choosing which day gets busier - and lands the
   // same promise the right panel makes.
-  title: [{ text: 'MAKE YOUR SLOWEST DAY', fit: 800 }, { text: 'THE ONE THEY COME BACK FOR.', fit: 940 }],
-  subtitle: 'You pick the day you want busier. LocalVIP helps you give local families an additional reason to choose you — and to come back.',
+  title: [{ text: 'MAKE ONE GIVEBACK DAY', fit: 830 }, { text: 'THE START OF SOMETHING BIGGER.', fit: 960 }],
+  subtitle: 'Bring in your community. Build relationships that can continue after the event.',
   leftTitle: 'THE GIVEBACK DAY|YOU ALREADY KNOW',
   leftSteps: [
     { icon: 'megaphone', lines: ['Olathe West', 'promotes your business'] },
@@ -308,11 +309,11 @@ const businessCfg = {
   rightTitle: 'WHAT DOES|LOCALVIP ADD',
   rightSteps: [
     { icon: 'repeat', lines: ['Customers', 'come back'] },
-    { icon: 'customers', lines: ['Reward the ones', 'you already have'] },
-    { icon: 'chart', lines: ['Reach the wider', 'local network'] },
+    { icon: 'customers', lines: ['Reward loyal', 'customers'] },
+    { icon: 'chart', lines: ['Reach more', 'local people'] },
   ],
   arrowLabel: 'KEEP IT|GOING',
-  outcome: ['CHOOSE YOUR SLOWER DAY AND', 'GIVE PEOPLE A REASON TO', 'WALK IN WHEN YOU WANT THEM.'],
+  outcome: ['THE RELATIONSHIP CONTINUES', 'AND THE IMPACT CAN GROW', 'BEYOND THE DAY.'],
   reassure: {
     m: owl,
     // Business audience. The original sheet's reassurance - "you're still
@@ -326,13 +327,13 @@ const businessCfg = {
     // does fund the cashback it advertises, so "keep your margins" would be
     // false; "how you run your day" is both true and the thing an owner is
     // actually wary of changing.
-    title: 'NOTHING CHANGES ABOUT HOW YOU RUN YOUR BUSINESS.',
-    body: ['You keep the customers and the reputation you have already earned.',
-      'LocalVIP does not change how you run your day — it adds another',
-      'reason for people to choose you, come back, and tell others.'],
+    title: 'NOTHING CHANGES ABOUT WHY WE DO THIS.',
+    body: ['You’re still supporting Olathe West and helping our kids.',
+      'LocalVIP makes the experience better for everyone involved',
+      'and turns one day into an ongoing connection.'],
   },
   cta: {
-    headline: ['ONGOING CONNECTION. MORE WAYS TO WIN.'],
+    headline: ['ONGOING CONNECTION.', 'MORE WAYS TO WIN.'],
     rows: [
       { icon: 'play', label: 'SCAN TO SEE THE 60-SECOND PLAN' },
       { icon: 'calendar', label: 'BOOK YOUR 15-MINUTE SETUP CALL' },

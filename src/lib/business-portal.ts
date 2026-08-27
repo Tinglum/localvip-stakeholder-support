@@ -289,7 +289,7 @@ export function getBusinessDescription(business: Business): string {
 
 export function getBusinessOfferTitle(business: Business): string {
   const data = getBusinessPortalData(business)
-  return data.capture_offer_title || data.offer_title || 'Join our list and get access to exclusive offers'
+  return data.capture_offer_title || data.offer_title || 'Join our list and get access to exclusive VIP savings'
 }
 
 /**

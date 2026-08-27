@@ -149,7 +149,7 @@ export async function GET() {
       return NextResponse.json({ ...fallback, consumerId, unresolvedConsumer: true })
     }
 
-    const [wallet, transactions, cashback, bonusCash, friends, causes, devices] = await Promise.all([
+    const [wallet, transactions, cashback, bonusCash, friends, rawCauses, devices] = await Promise.all([
       readOptionalQaJson(`/api/dashboard/v1/Consumer/${consumerId}/wallet`, null),
       readOptionalQaJson(`/api/dashboard/v1/Consumer/${consumerId}/transactions`, []),
       readOptionalQaJson(`/api/dashboard/v1/Consumer/${consumerId}/cashback`, null),
@@ -158,6 +158,22 @@ export async function GET() {
       readOptionalQaJson(`/api/dashboard/v1/Consumer/${consumerId}/ten-causes`, []),
       readOptionalQaJson(`/api/dashboard/v1/Consumer/${consumerId}/devices`, []),
     ])
+
+    // The QA ten-causes endpoint returns every ConsumerTenCauses row ever written,
+    // active or not, unlike the mobile endpoint the WebApp reads (which filters
+    // IsActive). Because changing a selection DEACTIVATES rather than deletes, the
+    // unfiltered list shows every cause the customer has ever picked, so the
+    // dashboard disagreed with what they see in the WebApp. Drop deactivated rows
+    // here; the flag arrives as isActive or IsActive depending on serializer casing,
+    // and anything we cannot classify is kept rather than silently hidden.
+    const causes = Array.isArray(rawCauses)
+      ? rawCauses.filter((row) => {
+          if (!row || typeof row !== 'object') return true
+          const record = row as Record<string, unknown>
+          const flag = record.isActive ?? record.IsActive
+          return flag !== false
+        })
+      : rawCauses
 
     let summary: unknown = null
     try {

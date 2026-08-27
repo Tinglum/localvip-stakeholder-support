@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDateTime } from '@/lib/utils'
-import { useOutreach, useOutreachInsert, useProfiles, useBusinesses, useCauses, useContacts } from '@/lib/supabase/hooks'
+import { useOutreach, useOutreachInsert, useProfiles, useBusinesses, useCauses, useContacts, useRecord } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
 import type { OutreachActivity, OutreachType } from '@/lib/types/database'
 
@@ -78,6 +78,15 @@ function SearchableSelect({ options, value, onChange, placeholder }: {
 export default function OutreachPage() {
   const { profile } = useAuth()
   const [addOpen, setAddOpen] = React.useState(false)
+  // A logged activity used to be unopenable: the table had no row click and no
+  // detail route, so the note body was write-only. The backend detail endpoint
+  // already existed and is the only place Body comes back - the list projection
+  // omits it - so the detail has to be fetched per row rather than read off the list.
+  const [detailId, setDetailId] = React.useState<string | null>(null)
+  const { data: detailActivity, loading: detailLoading } = useRecord<OutreachActivity>(
+    'outreach_activities',
+    detailId,
+  )
   const [submitting, setSubmitting] = React.useState(false)
 
   // Form state
@@ -241,9 +250,62 @@ export default function OutreachPage() {
         columns={columns}
         data={activities}
         keyField="id"
+        onRowClick={(activity) => setDetailId(activity.id)}
         searchPlaceholder="Search by subject, outcome, or next step..."
         emptyState={<EmptyState icon={<Send className="h-8 w-8" />} title="No outreach logged yet" description="Log your first outreach activity to start building history." action={{ label: 'Log Activity', onClick: () => setAddOpen(true) }} />}
       />
+
+      <Dialog open={!!detailId} onOpenChange={(open) => { if (!open) setDetailId(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{detailActivity?.subject || 'Outreach activity'}</DialogTitle>
+            <DialogDescription>
+              {detailActivity ? formatDateTime(detailActivity.created_at) : 'Loading this activity...'}
+            </DialogDescription>
+          </DialogHeader>
+          {detailLoading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-surface-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading activity...
+            </div>
+          ) : !detailActivity ? (
+            <p className="py-8 text-sm text-surface-500">This activity could not be loaded.</p>
+          ) : (
+            <div className="space-y-4 text-sm">
+              <div className="flex flex-wrap gap-2">
+                {detailActivity.type ? (
+                  <Badge variant="default">{detailActivity.type.replace(/_/g, ' ')}</Badge>
+                ) : null}
+                {detailActivity.outcome ? <Badge variant="info">{detailActivity.outcome}</Badge> : null}
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-surface-500">Notes</p>
+                <p className="mt-1 whitespace-pre-wrap text-surface-800">
+                  {detailActivity.body || 'No notes were recorded for this activity.'}
+                </p>
+              </div>
+              {detailActivity.next_step ? (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-500">Next step</p>
+                  <p className="mt-1 text-surface-800">{detailActivity.next_step}</p>
+                  {detailActivity.next_step_date ? (
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-surface-500">
+                      <Clock className="h-3 w-3" /> {formatDateTime(detailActivity.next_step_date)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {/* The activity is recorded against whoever's session made the call,
+                  which surprised a tester who never typed that address in. Say so. */}
+              <p className="border-t border-surface-100 pt-3 text-xs text-surface-500">
+                Logged by the signed-in account at the time this activity was created.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailId(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm() }}>
         <DialogContent>

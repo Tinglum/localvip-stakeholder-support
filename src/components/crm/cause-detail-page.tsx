@@ -74,6 +74,7 @@ import {
   getCauseNextActions,
   getTabForStepKey,
   getTabForReadinessCheck,
+  isCauseProfileComplete,
   type CauseExecutionStepSummary,
 } from '@/lib/cause-execution'
 import {
@@ -385,6 +386,36 @@ export default function CauseDetailPage() {
       await updateCause(localCauseId, changes as Partial<Cause>)
     }
   }, [causeResponse?.qaCauseId, localCauseId, updateCause])
+
+  // The cause's own profile (contact path, location, organization type) lives on
+  // the QA Account. The previous path wrote it to the local `causes` table via
+  // the generic QA table proxy, which has no `causes` entity — every save came
+  // back 400, the update hook swallowed the error, and the modal reported
+  // success while the record was untouched.
+  const handleSaveCauseProfile = React.useCallback(async (changes: Partial<Cause>) => {
+    const qaId = causeResponse?.qaCauseId
+    if (qaId == null) throw new Error('This cause has no QA record to save to.')
+
+    const selectedCity = changes.city_id ? cities.find(c => c.id === changes.city_id) || null : null
+    const payload: Record<string, unknown> = {
+      owner_email: changes.email ?? null,
+      owner_phone: changes.phone ?? null,
+      category: changes.type,
+    }
+    if (selectedCity) {
+      payload.city_name = selectedCity.name
+      payload.state = selectedCity.state
+    }
+
+    const res = await fetch(`/api/qa/nonprofits/${qaId}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) throw new Error('The cause profile could not be saved.')
+
+    window.location.reload()
+  }, [causeResponse?.qaCauseId, cities])
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
     if (!cause || !canEditCrm) return
@@ -1046,7 +1077,7 @@ export default function CauseDetailPage() {
                   modal: 'initial_connection' as const,
                   icon: <Target className="h-5 w-5 text-brand-600" />,
                   items: [
-                    { label: 'Profile complete (city + contact)', done: !!(cause.city_id && (cause.owner_email || cause.email || cause.owner_phone || cause.phone)), modal: 'initial_connection' as const },
+                    { label: 'Profile complete (city + contact)', done: isCauseProfileComplete(cause), modal: 'initial_connection' as const },
                     { label: 'Materials generated', done: generatedCount > 0, tab: 'materials' as DashboardTab },
                     { label: 'QR code created', done: causeQrCodes.length > 0, modal: 'materials_qr' as const },
                   ],
@@ -1852,12 +1883,7 @@ export default function CauseDetailPage() {
             city={city}
             linkedBusinessCount={linkedBusinesses.length}
             helperCount={assignments.length}
-            onSave={async (changes) => {
-              if (localCauseId) {
-                await updateCause(localCauseId, changes as any)
-                window.location.reload()
-              }
-            }}
+            onSave={handleSaveCauseProfile}
             onCompleteStep={(() => {
               const step = getExecutionStep('initial_connection')
               return step?.step.id && step.state === 'active' && step.readyToComplete

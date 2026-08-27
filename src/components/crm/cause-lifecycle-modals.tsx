@@ -9,7 +9,6 @@ import {
   Copy,
   ExternalLink,
   FileText,
-  Globe,
   Heart,
   Loader2,
   Mail,
@@ -82,7 +81,7 @@ function SuccessBanner({ text }: { text: string }) {
 // 1. Cause Initial Connection Modal
 // ═══════════════════════════════════════════
 //  Features:
-//  • Quick-edit city, email, phone, website, org type inline
+//  • Quick-edit city, email, phone, org type inline
 //  • Readiness checklist (city + at least one contact path)
 //  • Helper count + linked-businesses summary
 //  • One-click complete step when ready
@@ -124,41 +123,60 @@ export function CauseInitialConnectionModal({
   blocker,
   cities,
 }: CauseInitialConnectionModalProps) {
-  const [email, setEmail] = React.useState(cause.email || '')
-  const [phone, setPhone] = React.useState(cause.phone || '')
-  const [website, setWebsite] = React.useState(cause.website || '')
-  const [cityId, setCityId] = React.useState(cause.city_id || '')
+  // QA is the source of truth for the cause's contact path and location: it
+  // returns them as owner_email / owner_phone / city_name. The local columns are
+  // only populated for causes that predate the QA import, so both are read.
+  const qaCause = cause as Cause & {
+    owner_email?: string | null
+    owner_phone?: string | null
+    city_name?: string | null
+  }
+  const resolveInitialCityId = React.useCallback(() => {
+    if (cause.city_id && cities.some(c => c.id === cause.city_id)) return cause.city_id
+    const cityName = qaCause.city_name?.trim().toLowerCase()
+    if (!cityName) return ''
+    return cities.find(c => c.name.trim().toLowerCase() === cityName)?.id || ''
+  }, [cause.city_id, qaCause.city_name, cities])
+
+  const [email, setEmail] = React.useState(qaCause.owner_email || cause.email || '')
+  const [phone, setPhone] = React.useState(qaCause.owner_phone || cause.phone || '')
+  const [cityId, setCityId] = React.useState(resolveInitialCityId)
   const [causeType, setCauseType] = React.useState<Cause['type']>(cause.type)
   const [localSaving, setLocalSaving] = React.useState(false)
   const [saved, setSaved] = React.useState(false)
+  const [saveError, setSaveError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (open) {
-      setEmail(cause.email || '')
-      setPhone(cause.phone || '')
-      setWebsite(cause.website || '')
-      setCityId(cause.city_id || '')
+      setEmail(qaCause.owner_email || cause.email || '')
+      setPhone(qaCause.owner_phone || cause.phone || '')
+      setCityId(resolveInitialCityId())
       setCauseType(cause.type)
       setSaved(false)
+      setSaveError(null)
     }
-  }, [open, cause])
+  }, [open, cause, qaCause.owner_email, qaCause.owner_phone, resolveInitialCityId])
 
-  const hasCity = !!cityId
-  const hasContact = !!(email.trim() || phone.trim() || website.trim())
+  // The cause already has a location when QA carries one, even if no dashboard
+  // city row has been picked yet.
+  const hasCity = !!cityId || !!qaCause.city_name?.trim()
+  const hasContact = !!(email.trim() || phone.trim())
   const allReady = hasCity && hasContact
 
   async function handleSave() {
     setLocalSaving(true)
     setSaved(false)
+    setSaveError(null)
     try {
       await onSave({
         email: email.trim() || null,
         phone: phone.trim() || null,
-        website: website.trim() || null,
         city_id: cityId || null,
         type: causeType,
       })
       setSaved(true)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'The cause profile could not be saved.')
     } finally {
       setLocalSaving(false)
     }
@@ -176,7 +194,7 @@ export function CauseInitialConnectionModal({
 
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-3">
-            <Stat label="City linked" value={city?.name || 'Not set'} ok={hasCity} />
+            <Stat label="City linked" value={city?.name || qaCause.city_name || 'Not set'} ok={hasCity} />
             <Stat label="Contact path" value={hasContact ? 'Set' : 'Missing'} ok={hasContact} />
             <Stat label="Linked businesses" value={`${linkedBusinessCount}`} />
             <Stat label="Helpers" value={`${helperCount} assigned`} />
@@ -215,7 +233,7 @@ export function CauseInitialConnectionModal({
           </div>
 
           {/* Contact fields */}
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className="flex items-center gap-1.5 text-sm font-medium text-surface-700">
                 <Mail className="h-3.5 w-3.5 text-surface-400" /> Email
@@ -228,15 +246,10 @@ export function CauseInitialConnectionModal({
               </label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(404) 555-0000" />
             </div>
-            <div className="space-y-1.5">
-              <label className="flex items-center gap-1.5 text-sm font-medium text-surface-700">
-                <Globe className="h-3.5 w-3.5 text-surface-400" /> Website
-              </label>
-              <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="www.school.org" />
-            </div>
           </div>
 
-          {saved && <SuccessBanner text="Organization info saved." />}
+          {saveError && <Blocker text={saveError} />}
+          {saved && !saveError && <SuccessBanner text="Organization info saved." />}
 
           <div className="flex items-center justify-between gap-3 border-t border-surface-100 pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>

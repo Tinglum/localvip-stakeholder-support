@@ -424,7 +424,7 @@ async function fetchQaCaptureOffer(businessId: string) {
 }
 
 function buildOfferSummary(offer: QaOfferRecord | null) {
-  const title = offer?.headline || offer?.title || offer?.name || 'Join our list and get access to exclusive offers'
+  const title = offer?.headline || offer?.title || offer?.name || 'Join our list and get access to exclusive VIP savings'
   const description = offer?.description || 'Join our list and be part of something local.'
   const rawValue = offer?.valueLabel ?? offer?.value_label ?? offer?.discountValue ?? offer?.discount_value ?? null
   return {

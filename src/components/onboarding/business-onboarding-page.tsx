@@ -1935,7 +1935,7 @@ function BusinessDetailModal({
         business_id: business.id,
         offer_type: 'capture',
         status: data.headline.trim() ? 'active' : 'draft',
-        headline: data.headline.trim() || 'Join our list and get access to exclusive offers',
+        headline: data.headline.trim() || 'Join our list and get access to exclusive VIP savings',
         description: data.description.trim() || 'This offer is only used to collect your first 100 customers before you go live.',
         value_type: 'label',
         value_label: data.valueLabel.trim() || null,

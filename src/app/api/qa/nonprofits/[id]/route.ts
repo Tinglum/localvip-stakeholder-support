@@ -53,8 +53,31 @@ export async function PUT(
     }
 
     // Cause profile settings. The backend only applies keys that are present,
-    // so we forward the flag only when the caller actually sent it.
+    // so we forward each one only when the caller actually sent it.
+    const profileKeyMap: Record<string, string> = {
+      name: 'Name',
+      headline: 'Headline',
+      description: 'Description',
+      owner_name: 'OwnerName',
+      owner_email: 'OwnerEmail',
+      owner_phone: 'OwnerPhone',
+      address1: 'Address1',
+      address2: 'Address2',
+      city_name: 'City',
+      state: 'State',
+      zip_code: 'ZipCode',
+      country: 'Country',
+      category: 'Category',
+    }
     const profilePayload: Record<string, unknown> = {}
+    for (const [key, backendKey] of Object.entries(profileKeyMap)) {
+      if (!(key in body)) continue
+      const value = body[key]
+      // The backend treats null as "leave unchanged" for these string fields, so
+      // a cleared input has to arrive as an empty string.
+      profilePayload[backendKey] = value == null ? '' : String(value)
+    }
+
     const referrerVisibility = body.is_visible_in_referrer_search ?? body.isVisibleInReferrerSearch
     if (typeof referrerVisibility === 'boolean') {
       profilePayload.isVisibleInReferrerSearch = referrerVisibility

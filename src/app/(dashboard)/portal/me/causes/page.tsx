@@ -155,10 +155,17 @@ export default function MyCausesPage() {
   const [causeImpact, setCauseImpact] = React.useState<CauseImpactPayload | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [catalogError, setCatalogError] = React.useState<string | null>(null)
   const [searchQuery, setSearchQuery] = React.useState('')
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>('idle')
 
   const lastSavedKeyRef = React.useRef<string | null>(null)
+  // When the load fails, `selection` stays [] even though the customer may have
+  // five causes saved. The autosave effect below would then see [] != null and PUT
+  // an empty selection, and the QA endpoint deactivates every ConsumerTenCauses row
+  // on an empty body - silently wiping choices this page never managed to read.
+  // Nothing may be persisted from a selection we never loaded.
+  const loadFailedRef = React.useRef(false)
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
@@ -176,9 +183,11 @@ export default function MyCausesPage() {
         setCatalog(nextCatalog)
         setSelection(nextSelection)
         setCauseImpact(json?.causeImpact && typeof json.causeImpact === 'object' ? json.causeImpact : null)
+        setCatalogError(typeof json?.catalogError === 'string' && json.catalogError ? json.catalogError : null)
         lastSavedKeyRef.current = selectionKey(nextSelection)
       } catch (error) {
         if (!active) return
+        loadFailedRef.current = true
         setLoadError(error instanceof Error ? error.message : 'Your causes could not be loaded.')
       } finally {
         if (active) setLoading(false)
@@ -192,6 +201,7 @@ export default function MyCausesPage() {
   const persistSelection = React.useCallback(async (next: SelectedCause[]) => {
     const payload = selectionPayload(next)
     const key = JSON.stringify(payload)
+    if (loadFailedRef.current) return
     if (key === lastSavedKeyRef.current) return
 
     setSaveStatus('saving')
@@ -214,6 +224,8 @@ export default function MyCausesPage() {
 
   React.useEffect(() => {
     if (loading) return
+    // See loadFailedRef: never write back a selection we never successfully read.
+    if (loadFailedRef.current) return
     if (selectionKey(selection) === lastSavedKeyRef.current) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     const snapshot = selection
@@ -266,6 +278,7 @@ export default function MyCausesPage() {
     'totalReceivedLifetime',
   ])
   const selectedCauseLifetimeImpact = pickCauseImpactNumber(causeImpact, ['selectedCausesReceivedLifetime'])
+  const yourLifetimeContribution = pickCauseImpactNumber(causeImpact, ['yourContributionLifetime'])
 
   const searchResults = React.useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -396,19 +409,31 @@ export default function MyCausesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Heart className="h-5 w-5 text-brand-600" />
-              Your lifetime impact
+              Your causes&apos; lifetime support
             </CardTitle>
             <CardDescription>
-              Aggregate lifetime support received by the causes you selected.
+              Total received by the causes you selected, from everyone on LocalVIP.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="h-10 w-40 animate-pulse rounded-lg bg-surface-100" />
             ) : (
-              <p className="text-3xl font-bold tabular-nums text-surface-900">
-                {formatUsd(selectedCauseLifetimeImpact)}
-              </p>
+              <>
+                <p className="text-3xl font-bold tabular-nums text-surface-900">
+                  {formatUsd(selectedCauseLifetimeImpact)}
+                </p>
+                {/* The headline number is what these causes received from EVERYONE.
+                    It used to sit under the title "Your lifetime impact", which reads
+                    as the customer's own giving and is wrong by orders of magnitude.
+                    The backend already returns their own figure, so show it. */}
+                <p className="mt-2 text-sm text-surface-500">
+                  Your contribution:{' '}
+                  <span className="font-semibold tabular-nums text-surface-700">
+                    {formatUsd(yourLifetimeContribution)}
+                  </span>
+                </p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -522,6 +547,15 @@ export default function MyCausesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent id="cause-search">
+          {catalogError && (
+            <div className="mb-4 flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 p-3.5 text-sm text-warning-800">
+              <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                {catalogError} Your selections above are still correct - only the list of causes to
+                browse is unavailable. Refresh to try again.
+              </span>
+            </div>
+          )}
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <Input

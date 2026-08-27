@@ -133,16 +133,29 @@ export async function GET(request: NextRequest) {
   try {
     const fetchForViewer = await resolveViewerFetcher(access.session)
     const [catalogRes, selectionRes, causeImpact] = await Promise.all([
-      // The catalog is the same for everyone, so it stays on the caller's token.
-      fetchQaApi(`${CAUSES_CATALOG_PATH}?${catalogQuery.toString()}`),
+      // The catalog content is the same for everyone, but the QA endpoint sits on a
+      // Consumer-only controller: called with an admin's token it 403s, which used to
+      // fail the whole GET and render "no causes selected" over a customer who had
+      // picked five. Read it as the viewer, like the selection.
+      fetchForViewer(`${CAUSES_CATALOG_PATH}?${catalogQuery.toString()}`),
       fetchForViewer(CAUSES_SELECTION_PATH),
       readOptionalQaJson(CAUSE_IMPACT_SUMMARY_PATH, fetchForViewer),
     ])
 
-    const [catalogPayload, selectionPayload] = await Promise.all([
-      parseQaResponse<unknown>(catalogRes, 'The causes catalog could not be loaded.'),
-      parseQaResponse<unknown>(selectionRes, 'Your selected causes could not be loaded.'),
-    ])
+    // The selection is the answer to "what did this person pick" and must survive a
+    // catalog failure; a broken browse list is a degraded page, not an empty one.
+    const selectionPayload = await parseQaResponse<unknown>(
+      selectionRes,
+      'Your selected causes could not be loaded.',
+    )
+
+    let catalogError: string | null = null
+    let catalogPayload: unknown = null
+    try {
+      catalogPayload = await parseQaResponse<unknown>(catalogRes, 'The causes catalog could not be loaded.')
+    } catch (error) {
+      catalogError = error instanceof Error ? error.message : 'The causes catalog could not be loaded.'
+    }
 
     const catalog = extractItems(catalogPayload)
       .map(mapCatalogItem)
@@ -152,7 +165,7 @@ export async function GET(request: NextRequest) {
       .map(mapSelectionItem)
       .filter((item): item is CauseSelectionItem => Boolean(item))
 
-    return NextResponse.json({ catalog, selection, causeImpact })
+    return NextResponse.json({ catalog, selection, causeImpact, catalogError })
   } catch (error) {
     return qaRouteErrorResponse(error, 'Your causes could not be loaded.')
   }

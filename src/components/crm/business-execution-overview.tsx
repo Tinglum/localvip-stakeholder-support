@@ -550,7 +550,7 @@ export function BusinessExecutionOverview({
         business_id: queryBusinessId,
         offer_type: 'capture',
         status: captureHeadline.trim() ? 'active' : 'draft',
-        headline: captureHeadline.trim() || 'Join our list and get access to exclusive offers',
+        headline: captureHeadline.trim() || 'Join our list and get access to exclusive VIP savings',
         description: captureDescription.trim() || 'This offer is only used to collect your first 100 customers before you go live.',
         value_type: 'label',
         value_label: captureValue.trim() || null,

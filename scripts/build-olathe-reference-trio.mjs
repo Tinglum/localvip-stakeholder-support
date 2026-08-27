@@ -41,12 +41,12 @@ const icons = {
   network: `<circle cx="32" cy="10" r="7" fill="currentColor" stroke="none"/><circle cx="11" cy="48" r="7" fill="currentColor" stroke="none"/><circle cx="53" cy="48" r="7" fill="currentColor" stroke="none"/><path d="M29 18L15 41M35 18l14 23M19 48h26"/>`,
   heart: `<path d="M32 57S7 42 7 25c0-10 8-17 17-17 5 0 9 2 12 7 3-5 7-7 12-7 9 0 17 7 17 17 0 17-25 32-33 32z"/>`,
   people: `<circle cx="32" cy="15" r="9" fill="currentColor" stroke="none"/><circle cx="12" cy="23" r="7" fill="currentColor" stroke="none"/><circle cx="52" cy="23" r="7" fill="currentColor" stroke="none"/><path d="M13 55c0-13 8-22 19-22s19 9 19 22z" fill="currentColor" stroke="none"/><path d="M0 52c0-10 5-17 13-17 3 0 6 1 8 3-4 4-6 9-7 14zM64 52c0-10-5-17-13-17-3 0-6 1-8 3 4 4 6 9 7 14z" fill="currentColor" stroke="none"/>`,
-  chart: `<path d="M7 57h50M12 57V42h10v15M28 57V31h10v26M44 57V20h10v37"/><path d="M10 34l16-13 10 7 20-19M46 9h10v10"/>`,
+  chart: `<path d="M7 58h51M12 58V43h10v15M28 58V33h10v25M44 58V23h10v35"/><path d="M10 35L26 22l10 7 17-17"/><path d="M44 12h9v9"/>`,
   play: `<circle cx="32" cy="32" r="25"/><path d="M26 20l20 12-20 12z" fill="currentColor" stroke="none"/>`,
   calendar: `<rect x="8" y="13" width="48" height="43" rx="5"/><path d="M8 26h48M20 7v12M44 7v12M20 36h8M36 36h8M20 46h8M36 46h8"/>`,
 }
 const icon = (name, x, y, size, color = INK, sw = 3.5) => `<g transform="translate(${x} ${y}) scale(${size / 64})" fill="none" stroke="${color}" color="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${icons[name]}</g>`
-const down = (x, y) => `<path d="M${x - 4} ${y}h8v12h6l-10 12-10-12h6z" fill="#b8b8b8"/>`
+const down = (x, y) => `<path d="M${x} ${y}v17m-6-6 6 7 6-7" fill="none" stroke="#aeb4ba" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`
 
 const configs = {
   school: {
@@ -59,10 +59,10 @@ const configs = {
   },
   business: {
     mark: owl, markBox: [72, 20, 98, 98], org: ['OLATHE WEST', '12TH MAN'], sub: 'FOOTBALL BOOSTER CLUB',
-    title: ['MAKE ONE GIVEBACK DAY', 'THE START OF SOMETHING BIGGER.'], intro: 'Bring in your community. Build relationships that can continue after the event.',
+    title: ['MAKE ONE GIVEBACK DAY', 'THE START OF SOMETHING BIGGER.'], intro: 'Bring in your community. Keep the connection going after the event.',
     leftHead: ['THE GIVEBACK DAY', 'YOU ALREADY KNOW'], left: [['megaphone', 'Olathe West', 'promotes your business'], ['store', 'Supporters', 'shop with you'], ['trophy', 'A successful', 'Giveback Day.', 'Great impact.']], arrow: ['KEEP IT', 'GOING'],
-    rightHead: ['WHAT DOES', 'LOCALVIP ADD'], top: ['people', 'Reward the customers', 'you already have'], mid: ['network', 'Connect to the wider', 'local network'], benefits: [['heart', 'Olathe West', 'benefits'], ['people', 'Customers can', 'be rewarded'], ['chart', 'Your business', 'can grow']], outcome: ['The relationship continues and', 'the business impact can grow.'],
-    reassureMark: owl, reassureTitle: 'NOTHING CHANGES ABOUT WHY WE DO THIS.', reassure: ['You are still supporting Olathe West and helping our kids.', 'LocalVIP turns a single day into an ongoing connection.'],
+    rightHead: ['WHAT DOES', 'LOCALVIP ADD'], top: ['people', 'Bring customers back', 'after Giveback Day'], mid: ['network', 'Customers invite others', 'and grow your network'], benefits: [['heart', 'Olathe West', 'continues to', 'benefit'], ['people', 'Customers grow', 'your network'], ['chart', 'You can earn', 'when they shop', 'elsewhere']], outcome: ['The relationship continues', 'your network can grow and earn', 'beyond the day.'],
+    reassureMark: owl, reassureTitle: 'YOU OWN THE CUSTOMER RELATIONSHIP.', reassure: ['Choose your slower day. LocalVIP adds rewards, sharing tools', 'and network earning potential that continues after the event.'],
     cta: 'CHOOSE YOUR GIVEBACK DAY', cta1: 'SCAN TO SEE THE 60-SECOND PLAN', cta2: 'BOOK YOUR 15-MINUTE SETUP CALL', note: '★  CHOOSE A DATE. WE’LL HELP WITH THE REST.', foot: ['YOUR BUSINESS.', 'OUR COMMUNITY.', 'MORE WAYS TO WIN.'], footIcons: ['store', 'people', 'trophy'],
   },
   parent: {
@@ -86,27 +86,40 @@ function panel(x, head) {
 }
 
 function qr() {
-  return `<rect x="56" y="751" width="108" height="108" rx="7" fill="#fff" stroke="${GOLD}" stroke-width="4"/><rect x="66" y="761" width="88" height="88" fill="#fff" stroke="${GOLD}" stroke-width="2" stroke-dasharray="6 5"/>${lines(['PLACE QR', 'CODE HERE'], 110, 799, { size: 10, weight: 700, anchor: 'middle', fill: '#8b6500', gap: 14 })}`
+  return `<rect x="54" y="748" width="108" height="104" rx="7" fill="#fff" stroke="${GOLD}" stroke-width="4"/><rect x="64" y="758" width="88" height="84" fill="#fff" stroke="${GOLD}" stroke-width="2" stroke-dasharray="6 5"/>${lines(['YOUR QR', 'CODE HERE'], 108, 794, { size: 10, weight: 700, anchor: 'middle', fill: '#8b6500', gap: 14 })}`
 }
 
 function flyer(c) {
-  const leftY = [356, 455, 550]
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"><defs><style>${CSS}</style></defs><rect width="${W}" height="${H}" fill="#fff"/><rect x="20" y="16" width="623" height="879" rx="11" fill="none" stroke="#1a1a1a"/>
+  const leftY = [352, 428, 508]
+  const benefitX = [386, 474, 562]
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"><defs><style>${CSS}</style></defs>
+  <rect width="${W}" height="${H}" fill="#fff"/><rect x="14" y="8" width="620" height="878" rx="10" fill="none" stroke="#111" stroke-width="2"/>
   ${header(c)}
-  ${lines(c.title, 331.5, 166, { face: 'display', size: 50, anchor: 'middle', gap: 58 })}
-  <line x1="48" y1="266" x2="106" y2="266" stroke="${GOLD}"/>${txt(c.intro, 331.5, 271, { size: 12.5, weight: 600, anchor: 'middle' })}<line x1="557" y1="266" x2="615" y2="266" stroke="${GOLD}"/>
-  ${panel(47, c.leftHead)}${panel(344, c.rightHead)}
-  ${c.left.map((r, i) => `${icon(r[0], 88, leftY[i], 50)}${lines(r.slice(1), 160, leftY[i] + 18, { face: 'display', size: 17, gap: 18 })}${i < 2 ? down(183, leftY[i] + 67) : ''}`).join('')}
-  <path d="M251 445h84v-20l31 41-31 41v-20h-84z" fill="${GOLD}"/>${lines(c.arrow, 292, c.arrow.length === 1 ? 473 : 464, { face: 'display', size: 19, anchor: 'middle', gap: 18 })}
-  ${icon(c.top[0], 394, 356, 44)}${lines(c.top.slice(1), 454, 375, { face: 'display', size: 16, gap: 18 })}${down(476, 414)}
-  ${icon(c.mid[0], 394, 425, 44)}${lines(c.mid.slice(1), 454, 444, { face: 'display', size: 16, gap: 18 })}${down(476, 483)}
-  ${c.benefits.map((b, i) => `${icon(b[0], 372 + i * 78, 497, 42)}${lines(b.slice(1), 393 + i * 78, 552, { face: 'display', size: 14, anchor: 'middle', gap: 16 })}`).join('')}
-  <path d="M380 587v8h194v-8M477 595v15l-6-7m6 7l6-7" fill="none" stroke="${GOLD}" stroke-width="2"/>
-  ${lines(c.outcome, 479, 624, { face: 'display', size: 17, anchor: 'middle', weight: 400, gap: 19 })}
-  ${mark(c.reassureMark, 112, 670, 70, 64)}<line x1="196" y1="669" x2="196" y2="730" stroke="${GOLD}" stroke-width="2"/>${txt(c.reassureTitle, 218, 691, { face: 'display', size: 18 })}${lines(c.reassure, 218, 709, { size: 10.5, gap: 14 })}
-  <rect x="20" y="740" width="623" height="122" fill="${NAVY}"/>${qr()}<path d="M172 780q18-21 25 8" fill="none" stroke="${GOLD}" stroke-width="2"/><path d="M170 781l8-2-2 8" fill="none" stroke="${GOLD}" stroke-width="2"/>${lines(['SCAN', 'ME'], 183, 808, { face: 'display', size: 18, fill: GOLD, gap: 18 })}<line x1="231" y1="748" x2="231" y2="854" stroke="${GOLD}"/>
-  ${txt(c.cta, 249, 775, { face: 'display', size: 24, fill: '#fff' })}${icon('play', 249, 783, 29, '#fff', 3)}${txt(c.cta1, 288, 805, { face: 'display', size: 17, fill: GOLD })}<line x1="288" y1="811" x2="604" y2="811" stroke="${GOLD}"/>${icon('calendar', 249, 819, 29, '#fff', 3)}${txt(c.cta2, 288, 841, { face: 'display', size: 17, fill: GOLD })}<line x1="288" y1="847" x2="604" y2="847" stroke="${GOLD}"/>${txt(c.note, 278, 859, { face: 'display', size: 11, fill: GOLD })}
-  ${c.foot.map((f, i) => `${i ? `<line x1="${232 + (i - 1) * 195}" y1="869" x2="${232 + (i - 1) * 195}" y2="894" stroke="#333"/>` : ''}${icon(c.footIcons[i], 72 + i * 195, 866, 28)}${txt(f, 105 + i * 195, 886, { face: 'display', size: 12 })}`).join('')}
+  ${lines(c.title, 331.5, 171, { face: 'display', size: 50, anchor: 'middle', gap: 58 })}
+  <line x1="39" y1="260" x2="88" y2="260" stroke="${GOLD}"/>${txt(c.intro, 331.5, 265, { size: 12.5, weight: 600, anchor: 'middle' })}<line x1="576" y1="260" x2="624" y2="260" stroke="${GOLD}"/>
+
+  <rect x="35" y="284" width="241" height="308" rx="9" fill="#fff" stroke="${GOLD}"/><path d="M35 293a9 9 0 0 1 9-9h223a9 9 0 0 1 9 9v45H35z" fill="${NAVY}"/>
+  ${lines(c.leftHead, 155.5, 306, { face: 'display', size: 20, anchor: 'middle', fill: '#fff', gap: 20 })}
+  ${c.left.map((r, i) => `${icon(r[0], 76, leftY[i], 48)}${lines(r.slice(1), 135, leftY[i] + 17, { face: 'display', size: 16, gap: 17 })}${i < 2 ? down(159, leftY[i] + 58) : ''}`).join('')}
+
+  <path d="M276 403h32v-23l43 56-43 56v-23h-32z" fill="${GOLD}"/>${lines(c.arrow, 294, c.arrow.length === 1 ? 443 : 429, { face: 'display', size: 19, anchor: 'middle', gap: 20 })}
+
+  <rect x="336" y="284" width="276" height="308" rx="9" fill="#fff" stroke="${GOLD}"/><path d="M336 293a9 9 0 0 1 9-9h258a9 9 0 0 1 9 9v45H336z" fill="${NAVY}"/>
+  ${lines(c.rightHead, 474, 306, { face: 'display', size: 20, anchor: 'middle', fill: '#fff', gap: 20 })}
+  ${c.benefits.map((b, i) => `${icon(b[0], benefitX[i] - 25, 370, 50)}${lines(b.slice(1), benefitX[i], 438, { face: 'display', size: 13, anchor: 'middle', gap: 14 })}`).join('')}
+  <line x1="416" y1="398" x2="437" y2="398" stroke="${GOLD}"/><line x1="504" y1="398" x2="525" y2="398" stroke="${GOLD}"/>
+  <path d="M367 477v9h214v-9M474 486v16m-6-7 6 7 6-7" fill="none" stroke="${GOLD}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="345" y="510" width="258" height="74" rx="6" fill="#fff" stroke="${GOLD}"/>
+  ${lines(c.outcome, 474, 532, { face: 'display', size: 17, anchor: 'middle', gap: 18 })}
+
+  ${mark(c.reassureMark, 105, 606, 88, 70)}<line x1="204" y1="606" x2="204" y2="672" stroke="${GOLD}" stroke-width="2"/>${txt(c.reassureTitle, 225, 625, { face: 'display', size: 20 })}${lines(c.reassure, 225, 644, { size: 10.5, weight: 600, gap: 14 })}
+
+  <rect x="15" y="683" width="618" height="166" fill="${NAVY}"/>
+  <rect x="61" y="695" width="132" height="143" rx="8" fill="#fff" stroke="${GOLD}" stroke-width="4"/><rect x="72" y="706" width="110" height="101" fill="#fff" stroke="${GOLD}" stroke-width="2" stroke-dasharray="7 5"/>${lines(['YOUR QR', 'CODE HERE'], 127, 754, { size: 11, weight: 700, anchor: 'middle', fill: '#8b6500', gap: 15 })}<rect x="61" y="807" width="132" height="31" rx="6" fill="${GOLD}"/>${txt('SCAN ME', 127, 829, { face: 'display', size: 17, anchor: 'middle' })}
+  <line x1="207" y1="698" x2="207" y2="839" stroke="${GOLD}"/>
+  ${txt(c.cta, 229, 727, { face: 'display', size: 32, fill: '#fff' })}${icon('play', 232, 738, 36, '#fff', 3)}${txt(c.cta1, 281, 766, { face: 'display', size: 19, fill: '#fff' })}<line x1="281" y1="777" x2="566" y2="777" stroke="${GOLD}"/>${icon('calendar', 232, 779, 36, '#fff', 3)}${txt(c.cta2, 281, 807, { face: 'display', size: 19, fill: '#fff' })}<line x1="281" y1="817" x2="566" y2="817" stroke="${GOLD}"/>${txt(c.note, 424, 836, { face: 'display', size: 13, fill: GOLD, anchor: 'middle' })}
+
+  ${c.foot.map((f, i) => `${i ? `<line x1="${226 + (i - 1) * 211}" y1="853" x2="${226 + (i - 1) * 211}" y2="884" stroke="#333"/>` : ''}${icon(c.footIcons[i], 57 + i * 211, 854, 32)}${txt(f, 96 + i * 211, 878, { face: 'display', size: 13 })}`).join('')}
   </svg>`
 }
 

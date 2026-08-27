@@ -46,6 +46,7 @@ import {
   useTasks, useTaskInsert, useTaskUpdate,
   useNotes, useNoteInsert,
   useBusinessUpdate,
+  useBusinessQrCodes,
   useCampaigns,
   useProfiles,
 } from '@/lib/supabase/hooks'
@@ -182,7 +183,6 @@ export default function BusinessDetailPage() {
     })),
     [qaCampaigns],
   )
-  const qrCodes = localState?.qrCodes || []
   const materials = preferQaWorkspace ? qaMaterials : (localState?.materials || qaMaterials)
   const assignments = React.useMemo(() => localState?.assignments ?? [], [localState?.assignments])
   const fallbackEntityHooksEnabled = (!localState || preferQaWorkspace) && !localStateLoading && !!resolvedBusinessId
@@ -208,7 +208,6 @@ export default function BusinessDetailPage() {
   const city = biz?.city_id ? cities.find(item => item.id === biz.city_id) || null : null
   const linkedCause = biz?.linked_cause_id ? causes.find(item => item.id === biz.linked_cause_id) || null : null
   const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
-  const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
   const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
   const owner = React.useMemo(() => {
     if (!biz) return null
@@ -220,6 +219,17 @@ export default function BusinessDetailPage() {
     .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
     .filter((item): item is { assignment: StakeholderAssignment; profile: Profile } => !!item.profile), [assignments, localEntityId, profileMap])
   const qaLinkedBusinessId = businessResponse?.qaBusinessId || biz?.qa_account_id || qaBusinessId || null
+  // QR codes are QA-backed. The legacy local-state workspace always resolves
+  // empty (see the note on `profiles` above), which is why this tab used to
+  // claim "none yet" for a business that already had one.
+  const {
+    data: qrCodes,
+    loading: qrCodesLoading,
+    error: qrCodesError,
+  } = useBusinessQrCodes(qaLinkedBusinessId)
+  const linkedQr = biz?.linked_qr_code_id
+    ? qrCodes.find(item => String(item.id) === String(biz.linked_qr_code_id)) || null
+    : null
   const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
     if (!biz || !qaLinkedBusinessId) return []
 
@@ -397,9 +407,6 @@ export default function BusinessDetailPage() {
   const qrGeneratorHref = qaLinkedBusinessId
     ? `/qr/generator?businessId=${qaLinkedBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
     : '/qr/generator'
-  const qrManageHref = linkedQr
-    ? `${qrGeneratorHref}${qrGeneratorHref.includes('?') ? '&' : '?'}qrId=${encodeURIComponent(linkedQr.id)}`
-    : qrGeneratorHref
   const adminOnboardingHref = `/onboarding/business?businessId=${encodeURIComponent(String(localBusinessId || businessResponse?.qaBusinessId || id))}`
   const onboardingComplete = isPendingLiveReview || isLive
   const onboardingHref = adminOnboardingHref
@@ -871,28 +878,50 @@ export default function BusinessDetailPage() {
               <Button size="sm"><Plus className="h-3.5 w-3.5" /> Generate QR Code</Button>
             </Link>
           </div>
-          {linkedQr ? (
+          {qrCodesLoading ? (
             <Card>
-              <CardContent className="space-y-3 py-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-surface-900">{linkedQr.name}</p>
-                    <p className="mt-1 text-xs text-surface-500">{linkedQr.short_code} - {linkedQr.scan_count} scans</p>
-                  </div>
-                  <Badge variant={linkedQr.status === 'active' ? 'success' : 'default'} dot>
-                    {linkedQr.status}
-                  </Badge>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <a href={linkedQr.redirect_url} target="_blank" rel="noopener noreferrer">
-                    <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open Redirect</Button>
-                  </a>
-                  <Link href={qrManageHref}>
-                    <Button size="sm"><QrCodeIcon className="h-3.5 w-3.5" /> Manage QR</Button>
-                  </Link>
-                </div>
+              <CardContent className="py-8 text-center text-sm text-surface-500">Loading QR codes...</CardContent>
+            </Card>
+          ) : qrCodesError ? (
+            <Card>
+              <CardContent className="flex flex-col items-center py-8 text-center">
+                <AlertTriangle className="mb-3 h-10 w-10 text-warning-500" />
+                <p className="text-sm font-medium text-surface-700">Could not load this business&apos; QR codes</p>
+                <p className="mt-1 text-xs text-surface-400">{qrCodesError}</p>
               </CardContent>
             </Card>
+          ) : qrCodes.length > 0 ? (
+            <div className="space-y-3">
+              {qrCodes.map(qr => {
+                const isLinked = linkedQr?.id === qr.id
+                return (
+                  <Card key={qr.id}>
+                    <CardContent className="space-y-3 py-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-surface-900">{qr.name}</p>
+                            {isLinked && <Badge variant="info">Linked</Badge>}
+                          </div>
+                          <p className="mt-1 text-xs text-surface-500">{qr.short_code} - {qr.scan_count} scans</p>
+                        </div>
+                        <Badge variant={qr.status === 'active' ? 'success' : 'default'} dot>
+                          {qr.status}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <a href={qr.redirect_url} target="_blank" rel="noopener noreferrer">
+                          <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open Redirect</Button>
+                        </a>
+                        <Link href={`${qrGeneratorHref}${qrGeneratorHref.includes('?') ? '&' : '?'}qrId=${encodeURIComponent(qr.id)}`}>
+                          <Button size="sm"><QrCodeIcon className="h-3.5 w-3.5" /> Manage QR</Button>
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
           ) : (
             <Card>
               <CardContent className="flex flex-col items-center py-8 text-center">
