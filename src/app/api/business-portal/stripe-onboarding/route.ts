@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { fetchQaApi } from '@/lib/auth/qa-api'
 import { parseStripeOnboardingStatus } from '@/lib/stripe-onboarding'
-import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { getAuthenticatedSession, type ResolvedAuthSession } from '@/lib/server/auth-session'
+import { resolveScopedPortalBusinessId } from '@/lib/server/portal-business'
 
 function parseQaBusinessId(value: string | null) {
   if (!value) return null
@@ -30,12 +31,30 @@ async function requireQaSession() {
   return { session }
 }
 
+/**
+ * The businessId arrives from the browser, so authentication alone is not enough:
+ * without this an owner of business A could read — and start Stripe onboarding
+ * for — business B. resolveScopedPortalBusinessId is the same authority the other
+ * business-portal endpoints use (admins may name any business, everyone else only
+ * their own memberships).
+ */
+async function resolveBusinessId(session: ResolvedAuthSession, request: Request) {
+  const businessId = getBusinessId(request)
+  if (businessId === null) {
+    return { error: NextResponse.json({ error: 'A numeric QA businessId is required.' }, { status: 400 }) }
+  }
+  const scope = await resolveScopedPortalBusinessId(session, businessId)
+  if (!scope.ok) return { error: NextResponse.json({ error: scope.error }, { status: scope.status }) }
+  return { businessId: scope.businessId }
+}
+
 export async function GET(request: Request) {
   const access = await requireQaSession()
   if ('error' in access) return access.error
 
-  const businessId = getBusinessId(request)
-  if (businessId === null) return NextResponse.json({ error: 'A numeric QA businessId is required.' }, { status: 400 })
+  const scoped = await resolveBusinessId(access.session, request)
+  if ('error' in scoped) return scoped.error
+  const { businessId } = scoped
 
   try {
     const response = await fetchQaApi(`/api/dashboard/v1/StripeConnect/business/${businessId}`)
@@ -62,8 +81,9 @@ export async function POST(request: Request) {
   const access = await requireQaSession()
   if ('error' in access) return access.error
 
-  const businessId = getBusinessId(request)
-  if (businessId === null) return NextResponse.json({ error: 'A numeric QA businessId is required.' }, { status: 400 })
+  const scoped = await resolveBusinessId(access.session, request)
+  if ('error' in scoped) return scoped.error
+  const { businessId } = scoped
 
   try {
     const response = await fetchQaApi(`/api/dashboard/v1/StripeConnect/business/${businessId}/onboarding-link`, { method: 'POST' })

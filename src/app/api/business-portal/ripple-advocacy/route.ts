@@ -1,26 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi } from '@/lib/auth/qa-api'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
+import { resolveScopedPortalBusinessId } from '@/lib/server/portal-business'
 
 export const dynamic = 'force-dynamic'
 
 const UNAVAILABLE = { enabled: false, unavailable: true } as const
 
+// Per-business revenue and community-funding analytics. The businessId arrives
+// from the browser and is never taken on trust: resolveScopedPortalBusinessId is
+// the same authority the ripple-inbox sibling uses — SysAdmin may name any
+// business, anyone else only their own memberships.
 export async function GET(request: NextRequest) {
   const session = await getAuthenticatedSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   if (session.source !== 'qa') return NextResponse.json(UNAVAILABLE)
 
-  const businessId = request.nextUrl.searchParams.get('businessId')
   const days = normalizeDays(request.nextUrl.searchParams.get('days'))
-  if (!businessId || !/^\d+$/.test(businessId)) {
-    return NextResponse.json({ error: 'A valid business is required.' }, { status: 400 })
-  }
+  const scope = await resolveScopedPortalBusinessId(session, request.nextUrl.searchParams.get('businessId'))
+  if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status })
 
   const to = new Date()
   const from = new Date(to.getTime() - days * 86400000)
   const query = new URLSearchParams({
-    businessId,
+    businessId: String(scope.businessId),
     from: from.toISOString(),
     to: to.toISOString(),
   })
