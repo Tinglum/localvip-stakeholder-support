@@ -336,7 +336,24 @@ async function handleQaAction(
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ [field]: action.fileUrl }),
       })
-      await parseQaResponse<unknown>(res, 'Failed to update business media.').catch(() => null)
+      // The backend exposes GET /Business/{id} but no PATCH, so this call is a 405.
+      // It used to be swallowed by .catch(() => null) and followed by an
+      // unconditional { success: true }, which told the user their logo had saved
+      // when nothing had been written. Surface the failure instead. The real fix is
+      // a PATCH endpoint on the backend; until then the working path is the
+      // multipart /upload-logo sibling route.
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '')
+        console.error('[crm business execution] upload_media failed', res.status, detail.slice(0, 300))
+        return NextResponse.json(
+          {
+            error:
+              'Saving the business media failed: the backend has no PATCH endpoint for a business, so nothing was written. Use the logo upload instead.',
+          },
+          { status: 502 },
+        )
+      }
+      await parseQaResponse<unknown>(res, 'Failed to update business media.')
       return NextResponse.json({ success: true, mediaType: action.mediaType, fileUrl: action.fileUrl })
     }
 

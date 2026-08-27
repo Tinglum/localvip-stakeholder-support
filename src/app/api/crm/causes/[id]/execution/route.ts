@@ -229,7 +229,21 @@ async function handleQaCauseAction(
       const res = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${encodeURIComponent(causeId)}`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [field]: action.fileUrl }),
       })
-      await parseQaResponse<unknown>(res, 'Failed to update cause media.').catch(() => null)
+      // Same bug as the business sibling: the backend has no PATCH /Nonprofit/{id},
+      // so this 405 was caught and reported as success. Surface it. The real fix is
+      // a backend PATCH endpoint; the working path today is /upload-logo.
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '')
+        console.error('[crm cause execution] upload_media failed', res.status, detail.slice(0, 300))
+        return NextResponse.json(
+          {
+            error:
+              'Saving the cause media failed: the backend has no PATCH endpoint for a cause, so nothing was written. Use the logo upload instead.',
+          },
+          { status: 502 },
+        )
+      }
+      await parseQaResponse<unknown>(res, 'Failed to update cause media.')
       return NextResponse.json({ success: true, mediaType: action.mediaType, fileUrl: action.fileUrl })
     }
     if (action.action === 'complete_step') {
