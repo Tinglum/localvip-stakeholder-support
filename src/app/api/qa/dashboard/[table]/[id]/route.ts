@@ -7,6 +7,13 @@ import {
   toBackendShape,
   toFrontendShape,
 } from '@/lib/qa/dashboard-entity-map'
+import { requireQaRouteAccess } from '@/lib/server/qa-route'
+
+/**
+ * Who may write through the generic proxy. See the sibling collection route:
+ * QA_ENTITY_MAP is a mapping table, not an authorization boundary.
+ */
+const WRITE_SHELLS = ['admin', 'field', 'launch_partner', 'business', 'community'] as const
 
 function isMappedEntity(table: string): table is QaEntityKey {
   return table in QA_ENTITY_MAP
@@ -18,6 +25,9 @@ async function call(
   id: string,
   method: 'GET' | 'PUT' | 'PATCH' | 'DELETE',
 ) {
+  const access = await requireQaRouteAccess(method === 'GET' ? undefined : [...WRITE_SHELLS])
+  if ('error' in access) return access.error
+
   if (EMPTY_FALLBACK_TABLES.has(table)) {
     return NextResponse.json(null, { status: 200 })
   }
@@ -31,7 +41,7 @@ async function call(
   // route lives at the controller root, so the detail path can't be derived from
   // the list path. `profiles` is the case that bit us: /User/list/{id} matches no
   // route template and 404s, which the user detail page renders as "User not found".
-  const url = `${config.detailEndpoint ?? config.endpoint}/${id}`
+  const url = `${config.detailEndpoint ?? config.endpoint}/${encodeURIComponent(id)}`
 
   const init: RequestInit = { method }
   if (method === 'PUT' || method === 'PATCH') {

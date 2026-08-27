@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi, parseQaResponse, QaApiError } from '@/lib/auth/qa-api'
 import { ensureCoreCampaignStructuredTemplates } from '@/lib/server/core-campaign-templates'
 import { createServiceClient } from '@/lib/supabase/server'
+import { requireQaRouteAccess } from '@/lib/server/qa-route'
 import {
   EMPTY_FALLBACK_TABLES,
   FIELD_ALIASES,
@@ -11,6 +12,17 @@ import {
   toBackendShape,
   toFrontendShape,
 } from '@/lib/qa/dashboard-entity-map'
+
+/**
+ * Who may write through the generic proxy.
+ *
+ * QA_ENTITY_MAP is a mapping table, not an authorization boundary — it says which
+ * backend endpoint a table name resolves to, and nothing about who may reach it.
+ * Reads need a QA session (the backend still scopes them to the caller's own
+ * token); writes are additionally kept away from the consumer/influencer shells,
+ * which have no business creating dashboard records.
+ */
+const WRITE_SHELLS = ['admin', 'field', 'launch_partner', 'business', 'community'] as const
 
 function isMappedEntity(table: string): table is QaEntityKey {
   return table in QA_ENTITY_MAP
@@ -47,6 +59,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { table: string } },
 ) {
+  const access = await requireQaRouteAccess()
+  if ('error' in access) return access.error
+
   const { table } = params
 
   if (table === 'material_templates') {
@@ -144,6 +159,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { table: string } },
 ) {
+  const access = await requireQaRouteAccess([...WRITE_SHELLS])
+  if ('error' in access) return access.error
+
   const { table } = params
 
   if (EMPTY_FALLBACK_TABLES.has(table)) {

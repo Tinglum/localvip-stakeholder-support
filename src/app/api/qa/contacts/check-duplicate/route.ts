@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi, parseQaJsonResponse, QaApiError } from '@/lib/auth/qa-api'
+import { requireQaRouteAccess } from '@/lib/server/qa-route'
 
 export async function GET(request: NextRequest) {
+  // Answers "does this email/phone exist?" against the contact book — staff only.
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner'])
+  if ('error' in access) return access.error
+
   const url = new URL(request.url)
   const params = new URLSearchParams()
   for (const key of ['email', 'phone', 'firstName', 'lastName']) {

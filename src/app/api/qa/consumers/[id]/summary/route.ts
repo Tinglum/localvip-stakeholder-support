@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server'
 import { fetchQaApi, parseQaJsonResponse, QaApiError } from '@/lib/auth/qa-api'
+import { parseQaRouteId, requireQaRouteAccess } from '@/lib/server/qa-route'
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  // Consumer records are staff-only: same gate as the sibling detail route.
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner'])
+  if ('error' in access) return access.error
+
+  const qaConsumerId = parseQaRouteId(params.id)
+  if (qaConsumerId === null) {
+    return NextResponse.json({ error: 'A numeric QA consumer id is required.' }, { status: 400 })
+  }
+
   try {
-    const res = await fetchQaApi(`/api/dashboard/v1/Consumer/${params.id}/summary`)
+    const res = await fetchQaApi(`/api/dashboard/v1/Consumer/${qaConsumerId}/summary`)
     const data = await parseQaJsonResponse(res, 'Failed to load consumer summary.')
     return NextResponse.json(data)
   } catch (e) {

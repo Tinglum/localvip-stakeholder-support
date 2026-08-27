@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi, parseQaJsonResponse, QaApiError } from '@/lib/auth/qa-api'
+import { requireQaRouteAccess } from '@/lib/server/qa-route'
 
 export async function GET(request: NextRequest) {
+  // Searching every user by name/email is a staff capability.
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner'])
+  if ('error' in access) return access.error
+
   const url = new URL(request.url)
   const q = url.searchParams.get('q') ?? ''
   const limit = url.searchParams.get('limit') ?? '20'
