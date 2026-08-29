@@ -240,7 +240,9 @@ function useQaQuery<T>(
           throw new Error(readApiErrorMessage(text, table, res.status))
         }
 
-        const json = await res.json().catch(() => [])
+        const json = await res.json().catch(() => {
+          throw new Error(`${table} returned a response that is not JSON.`)
+        })
         const rows = Array.isArray(json) ? json : []
 
         if (cancelled) return
@@ -928,7 +930,9 @@ export function useBusinessQrCodes(
             const text = await res.text().catch(() => '')
             throw new Error(readApiErrorMessage(text, 'qr_codes', res.status))
           }
-          const json = await res.json().catch(() => [])
+          const json = await res.json().catch(() => {
+            throw new Error('qr_codes returned a response that is not JSON.')
+          })
           return Array.isArray(json) ? (json as QrCode[]) : []
         }))
 

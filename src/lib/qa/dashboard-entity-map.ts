@@ -32,6 +32,7 @@ export type QaEntityKey =
   | 'city_access_requests'
   | 'template_rules'
   | 'stakeholder_assignments'
+  | 'stakeholders'
   | 'deals'
 
 export interface QaEntityConfig {
@@ -89,14 +90,25 @@ export const QA_ENTITY_MAP: Record<QaEntityKey, QaEntityConfig> = {
   city_access_requests: { endpoint: '/api/dashboard/v1/CityAccessRequest', listWrapperKey: 'items' },
   template_rules: { endpoint: '/api/dashboard/v1/TemplateRule', listWrapperKey: 'items' },
   stakeholder_assignments: { endpoint: '/api/dashboard/v1/StakeholderAssignment', listWrapperKey: 'items' },
+  // Was in EMPTY_FALLBACK_TABLES, so useStakeholders() always resolved to [].
+  // The controller is real and already called directly elsewhere in this repo
+  // (see /api/community/share and the crm execution routes).
+  stakeholders: { endpoint: '/api/dashboard/v1/Stakeholder', listWrapperKey: 'items' },
 }
 
 /**
  * Tables that exist in the frontend but have no QA backend equivalent yet.
- * The dynamic API route returns [] for these to avoid breaking pages.
+ *
+ * The dynamic API route used to return [] for these, which rendered as "no
+ * results" instead of "unavailable" — the exact failure mode this whole
+ * migration is trying to stamp out. It now answers 501 so callers can show
+ * the real reason.
+ *
+ * `stakeholder_codes` has a real controller but only a by-stakeholder-id
+ * route; `useStakeholderCodes` already takes that direct path when it has a
+ * numeric id, and there is no list-all endpoint behind the generic form.
  */
 export const EMPTY_FALLBACK_TABLES = new Set<string>([
-  'stakeholders',
   'stakeholder_codes',
 ])
 

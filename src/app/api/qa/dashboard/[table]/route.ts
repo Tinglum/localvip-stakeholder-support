@@ -62,9 +62,13 @@ export async function GET(
 
   const { table } = params
 
-  // Frontend-only tables that have no QA backend equivalent: return empty
+  // Frontend-only tables that have no QA backend equivalent. Answer loudly:
+  // returning [] here made an unavailable data source look like an empty one.
   if (EMPTY_FALLBACK_TABLES.has(table)) {
-    return NextResponse.json([])
+    return NextResponse.json(
+      { error: `${table} is not available — no QA backend endpoint for it.` },
+      { status: 501 },
+    )
   }
 
   if (!isMappedEntity(table)) {

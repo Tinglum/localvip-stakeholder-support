@@ -54,8 +54,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Skip the "already authenticated → /dashboard" redirect when the user
-  // just signed out. Both paths land here:
-  //   • Direct Supabase logout → /login?signout=1
-  //   • QA logout → QA server → /login (no signout param, but session already gone)
+  // just signed out: QA logout goes QA server → /login with no signout param,
+  // but the session is already gone.
   return response
 }
