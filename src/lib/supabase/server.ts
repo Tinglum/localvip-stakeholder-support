@@ -108,10 +108,26 @@ function makeStubClient() {
   }
 }
 
-export function createServerSupabaseClient() {
-  return makeStubClient() as unknown as ReturnType<typeof import('@supabase/ssr').createServerClient>
+/**
+ * The @supabase/* packages have been dropped from package.json, so these no
+ * longer borrow `SupabaseClient` for their return type. This structural stand-in
+ * keeps the ~30 call sites that still reference the stub compiling exactly as
+ * they did behind the old `as unknown as SupabaseClient` cast — query results
+ * were already untyped there. Every one of those call sites is a dead legacy
+ * branch pending the bucket (c) decisions.
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export interface StubSupabaseClient {
+  from: (table: string) => any
+  auth: any
+  rpc: (...args: any[]) => any
+  storage: any
 }
 
-export function createServiceClient() {
-  return makeStubClient() as unknown as ReturnType<typeof import('@supabase/supabase-js').createClient>
+export function createServerSupabaseClient(): StubSupabaseClient {
+  return makeStubClient()
+}
+
+export function createServiceClient(): StubSupabaseClient {
+  return makeStubClient()
 }

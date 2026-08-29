@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
     .from('stakeholders')
     .select('*')
     .eq('id', stakeholderId)
-    .single<Stakeholder>()
+    .single() as { data: Stakeholder | null }
 
   if (!stakeholder) {
     return NextResponse.json({ error: 'Stakeholder not found.' }, { status: 404 })

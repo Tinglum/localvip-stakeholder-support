@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
@@ -34,24 +33,20 @@ export async function GET() {
           ? (json as Record<string, unknown>).items as unknown[]
           : []
       return NextResponse.json(items as Material[])
-    } catch {
-      return NextResponse.json([] as Material[])
+    } catch (err) {
+      // A backend failure used to be swallowed into [], which the library
+      // rendered as "no materials". Surface it.
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Failed to load materials.' },
+        { status: 502 },
+      )
     }
   }
 
-  const supabase = createServiceClient()
-  const { data, error } = await supabase
-    .from('materials')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(500)
-
-  if (error) {
-    console.error('[materials-api] list failed', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json(data as Material[])
+  return NextResponse.json(
+    { error: 'Materials require a QA-backed session.' },
+    { status: 503 },
+  )
 }
 
 export async function POST(request: NextRequest) {
@@ -102,27 +97,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const supabase = createServiceClient()
-
-  // Ensure created_by is a real local profile ID (or null to avoid FK violation)
-  const record: Record<string, unknown> = { ...body }
-  record.created_by = session.localProfileId || null
-  delete record.id
-  delete record.created_at
-  delete record.updated_at
-
-  const { data, error } = await (supabase.from('materials') as any)
-    .insert(record)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('[materials-api] insert failed', error)
-    return NextResponse.json(
-      { error: error.message || 'Material could not be created.', code: error.code, details: error.details },
-      { status: 500 },
-    )
-  }
-
-  return NextResponse.json(data as Material)
+  return NextResponse.json(
+    { error: 'Creating a material requires a QA-backed session.' },
+    { status: 503 },
+  )
 }

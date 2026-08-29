@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi, parseQaResponse, QaApiError } from '@/lib/auth/qa-api'
-import { ensureCoreCampaignStructuredTemplates } from '@/lib/server/core-campaign-templates'
-import { createServiceClient } from '@/lib/supabase/server'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
 import {
   EMPTY_FALLBACK_TABLES,
@@ -63,16 +61,6 @@ export async function GET(
   if ('error' in access) return access.error
 
   const { table } = params
-
-  if (table === 'material_templates') {
-    try {
-      const supabase = createServiceClient()
-      await ensureCoreCampaignStructuredTemplates(supabase)
-    } catch {
-      // If template seeding fails, keep the read path alive and fall through to
-      // the backend fetch rather than breaking the template list entirely.
-    }
-  }
 
   // Frontend-only tables that have no QA backend equivalent: return empty
   if (EMPTY_FALLBACK_TABLES.has(table)) {

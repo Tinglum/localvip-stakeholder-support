@@ -1,4 +1,5 @@
-import type { PostgrestError } from '@supabase/supabase-js'
+// Shape of the error object the Supabase-compatible stub returns.
+interface PostgrestError { message: string; code?: string; details?: string; hint?: string }
 import type {
   AdminTaskStatus,
   Brand,

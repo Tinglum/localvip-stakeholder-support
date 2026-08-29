@@ -1,5 +1,5 @@
 import { getQaAccountIdFromLocal } from '@/lib/server/qa-dashboard-shared'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { StubSupabaseClient as SupabaseClient } from '@/lib/supabase/server'
 
 export function parseQaBusinessRouteId(value: string) {
   const candidate = value.startsWith('qa-') ? value.slice(3) : value
