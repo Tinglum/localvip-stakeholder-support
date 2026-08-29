@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { getStakeholderShell, normalizeSubtypeForRole } from '@/lib/stakeholder-access'
@@ -26,8 +25,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
   }
 
-  const supabase = createServiceClient()
-
   let body: unknown
   try {
     body = await request.json()
@@ -42,7 +39,6 @@ export async function POST(request: NextRequest) {
   }
 
   const roleSubtype = normalizeSubtypeForRole(parsed.data.role as UserRole, parsed.data.roleSubtype || null)
-  const redirectTo = new URL('/login', request.nextUrl.origin).toString()
 
   // QA path: delegate to backend invite endpoint.
   if (session.source === 'qa') {
@@ -71,75 +67,12 @@ export async function POST(request: NextRequest) {
   }
 
 
-  const { data: invitedUser, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
-    parsed.data.email,
-    {
-      data: {
-        full_name: parsed.data.fullName,
-        role: parsed.data.role,
-        role_subtype: roleSubtype || undefined,
-        brand_context: parsed.data.brand,
-        invited_by: actingProfile.id,
-      },
-      redirectTo,
-    },
+  // Only a QA session can invite. The old path went through Supabase Auth,
+  // whose project is gone; leaving it in place meant a demo admin hit a
+  // TypeError on a method the stub never had and saw a generic "Invite
+  // failed". Say what is actually wrong instead.
+  return NextResponse.json(
+    { error: 'Inviting users requires a QA-backed admin session. Sign in through the QA login, not the demo session.' },
+    { status: 503 },
   )
-
-  if (inviteError) {
-    return NextResponse.json({ error: inviteError.message }, { status: 400 })
-  }
-
-  const invitedProfileId = invitedUser.user?.id
-  if (invitedProfileId) {
-    const { error: profileError } = await (supabase
-      .from('profiles') as any)
-      .upsert(
-        {
-          id: invitedProfileId,
-          email: parsed.data.email,
-          full_name: parsed.data.fullName,
-          role: parsed.data.role,
-          role_subtype: roleSubtype,
-          brand_context: parsed.data.brand,
-          organization_id: null,
-          city_id: null,
-          business_id: null,
-          phone: null,
-          referral_code: null,
-          status: 'pending',
-          metadata: {
-            invited_by: actingProfile.id,
-            invite_notes: parsed.data.notes || null,
-            portal_role: parsed.data.role,
-          },
-        },
-        { onConflict: 'id' },
-      )
-
-    if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 400 })
-    }
-
-    await (supabase.from('audit_logs') as any).insert({
-      user_id: actingProfile.id,
-      action: 'invited_stakeholder',
-      entity_type: 'profile',
-      entity_id: invitedProfileId,
-      new_values: {
-        role: parsed.data.role,
-        role_subtype: roleSubtype,
-        brand_context: parsed.data.brand,
-        status: 'pending',
-      },
-      metadata: {
-        invited_email: parsed.data.email,
-        invite_notes: parsed.data.notes || null,
-      },
-    })
-  }
-
-  return NextResponse.json({
-    success: true,
-    invitedEmail: parsed.data.email,
-  })
 }
