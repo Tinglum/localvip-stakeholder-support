@@ -108,6 +108,17 @@ export function QrPlacementPicker({
     return (size * renderedSize.width) / renderedSize.height
   }
 
+  function resizeActivePlacement(rawSize: number) {
+    if (!activePlacement || !Number.isFinite(rawSize)) return
+
+    const nextSize = clamp(rawSize, 8, 40)
+    updatePlacement(activePlacement.id, {
+      size: nextSize,
+      x: Math.min(activePlacement.x, 100 - nextSize),
+      y: Math.min(activePlacement.y, 100 - qrHeightPercent(nextSize)),
+    })
+  }
+
   function removePlacement(id: string) {
     onChange(placements.filter((placement) => placement.id !== id))
     if (activePlacementId === id) {
@@ -355,20 +366,31 @@ export function QrPlacementPicker({
                 max={40}
                 value={activePlacement?.size || 18}
                 disabled={!activePlacement}
-                onChange={(event) => {
-                  if (!activePlacement) return
-                  const nextSize = Number(event.target.value)
-                  updatePlacement(activePlacement.id, {
-                    size: nextSize,
-                    x: Math.min(activePlacement.x, 100 - nextSize),
-                    y: Math.min(activePlacement.y, 100 - qrHeightPercent(nextSize)),
-                  })
-                }}
+                onChange={(event) => resizeActivePlacement(Number(event.target.value))}
                 className="h-1 flex-1 accent-brand-500 disabled:opacity-40"
               />
               <span className="w-9 text-xs text-surface-500">
                 {activePlacement ? `${activePlacement.size}%` : '--'}
               </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="qr-width-percent" className="text-xs text-surface-500">
+                Exact width:
+              </label>
+              <div className="relative w-24">
+                <input
+                  id="qr-width-percent"
+                  type="number"
+                  min={8}
+                  max={40}
+                  step={1}
+                  value={activePlacement?.size || 18}
+                  disabled={!activePlacement}
+                  onChange={(event) => resizeActivePlacement(Number(event.target.value))}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 pr-8 text-sm font-medium text-surface-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
+                />
+                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-surface-400">%</span>
+              </div>
             </div>
             <p className="text-xs text-surface-400">
               Measured against page width. Any call-to-action stays centered below the QR square.
