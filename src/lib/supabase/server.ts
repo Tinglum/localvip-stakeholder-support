@@ -116,7 +116,6 @@ function makeStubClient() {
  * were already untyped there. Every one of those call sites is a dead legacy
  * branch pending the bucket (c) decisions.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface StubSupabaseClient {
   from: (table: string) => any
   auth: any
