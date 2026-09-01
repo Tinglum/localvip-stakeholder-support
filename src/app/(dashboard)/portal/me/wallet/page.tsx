@@ -29,11 +29,17 @@ interface SelectedCause {
   accountId: number | string
   name: string | null
   receivedLifetime: number
+  yourContribution?: number
+  showsYourContribution?: boolean
 }
 
 interface CauseImpactPayload {
   yourContributionLifetime?: number
   selectedCausesReceivedLifetime?: number
+  yourContributionToSelectedCauses?: number
+  selectedCausesDisplayTotal?: number
+  causeBreakdownMode?: 'personal' | 'aggregate' | 'mixed'
+  perCauseContributionThreshold?: number
   usCauseContributionLifetime?: number
   usCauseContributionsLifetime?: number
   totalCauseContributionLifetime?: number
@@ -112,6 +118,17 @@ function formatUsd(value: number | null): string {
     currency: 'USD',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+  }).format(value)
+}
+
+// Threshold label only. "$50" reads better than "$50.00" in a row qualifier,
+// and the threshold is always a round figure.
+function formatUsdWhole(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(value)
 }
 
@@ -226,8 +243,44 @@ export default function MyWalletPage() {
     'totalReceivedLifetime',
     'selectedCausesReceivedLifetime',
   ])
-  const selectedCausesReceived = pickCauseImpactNumber(data?.causeImpact, ['selectedCausesReceivedLifetime'])
   const selectedCauses = data?.causeImpact?.selectedCauses ?? []
+
+  // The backend owns the threshold that decides whether this consumer sees their
+  // own giving or the platform-wide totals, so the tile and the list below it
+  // always describe the same money. Fall back to the aggregate view when the
+  // field is absent (older API) - that is the previous behaviour.
+  const causeBreakdownMode = data?.causeImpact?.causeBreakdownMode ?? 'aggregate'
+  const contributionThreshold = data?.causeImpact?.perCauseContributionThreshold ?? 50
+  const selectedCausesTotal = pickCauseImpactNumber(data?.causeImpact, [
+    'selectedCausesDisplayTotal',
+    'selectedCausesReceivedLifetime',
+  ])
+  const causeAmountFor = (cause: SelectedCause) =>
+    cause.showsYourContribution ? cause.yourContribution ?? 0 : cause.receivedLifetime
+  // Rows carry a qualifier because a mixed list is unreadable without one. The
+  // whole point of this card is that you can tell whose money each figure is.
+  const causeNoteFor = (cause: SelectedCause) =>
+    cause.showsYourContribution
+      ? 'your support'
+      : `from everyone · yours <${formatUsdWhole(contributionThreshold)}`
+
+  const causeCopy = {
+    personal: {
+      label: 'Your Contribution',
+      caption: 'Total you have given to your selected causes (lifetime)',
+      description: 'What you have given to each, all-time.',
+    },
+    aggregate: {
+      label: 'Selected Causes Received',
+      caption: 'Total your selected causes received from everyone (lifetime)',
+      description: 'What each is supported by from everyone, all-time.',
+    },
+    mixed: {
+      label: 'Selected Causes Total',
+      caption: 'Your giving where it passes the threshold, otherwise the total from everyone',
+      description: 'What you have given to each, or the total from everyone where your support is smaller.',
+    },
+  }[causeBreakdownMode]
 
   const pendingPayoutTotal = payoutRequests
     .filter((request) => request.status === 'pending_admin_review')
@@ -386,18 +439,20 @@ export default function MyWalletPage() {
             loading={loading}
           />
           <WalletTile
-            label="Selected Causes Received"
-            value={selectedCausesReceived}
+            label={causeCopy.label}
+            value={selectedCausesTotal}
             icon={<Sparkles className="h-5 w-5 text-warning-600" />}
             accent="bg-warning-50"
-            caption="Total your selected causes received from everyone (lifetime)"
+            caption={causeCopy.caption}
             loading={loading}
           />
         </div>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Your selected causes</CardTitle>
-            <CardDescription>What each is supported by, all-time.</CardDescription>
+            <CardDescription>
+              {causeCopy.description}
+            </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             {loading ? (
@@ -418,11 +473,14 @@ export default function MyWalletPage() {
                 {selectedCauses.map((cause) => (
                   <li
                     key={cause.accountId}
-                    className="flex items-center justify-between gap-3 border-b border-surface-100 pb-2 last:border-0 last:pb-0"
+                    className="flex items-start justify-between gap-3 border-b border-surface-100 pb-2 last:border-0 last:pb-0"
                   >
-                    <span className="truncate text-sm text-surface-700">{cause.name || 'Cause'}</span>
-                    <span className="shrink-0 text-sm font-semibold tabular-nums text-surface-900">
-                      {formatUsd(cause.receivedLifetime)}
+                    <span className="truncate pt-0.5 text-sm text-surface-700">{cause.name || 'Cause'}</span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-sm font-semibold tabular-nums text-surface-900">
+                        {formatUsd(causeAmountFor(cause))}
+                      </span>
+                      <span className="block text-xs text-surface-400">{causeNoteFor(cause)}</span>
                     </span>
                   </li>
                 ))}
