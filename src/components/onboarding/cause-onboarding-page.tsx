@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   ArrowRight,
   Building2,
+  Camera,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -1567,12 +1568,57 @@ function CauseDetailModal({
 
   const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'leader_conversation' | 'materials_qr' | 'activation_decision' | null>(null)
   const [showChecklist, setShowChecklist] = React.useState(false)
+  const [uploadBusy, setUploadBusy] = React.useState<'logo' | 'cover' | null>(null)
+  const [assetError, setAssetError] = React.useState<string | null>(null)
+  const [assetMessage, setAssetMessage] = React.useState<string | null>(null)
+  const [localLogoUrl, setLocalLogoUrl] = React.useState(cause.logo_url)
+  const [localCoverUrl, setLocalCoverUrl] = React.useState(detail.coverPhotoUrl)
+  const logoInputRef = React.useRef<HTMLInputElement | null>(null)
+  const coverInputRef = React.useRef<HTMLInputElement | null>(null)
   const [activeSection, setActiveSection] = React.useState<CauseModalSection | null>(null)
   const sectionRefs = React.useRef<Partial<Record<CauseModalSection, HTMLDivElement | null>>>({})
   const clearHighlightRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressColor = getProgressColor(detail.checklist.percent)
   const progressText = getProgressTextColor(detail.checklist.percent)
   const { coverPhotoUrl } = detail
+
+  React.useEffect(() => setLocalLogoUrl(cause.logo_url), [cause.logo_url])
+  React.useEffect(() => setLocalCoverUrl(coverPhotoUrl), [coverPhotoUrl])
+
+  async function handleUploadMedia(mediaType: 'logo' | 'cover_photo', file: File) {
+    if (!file.type.startsWith('image/')) {
+      setAssetError('Choose an image file.')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setAssetError('Images must be smaller than 10 MB.')
+      return
+    }
+    setUploadBusy(mediaType === 'logo' ? 'logo' : 'cover')
+    setAssetError(null)
+    setAssetMessage(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('mediaType', mediaType)
+      const response = await fetch(`/api/crm/causes/${cause.id}/media`, { method: 'POST', body: formData })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload.error === 'string' ? payload.error : 'The image could not be uploaded.')
+      }
+      const previewUrl = typeof payload.fileUrl === 'string' && payload.fileUrl
+        ? payload.fileUrl
+        : URL.createObjectURL(file)
+      if (mediaType === 'logo') setLocalLogoUrl(previewUrl)
+      else setLocalCoverUrl(previewUrl)
+      setAssetMessage(`${mediaType === 'logo' ? 'Logo' : 'Cover photo'} uploaded.`)
+      onStageChanged()
+    } catch (error) {
+      setAssetError(error instanceof Error ? error.message : 'The image could not be uploaded.')
+    } finally {
+      setUploadBusy(null)
+    }
+  }
 
   const setSectionRef = React.useCallback((section: CauseModalSection) => {
     return (node: HTMLDivElement | null) => {
@@ -1602,10 +1648,10 @@ function CauseDetailModal({
   return (
     <div>
       <div className={`relative overflow-hidden border-b border-surface-100 bg-gradient-to-r ${causeTheme.gradient} px-6 py-5`}>
-        {coverPhotoUrl ? (
+        {localCoverUrl ? (
           <div
             className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-cover bg-center opacity-[0.14]"
-            style={{ backgroundImage: `url('${coverPhotoUrl}')` }}
+            style={{ backgroundImage: `url('${localCoverUrl}')` }}
           />
         ) : null}
         <div className="relative">
@@ -1721,25 +1767,46 @@ function CauseDetailModal({
           >
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Brand Assets</p>
-              <Button variant="outline" size="sm" onClick={() => setLifecycleModal('materials_qr')}>
-                Review assets <ArrowRight className="h-3.5 w-3.5" />
+              <Button variant="outline" size="sm" onClick={() => logoInputRef.current?.click()} disabled={uploadBusy !== null}>
+                {uploadBusy === 'logo' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                Upload logo
               </Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <InlineDetail label="Logo" value={cause.logo_url ? 'Uploaded' : 'Missing'} />
-              <InlineDetail label="Cover photo" value={coverPhotoUrl ? 'Uploaded' : 'Missing'} />
+              <button type="button" onClick={() => logoInputRef.current?.click()} className="overflow-hidden rounded-xl border border-surface-200 bg-white text-left transition-colors hover:border-brand-300">
+                <div className="flex h-28 items-center justify-center bg-surface-100">
+                  {localLogoUrl ? <img src={localLogoUrl} alt={`${cause.name} logo`} className="max-h-20 max-w-[80%] object-contain" /> : <Camera className="h-7 w-7 text-surface-400" />}
+                </div>
+                <div className="px-3 py-2 text-xs font-semibold text-surface-700">{localLogoUrl ? 'Replace logo' : 'Upload logo'}</div>
+              </button>
+              <button type="button" onClick={() => coverInputRef.current?.click()} className="overflow-hidden rounded-xl border border-surface-200 bg-white text-left transition-colors hover:border-brand-300">
+                <div className="flex h-28 items-center justify-center bg-cover bg-center" style={localCoverUrl ? { backgroundImage: `url('${localCoverUrl}')` } : undefined}>
+                  {!localCoverUrl ? <Camera className="h-7 w-7 text-surface-400" /> : null}
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 text-xs font-semibold text-surface-700">
+                  <span>{localCoverUrl ? 'Replace cover photo' : 'Upload cover photo'}</span>
+                  {uploadBusy === 'cover' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                </div>
+              </button>
             </div>
+            <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleUploadMedia('logo', file); event.target.value = '' }} />
+            <input ref={coverInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleUploadMedia('cover_photo', file); event.target.value = '' }} />
+            {assetError ? <p className="text-xs font-medium text-danger-600">{assetError}</p> : null}
+            {assetMessage ? <p className="text-xs font-medium text-success-700">{assetMessage}</p> : null}
             <div className="flex flex-wrap gap-2">
-              {cause.logo_url ? (
-                <a href={cause.logo_url} target="_blank" rel="noopener noreferrer" className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900">
+              {localLogoUrl ? (
+                <a href={localLogoUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900">
                   View logo
                 </a>
               ) : null}
-              {coverPhotoUrl ? (
-                <a href={coverPhotoUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900">
+              {localCoverUrl ? (
+                <a href={localCoverUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-surface-200 bg-white px-3 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900">
                   View cover
                 </a>
               ) : null}
+              <button type="button" onClick={() => setLifecycleModal('materials_qr')} className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100">
+                Materials and QR
+              </button>
             </div>
           </div>
         </div>
