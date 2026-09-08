@@ -768,9 +768,14 @@ export default function CauseDetailPage() {
               <Plus className="h-3.5 w-3.5" /> Add Task
             </Button>
             <LogInAsButton
-              userId={owner?.id || null}
+              // Use the QA owner first. The CRM owner can be a Supabase UUID,
+              // which cannot start a QA cause session and made this action
+              // disappear or open the wrong account.
+              userId={causeResponse?.qaCause?.ownerUserId
+                ? String(causeResponse.qaCause.ownerUserId)
+                : owner?.id || null}
               userName={owner?.full_name || causeResponse?.qaCause?.ownerName || cause.name}
-              stakeholderType={isSchool ? 'School Leader' : 'Cause Leader'}
+              stakeholderType={isSchool ? 'School' : 'Cause'}
             />
             <OpenInWebappButton
               userId={causeResponse?.qaCause?.ownerUserId || null}
