@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import { Eye, X } from 'lucide-react'
 
 interface ViewAsPayload {
@@ -17,7 +16,6 @@ function readCookie(name: string): string | null {
 }
 
 export function ViewAsBanner() {
-  const router = useRouter()
   const [viewingAs, setViewingAs] = React.useState<ViewAsPayload | null>(null)
   // Real impersonation = a genuine session as the target (lvip_real_impersonation
   // flag set by /api/dashboard/real-login-as). This is NOT the read-only overlay.
@@ -89,9 +87,9 @@ export function ViewAsBanner() {
   const handleReturn = async () => {
     setReturning(true)
     try {
-      await fetch('/api/admin/view-as', { method: 'DELETE' })
-      setViewingAs(null)
-      router.refresh()
+      const response = await fetch('/api/admin/view-as', { method: 'DELETE' })
+      if (!response.ok) throw new Error('Could not end the preview session.')
+      window.location.replace('/dashboard')
     } finally {
       setReturning(false)
     }

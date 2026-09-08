@@ -155,10 +155,11 @@ export default function CauseDetailPage() {
   }, [searchParams])
   const { profile, isAdmin } = useAuth()
   const localProfileId = asUuid(profile.id)
-  const [activeTab, setActiveTab] = React.useState<DashboardTab>('mission')
+  const requestedTab = searchParams.get('tab') as DashboardTab | null
+  const [activeTab, setActiveTab] = React.useState<DashboardTab>(requestedTab || 'mission')
 
   // ── Data hooks ──
-  const { data: causeResponse, loading: causeLoading, error: causeError } = useCrmCause(routeId, qaCauseId)
+  const { data: causeResponse, loading: causeLoading, error: causeError, refetch: refetchCause } = useCrmCause(routeId, qaCauseId)
   const cause = causeResponse?.cause || null
   const localCauseId = causeResponse?.localCauseId || null
   const readOnly = causeResponse?.readOnly || false
@@ -229,7 +230,16 @@ export default function CauseDetailPage() {
       : null
   }, [cause])
   const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: EMPTY_UUID })
-  const generatedMaterials: any[] = []
+  const causeStakeholder = React.useMemo(
+    () => allStakeholders.find((stakeholder) => stakeholder.cause_id === causeId) || null,
+    [allStakeholders, causeId],
+  )
+  const generatedMaterials = React.useMemo(
+    () => causeStakeholder
+      ? allGeneratedMaterials.filter((material) => material.stakeholder_id === causeStakeholder.id)
+      : allGeneratedMaterials.filter((material) => material.cause_id === causeId),
+    [allGeneratedMaterials, causeId, causeStakeholder],
+  )
   const causeMaterialMap = React.useMemo(() => new Map(allMaterialRecords.map(m => [m.id, m])), [allMaterialRecords])
   const generatedMaterialPairs = React.useMemo(() =>
     generatedMaterials
@@ -523,7 +533,9 @@ export default function CauseDetailPage() {
     try {
       await callExecutionAction({ action: 'complete_step', stepId })
       setEngineMessage('Step completed.')
-      window.location.reload()
+      setLifecycleModal(null)
+      setActiveTab('launch')
+      await refetchExecution()
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Step could not be completed.')
     } finally {
@@ -1839,7 +1851,7 @@ export default function CauseDetailPage() {
             onSave={async (changes) => {
               if (localCauseId) {
                 await updateCause(localCauseId, changes as any)
-                window.location.reload()
+                refetchCause()
               }
             }}
             onCompleteStep={(() => {

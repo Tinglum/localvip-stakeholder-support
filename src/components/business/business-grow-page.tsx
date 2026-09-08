@@ -665,6 +665,7 @@ export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = 
           state: inviteeState.trim(),
           zipCode: inviteeZip.trim(),
           organizationName: inviteeType === 'cause' ? organizationName.trim() : '',
+          sendInvite: true,
         }),
       })
 

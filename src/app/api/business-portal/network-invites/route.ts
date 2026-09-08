@@ -39,6 +39,7 @@ const baseSchema = z.object({
   zipCode: optionalText(20),
   country: optionalText(80),
   organizationName: optionalText(160),
+  sendInvite: z.boolean().optional().default(true),
 })
 
 // Business and cause invites open an organisation account, so the backend needs
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
         zipCode: input.zipCode,
         country: input.country,
         organizationName: input.organizationName,
+        sendInvite: input.sendInvite,
       }),
     })
 

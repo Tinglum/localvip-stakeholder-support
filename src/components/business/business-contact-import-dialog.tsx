@@ -228,7 +228,7 @@ export function BusinessContactImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-6xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-6xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import contacts from Excel, Google Sheets, or CSV</DialogTitle>
           <DialogDescription>
