@@ -12,7 +12,6 @@
  */
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import * as Popover from '@radix-ui/react-popover'
 import { ArrowRight, Eye, Loader2, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -77,7 +76,6 @@ async function fetchViewingAs(): Promise<ViewAsTarget | null> {
 }
 
 export function ViewAsPicker() {
-  const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [results, setResults] = React.useState<UserHit[]>([])
@@ -144,27 +142,22 @@ export function ViewAsPicker() {
         const body = await res.json().catch(() => ({}))
         // Surface the error inline; don't close.
         setResults((prev) => prev.map((u) =>
-          u.id === userId ? { ...u, lastName: (u.lastName ?? '') + ' — ' + ((body as { error?: string }).error || 'failed') } : u))
+          u.id === userId ? { ...u, lastName: (u.lastName ?? '') + ': ' + ((body as { error?: string }).error || 'failed') } : u))
         return
       }
-      // Refresh cookie → banner picks up the new identity. router.refresh()
-      // re-runs server components so layouts re-read the session.
-      refreshState()
       setOpen(false)
-      router.push('/dashboard')
-      router.refresh()
+      window.location.replace('/dashboard')
     } finally {
       setActivating(null)
     }
-  }, [activating, refreshState, router])
+  }, [activating])
 
   const returnToAdmin = async () => {
     setReturning(true)
     try {
-      await fetch('/api/admin/view-as', { method: 'DELETE' })
-      setViewingAs(null)
-      setOpen(false)
-      router.refresh()
+      const response = await fetch('/api/admin/view-as', { method: 'DELETE' })
+      if (!response.ok) throw new Error('Could not end the preview session.')
+      window.location.replace('/dashboard')
     } finally {
       setReturning(false)
     }
