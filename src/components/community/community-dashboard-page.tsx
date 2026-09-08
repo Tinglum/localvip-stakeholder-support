@@ -91,12 +91,22 @@ export function CommunityDashboardPage() {
     if (typeof value === 'string' && /^\d+$/.test(value.trim())) return value.trim()
     return null
   }, [profile.metadata])
+  const selectedQaOwnerId = React.useMemo(() => {
+    const value = (profile.metadata as Record<string, unknown> | null)?.view_as_target_user_id
+    if (typeof value === 'number' && value > 0) return String(value)
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return value.trim()
+    return null
+  }, [profile.metadata])
 
   const scopedCause = React.useMemo(
     () => causes.find((cause) => getCauseQaAccountId(cause) === selectedQaCauseId)
+      || causes.find((cause) => {
+        const ownerId = (cause.metadata as Record<string, unknown> | null)?.ownerUserId
+        return selectedQaOwnerId != null && ownerId != null && String(ownerId) === selectedQaOwnerId
+      })
       || causes.find((cause) => cause.owner_id === profile.id || cause.organization_id === profile.organization_id)
       || null,
-    [causes, profile.id, profile.organization_id, selectedQaCauseId]
+    [causes, profile.id, profile.organization_id, selectedQaCauseId, selectedQaOwnerId]
   )
 
   const supporterContacts = React.useMemo(

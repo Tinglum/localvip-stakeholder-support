@@ -623,7 +623,7 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           brand: 'localvip',
           stage: 'lead',
           status: c.active ? 'active' : 'inactive',
-          metadata: { qaId: c.id, headline: c.headline },
+          metadata: { qaId: c.id, ownerUserId: c.ownerUserId, headline: c.headline },
           created_at: (c.createdDate as string) || new Date().toISOString(),
           updated_at: (c.updatedDate as string) || new Date().toISOString(),
         } as unknown as Cause))
