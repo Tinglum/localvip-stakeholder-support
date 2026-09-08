@@ -72,7 +72,7 @@ function getCauseQaAccountId(cause: { external_id?: string | null; metadata?: Re
     return cause.external_id.trim()
   }
   const meta = (cause.metadata as Record<string, unknown> | null) || {}
-  const candidate = meta.qaAccountId ?? meta.qaCauseId ?? meta.qa_account_id
+  const candidate = meta.qaId ?? meta.qaAccountId ?? meta.qaCauseId ?? meta.qa_account_id
   if (typeof candidate === 'number' && Number.isFinite(candidate)) return String(candidate)
   if (typeof candidate === 'string' && /^\d+$/.test(candidate.trim())) return candidate.trim()
   return null
