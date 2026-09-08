@@ -776,7 +776,7 @@ export default function CauseDetailPage() {
                 : owner?.id || null}
               userName={owner?.full_name || causeResponse?.qaCause?.ownerName || cause.name}
               stakeholderType={isSchool ? 'School' : 'Cause'}
-              causeAccountId={causeResponse?.qaCause?.id || null}
+              causeAccountId={causeResponse?.qaCauseId || causeResponse?.qaCause?.id || null}
             />
             <OpenInWebappButton
               userId={causeResponse?.qaCause?.ownerUserId || null}

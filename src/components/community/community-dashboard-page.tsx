@@ -87,7 +87,9 @@ export function CommunityDashboardPage() {
 
   const selectedQaCauseId = React.useMemo(() => {
     const value = (profile.metadata as Record<string, unknown> | null)?.view_as_cause_account_id
-    return typeof value === 'number' && value > 0 ? String(value) : null
+    if (typeof value === 'number' && value > 0) return String(value)
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return value.trim()
+    return null
   }, [profile.metadata])
 
   const scopedCause = React.useMemo(
