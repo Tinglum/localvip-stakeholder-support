@@ -145,10 +145,19 @@ function TeamDashboardPage() {
     return () => { cancelled = true }
   }, [])
 
-  const { data: businessData, loading: businessLoading, refetch: refetchBusinesses } = useBusinesses()
-  const { data: causeData } = useCauses()
-  const { data: adminTasks } = useAdminTasks()
-  const { data: cityRequests } = useCityAccessRequests()
+  const { data: businessData, loading: businessLoading, error: businessError, refetch: refetchBusinesses } = useBusinesses()
+  const { data: causeData, loading: causeLoading, error: causeError, refetch: refetchCauses } = useCauses()
+  const { data: adminTasks, loading: tasksLoading, error: tasksError, refetch: refetchTasks } = useAdminTasks()
+  const { data: cityRequests, loading: requestsLoading, error: requestsError, refetch: refetchRequests } = useCityAccessRequests()
+  const priorityLoading = businessLoading || causeLoading || tasksLoading || requestsLoading
+  const priorityError = businessError || causeError || tasksError || requestsError
+
+  const retryPriority = () => {
+    void refetchBusinesses()
+    void refetchCauses()
+    void refetchTasks()
+    void refetchRequests()
+  }
 
   React.useEffect(() => {
     if (!isAdmin) return
@@ -469,7 +478,7 @@ function TeamDashboardPage() {
                 <SummaryTile
                   label="Keep moving"
                   value={openWorkCount}
-                  href="/crm/businesses"
+                  href="#active-onboarding"
                   description="businesses and causes still in active onboarding."
                 />
                 <SummaryTile
@@ -485,7 +494,14 @@ function TeamDashboardPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
                 Best next move
               </p>
-              {primaryImmediateItem ? (
+              {priorityError ? (
+                <div className="mt-3 space-y-3" role="alert">
+                  <p className="text-sm leading-6 text-surface-600">Some dashboard information could not load. Your urgent queue may be incomplete.</p>
+                  <Button onClick={retryPriority} disabled={priorityLoading}>{priorityLoading ? 'Retrying...' : 'Retry loading dashboard'}</Button>
+                </div>
+              ) : priorityLoading ? (
+                <p role="status" className="mt-3 text-sm text-surface-600">Checking your urgent work...</p>
+              ) : primaryImmediateItem ? (
                 <div className="mt-3 space-y-4">
                   <div>
                     <h2 className="text-xl font-semibold text-surface-900">{primaryImmediateItem.title}</h2>
@@ -521,6 +537,14 @@ function TeamDashboardPage() {
 
       {/* Businesses Stripe has not cleared are hidden from the customer feed — admin-only, above the fold. */}
       <StripeReadinessAlert />
+
+      <section id="active-onboarding" className="scroll-mt-24 space-y-3">
+        <h2 className="text-2xl font-semibold text-surface-900">Active onboarding</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <SummaryTile label="Businesses" value={openBusinessOnboarding.length} href="/onboarding/business" description="Open business onboarding and continue setup." />
+          <SummaryTile label="Schools and causes" value={openCauseOnboarding.length} href="/onboarding/cause" description="Open cause onboarding and continue setup." />
+        </div>
+      </section>
 
       <div className="scroll-mt-24 space-y-3" id="priority-queue">
         <div className="space-y-1">
