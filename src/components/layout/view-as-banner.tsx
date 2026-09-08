@@ -21,6 +21,7 @@ export function ViewAsBanner() {
   // flag set by /api/dashboard/real-login-as). This is NOT the read-only overlay.
   const [realImpersonation, setRealImpersonation] = React.useState(false)
   const [returning, setReturning] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     setRealImpersonation(readCookie('lvip_real_impersonation') === '1')
@@ -48,11 +49,14 @@ export function ViewAsBanner() {
   if (realImpersonation) {
     const handleRealReturn = async () => {
       setReturning(true)
+      setError(null)
       try {
-        await fetch('/api/dashboard/real-login-as', { method: 'DELETE' })
-        setRealImpersonation(false)
+        const response = await fetch('/api/dashboard/real-login-as', { method: 'DELETE' })
+        if (!response.ok) throw new Error('Could not restore your admin session.')
         // Hard navigate so the restored admin session is picked up cleanly.
-        window.location.href = '/dashboard'
+        window.location.replace('/dashboard')
+      } catch {
+        setError('Could not return to admin. Please try again.')
       } finally {
         setReturning(false)
       }
@@ -63,7 +67,7 @@ export function ViewAsBanner() {
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3 px-4 py-2 text-sm">
           <div className="flex items-center gap-2 text-rose-900">
             <Eye className="h-4 w-4" />
-            <span className="font-medium">Admin previewing this business portal</span>
+            <span className="font-medium">Admin previewing this account</span>
             <span className="rounded-full bg-rose-200 px-2 py-0.5 text-xs font-medium text-rose-900">
               live account view
             </span>
@@ -78,6 +82,7 @@ export function ViewAsBanner() {
             {returning ? 'Returning...' : 'Return to admin'}
           </button>
         </div>
+        {error && <p role="alert" className="px-4 pb-2 text-sm text-rose-900">{error}</p>}
       </div>
     )
   }
@@ -86,10 +91,13 @@ export function ViewAsBanner() {
 
   const handleReturn = async () => {
     setReturning(true)
+    setError(null)
     try {
       const response = await fetch('/api/admin/view-as', { method: 'DELETE' })
       if (!response.ok) throw new Error('Could not end the preview session.')
       window.location.replace('/dashboard')
+    } catch {
+      setError('Could not return to admin. Please try again.')
     } finally {
       setReturning(false)
     }
@@ -118,6 +126,7 @@ export function ViewAsBanner() {
           {returning ? 'Returning...' : 'Return to admin'}
         </button>
       </div>
+      {error && <p role="alert" className="px-4 pb-2 text-sm text-amber-900">{error}</p>}
     </div>
   )
 }

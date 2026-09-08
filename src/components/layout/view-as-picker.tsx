@@ -83,6 +83,7 @@ export function ViewAsPicker() {
   const [activating, setActivating] = React.useState<number | null>(null)
   const [viewingAs, setViewingAs] = React.useState<ViewAsTarget | null>(null)
   const [returning, setReturning] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [focusIdx, setFocusIdx] = React.useState(0)
 
@@ -98,30 +99,35 @@ export function ViewAsPicker() {
       setQuery('')
       setResults([])
       setFocusIdx(0)
+      setError(null)
       requestAnimationFrame(() => inputRef.current?.focus())
     }
   }, [open])
 
   // Debounced server search. Empty/short query → no request.
   React.useEffect(() => {
-    if (!open) return
+    if (!open) { setLoading(false); return }
     const trimmed = query.trim()
-    if (trimmed.length < 2) { setResults([]); return }
+    if (trimmed.length < 2) { setResults([]); setLoading(false); setError(null); return }
     let cancelled = false
     setLoading(true)
+    setError(null)
     const handle = window.setTimeout(async () => {
       try {
         const res = await fetch(`/api/qa/users/search?q=${encodeURIComponent(trimmed)}`, {
           cache: 'no-store',
         })
-        if (!res.ok) { if (!cancelled) setResults([]); return }
+        if (!res.ok) throw new Error('Could not search users. Please try again.')
         const json = (await res.json()) as UserHit[]
         if (!cancelled) {
           setResults(Array.isArray(json) ? json : [])
           setFocusIdx(0)
         }
       } catch {
-        if (!cancelled) setResults([])
+        if (!cancelled) {
+          setResults([])
+          setError('Could not search users. Please try again.')
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -132,6 +138,7 @@ export function ViewAsPicker() {
   const switchTo = React.useCallback(async (userId: number) => {
     if (activating) return
     setActivating(userId)
+    setError(null)
     try {
       const res = await fetch('/api/admin/view-as', {
         method: 'POST',
@@ -140,13 +147,13 @@ export function ViewAsPicker() {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        // Surface the error inline; don't close.
-        setResults((prev) => prev.map((u) =>
-          u.id === userId ? { ...u, lastName: (u.lastName ?? '') + ': ' + ((body as { error?: string }).error || 'failed') } : u))
+        setError((body as { error?: string }).error || 'Could not open this account. Please try again.')
         return
       }
       setOpen(false)
       window.location.replace('/dashboard')
+    } catch {
+      setError('Could not open this account. Check your connection and try again.')
     } finally {
       setActivating(null)
     }
@@ -154,10 +161,13 @@ export function ViewAsPicker() {
 
   const returnToAdmin = async () => {
     setReturning(true)
+    setError(null)
     try {
       const response = await fetch('/api/admin/view-as', { method: 'DELETE' })
       if (!response.ok) throw new Error('Could not end the preview session.')
       window.location.replace('/dashboard')
+    } catch {
+      setError('Could not return to admin. Please try again.')
     } finally {
       setReturning(false)
     }
@@ -239,7 +249,7 @@ export function ViewAsPicker() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKey}
-              placeholder="Switch into any user — name, email, phone…"
+              placeholder="Find a user by name, email or phone"
               className="h-9 w-full rounded-lg bg-surface-50 pl-9 pr-9 text-sm text-surface-800 placeholder:text-surface-400 focus:bg-surface-0 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
             {loading && (
@@ -248,6 +258,7 @@ export function ViewAsPicker() {
           </div>
 
           {/* Result rows */}
+          {error && <p role="alert" className="px-4 py-3 text-sm text-danger-700">{error}</p>}
           <div className="max-h-[360px] overflow-y-auto py-1">
             {query.trim().length < 2 ? (
               <div className="px-4 py-8 text-center">
@@ -268,7 +279,7 @@ export function ViewAsPicker() {
                   close
                 </div>
               </div>
-            ) : !loading && results.length === 0 ? (
+            ) : !loading && !error && results.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-surface-500">
                 No users matched “{query.trim()}”.
               </p>
@@ -284,7 +295,7 @@ export function ViewAsPicker() {
                     type="button"
                     onMouseEnter={() => setFocusIdx(idx)}
                     onClick={() => switchTo(u.id)}
-                    disabled={isBusy}
+                    disabled={activating !== null || returning}
                     className={cn(
                       'group flex w-full items-center gap-3 px-3 py-2 text-left transition-colors',
                       isFocused ? 'bg-brand-50/60' : 'hover:bg-surface-50',
