@@ -32,6 +32,7 @@ import { NetworkTreeView } from '@/components/network/network-tree-view'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard } from '@/components/ui/stat-card'
@@ -39,6 +40,7 @@ import { useAuth } from '@/lib/auth/context'
 import {
   useBusinesses,
   useCauses,
+  useCauseUpdate,
   useContacts,
   useGeneratedMaterials,
   useMaterials,
@@ -64,7 +66,7 @@ import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constan
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
 
-type DashboardTab = 'overview' | 'businesses' | 'network' | 'materials' | 'qr' | 'tasks' | 'activity'
+type DashboardTab = 'overview' | 'onboarding' | 'businesses' | 'network' | 'materials' | 'qr' | 'tasks' | 'activity'
 
 function getCauseQaAccountId(cause: { external_id?: string | null; metadata?: Record<string, unknown> | null } | null): string | null {
   if (!cause) return null
@@ -78,12 +80,13 @@ function getCauseQaAccountId(cause: { external_id?: string | null; metadata?: Re
   return null
 }
 
-export function CommunityDashboardPage() {
+export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab?: DashboardTab }) {
   const { profile, roleLabel } = useAuth()
-  const [activeTab, setActiveTab] = React.useState<DashboardTab>('overview')
+  const [activeTab, setActiveTab] = React.useState<DashboardTab>(initialTab)
   const { data: causes } = useCauses()
   const { data: contacts } = useContacts()
   const { data: businesses } = useBusinesses()
+  const { update: updateCause, loading: savingCause } = useCauseUpdate()
 
   const selectedQaCauseId = React.useMemo(() => {
     const value = (profile.metadata as Record<string, unknown> | null)?.view_as_cause_account_id
@@ -170,6 +173,36 @@ export function CommunityDashboardPage() {
     () => ((scopedCause?.metadata as Record<string, unknown> | null) || {}),
     [scopedCause?.metadata],
   )
+  const [profileDraft, setProfileDraft] = React.useState({ name: '', email: '', phone: '', website: '', address: '', logoUrl: '', coverPhotoUrl: '' })
+  const [profileSaved, setProfileSaved] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!scopedCause) return
+    setProfileDraft({
+      name: scopedCause.name || '',
+      email: scopedCause.email || '',
+      phone: scopedCause.phone || '',
+      website: scopedCause.website || '',
+      address: scopedCause.address || '',
+      logoUrl: scopedCause.logo_url || '',
+      coverPhotoUrl: scopedCause.cover_photo_url || '',
+    })
+  }, [scopedCause])
+
+  async function saveCauseProfile() {
+    if (!scopedCause) return
+    setProfileSaved(false)
+    await updateCause(scopedCause.id, {
+      name: profileDraft.name.trim(),
+      email: profileDraft.email.trim() || null,
+      phone: profileDraft.phone.trim() || null,
+      website: profileDraft.website.trim() || null,
+      address: profileDraft.address.trim() || null,
+      logo_url: profileDraft.logoUrl.trim() || null,
+      cover_photo_url: profileDraft.coverPhotoUrl.trim() || null,
+    })
+    setProfileSaved(true)
+  }
 
   // Execution engine
   const executionSteps = React.useMemo(() => {
@@ -409,6 +442,7 @@ export function CommunityDashboardPage() {
   // ─── Tab config ───
   const tabs: Array<{ key: DashboardTab; label: string; icon: React.ReactNode; count?: number }> = [
     { key: 'overview', label: 'Overview', icon: <Rocket className="h-4 w-4" /> },
+    { key: 'onboarding', label: '6-step setup', icon: <CheckSquare className="h-4 w-4" /> },
     { key: 'businesses', label: 'Businesses', icon: <Store className="h-4 w-4" />, count: supportingBusinesses.length },
     { key: 'network', label: 'Network', icon: <Network className="h-4 w-4" /> },
     { key: 'materials', label: 'Materials', icon: <FileText className="h-4 w-4" />, count: generatedCount },
@@ -508,8 +542,8 @@ export function CommunityDashboardPage() {
               <CardContent className="space-y-2">
                 {displayReadiness.checks.map((check, idx) => {
                   const routeMap: Record<string, string> = {
-                    mission: '/dashboard',
-                    codes: '/community/materials',
+                    mission: '/onboarding/cause#profile',
+                    codes: '/community/qr',
                     materials: '/community/materials',
                     businesses: '/community/businesses',
                     activity: '/community/tasks',
@@ -552,7 +586,7 @@ export function CommunityDashboardPage() {
                 <ul className="space-y-1.5">
                   {nextActions.map((action, idx) => {
                     const routeMap: Record<string, string> = {
-                      mission: '/dashboard',
+                      mission: '/onboarding/cause#profile',
                       codes: '/community/qr',
                       materials: '/community/materials',
                       businesses: '/community/businesses',
@@ -617,6 +651,56 @@ export function CommunityDashboardPage() {
       )}
 
       {/* ── BUSINESSES TAB ── */}
+      {activeTab === 'onboarding' && (
+        <div className="space-y-5">
+          <Card id="profile">
+            <CardHeader><CardTitle>1. Organization profile</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-surface-600">Add the public details supporters and businesses need to recognize and contact you.</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input value={profileDraft.name} onChange={(event) => setProfileDraft((value) => ({ ...value, name: event.target.value }))} placeholder="Organization name" />
+                <Input value={profileDraft.email} onChange={(event) => setProfileDraft((value) => ({ ...value, email: event.target.value }))} placeholder="Contact email" type="email" />
+                <Input value={profileDraft.phone} onChange={(event) => setProfileDraft((value) => ({ ...value, phone: event.target.value }))} placeholder="Phone" />
+                <Input value={profileDraft.website} onChange={(event) => setProfileDraft((value) => ({ ...value, website: event.target.value }))} placeholder="Website" />
+                <div className="md:col-span-2"><Input value={profileDraft.address} onChange={(event) => setProfileDraft((value) => ({ ...value, address: event.target.value }))} placeholder="Address" /></div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card id="brand-assets">
+            <CardHeader><CardTitle>2. Brand assets</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-surface-600">Add the logo and cover image used on your cause page and campaign materials.</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input value={profileDraft.logoUrl} onChange={(event) => setProfileDraft((value) => ({ ...value, logoUrl: event.target.value }))} placeholder="Logo image URL" />
+                <Input value={profileDraft.coverPhotoUrl} onChange={(event) => setProfileDraft((value) => ({ ...value, coverPhotoUrl: event.target.value }))} placeholder="Cover image URL" />
+              </div>
+              <div className="flex items-center gap-3">
+                <Button onClick={() => void saveCauseProfile()} disabled={savingCause || !profileDraft.name.trim()}>{savingCause ? 'Saving...' : 'Save profile and assets'}</Button>
+                {profileSaved && <span className="text-sm font-medium text-success-600">Saved</span>}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {[
+              { number: 3, title: 'Connect supporting businesses', text: 'See current partners and build the list of businesses supporting your cause.', href: '/community/businesses', cta: 'Manage businesses' },
+              { number: 4, title: 'Invite families and supporters', text: 'Use your cause link and ready-made message to invite your community.', href: '/community/share', cta: 'Invite supporters' },
+              { number: 5, title: 'Prepare QR codes and links', text: 'Review the QR code and link supporters will use to join your cause.', href: '/community/qr', cta: 'Review QR and links' },
+              { number: 6, title: 'Review and share materials', text: 'Open your generated flyers and campaign assets before launch.', href: '/community/materials', cta: 'Open materials' },
+            ].map((step) => (
+              <Card key={step.number} id={`step-${step.number}`}>
+                <CardHeader><CardTitle>{step.number}. {step.title}</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="mb-4 text-sm leading-6 text-surface-600">{step.text}</p>
+                  <Button asChild variant="outline"><Link href={step.href}>{step.cta}<ArrowRight className="h-4 w-4" /></Link></Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {activeTab === 'businesses' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
