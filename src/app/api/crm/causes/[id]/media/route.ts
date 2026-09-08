@@ -20,7 +20,7 @@ export async function POST(
   const supabase = createServiceClient()
 
   const shell = getStakeholderShell(profile)
-  if (!['admin', 'field', 'launch_partner'].includes(shell)) {
+  if (!['admin', 'field', 'launch_partner', 'community'].includes(shell)) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 })
   }
 

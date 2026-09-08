@@ -613,6 +613,8 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           name: String(c.name || ''),
           email: (c.ownerEmail as string) || null,
           phone: (c.ownerPhone as string) || null,
+          website: (c.website as string) || null,
+          address: (c.fullAddress as string) || (c.address1 as string) || null,
           city: (c.city as string) || null,
           state: (c.state as string) || null,
           country: (c.country as string) || null,
@@ -624,6 +626,9 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           stage: 'lead',
           status: c.active ? 'active' : 'inactive',
           metadata: { qaId: c.id, ownerUserId: c.ownerUserId, headline: c.headline },
+          logo_url: (c.logoUrl as string) || (c.imageUrl as string) || null,
+          cover_photo_url: (c.coverPhotoUrl as string) || null,
+          external_id: String(c.id),
           created_at: (c.createdDate as string) || new Date().toISOString(),
           updated_at: (c.updatedDate as string) || new Date().toISOString(),
         } as unknown as Cause))

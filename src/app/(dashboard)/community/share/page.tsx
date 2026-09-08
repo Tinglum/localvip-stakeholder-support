@@ -10,12 +10,13 @@ import { useAuth } from '@/lib/auth/context'
 import { getCommunitySupportMessage } from '@/lib/community-support'
 import { useCauses, useContacts } from '@/lib/supabase/hooks'
 import { CommunitySupportQrCard } from '@/components/community/community-support-qr-card'
+import { resolveCommunityCause } from '@/lib/community-cause'
 
 export default function CommunitySharePage() {
   const { profile, roleLabel } = useAuth()
   const { data: causes } = useCauses()
   const { data: contacts } = useContacts()
-  const cause = causes.find((item) => item.owner_id === profile.id || item.organization_id === profile.organization_id) || null
+  const cause = React.useMemo(() => resolveCommunityCause(profile, causes), [causes, profile])
   const supporters = contacts.filter((contact) => contact.cause_id === cause?.id)
   const message = cause ? getCommunitySupportMessage(cause) : ''
 

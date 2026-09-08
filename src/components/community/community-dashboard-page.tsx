@@ -40,7 +40,6 @@ import { useAuth } from '@/lib/auth/context'
 import {
   useBusinesses,
   useCauses,
-  useCauseUpdate,
   useContacts,
   useGeneratedMaterials,
   useMaterials,
@@ -65,6 +64,7 @@ import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS, getMaterialLibraryFo
 import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
+import { resolveCommunityCause } from '@/lib/community-cause'
 
 type DashboardTab = 'overview' | 'onboarding' | 'businesses' | 'network' | 'materials' | 'qr' | 'tasks' | 'activity'
 
@@ -86,7 +86,7 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   const { data: causes } = useCauses()
   const { data: contacts } = useContacts()
   const { data: businesses } = useBusinesses()
-  const { update: updateCause, loading: savingCause } = useCauseUpdate()
+  const [savingCause, setSavingCause] = React.useState(false)
 
   const selectedQaCauseId = React.useMemo(() => {
     const value = (profile.metadata as Record<string, unknown> | null)?.view_as_cause_account_id
@@ -111,20 +111,7 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
     return null
   }, [profile.metadata])
 
-  const scopedCause = React.useMemo(
-    () => causes.find((cause) => getCauseQaAccountId(cause) === selectedQaCauseId)
-      || causes.find((cause) => {
-        const ownerId = (cause.metadata as Record<string, unknown> | null)?.ownerUserId
-        return selectedQaOwnerId != null && ownerId != null && String(ownerId) === selectedQaOwnerId
-      })
-      || causes.find((cause) => {
-        const ownerId = (cause.metadata as Record<string, unknown> | null)?.ownerUserId
-        return signedInQaOwnerId != null && ownerId != null && String(ownerId) === signedInQaOwnerId
-      })
-      || causes.find((cause) => cause.owner_id === profile.id || cause.organization_id === profile.organization_id)
-      || null,
-    [causes, profile.id, profile.organization_id, selectedQaCauseId, selectedQaOwnerId, signedInQaOwnerId]
-  )
+  const scopedCause = React.useMemo(() => resolveCommunityCause(profile, causes), [causes, profile])
 
   const supporterContacts = React.useMemo(
     () => contacts.filter((contact) => contact.cause_id && contact.cause_id === scopedCause?.id),
@@ -175,6 +162,9 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   )
   const [profileDraft, setProfileDraft] = React.useState({ name: '', email: '', phone: '', website: '', address: '', logoUrl: '', coverPhotoUrl: '' })
   const [profileSaved, setProfileSaved] = React.useState(false)
+  const [profileError, setProfileError] = React.useState<string | null>(null)
+  const [logoFile, setLogoFile] = React.useState<File | null>(null)
+  const [coverFile, setCoverFile] = React.useState<File | null>(null)
 
   React.useEffect(() => {
     if (!scopedCause) return
@@ -192,16 +182,35 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   async function saveCauseProfile() {
     if (!scopedCause) return
     setProfileSaved(false)
-    await updateCause(scopedCause.id, {
-      name: profileDraft.name.trim(),
-      email: profileDraft.email.trim() || null,
-      phone: profileDraft.phone.trim() || null,
-      website: profileDraft.website.trim() || null,
-      address: profileDraft.address.trim() || null,
-      logo_url: profileDraft.logoUrl.trim() || null,
-      cover_photo_url: profileDraft.coverPhotoUrl.trim() || null,
-    })
-    setProfileSaved(true)
+    setProfileError(null)
+    setSavingCause(true)
+    try {
+      const response = await fetch(`/api/qa/nonprofits/${encodeURIComponent(scopedCause.id)}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: profileDraft.name.trim(),
+          phone: profileDraft.phone.trim() || null,
+          address: profileDraft.address.trim() || null,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'The organization profile could not be saved.')
+      for (const [mediaType, file] of [['logo', logoFile], ['cover_photo', coverFile]] as const) {
+        if (!file) continue
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('mediaType', mediaType)
+        const upload = await fetch(`/api/crm/causes/${encodeURIComponent(scopedCause.id)}/media`, { method: 'POST', body: formData })
+        const uploadPayload = await upload.json().catch(() => ({}))
+        if (!upload.ok) throw new Error(uploadPayload.error || `The ${mediaType === 'logo' ? 'logo' : 'cover image'} could not be uploaded.`)
+      }
+      setProfileSaved(true)
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'The organization profile could not be saved.')
+    } finally {
+      setSavingCause(false)
+    }
   }
 
   // Execution engine
@@ -659,9 +668,9 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
               <p className="text-sm text-surface-600">Add the public details supporters and businesses need to recognize and contact you.</p>
               <div className="grid gap-3 md:grid-cols-2">
                 <Input value={profileDraft.name} onChange={(event) => setProfileDraft((value) => ({ ...value, name: event.target.value }))} placeholder="Organization name" />
-                <Input value={profileDraft.email} onChange={(event) => setProfileDraft((value) => ({ ...value, email: event.target.value }))} placeholder="Contact email" type="email" />
+                <Input value={profileDraft.email} readOnly aria-label="Account email" title="Contact an administrator to change the account owner email." />
                 <Input value={profileDraft.phone} onChange={(event) => setProfileDraft((value) => ({ ...value, phone: event.target.value }))} placeholder="Phone" />
-                <Input value={profileDraft.website} onChange={(event) => setProfileDraft((value) => ({ ...value, website: event.target.value }))} placeholder="Website" />
+                <Input value={profileDraft.website} readOnly aria-label="Website" title="Website editing will be available after profile verification." />
                 <div className="md:col-span-2"><Input value={profileDraft.address} onChange={(event) => setProfileDraft((value) => ({ ...value, address: event.target.value }))} placeholder="Address" /></div>
               </div>
             </CardContent>
@@ -672,12 +681,13 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
             <CardContent className="space-y-4">
               <p className="text-sm text-surface-600">Add the logo and cover image used on your cause page and campaign materials.</p>
               <div className="grid gap-3 md:grid-cols-2">
-                <Input value={profileDraft.logoUrl} onChange={(event) => setProfileDraft((value) => ({ ...value, logoUrl: event.target.value }))} placeholder="Logo image URL" />
-                <Input value={profileDraft.coverPhotoUrl} onChange={(event) => setProfileDraft((value) => ({ ...value, coverPhotoUrl: event.target.value }))} placeholder="Cover image URL" />
+                <label className="space-y-2 text-sm font-medium text-surface-700">Logo image<Input type="file" accept="image/*" onChange={(event) => setLogoFile(event.target.files?.[0] || null)} /></label>
+                <label className="space-y-2 text-sm font-medium text-surface-700">Cover image<Input type="file" accept="image/*" onChange={(event) => setCoverFile(event.target.files?.[0] || null)} /></label>
               </div>
               <div className="flex items-center gap-3">
                 <Button onClick={() => void saveCauseProfile()} disabled={savingCause || !profileDraft.name.trim()}>{savingCause ? 'Saving...' : 'Save profile and assets'}</Button>
                 {profileSaved && <span className="text-sm font-medium text-success-600">Saved</span>}
+                {profileError && <span className="text-sm font-medium text-danger-600">{profileError}</span>}
               </div>
             </CardContent>
           </Card>

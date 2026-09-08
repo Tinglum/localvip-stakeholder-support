@@ -7,7 +7,7 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } },
 ) {
-  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner'])
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'community'])
   if ('error' in access) return access.error
 
   const qaNonprofitId = parseQaRouteId(params.id)
@@ -31,7 +31,7 @@ export async function PUT(
   request: Request,
   { params }: { params: { id: string } },
 ) {
-  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner'])
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'community'])
   if ('error' in access) return access.error
 
   const qaNonprofitId = parseQaRouteId(params.id)
@@ -55,6 +55,9 @@ export async function PUT(
     // Cause profile settings. The backend only applies keys that are present,
     // so we forward the flag only when the caller actually sent it.
     const profilePayload: Record<string, unknown> = {}
+    if (typeof body.name === 'string' && body.name.trim()) profilePayload.name = body.name.trim()
+    if (body.phone === null || typeof body.phone === 'string') profilePayload.ownerPhone = body.phone
+    if (body.address === null || typeof body.address === 'string') profilePayload.address1 = body.address
     const referrerVisibility = body.is_visible_in_referrer_search ?? body.isVisibleInReferrerSearch
     if (typeof referrerVisibility === 'boolean') {
       profilePayload.isVisibleInReferrerSearch = referrerVisibility
