@@ -70,6 +70,7 @@ interface ViewAsCookiePayload {
   role: string
   accountType?: string | number
   consumerType?: string
+  causeAccountId?: number
   since: string
 }
 
@@ -129,6 +130,7 @@ function applyViewAsOverride(
       view_as_target_email: payload.email,
       view_as_account_type: payload.accountType ?? null,
       view_as_consumer_type: payload.consumerType ?? null,
+      view_as_cause_account_id: payload.causeAccountId ?? null,
     },
   }
 

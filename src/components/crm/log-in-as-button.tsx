@@ -16,6 +16,7 @@ interface LogInAsButtonProps {
    * whichever the by-user lookup returns first. Server-verified.
    */
   businessAccountId?: string | number | null
+  causeAccountId?: string | number | null
   variant?: 'default' | 'outline' | 'ghost'
   size?: 'default' | 'sm' | 'lg' | 'icon'
 }
@@ -25,6 +26,7 @@ export function LogInAsButton({
   userName,
   stakeholderType,
   businessAccountId = null,
+  causeAccountId = null,
   variant = 'outline',
   size = 'sm',
 }: LogInAsButtonProps) {
@@ -36,6 +38,10 @@ export function LogInAsButton({
   const numericBusinessAccountId =
     businessAccountId != null && /^\d+$/.test(String(businessAccountId).trim())
       ? Number(String(businessAccountId).trim())
+      : null
+  const numericCauseAccountId =
+    causeAccountId != null && /^\d+$/.test(String(causeAccountId).trim())
+      ? Number(String(causeAccountId).trim())
       : null
 
   if (!isAdmin || !userId) return null
@@ -55,6 +61,7 @@ export function LogInAsButton({
           body: JSON.stringify({
             userId: Number(userId),
             ...(numericBusinessAccountId != null ? { businessAccountId: numericBusinessAccountId } : {}),
+            ...(numericCauseAccountId != null ? { causeAccountId: numericCauseAccountId } : {}),
           }),
         })
         const payload = await response.json().catch(() => ({ error: 'Request failed.' }))

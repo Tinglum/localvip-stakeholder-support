@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
   const access = await requireQaRouteAccess(['admin'])
   if ('error' in access) return access.error
 
-  let body: { userId?: number | string; businessAccountId?: number | string } = {}
+  let body: { userId?: number | string; businessAccountId?: number | string; causeAccountId?: number | string } = {}
   try {
     body = await request.json()
   } catch {
@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
     // Prefer the roles-based mapping (reliable); fall back to accountType only
     // when the user carries no role claims.
     const role = mapRolesToRole(user.roles) ?? mapAccountTypeToRole(user.accountType, user.consumerType)
+    const requestedCauseAccountId = Number(body.causeAccountId)
     const payload = {
       userId: user.id,
       email: user.email,
@@ -193,6 +194,9 @@ export async function POST(request: NextRequest) {
       role,
       accountType: user.accountType,
       consumerType: user.consumerType,
+      ...(Number.isInteger(requestedCauseAccountId) && requestedCauseAccountId > 0
+        ? { causeAccountId: requestedCauseAccountId }
+        : {}),
       since: new Date().toISOString(),
     }
 

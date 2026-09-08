@@ -85,9 +85,16 @@ export function CommunityDashboardPage() {
   const { data: contacts } = useContacts()
   const { data: businesses } = useBusinesses()
 
+  const selectedQaCauseId = React.useMemo(() => {
+    const value = (profile.metadata as Record<string, unknown> | null)?.view_as_cause_account_id
+    return typeof value === 'number' && value > 0 ? String(value) : null
+  }, [profile.metadata])
+
   const scopedCause = React.useMemo(
-    () => causes.find((cause) => cause.owner_id === profile.id || cause.organization_id === profile.organization_id) || null,
-    [causes, profile.id, profile.organization_id]
+    () => causes.find((cause) => getCauseQaAccountId(cause) === selectedQaCauseId)
+      || causes.find((cause) => cause.owner_id === profile.id || cause.organization_id === profile.organization_id)
+      || null,
+    [causes, profile.id, profile.organization_id, selectedQaCauseId]
   )
 
   const supporterContacts = React.useMemo(
