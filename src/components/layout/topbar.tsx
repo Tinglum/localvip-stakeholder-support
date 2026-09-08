@@ -412,7 +412,7 @@ export function Topbar({
             Not width-gated: passing "hidden lg:flex" here collided with the
             component's own "flex" root — Tailwind emits .hidden after .flex, so it
             was display:none below 1024px and the picker simply never appeared. */}
-        <OperatorPicker />
+        {isAdminProfile(profile) ? <OperatorPicker /> : null}
         {isAdminProfile(profile) ? <ViewAsPicker /> : null}
 
         <DropdownMenu.Root>

@@ -97,6 +97,16 @@ export function CommunityDashboardPage() {
     if (typeof value === 'string' && /^\d+$/.test(value.trim())) return value.trim()
     return null
   }, [profile.metadata])
+  const signedInQaOwnerId = React.useMemo(() => {
+    const metadata = (profile.metadata as Record<string, unknown> | null) || {}
+    const claims = metadata.qa_claims && typeof metadata.qa_claims === 'object'
+      ? metadata.qa_claims as Record<string, unknown>
+      : {}
+    const value = metadata.qa_subject ?? metadata.qa_user_id ?? claims.sub
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value)
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return value.trim()
+    return null
+  }, [profile.metadata])
 
   const scopedCause = React.useMemo(
     () => causes.find((cause) => getCauseQaAccountId(cause) === selectedQaCauseId)
@@ -104,9 +114,13 @@ export function CommunityDashboardPage() {
         const ownerId = (cause.metadata as Record<string, unknown> | null)?.ownerUserId
         return selectedQaOwnerId != null && ownerId != null && String(ownerId) === selectedQaOwnerId
       })
+      || causes.find((cause) => {
+        const ownerId = (cause.metadata as Record<string, unknown> | null)?.ownerUserId
+        return signedInQaOwnerId != null && ownerId != null && String(ownerId) === signedInQaOwnerId
+      })
       || causes.find((cause) => cause.owner_id === profile.id || cause.organization_id === profile.organization_id)
       || null,
-    [causes, profile.id, profile.organization_id, selectedQaCauseId, selectedQaOwnerId]
+    [causes, profile.id, profile.organization_id, selectedQaCauseId, selectedQaOwnerId, signedInQaOwnerId]
   )
 
   const supporterContacts = React.useMemo(
@@ -114,17 +128,26 @@ export function CommunityDashboardPage() {
     [contacts, scopedCause?.id]
   )
 
-  const { data: stakeholderRecords } = useStakeholders({ cause_id: scopedCause?.id || '__none__' })
+  const { data: stakeholderRecords } = useStakeholders(
+    { cause_id: scopedCause?.id || '' },
+    { enabled: Boolean(scopedCause?.id) },
+  )
   const scopedStakeholder = React.useMemo(
     () => stakeholderRecords.find((s) => s.cause_id === scopedCause?.id) || null,
     [scopedCause?.id, stakeholderRecords]
   )
 
-  const { data: stakeholderCodes } = useStakeholderCodes({ stakeholder_id: scopedStakeholder?.id || '__none__' })
+  const { data: stakeholderCodes } = useStakeholderCodes(
+    { stakeholder_id: scopedStakeholder?.id || '' },
+    { enabled: Boolean(scopedStakeholder?.id) },
+  )
   const codes = stakeholderCodes[0] || null
 
   const { data: qrCodes } = useQrCodes({ cause_id: scopedCause?.id || '__none__' })
-  const { data: generatedMaterials } = useGeneratedMaterials({ stakeholder_id: scopedStakeholder?.id || '__none__' })
+  const { data: generatedMaterials } = useGeneratedMaterials(
+    { stakeholder_id: scopedStakeholder?.id || '' },
+    { enabled: Boolean(scopedStakeholder?.id) },
+  )
   const { data: allMaterials } = useMaterials()
   const { data: flows } = useOnboardingFlows({ entity_type: 'cause', entity_id: scopedCause?.id || '__none__' })
   const flow = flows[0] || null

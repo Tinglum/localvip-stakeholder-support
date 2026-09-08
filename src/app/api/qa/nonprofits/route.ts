@@ -6,7 +6,7 @@ export async function GET() {
   // Businesses can list causes too — they pick the cause they support during
   // setup. Cause records are public-facing (shown in the consumer app), so this
   // is not sensitive operator data.
-  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'business'])
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'business', 'community'])
   if ('error' in access) return access.error
 
   try {
