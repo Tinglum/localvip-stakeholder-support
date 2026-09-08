@@ -18,7 +18,6 @@ import {
   Phone,
   QrCode,
   School,
-  Sparkles,
   Users,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -435,12 +434,8 @@ export function LeaderConversationModal({
 // ═══════════════════════════════════════════
 // 3. Cause Materials & QR Modal
 // ═══════════════════════════════════════════
-//  Features:
-//  • Edit referral / connection codes inline
-//  • Save codes + auto-generate materials in one click
-//  • View generated materials list with file links
-//  • QR code count + join URL with copy
-//  • Regenerate all button
+//  Guides the user through the QR-first material workflow without exposing
+//  backend-owned referral codes as editable dashboard fields.
 
 export interface CauseMaterialsQrModalProps {
   open: boolean
@@ -449,15 +444,15 @@ export interface CauseMaterialsQrModalProps {
   generatedMaterials: GeneratedMaterial[]
   qrCodes: QrCodeType[]
   joinUrl: string | null
-  onSaveCodes: (referralCode: string, connectionCode: string) => Promise<void>
   onGenerateMaterials: () => Promise<void>
-  onRegenerateAll: () => Promise<void>
+  qrGeneratorHref?: string
   onCompleteStep?: () => void
   readyToComplete: boolean
   saving: boolean
   blocker: string | null
   engineBusy: 'codes' | 'generate' | null
-  regenBusy: boolean
+  engineMessage?: string | null
+  engineError?: string | null
 }
 
 export function CauseMaterialsQrModal({
@@ -467,37 +462,26 @@ export function CauseMaterialsQrModal({
   generatedMaterials,
   qrCodes,
   joinUrl,
-  onSaveCodes,
   onGenerateMaterials,
-  onRegenerateAll,
+  qrGeneratorHref,
   onCompleteStep,
   readyToComplete,
   saving,
   blocker,
   engineBusy,
-  regenBusy,
+  engineMessage,
+  engineError,
 }: CauseMaterialsQrModalProps) {
-  const [referral, setReferral] = React.useState(codes?.referral_code || '')
-  const [connection, setConnection] = React.useState(codes?.connection_code || '')
-  const [saveMsg, setSaveMsg] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
 
   React.useEffect(() => {
     if (open) {
-      setReferral(codes?.referral_code || '')
-      setConnection(codes?.connection_code || '')
-      setSaveMsg(null)
+      setCopied(false)
     }
-  }, [open, codes])
+  }, [open])
 
   const generated = generatedMaterials.filter((m) => m.generation_status === 'generated' && m.generated_file_url && m.is_active !== false && !m.is_outdated)
   const failed = generatedMaterials.filter((m) => m.generation_status === 'failed')
-
-  async function handleSave() {
-    setSaveMsg(null)
-    await onSaveCodes(referral.trim(), connection.trim())
-    setSaveMsg('Codes saved and materials generation triggered.')
-  }
 
   function copyUrl() {
     if (joinUrl) {
@@ -526,20 +510,28 @@ export function CauseMaterialsQrModal({
           </div>
 
           {blocker && <Blocker text={blocker} />}
-          {saveMsg && <SuccessBanner text={saveMsg} />}
+          {engineError && (
+            <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+              {engineError}
+            </div>
+          )}
+          {engineMessage && <SuccessBanner text={engineMessage} />}
 
-          {/* Codes editor */}
+          {/* QR-first workflow */}
           <div className="space-y-3 rounded-xl border border-surface-200 bg-surface-50 p-4">
-            <p className="text-sm font-semibold text-surface-900">Referral &amp; connection codes</p>
+            <div>
+              <p className="text-sm font-semibold text-surface-900">What to do next</p>
+              <p className="mt-1 text-sm text-surface-600">
+                {qrCodes.length === 0
+                  ? 'Create a QR code first. It connects every generated flyer and sign-up link to this cause.'
+                  : generated.length === 0
+                    ? 'Your QR code is ready. Generate the shareable materials for this cause.'
+                    : 'Your materials are ready. Regenerate them only when the cause details or QR code change.'}
+              </p>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-surface-600">Referral code</label>
-                <Input value={referral} onChange={(e) => setReferral(e.target.value)} placeholder="east-atlanta-school" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-surface-600">Connection code</label>
-                <Input value={connection} onChange={(e) => setConnection(e.target.value)} placeholder="east-atlanta-school" />
-              </div>
+              <Stat label="1. QR code" value={qrCodes.length > 0 ? 'Ready' : 'Required'} ok={qrCodes.length > 0} />
+              <Stat label="2. Share materials" value={generated.length > 0 ? `${generated.length} ready` : 'Not generated'} ok={generated.length > 0} />
             </div>
             {joinUrl && (
               <div className="space-y-1.5">
@@ -556,18 +548,22 @@ export function CauseMaterialsQrModal({
                 </p>
               </div>
             )}
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={handleSave} disabled={engineBusy !== null || !referral.trim() || !connection.trim()}>
-                {engineBusy === 'codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Save codes + generate
-              </Button>
-              <Button variant="outline" onClick={() => void onGenerateMaterials()} disabled={engineBusy !== null || !codes?.connection_code}>
+            <div className="flex flex-wrap items-center gap-3">
+              {qrCodes.length === 0 && qrGeneratorHref ? (
+                <Link href={qrGeneratorHref}>
+                  <Button>
+                    <QrCode className="h-4 w-4" /> Create QR code
+                  </Button>
+                </Link>
+              ) : (
+                <Button onClick={() => void onGenerateMaterials()} disabled={engineBusy !== null || qrCodes.length === 0}>
                 {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                Generate materials
-              </Button>
-              <Button variant="outline" onClick={() => void onRegenerateAll()} disabled={regenBusy || engineBusy !== null}>
-                Regenerate all
-              </Button>
+                  {generated.length > 0 ? 'Regenerate materials' : 'Generate materials'}
+                </Button>
+              )}
+              {qrCodes.length === 0 && !qrGeneratorHref && (
+                <p className="text-xs text-surface-500">Open this cause in Mission Control to create its QR code.</p>
+              )}
             </div>
           </div>
 

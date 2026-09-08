@@ -2062,13 +2062,10 @@ function CauseDetailModal({
         qrCodes={[]}
         joinUrl={detail.joinUrl}
         engineBusy={null}
-        regenBusy={false}
         saving={false}
         blocker={null}
         readyToComplete={false}
-        onSaveCodes={async () => {}}
         onGenerateMaterials={async () => {}}
-        onRegenerateAll={async () => {}}
       />
 
       <ActivationDecisionModal

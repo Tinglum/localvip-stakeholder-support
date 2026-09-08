@@ -496,10 +496,6 @@ export default function CauseDetailPage() {
     options.setProgress(options.successMessage)
   }
 
-  async function handleSaveCodes() {
-    // Stakeholder codes removed for QA backend compliance
-  }
-
   async function handleGenerateMaterials() {
     setEngineBusy('generate')
     setEngineMessage(null)
@@ -1520,7 +1516,7 @@ export default function CauseDetailPage() {
               <CardHeader>
                 <CardTitle>Codes & Material Engine</CardTitle>
                 <p className="text-sm text-surface-500">
-                  These codes power your QR assets and personalized materials. Save them to trigger generation.
+                  Create a QR code first, then generate the shareable materials that use it.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1531,14 +1527,29 @@ export default function CauseDetailPage() {
                 </div>
                 {engineError && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{engineError}</div>}
                 {engineMessage && <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">{engineMessage}</div>}
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null}>
-                    {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                    Generate materials
-                  </Button>
-                  <Link href={qrGeneratorHref}>
-                    <Button variant="outline"><QrCode className="h-4 w-4" /> Create QR Code</Button>
-                  </Link>
+                <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
+                  <p className="text-sm font-semibold text-surface-900">
+                    {causeQrCodes.length === 0 ? 'Next: create a QR code' : generatedCount === 0 ? 'Next: generate materials' : 'Materials are ready'}
+                  </p>
+                  <p className="mt-1 text-sm text-surface-600">
+                    {causeQrCodes.length === 0
+                      ? 'The QR code gives every flyer a working sign-up path for this cause.'
+                      : generatedCount === 0
+                        ? 'Your QR code is linked. You can now create the flyers and outreach assets.'
+                        : 'Open the files below, or regenerate them after changing the cause or QR details.'}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {causeQrCodes.length === 0 ? (
+                      <Link href={qrGeneratorHref}>
+                        <Button><QrCode className="h-4 w-4" /> Create QR code</Button>
+                      </Link>
+                    ) : (
+                      <Button onClick={() => void handleGenerateMaterials()} disabled={engineBusy !== null}>
+                        {engineBusy === 'generate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                        {generatedCount > 0 ? 'Regenerate materials' : 'Generate materials'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1861,9 +1872,8 @@ export default function CauseDetailPage() {
             generatedMaterials={generatedMaterials}
             qrCodes={causeQrCodes}
             joinUrl={joinUrl || null}
-            onSaveCodes={async () => {}}
             onGenerateMaterials={handleGenerateMaterials}
-            onRegenerateAll={handleGenerateMaterials}
+            qrGeneratorHref={qrGeneratorHref}
             onCompleteStep={(() => {
               const step = getExecutionStep('materials_qr')
               return step?.step.id && step.state === 'active' && step.readyToComplete
@@ -1874,7 +1884,8 @@ export default function CauseDetailPage() {
             saving={stepBusyId !== null}
             blocker={getExecutionStep('materials_qr')?.blocker ?? null}
             engineBusy={engineBusy}
-            regenBusy={engineBusy === 'generate'}
+            engineMessage={engineMessage}
+            engineError={engineError}
           />
 
           <ActivationDecisionModal
