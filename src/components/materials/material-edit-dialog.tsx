@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { MaterialTagPicker } from '@/components/material-tags/material-tag-picker'
 import { useAuth } from '@/lib/auth/context'
 import { MATERIAL_CATEGORIES, MATERIAL_USE_CASES } from '@/lib/constants'
 import {
@@ -72,6 +73,7 @@ export function MaterialEditDialog({
   const [automationLibraryFolder, setAutomationLibraryFolder] = React.useState<MaterialLibraryFolder>('share_with_customers')
   const [automationAudienceTags, setAutomationAudienceTags] = React.useState('')
   const [feedback, setFeedback] = React.useState<string | null>(null)
+  const [materialTagIds, setMaterialTagIds] = React.useState<number[]>([])
 
   React.useEffect(() => {
     if (!material) return
@@ -89,6 +91,7 @@ export function MaterialEditDialog({
     setAutomationLibraryFolder(automation.libraryFolder)
     setAutomationAudienceTags(automation.audienceTags.join(', '))
     setFeedback(null)
+    setMaterialTagIds([])
   }, [material])
 
   function toggleRoleTag(role: UserRole) {
@@ -153,6 +156,28 @@ export function MaterialEditDialog({
     } as Partial<Material>)
 
     if (!updatedMaterial) return
+
+    // The audience-tag assignment is saved as a separate call against the material
+    // engine's own tag table — it needs the material's id, which only exists once
+    // the material itself has been saved (a brand-new material has none before
+    // this point). Save it after the material update succeeds, using the id from
+    // the just-saved record rather than the (possibly still-empty) prop.
+    try {
+      const res = await fetch(`/api/admin/material-tags/material/${encodeURIComponent(updatedMaterial.id)}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tagIds: materialTagIds }),
+      })
+      if (!res.ok) {
+        setFeedback('Material saved, but audience tags could not be saved.')
+        onSaved(updatedMaterial)
+        return
+      }
+    } catch {
+      setFeedback('Material saved, but audience tags could not be saved.')
+      onSaved(updatedMaterial)
+      return
+    }
 
     setFeedback('Material tags and visibility updated.')
     onSaved(updatedMaterial)
@@ -292,6 +317,12 @@ export function MaterialEditDialog({
                 </div>
               </div>
             </div>
+
+            <MaterialTagPicker
+              materialId={material.id}
+              selectedTagIds={materialTagIds}
+              onChange={setMaterialTagIds}
+            />
 
             <div className="flex flex-wrap gap-2">
               {roleTags.length > 0 && roleTags.map((role) => (
