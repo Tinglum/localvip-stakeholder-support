@@ -18,6 +18,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ONBOARDING_STAGES, ROLES } from '@/lib/constants'
 import { getEntityTheme } from '@/lib/entity-themes'
@@ -109,7 +110,27 @@ function entityHref(entityType: string | null | undefined, entityId: string | nu
 export default function CityDetailPage() {
   const params = useParams()
   const cityId = params.id as string
-  const { data: city, loading } = useRecord<City>('cities', cityId)
+  const { data: loadedCity, loading } = useRecord<City>('cities', cityId)
+  const [city, setCity] = React.useState<City | null>(null)
+  const [editing, setEditing] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [message, setMessage] = React.useState('')
+  const [draft, setDraft] = React.useState({ name: '', state: '', country: '', status: 'active' })
+  React.useEffect(() => {
+    if (loadedCity) { setCity(loadedCity); setDraft({ name: loadedCity.name, state: loadedCity.state || '', country: loadedCity.country || 'US', status: loadedCity.status }) }
+  }, [loadedCity])
+  async function saveCity(event: React.FormEvent) {
+    event.preventDefault()
+    setSaving(true); setMessage('')
+    try {
+      const response = await fetch(`/api/qa/dashboard/cities/${encodeURIComponent(cityId)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(draft) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Could not save this city.')
+      setCity(previous => previous ? { ...previous, ...result } : result)
+      setEditing(false); setMessage('City saved.')
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not save this city.') }
+    finally { setSaving(false) }
+  }
   const { data: businesses } = useBusinesses()
   const { data: causes } = useCauses()
   const { data: campaigns } = useCampaigns()
@@ -212,16 +233,21 @@ export default function CityDetailPage() {
           { label: 'Cities', href: '/crm/cities' },
           { label: city.name },
         ]}
-        actions={
-          cityCampaigns[0] ? (
-            <Link href={`/campaigns/${cityCampaigns[0].id}`}>
-              <Button>
-                <Megaphone className="h-4 w-4" /> Open Campaign
-              </Button>
-            </Link>
-          ) : undefined
-        }
+        actions={<Button onClick={() => setEditing(true)}>Edit city</Button>}
       />
+
+      {message && <p role="status" className="text-sm text-surface-700">{message}</p>}
+      {editing && <Card><CardContent className="p-5"><form onSubmit={saveCity} className="grid gap-4 md:grid-cols-2">
+        {(['name', 'state', 'country'] as const).map(field => <label key={field} className="text-sm capitalize">{field}<Input required={field !== 'state'} value={draft[field]} onChange={event => setDraft(previous => ({ ...previous, [field]: event.target.value }))} /></label>)}
+        <label className="text-sm">Status<select className="mt-1 block w-full rounded-lg border p-2" value={draft.status} onChange={event => setDraft(previous => ({ ...previous, status: event.target.value }))}>{['active', 'pending', 'inactive', 'archived'].map(status => <option key={status}>{status}</option>)}</select></label>
+        <div className="flex gap-2"><Button type="submit" disabled={saving || !draft.name.trim()}>{saving ? 'Saving...' : 'Save city'}</Button><Button type="button" variant="outline" disabled={saving} onClick={() => setEditing(false)}>Cancel</Button></div>
+      </form></CardContent></Card>}
+      <nav aria-label="City sections" className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={() => document.getElementById('city-businesses')?.scrollIntoView({ behavior: 'smooth' })}>View businesses</Button>
+        <Button variant="outline" onClick={() => document.getElementById('city-causes')?.scrollIntoView({ behavior: 'smooth' })}>View causes</Button>
+        <Button variant="outline" onClick={() => document.getElementById('city-campaigns')?.scrollIntoView({ behavior: 'smooth' })}>View campaigns</Button>
+        <Button variant="outline" onClick={() => document.getElementById('city-team')?.scrollIntoView({ behavior: 'smooth' })}>View people</Button>
+      </nav>
 
       <Card className="overflow-hidden border-surface-200">
         <div className="bg-gradient-to-r from-surface-100 via-white to-surface-50 px-6 py-6">
@@ -363,8 +389,8 @@ export default function CityDetailPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <StageColumn title="Businesses In This City" items={cityBusinesses} theme={businessTheme} hrefBase="/crm/businesses" />
-        <StageColumn title="Schools / Causes In This City" items={cityCauses} theme={causeTheme} hrefBase="/crm/causes" />
+        <div id="city-businesses"><StageColumn title="Businesses In This City" items={cityBusinesses} theme={businessTheme} hrefBase="/crm/businesses" /></div>
+        <div id="city-causes"><StageColumn title="Schools / Causes In This City" items={cityCauses} theme={causeTheme} hrefBase="/crm/causes" /></div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr,0.9fr]">
@@ -372,7 +398,7 @@ export default function CityDetailPage() {
           <CardContent className="space-y-4 p-5">
             <div className="flex items-center gap-2">
               <Megaphone className="h-4 w-4 text-surface-500" />
-              <p className="text-sm font-semibold text-surface-900">Campaigns</p>
+              <p id="city-campaigns" className="text-sm font-semibold text-surface-900">Campaigns</p>
             </div>
             {cityCampaigns.length > 0 ? (
               <div className="space-y-3">
@@ -407,7 +433,7 @@ export default function CityDetailPage() {
           <CardContent className="space-y-4 p-5">
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-surface-500" />
-              <p className="text-sm font-semibold text-surface-900">Team Coverage</p>
+              <p id="city-team" className="text-sm font-semibold text-surface-900">Team Coverage</p>
             </div>
             {cityProfiles.length > 0 ? (
               <div className="space-y-3">

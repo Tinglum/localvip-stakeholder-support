@@ -11,14 +11,18 @@ import { getCommunitySupportMessage } from '@/lib/community-support'
 import { useCauses, useContacts } from '@/lib/supabase/hooks'
 import { CommunitySupportQrCard } from '@/components/community/community-support-qr-card'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { CauseLoadError } from '@/components/community/cause-load-error'
 
 export default function CommunitySharePage() {
   const { profile, roleLabel } = useAuth()
-  const { data: causes } = useCauses()
+  const { data: causes, loading: causesLoading, error: causesError, refetch: reloadCauses } = useCauses()
   const { data: contacts } = useContacts()
   const cause = React.useMemo(() => resolveCommunityCause(profile, causes), [causes, profile])
   const supporters = contacts.filter((contact) => contact.cause_id === cause?.id)
   const message = cause ? getCommunitySupportMessage(cause) : ''
+
+  if (causesLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your cause...</div>
+  if (causesError) return <CauseLoadError onRetry={() => reloadCauses()} />
 
   if (!cause) {
     return (

@@ -76,6 +76,8 @@ export default function CustomersPage() {
   const [referrerResults, setReferrerResults] = React.useState<QaNodeListItem[]>([])
   const [selectedReferrer, setSelectedReferrer] = React.useState<QaNodeListItem | null>(null)
   const [referrerLoading, setReferrerLoading] = React.useState(false)
+  const [referrerError, setReferrerError] = React.useState<string | null>(null)
+  const [referrerRetry, setReferrerRetry] = React.useState(0)
 
   const [loginTarget, setLoginTarget] = React.useState<QaNodeListItem | null>(null)
   const [loggingIn, setLoggingIn] = React.useState(false)
@@ -93,21 +95,29 @@ export default function CustomersPage() {
   React.useEffect(() => {
     if (!addOpen || selectedReferrer || referrerSearch.trim().length < 2) {
       setReferrerResults([])
+      setReferrerLoading(false)
+      setReferrerError(null)
       return
     }
+    const controller = new AbortController()
+    setReferrerLoading(true)
+    setReferrerResults([])
+    setReferrerError(null)
     const handle = window.setTimeout(async () => {
-      setReferrerLoading(true)
       try {
         const query = new URLSearchParams({ type: 'all', search: referrerSearch.trim(), page: '1', pageSize: '12' })
-        const response = await fetch(`/api/dashboard/nodes?${query.toString()}`, { cache: 'no-store' })
+        const response = await fetch(`/api/dashboard/nodes?${query.toString()}`, { cache: 'no-store', signal: controller.signal })
         const payload = (await response.json().catch(() => null)) as NodesResponse | null
-        setReferrerResults(response.ok && payload?.items ? payload.items : [])
+        if (!response.ok || !Array.isArray(payload?.items)) throw new Error('Search failed')
+        if (!controller.signal.aborted) setReferrerResults(payload.items)
+      } catch {
+        if (!controller.signal.aborted) setReferrerError('Could not search referrers. Please try again.')
       } finally {
-        setReferrerLoading(false)
+        if (!controller.signal.aborted) setReferrerLoading(false)
       }
     }, 250)
-    return () => window.clearTimeout(handle)
-  }, [addOpen, referrerSearch, selectedReferrer])
+    return () => { controller.abort(); window.clearTimeout(handle) }
+  }, [addOpen, referrerSearch, selectedReferrer, referrerRetry])
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -467,10 +477,11 @@ export default function CustomersPage() {
                   <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-surface-400" />
                   <Input value={referrerSearch} onChange={(event) => setReferrerSearch(event.target.value)} placeholder="Start typing a name, business or cause..." className="pl-9" />
                   {referrerLoading ? <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-surface-400" /> : null}
+                  {referrerError ? <div role="alert" className="mt-2 flex items-center gap-2 text-sm text-red-700"><span>{referrerError}</span><button type="button" className="underline" onClick={() => setReferrerRetry((retry) => retry + 1)}>Retry search</button></div> : !referrerLoading && referrerSearch.trim().length >= 2 && referrerResults.length === 0 ? <p role="status" className="mt-2 text-sm text-surface-500">No matching referrers. Try a name, email, phone number or referral code.</p> : null}
                   {referrerResults.length > 0 ? (
                     <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-surface-200 bg-white p-1 shadow-xl">
                       {referrerResults.map((node) => (
-                        <button key={`${node.type}-${node.accountId}`} type="button" disabled={!node.referralCode} onClick={() => { setSelectedReferrer(node); setReferrerResults([]) }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50">
+                        <button key={`${node.type}-${node.accountId}-${node.userId}`} type="button" disabled={!node.referralCode} onClick={() => { setSelectedReferrer(node); setReferrerResults([]) }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50">
                           <span className="text-surface-500">{typeMeta(node.type).icon}</span>
                           <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-surface-900">{node.name}</span><span className="block truncate text-xs text-surface-500">{typeMeta(node.type).label}{node.email ? ` · ${node.email}` : ''}</span></span>
                           {!node.referralCode ? <span className="text-[11px] text-warning-700">No referral code</span> : null}

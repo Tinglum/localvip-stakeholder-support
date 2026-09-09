@@ -1,4 +1,5 @@
 'use client'
+import { createPortal } from 'react-dom'
 
 import * as React from 'react'
 import Link from 'next/link'
@@ -52,7 +53,7 @@ type QrChoice = 'default' | 'new' | string
 // one), then generate — the finished material lands in the business's library.
 /** `embedded` suppresses the standalone PageHeader when the business Materials
  *  hub renders this as a tab. Defaults to false for every other caller. */
-export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function TemplateLibraryPage({ embedded = false, actionsContainer }: { embedded?: boolean; actionsContainer?: HTMLElement | null } = {}) {
   const searchParams = useSearchParams()
   const [templates, setTemplates] = React.useState<PortalTemplate[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -84,7 +85,11 @@ export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean }
 
   return (
     <div className="space-y-6">
-      {embedded ? (
+      {embedded ? actionsContainer ? createPortal(
+        <Button variant="outline" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Refresh
+        </Button>, actionsContainer
+      ) : (
         <div className="flex justify-end">
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> Refresh
@@ -113,7 +118,7 @@ export function TemplateLibraryPage({ embedded = false }: { embedded?: boolean }
             <Card key={i} className="animate-pulse"><div className="h-44 bg-surface-100" /><CardContent className="space-y-2 p-4"><div className="h-4 w-2/3 rounded bg-surface-100" /><div className="h-8 w-full rounded bg-surface-50" /></CardContent></Card>
           ))}
         </div>
-      ) : templates.length === 0 ? (
+      ) : error && templates.length === 0 ? null : templates.length === 0 ? (
         <EmptyState
           icon={<Sparkles className="h-8 w-8" />}
           title="No templates available yet"

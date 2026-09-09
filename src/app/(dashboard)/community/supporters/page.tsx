@@ -9,13 +9,19 @@ import { useAuth } from '@/lib/auth/context'
 import { getContactDisplayName, getContactPrimaryChannel } from '@/lib/business-portal'
 import { useCauses, useContacts } from '@/lib/supabase/hooks'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { CauseLoadError } from '@/components/community/cause-load-error'
 
 export default function CommunitySupportersPage() {
   const { profile } = useAuth()
-  const { data: causes } = useCauses()
-  const { data: contacts } = useContacts()
+  const { data: causes, loading: causesLoading, error: causesError, refetch: reloadCauses } = useCauses()
+  const { data: contacts, loading: contactsLoading, error: contactsError, refetch: reloadContacts } = useContacts()
   const cause = React.useMemo(() => resolveCommunityCause(profile, causes), [causes, profile])
   const supporters = contacts.filter((contact) => contact.cause_id === cause?.id)
+
+  if (causesLoading || contactsLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your supporters...</div>
+  if (causesError) return <CauseLoadError onRetry={() => reloadCauses()} />
+  if (contactsError) return <CauseLoadError onRetry={() => reloadContacts()} />
+  if (!cause) return <EmptyState icon={<Users className="h-8 w-8" />} title="No cause linked" description="A school or cause must be linked to your account to see supporters." />
 
   return (
     <div className="space-y-8">

@@ -44,6 +44,8 @@ import {
   useProfileUpdate,
   useRecord,
   useStakeholderAssignments,
+  useStakeholderAssignmentDelete,
+  useStakeholderAssignmentInsert,
   useTasks,
 } from '@/lib/supabase/hooks'
 import {
@@ -61,6 +63,7 @@ import type {
   UserRoleSubtype,
 } from '@/lib/types/database'
 import { formatDate } from '@/lib/utils'
+import { RealLogInAsButton } from '@/components/crm/real-log-in-as-button'
 
 const ROLE_BADGE_VARIANT: Record<string, 'default' | 'info' | 'success' | 'warning' | 'danger'> = {
   admin: 'danger',
@@ -96,7 +99,9 @@ export default function UserDetailPage() {
   const { data: user, loading } = useRecord<Profile>('profiles', userId)
   const { data: cities } = useCities()
   const { data: organizations } = useOrganizations()
-  const { data: assignments } = useStakeholderAssignments({ stakeholder_id: userId })
+  const { data: assignments, refetch: refetchAssignments } = useStakeholderAssignments({ stakeholder_id: userId })
+  const { insert: insertAssignment, loading: assigning } = useStakeholderAssignmentInsert()
+  const { remove: removeAssignment } = useStakeholderAssignmentDelete()
   const { data: businesses } = useBusinesses()
   const { data: causes } = useCauses()
   const { data: campaigns } = useCampaigns()
@@ -116,6 +121,43 @@ export default function UserDetailPage() {
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
   const [viewUser, setViewUser] = React.useState<Profile | null>(null)
   const [impersonating, setImpersonating] = React.useState(false)
+  const [assignmentType, setAssignmentType] = React.useState<'city' | 'business' | 'cause' | 'campaign'>('city')
+  const [assignmentEntityId, setAssignmentEntityId] = React.useState('none')
+
+  const assignmentOptions = React.useMemo(() => {
+    if (assignmentType === 'city') return cities.map((item) => ({ id: item.id, label: `${item.name}, ${item.state}` }))
+    if (assignmentType === 'business') return businesses.map((item) => ({ id: item.external_id || item.id, label: item.name }))
+    if (assignmentType === 'cause') return causes.map((item) => ({ id: item.external_id || item.id, label: item.name }))
+    return campaigns.map((item) => ({ id: item.id, label: item.name }))
+  }, [assignmentType, businesses, campaigns, causes, cities])
+
+  async function addAssignment() {
+    if (assignmentEntityId === 'none') return
+    const created = await insertAssignment({
+      stakeholder_id: userId,
+      entity_type: assignmentType,
+      entity_id: assignmentEntityId.replace(/^qa-/, ''),
+      ownership_status: 'supporting',
+      status: 'active',
+      role: 'onboarding_support',
+    })
+    if (!created) {
+      setSaveMessage('The assignment could not be added. Check that this user and record are linked to QA.')
+      return
+    }
+    setAssignmentEntityId('none')
+    setSaveMessage('Assignment added.')
+    refetchAssignments({ silent: true })
+  }
+
+  async function releaseAssignment(id: string) {
+    if (!await removeAssignment(id)) {
+      setSaveMessage('The assignment could not be removed.')
+      return
+    }
+    setSaveMessage('Assignment removed.')
+    refetchAssignments({ silent: true })
+  }
 
   React.useEffect(() => {
     setViewUser(user || null)
@@ -215,21 +257,9 @@ export default function UserDetailPage() {
 
     const nextSubtype = normalizeSubtypeForRole(role, subtype)
     const persistedRole = getPersistedRoleForShell(getStakeholderAccess({ ...currentUser, role } as Profile).shell, nextSubtype)
-    const nextMetadata = { ...(currentUser.metadata || {}) } as Record<string, unknown>
-    if (role === 'business') {
-      nextMetadata.portal_role = 'business'
-    } else if ('portal_role' in nextMetadata) {
-      delete nextMetadata.portal_role
-    }
     const updates = {
       role: persistedRole,
-      role_subtype: nextSubtype,
-      brand_context: brand,
       status,
-      city_id: cityId === 'none' ? null : cityId,
-      organization_id: organizationId === 'none' ? null : organizationId,
-      business_id: businessId === 'none' ? null : businessId,
-      metadata: nextMetadata,
     }
 
     const updated = await update(userId, updates)
@@ -247,22 +277,12 @@ export default function UserDetailPage() {
       entity_id: userId,
       old_values: {
         role: currentUser.role,
-        role_subtype: currentUser.role_subtype || null,
-        brand_context: currentUser.brand_context,
         status: currentUser.status,
-        city_id: currentUser.city_id,
-        organization_id: currentUser.organization_id,
-        business_id: currentUser.business_id || null,
       },
       new_values: {
         role: persistedRole,
         shell: role,
-        role_subtype: nextSubtype,
-        brand_context: brand,
         status,
-        city_id: cityId === 'none' ? null : cityId,
-        organization_id: organizationId === 'none' ? null : organizationId,
-        business_id: businessId === 'none' ? null : businessId,
       },
       ip_address: null,
       metadata: {
@@ -320,10 +340,18 @@ export default function UserDetailPage() {
         ]}
         actions={
           isAdmin ? (
-            <Button variant="outline" onClick={handleLoginAs} disabled={impersonating}>
-              <LogIn className="h-4 w-4" />
-              {impersonating ? 'Generating link...' : 'Log in as'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={handleLoginAs} disabled={impersonating}>
+                <LogIn className="h-4 w-4" />
+                {impersonating ? 'Generating link...' : 'Open preview'}
+              </Button>
+              <RealLogInAsButton
+                userId={userId}
+                userName={currentUser.full_name}
+                stakeholderType="Customer"
+                variant="outline"
+              />
+            </div>
           ) : undefined
         }
       />
@@ -413,29 +441,6 @@ export default function UserDetailPage() {
                 </Select>
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Subtype</label>
-                <Select value={subtype || 'none'} onValueChange={(value) => setSubtype(value === 'none' ? null : (value as UserRoleSubtype))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No subtype</SelectItem>
-                    {getSubtypeOptionsForRole(role).map((option) => (
-                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Brand</label>
-                <Select value={brand} onValueChange={(value) => setBrand(value as Brand)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(BRANDS).map(([key, option]) => (
-                      <SelectItem key={key} value={key}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">Status</label>
                 <Select value={status} onValueChange={(value) => setStatus(value as EntityStatus)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -444,42 +449,6 @@ export default function UserDetailPage() {
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
                     <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Home city</label>
-                <Select value={cityId} onValueChange={setCityId}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No city</SelectItem>
-                    {cities.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>{option.name}, {option.state}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Organization</label>
-                <Select value={organizationId} onValueChange={setOrganizationId}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No organization</SelectItem>
-                    {organizations.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Scoped business</label>
-                <Select value={businessId} onValueChange={setBusinessId}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No business scope</SelectItem>
-                    {businesses.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
-                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -506,6 +475,28 @@ export default function UserDetailPage() {
             <CardTitle>Assignments & Requests</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid gap-2 rounded-2xl border border-surface-200 bg-surface-50 p-4 sm:grid-cols-[160px_1fr_auto]">
+              <Select value={assignmentType} onValueChange={(value) => { setAssignmentType(value as typeof assignmentType); setAssignmentEntityId('none') }}>
+                <SelectTrigger aria-label="Assignment type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="city">City</SelectItem>
+                  <SelectItem value="business">Business</SelectItem>
+                  <SelectItem value="cause">Cause</SelectItem>
+                  <SelectItem value="campaign">Campaign</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={assignmentEntityId} onValueChange={setAssignmentEntityId}>
+                <SelectTrigger aria-label="Assignment record"><SelectValue placeholder="Choose a record" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Choose a record</SelectItem>
+                  {assignmentOptions.map((option) => <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button onClick={() => void addAssignment()} disabled={assigning || assignmentEntityId === 'none'}>
+                {assigning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Add assignment
+              </Button>
+            </div>
             <div className="space-y-3">
               {assignmentLabels.length > 0 ? assignmentLabels.map(({ assignment, label }) => (
                 <div key={assignment.id} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
@@ -520,6 +511,7 @@ export default function UserDetailPage() {
                     <Badge variant={assignment.status === 'active' ? 'success' : 'default'} dot>
                       {assignment.status}
                     </Badge>
+                    <Button size="sm" variant="ghost" onClick={() => void releaseAssignment(assignment.id)}>Remove</Button>
                   </div>
                 </div>
               )) : (

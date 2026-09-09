@@ -63,7 +63,7 @@ export function RealLogInAsButton({
     const confirmed = window.confirm(
       `Start a REAL login session as ${userName || 'this user'} (${stakeholderType})?\n\n` +
         'You will be signed in exactly as they are, seeing their real profile and data. ' +
-        'Use "Return to admin" to come back to your own account.',
+        'Your admin session will end. Sign out and log in again to return to admin.',
     )
     if (!confirmed) return
 
@@ -82,7 +82,9 @@ export function RealLogInAsButton({
       // useful message instead of the opaque "Request failed.".
       const raw = await response.text()
       let payload: { error?: string } = {}
-      try { payload = raw ? JSON.parse(raw) : {} } catch { payload = { error: raw.slice(0, 200) } }
+      try { payload = raw ? JSON.parse(raw) : {} } catch {
+        payload = { error: 'The sign-in service could not complete the request. Please try again.' }
+      }
       if (!response.ok) {
         setError(payload.error || `Could not start a real session (HTTP ${response.status}).`)
         return

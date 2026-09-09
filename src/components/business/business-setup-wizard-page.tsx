@@ -46,6 +46,8 @@ import {
   useBusinessEditor,
 } from '@/components/business/business-editor'
 import { BUSINESS_SETUP_CONFIG_STEPS, type BusinessSetupStepKey } from '@/lib/business-setup'
+import { useAuth } from '@/lib/auth/context'
+import { clearOnboardingDraft, readOnboardingDraft, writeOnboardingDraft } from '@/lib/onboarding-draft'
 
 type StepKey = BusinessSetupStepKey
 
@@ -79,6 +81,7 @@ function isStepKey(value: string | null): value is StepKey {
 
 export function BusinessSetupWizardPage() {
   const searchParams = useSearchParams()
+  const { profile } = useAuth()
   const editor = useBusinessEditor()
 
   const initialStep = React.useMemo<StepKey>(() => {
@@ -97,6 +100,18 @@ export function BusinessSetupWizardPage() {
   }, [initialStep])
 
   const { business, setupState, missingSteps, isStepComplete } = editor
+  const draftScope = business ? `${profile.id}:${business.id}` : ''
+
+  React.useEffect(() => {
+    if (!draftScope || searchParams.has('step')) return
+    const draft = readOnboardingDraft<{ step?: string }>('business-setup-step', draftScope)
+    const savedStep = draft?.step || null
+    if (isStepKey(savedStep)) setStep(savedStep)
+  }, [draftScope, searchParams])
+
+  React.useEffect(() => {
+    if (draftScope) writeOnboardingDraft('business-setup-step', draftScope, { step })
+  }, [draftScope, step])
 
   if (editor.loading) {
     return (
@@ -156,6 +171,7 @@ export function BusinessSetupWizardPage() {
 
     const saved = await editor.submitForLiveReview()
     if (!saved) return
+    clearOnboardingDraft('business-setup-step', draftScope)
     window.location.href = '/portal/grow?section=customers&review=submitted'
   }
 

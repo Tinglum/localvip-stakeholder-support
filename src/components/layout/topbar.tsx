@@ -19,7 +19,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { BRANDS } from '@/lib/constants'
-import { getStakeholderAccess, isAdminProfile } from '@/lib/stakeholder-access'
+import { canAccessPath, getStakeholderAccess, isAdminProfile } from '@/lib/stakeholder-access'
 import type { Profile } from '@/lib/types/database'
 import { ViewAsPicker } from '@/components/layout/view-as-picker'
 import { OperatorPicker } from '@/components/admin/operator-picker'
@@ -122,6 +122,23 @@ function getProfileHref(profile: Profile, shell: string) {
 }
 
 function getQuickLinks(shell: string, businessSetupComplete = false): { label: string; href: string }[] {
+  if (shell === 'community') {
+    return [
+      { label: 'My onboarding', href: '/onboarding/cause' },
+      { label: 'Supporting businesses', href: '/community/businesses' },
+      { label: 'My supporters', href: '/community/supporters' },
+      { label: 'Share my cause', href: '/community/share' },
+      { label: 'My materials', href: '/community/materials' },
+    ]
+  }
+  if (shell === 'influencer') {
+    return [
+      { label: 'Share', href: '/influencer/share' },
+      { label: 'My links', href: '/influencer/links' },
+      { label: 'My stats', href: '/influencer/stats' },
+      { label: 'My materials', href: '/materials/mine' },
+    ]
+  }
   if (shell === 'business') {
     return [
       { label: 'My 100 list', href: '/portal/grow?section=customers' },
@@ -231,8 +248,8 @@ export function Topbar({
     [access.shell, pathname]
   )
   const quickLinks = React.useMemo(
-    () => getQuickLinks(access.shell, businessSetupComplete),
-    [access.shell, businessSetupComplete],
+    () => getQuickLinks(access.shell, businessSetupComplete).filter((item) => canAccessPath(profile, item.href.split('?')[0])),
+    [access.shell, businessSetupComplete, profile],
   )
 
   React.useEffect(() => {
@@ -257,6 +274,7 @@ export function Topbar({
     const items: { path: string; label: string }[] = []
 
     for (const entry of history) {
+      if (!canAccessPath(profile, entry.path.split('?')[0])) continue
       if (seen.has(entry.path)) continue
       seen.add(entry.path)
       items.push(entry)
@@ -264,9 +282,10 @@ export function Topbar({
     }
 
     return items
-  }, [history, pathname])
+  }, [history, pathname, profile])
 
   function handleTrailClick(targetPath: string) {
+    if (!canAccessPath(profile, targetPath.split('?')[0])) return
     const idx = history.findIndex((entry) => entry.path === targetPath)
     if (idx > 0) {
       const rewound = history.slice(idx)
@@ -436,7 +455,7 @@ export function Topbar({
                   </p>
                 </div>
                 <div className="space-y-2">
-                  {actionCenter.items.map((item) => (
+                  {actionCenter.items.filter((item) => canAccessPath(profile, item.href.split('?')[0])).map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}

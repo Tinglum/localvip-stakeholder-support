@@ -25,10 +25,11 @@ import {
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { CauseLoadError } from '@/components/community/cause-load-error'
 
 export default function CommunityTasksPage() {
   const { profile } = useAuth()
-  const { data: causes } = useCauses()
+  const { data: causes, loading: causesLoading, error: causesError, refetch: reloadCauses } = useCauses()
 
   const scopedCause = React.useMemo(
     () => resolveCommunityCause(profile, causes),
@@ -85,6 +86,9 @@ export default function CommunityTasksPage() {
     setNoteContent('')
     refetchNotes({ silent: true })
   }
+
+  if (causesLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your cause...</div>
+  if (causesError) return <CauseLoadError onRetry={() => reloadCauses()} />
 
   if (!scopedCause) {
     return <EmptyState icon={<Heart className="h-8 w-8" />} title="No cause linked" description="Tasks and notes will appear once a cause is linked to your account." />

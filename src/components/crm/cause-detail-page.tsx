@@ -52,6 +52,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
+import { RealLogInAsButton } from '@/components/crm/real-log-in-as-button'
 import { OpenInWebappButton } from '@/components/crm/open-in-webapp-button'
 import { QaImportedFieldsPanel, QaWritebackWishlistTable, type QaImportedFact, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
 import {
@@ -782,6 +783,11 @@ export default function CauseDetailPage() {
               userName={owner?.full_name || causeResponse?.qaCause?.ownerName || cause.name}
               stakeholderType={isSchool ? 'School' : 'Cause'}
               causeAccountId={causeResponse?.qaCauseId || causeResponse?.qaCause?.id || null}
+            />
+            <RealLogInAsButton
+              userId={causeResponse?.qaCause?.ownerUserId || null}
+              userName={owner?.full_name || cause.name}
+              stakeholderType={isSchool ? 'School' : 'Cause'}
             />
             <OpenInWebappButton
               userId={causeResponse?.qaCause?.ownerUserId || null}

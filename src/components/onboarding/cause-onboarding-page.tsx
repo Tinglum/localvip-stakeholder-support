@@ -55,6 +55,7 @@ import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { getEntityTheme } from '@/lib/entity-themes'
 import { cn, formatDate } from '@/lib/utils'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { clearOnboardingDraft, readOnboardingDraft, writeOnboardingDraft } from '@/lib/onboarding-draft'
 import {
   computeCauseOnboardingChecklist,
   type CauseOnboardingChecklist,
@@ -370,6 +371,22 @@ export default function CauseOnboardingPage() {
   const [form, setForm] = React.useState<CauseForm>(INITIAL_FORM)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [feedback, setFeedback] = React.useState<string | null>(null)
+  const causeDraftScope = profile.id
+  const [causeDraftHydratedScope, setCauseDraftHydratedScope] = React.useState('')
+
+  React.useEffect(() => {
+    const draft = readOnboardingDraft<CauseForm>('cause-create', causeDraftScope)
+    setForm(draft ? { ...INITIAL_FORM, ...draft } : INITIAL_FORM)
+    setCauseDraftHydratedScope(causeDraftScope)
+  }, [causeDraftScope])
+
+  React.useEffect(() => {
+    if (causeDraftHydratedScope !== causeDraftScope) return
+    const timeout = window.setTimeout(() => {
+      writeOnboardingDraft('cause-create', causeDraftScope, form)
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [causeDraftHydratedScope, causeDraftScope, form])
 
   // Filter state
   const [cityFilter, setCityFilter] = React.useState('all')
@@ -720,6 +737,7 @@ export default function CauseOnboardingPage() {
       }
 
       setAddOpen(false)
+      clearOnboardingDraft('cause-create', causeDraftScope)
       setForm(INITIAL_FORM)
       setFeedback(`${payload.name || form.name.trim()} added and ready for QR/material setup.`)
       await refreshAll()

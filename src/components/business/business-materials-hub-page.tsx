@@ -38,6 +38,7 @@ function isTabKey(value: string | null): value is TabKey {
 export function BusinessMaterialsHubPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [templateActions, setTemplateActions] = React.useState<HTMLDivElement | null>(null)
 
   const requested = searchParams.get('tab')
   const tab: TabKey = isTabKey(requested) ? requested : 'mine'
@@ -58,8 +59,8 @@ export function BusinessMaterialsHubPage() {
         description="Your QR code, printable assets, and the templates you can generate them from."
       />
 
-      <div className="overflow-x-auto">
-        <div role="tablist" aria-label="Materials sections" className="flex min-w-max gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div role="tablist" aria-label="Materials sections" className="flex max-w-full gap-2 overflow-x-auto">
           {TABS.map((item) => {
             const selected = item.key === tab
             return (
@@ -88,10 +89,11 @@ export function BusinessMaterialsHubPage() {
             )
           })}
         </div>
+        <div ref={setTemplateActions} />
       </div>
 
       <div id="materials-panel" role="tabpanel" aria-labelledby={`materials-tab-${tab}`}>
-        {tab === 'mine' ? <MyMaterialsView embedded /> : <TemplateLibraryPage embedded />}
+        {tab === 'mine' ? <MyMaterialsView embedded /> : <TemplateLibraryPage embedded actionsContainer={templateActions} />}
       </div>
     </div>
   )

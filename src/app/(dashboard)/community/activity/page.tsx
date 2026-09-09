@@ -15,10 +15,11 @@ import { useAuth } from '@/lib/auth/context'
 import { useBusinesses, useCauses, useContacts, useQrCodes } from '@/lib/supabase/hooks'
 import { formatDate } from '@/lib/utils'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { CauseLoadError } from '@/components/community/cause-load-error'
 
 export default function CommunityActivityPage() {
   const { profile } = useAuth()
-  const { data: causes } = useCauses()
+  const { data: causes, loading: causesLoading, error: causesError, refetch: reloadCauses } = useCauses()
   const { data: contacts } = useContacts()
   const { data: businesses } = useBusinesses()
 
@@ -38,6 +39,9 @@ export default function CommunityActivityPage() {
   )
 
   const { data: qrCodes } = useQrCodes({ cause_id: scopedCause?.id || '__none__' })
+
+  if (causesLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your cause...</div>
+  if (causesError) return <CauseLoadError onRetry={() => reloadCauses()} />
 
   if (!scopedCause) {
     return <EmptyState icon={<Heart className="h-8 w-8" />} title="No cause linked" description="Activity will appear once a cause is linked." />

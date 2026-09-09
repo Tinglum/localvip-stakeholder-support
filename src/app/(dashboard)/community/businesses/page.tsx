@@ -19,11 +19,12 @@ import { useAuth } from '@/lib/auth/context'
 import { useBusinesses, useCauses } from '@/lib/supabase/hooks'
 import { COMMUNITY_BUSINESS_STATUS } from '@/lib/constants'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { CauseLoadError } from '@/components/community/cause-load-error'
 
 export default function CommunityBusinessesPage() {
   const { profile } = useAuth()
-  const { data: causes } = useCauses()
-  const { data: businesses } = useBusinesses()
+  const { data: causes, loading: causesLoading, error: causesError, refetch: reloadCauses } = useCauses()
+  const { data: businesses, loading: businessesLoading, error: businessesError, refetch: reloadBusinesses } = useBusinesses()
 
   const scopedCause = React.useMemo(
     () => resolveCommunityCause(profile, causes),
@@ -37,9 +38,14 @@ export default function CommunityBusinessesPage() {
 
   const isSchool = scopedCause?.type === 'school'
 
+  if (causesLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your cause...</div>
+  if (causesError) return <CauseLoadError onRetry={() => reloadCauses()} />
+
   if (!scopedCause) {
     return <EmptyState icon={<Store className="h-8 w-8" />} title="No cause linked" description="A cause or school must be linked to your account to see businesses." />
   }
+  if (businessesLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading supporting businesses...</div>
+  if (businessesError) return <CauseLoadError onRetry={() => reloadBusinesses()} />
 
   const liveCount = supportingBusinesses.filter(b => b.stage === 'live').length
   const settingUpCount = supportingBusinesses.filter(b => ['contacted', 'interested', 'in_progress', 'onboarded'].includes(b.stage)).length

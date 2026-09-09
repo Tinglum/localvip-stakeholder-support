@@ -11,9 +11,6 @@ import {
   TrendingUp,
   Sparkles,
   AlertCircle,
-  Mail,
-  FileText,
-  Send,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -30,6 +27,7 @@ interface SelectedCause {
   accountId: number | string
   name: string | null
   receivedLifetime: number
+  yourContribution?: number
 }
 
 interface CauseImpactPayload {
@@ -53,34 +51,6 @@ interface WalletResponse {
   causeImpact: CauseImpactPayload | null
 }
 
-type PayoutMethod = 'paypal' | 'check'
-
-interface PayoutPreference {
-  method: PayoutMethod
-  paypalEmail: string
-  checkPayee: string
-  checkMailingAddress: string
-  updatedAt: string
-}
-
-interface PayoutRequest {
-  id: string
-  amount: number
-  method: PayoutMethod
-  status: 'pending_admin_review'
-  createdAt: string
-}
-
-const PAYOUT_PREFERENCE_KEY = 'localvip-consumer-payout-preference'
-const PAYOUT_REQUESTS_KEY = 'localvip-consumer-payout-requests'
-
-const DEFAULT_PAYOUT_PREFERENCE: PayoutPreference = {
-  method: 'paypal',
-  paypalEmail: '',
-  checkPayee: '',
-  checkMailingAddress: '',
-  updatedAt: '',
-}
 
 function normalizeAmount(payload: AmountPayload, keys: string[] = ['amount', 'Amount']): number | null {
   if (payload === null || payload === undefined) return null
@@ -116,12 +86,6 @@ function formatUsd(value: number | null): string {
   }).format(value)
 }
 
-function parseMoneyInput(value: string): number | null {
-  const normalized = value.replace(/[$,\s]/g, '')
-  if (!normalized) return null
-  const parsed = Number(normalized)
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : null
-}
 
 interface WalletTileProps {
   label: string
@@ -192,10 +156,6 @@ export default function MyWalletPage() {
   const [data, setData] = React.useState<WalletResponse | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-  const [payoutPreference, setPayoutPreference] = React.useState<PayoutPreference>(DEFAULT_PAYOUT_PREFERENCE)
-  const [payoutRequests, setPayoutRequests] = React.useState<PayoutRequest[]>([])
-  const [payoutAmount, setPayoutAmount] = React.useState('')
-  const [payoutMessage, setPayoutMessage] = React.useState<string | null>(null)
 
   const load = React.useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -219,26 +179,6 @@ export default function MyWalletPage() {
     void load()
   }, [load])
 
-  React.useEffect(() => {
-    const rawPreference = window.localStorage.getItem(PAYOUT_PREFERENCE_KEY)
-    if (rawPreference) {
-      try {
-        setPayoutPreference({ ...DEFAULT_PAYOUT_PREFERENCE, ...(JSON.parse(rawPreference) as Partial<PayoutPreference>) })
-      } catch {
-        setPayoutPreference(DEFAULT_PAYOUT_PREFERENCE)
-      }
-    }
-
-    const rawRequests = window.localStorage.getItem(PAYOUT_REQUESTS_KEY)
-    if (rawRequests) {
-      try {
-        const parsed = JSON.parse(rawRequests)
-        setPayoutRequests(Array.isArray(parsed) ? parsed : [])
-      } catch {
-        setPayoutRequests([])
-      }
-    }
-  }, [])
 
   const available = normalizeAmount(data?.available ?? null, ['availableAmount', 'amount', 'Amount'])
   const cashback = normalizeAmount(data?.cashback ?? null)
@@ -254,73 +194,10 @@ export default function MyWalletPage() {
     'totalReceivedLifetime',
     'selectedCausesReceivedLifetime',
   ])
-  const selectedCausesReceived = pickCauseImpactNumber(data?.causeImpact, ['selectedCausesReceivedLifetime'])
+  const personalCauseSupport = pickCauseImpactNumber(data?.causeImpact, ['yourContributionLifetime'])
   const selectedCauses = data?.causeImpact?.selectedCauses ?? []
 
   const lifetimeCashback = cashback
-  const pendingPayoutTotal = payoutRequests
-    .filter((request) => request.status === 'pending_admin_review')
-    .reduce((sum, request) => sum + request.amount, 0)
-  const requestableAvailable = available === null
-    ? null
-    : Math.max(0, Math.round((available - pendingPayoutTotal) * 100) / 100)
-  const activePendingRequest = payoutRequests.find((request) => request.status === 'pending_admin_review') || null
-  const parsedPayoutAmount = parseMoneyInput(payoutAmount)
-  const payoutConfigured = payoutPreference.method === 'paypal'
-    ? payoutPreference.paypalEmail.trim().length > 0
-    : payoutPreference.checkPayee.trim().length > 0 && payoutPreference.checkMailingAddress.trim().length > 0
-  const payoutMethodLabel = payoutPreference.method === 'paypal' ? 'PayPal' : 'Check'
-  const payoutAmountError = parsedPayoutAmount === null
-    ? 'Enter an amount to request.'
-    : requestableAvailable !== null && parsedPayoutAmount > requestableAvailable
-      ? `The most you can request right now is ${formatUsd(requestableAvailable)}.`
-      : parsedPayoutAmount <= 0
-        ? 'Amount must be greater than $0.'
-        : null
-  const canRequestPayout = payoutConfigured
-    && !activePendingRequest
-    && requestableAvailable !== null
-    && requestableAvailable > 0
-    && parsedPayoutAmount !== null
-    && parsedPayoutAmount > 0
-    && parsedPayoutAmount <= requestableAvailable
-
-  React.useEffect(() => {
-    if (requestableAvailable === null) return
-    setPayoutAmount((current) => {
-      const currentAmount = parseMoneyInput(current)
-      if (currentAmount !== null && currentAmount > 0 && currentAmount <= requestableAvailable) return current
-      return requestableAvailable > 0 ? requestableAvailable.toFixed(2) : ''
-    })
-  }, [requestableAvailable])
-
-  function updatePayoutPreference(patch: Partial<PayoutPreference>) {
-    setPayoutPreference((prev) => ({ ...prev, ...patch }))
-  }
-
-  function savePayoutPreference() {
-    const next = { ...payoutPreference, updatedAt: new Date().toISOString() }
-    setPayoutPreference(next)
-    window.localStorage.setItem(PAYOUT_PREFERENCE_KEY, JSON.stringify(next))
-    setPayoutMessage(`${payoutMethodLabel} payout details saved.`)
-    window.setTimeout(() => setPayoutMessage(null), 2200)
-  }
-
-  function requestPayout() {
-    if (!canRequestPayout || parsedPayoutAmount === null) return
-    const nextRequest: PayoutRequest = {
-      id: `${Date.now()}`,
-      amount: parsedPayoutAmount,
-      method: payoutPreference.method,
-      status: 'pending_admin_review',
-      createdAt: new Date().toISOString(),
-    }
-    const nextRequests = [nextRequest, ...payoutRequests]
-    setPayoutRequests(nextRequests)
-    window.localStorage.setItem(PAYOUT_REQUESTS_KEY, JSON.stringify(nextRequests))
-    setPayoutMessage(`Payout request for ${formatUsd(parsedPayoutAmount)} is pending. Admin processing still needs the QA payout queue.`)
-    window.setTimeout(() => setPayoutMessage(null), 3000)
-  }
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -346,12 +223,12 @@ export default function MyWalletPage() {
           <div className="space-y-2">
             <p className="text-sm font-semibold text-surface-900">Start here</p>
             <p className="text-sm text-surface-600">
-              Check your cashback balance, choose PayPal or check for payouts, and request a payout when money is ready.
+              Check your cashback balance here. Open your LocalVIP wallet to transfer available money using your connected payout method.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm">
-              <a href="#payout-setup">Set payout method</a>
+              <a href="https://my.localvip.com/wallet" target="_blank" rel="noopener noreferrer">Manage withdrawals</a>
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link href="/portal/me/network">See network earnings</Link>
@@ -379,10 +256,10 @@ export default function MyWalletPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <WalletTile
           label="Cashback Available"
-          value={requestableAvailable}
+          value={available}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption={pendingPayoutTotal > 0 ? `${formatUsd(pendingPayoutTotal)} already pending payout` : 'Cashback ready to request'}
+          caption="Cashback ready to transfer in your LocalVIP wallet"
           loading={loading}
           emphasize
         />
@@ -415,24 +292,29 @@ export default function MyWalletPage() {
             loading={loading}
           />
           <WalletTile
-            label="Selected Causes Received"
-            value={selectedCausesReceived}
+            label="Your Settled Cause Support"
+            value={personalCauseSupport}
             icon={<Sparkles className="h-5 w-5 text-warning-600" />}
             accent="bg-warning-50"
-            caption="Total your selected causes received from everyone (lifetime)"
+            caption="Settled support generated by your purchases and wallet donations, matching your LocalVIP wallet"
             loading={loading}
           />
         </div>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Your selected causes</CardTitle>
-            <CardDescription>What each is supported by, all-time.</CardDescription>
+            <CardDescription>Your settled support to each currently selected cause. Your lifetime total also includes causes you supported previously.</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             {loading ? (
               <div className="space-y-2">
                 <div className="h-5 w-full animate-pulse rounded bg-surface-100" />
                 <div className="h-5 w-3/4 animate-pulse rounded bg-surface-100" />
+              </div>
+            ) : !data?.causeImpact ? (
+              <div role="alert" className="flex items-center justify-between gap-3">
+                <p className="text-sm text-danger-700">Your cause support could not be loaded.</p>
+                <Button variant="outline" size="sm" onClick={() => void load()}>Try again</Button>
               </div>
             ) : selectedCauses.length === 0 ? (
               <p className="text-sm text-surface-400">
@@ -451,7 +333,7 @@ export default function MyWalletPage() {
                   >
                     <span className="truncate text-sm text-surface-700">{cause.name || 'Cause'}</span>
                     <span className="shrink-0 text-sm font-semibold tabular-nums text-surface-900">
-                      {formatUsd(cause.receivedLifetime)}
+                      {formatUsd(cause.yourContribution ?? null)}
                     </span>
                   </li>
                 ))}
@@ -461,154 +343,6 @@ export default function MyWalletPage() {
         </Card>
       </div>
 
-      <Card id="payout-setup" className="mt-6 scroll-mt-24 border-brand-100">
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle>Payout setup</CardTitle>
-              <CardDescription>Choose how LocalVIP should send your available balance. Current options are PayPal and check.</CardDescription>
-            </div>
-            <Badge variant={payoutConfigured ? 'success' : 'warning'}>
-              {payoutConfigured ? `${payoutMethodLabel} ready` : 'Method needed'}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {payoutMessage ? (
-            <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
-              {payoutMessage}
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => updatePayoutPreference({ method: 'paypal' })}
-              className={cn(
-                'rounded-2xl border px-4 py-4 text-left transition-colors',
-                payoutPreference.method === 'paypal' ? 'border-brand-300 bg-brand-50' : 'border-surface-200 bg-white hover:border-brand-200',
-              )}
-            >
-              <Mail className="h-5 w-5 text-brand-600" />
-              <p className="mt-3 text-sm font-semibold text-surface-900">PayPal</p>
-              <p className="mt-1 text-sm text-surface-500">Send payout to a PayPal email address.</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => updatePayoutPreference({ method: 'check' })}
-              className={cn(
-                'rounded-2xl border px-4 py-4 text-left transition-colors',
-                payoutPreference.method === 'check' ? 'border-brand-300 bg-brand-50' : 'border-surface-200 bg-white hover:border-brand-200',
-              )}
-            >
-              <FileText className="h-5 w-5 text-brand-600" />
-              <p className="mt-3 text-sm font-semibold text-surface-900">Check</p>
-              <p className="mt-1 text-sm text-surface-500">Mail a check to the payee and address you provide.</p>
-            </button>
-          </div>
-
-          {payoutPreference.method === 'paypal' ? (
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-surface-700">PayPal email</span>
-              <input
-                type="email"
-                value={payoutPreference.paypalEmail}
-                onChange={(event) => updatePayoutPreference({ paypalEmail: event.target.value })}
-                placeholder="you@example.com"
-                className="h-10 w-full rounded-xl border border-surface-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
-              />
-            </label>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block space-y-1">
-                <span className="text-sm font-medium text-surface-700">Check payable to</span>
-                <input
-                  value={payoutPreference.checkPayee}
-                  onChange={(event) => updatePayoutPreference({ checkPayee: event.target.value })}
-                  placeholder="Full name"
-                  className="h-10 w-full rounded-xl border border-surface-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-sm font-medium text-surface-700">Mailing address</span>
-                <input
-                  value={payoutPreference.checkMailingAddress}
-                  onChange={(event) => updatePayoutPreference({ checkMailingAddress: event.target.value })}
-                  placeholder="Street, city, state, ZIP"
-                  className="h-10 w-full rounded-xl border border-surface-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
-                />
-              </label>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-surface-900">Available to request: {formatUsd(requestableAvailable)}</p>
-              <p className="mt-1 text-sm text-surface-500">
-                Pending payout requests are subtracted from this amount so the same balance cannot be requested twice.
-              </p>
-            </div>
-            <div className="w-full sm:w-56">
-              <label className="block space-y-1">
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-surface-500">Request amount</span>
-                <div className="flex h-11 overflow-hidden rounded-xl border border-surface-200 bg-white focus-within:ring-2 focus-within:ring-brand-300">
-                  <span className="flex items-center border-r border-surface-200 px-3 text-sm font-semibold text-surface-500">$</span>
-                  <input
-                    inputMode="decimal"
-                    value={payoutAmount}
-                    onChange={(event) => setPayoutAmount(event.target.value)}
-                    placeholder={requestableAvailable !== null ? requestableAvailable.toFixed(2) : '0.00'}
-                    disabled={loading || Boolean(activePendingRequest) || requestableAvailable === null || requestableAvailable <= 0}
-                    className="min-w-0 flex-1 bg-transparent px-3 text-right text-sm font-semibold tabular-nums text-surface-900 outline-none disabled:text-surface-400"
-                  />
-                </div>
-              </label>
-              {!activePendingRequest && payoutAmountError ? (
-                <p className="mt-1 text-xs text-danger-600">{payoutAmountError}</p>
-              ) : null}
-              {requestableAvailable !== null && requestableAvailable > 0 && !activePendingRequest ? (
-                <button
-                  type="button"
-                  onClick={() => setPayoutAmount(requestableAvailable.toFixed(2))}
-                  className="mt-1 text-xs font-semibold text-brand-700 hover:text-brand-800"
-                >
-                  Use full available amount
-                </button>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={savePayoutPreference}>
-                Save payout method
-              </Button>
-              <Button onClick={requestPayout} disabled={!canRequestPayout}>
-                <Send className="h-4 w-4" />
-                Request payout
-              </Button>
-            </div>
-          </div>
-
-          {activePendingRequest ? (
-            <div className="rounded-2xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
-              <p className="font-semibold">Payout pending: {formatUsd(activePendingRequest.amount)}</p>
-              <p className="mt-1">
-                This amount has been removed from the requestable balance. Sysadmins still need a QA payout queue endpoint before requests are visible across admin accounts.
-              </p>
-            </div>
-          ) : null}
-
-          {payoutRequests.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-surface-900">Recent payout requests</p>
-              {payoutRequests.slice(0, 3).map((request) => (
-                <div key={request.id} className="flex items-center justify-between rounded-xl border border-surface-200 bg-white px-3 py-2 text-sm">
-                  <span>{formatUsd(request.amount)} by {request.method === 'paypal' ? 'PayPal' : 'check'}</span>
-                  <Badge variant="warning">Pending admin review</Badge>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

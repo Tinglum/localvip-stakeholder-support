@@ -69,6 +69,7 @@ import {
   getKeywordGroupsForCategory,
 } from '@/lib/business-catalog'
 import type { Business, Contact, Offer } from '@/lib/types/database'
+import { clearOnboardingDraft, readOnboardingDraft, writeOnboardingDraft } from '@/lib/onboarding-draft'
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 export type HundredListInterest = 'interested' | 'not_now' | null
@@ -224,6 +225,7 @@ export function useBusinessEditor(): BusinessEditor {
 
   const { data: businesses, loading: businessLoading, refetch: refetchBusinesses } = useBusinesses(businessFilters)
   const business = React.useMemo(() => resolveScopedBusiness(profile, businesses), [businesses, profile])
+  const draftScope = business ? `${profile.id}:${business.id}` : ''
   const { data: contacts } = useContacts({ business_id: business?.id || '__none__' })
   const { data: offers, refetch: refetchOffers } = useOffers({ business_id: business?.id || '__none__' })
   const { data: deals, refetch: refetchDeals } = useDeals({ business_account_id: business?.id || '__none__' })
@@ -378,18 +380,24 @@ export function useBusinessEditor(): BusinessEditor {
 
     const nextVisibleInReferrerSearch = portal.is_visible_in_referrer_search !== false
 
-    setName(business.name || '')
-    setCategoryId(savedCategoryId ? String(savedCategoryId) : '')
-    setDescription(business.public_description || portal.description || '')
-    setAvgTicket(readUsdInput(business.avg_ticket || portal.avg_ticket || ''))
-    setKeywords(parseKeywords(business.products_services || portal.products_services))
+    const draft = readOnboardingDraft<{
+      name: string; categoryId: string; description: string; avgTicket: string; keywords: string[]
+      captureHeadline: string; captureDescription: string; captureValue: string
+      hundredListInterest: HundredListInterest; visibleInReferrerSearch: boolean
+    }>('business-setup-fields', draftScope)
+
+    setName(draft?.name ?? business.name ?? '')
+    setCategoryId(draft?.categoryId ?? (savedCategoryId ? String(savedCategoryId) : ''))
+    setDescription(draft?.description ?? business.public_description ?? portal.description ?? '')
+    setAvgTicket(draft?.avgTicket ?? readUsdInput(business.avg_ticket || portal.avg_ticket || ''))
+    setKeywords(draft?.keywords ?? parseKeywords(business.products_services || portal.products_services))
     setLogoUrl(business.logo_url || portal.logo_url || null)
     setCoverUrl(business.cover_photo_url || portal.cover_photo_url || null)
-    setCaptureHeadline(captureOffer?.headline || '')
-    setCaptureDescription(captureOffer?.description || '')
-    setCaptureValue(captureOffer?.value_label || '')
-    setHundredListInterest(nextInterest)
-    setVisibleInReferrerSearch(nextVisibleInReferrerSearch)
+    setCaptureHeadline(draft?.captureHeadline ?? captureOffer?.headline ?? '')
+    setCaptureDescription(draft?.captureDescription ?? captureOffer?.description ?? '')
+    setCaptureValue(draft?.captureValue ?? captureOffer?.value_label ?? '')
+    setHundredListInterest(draft?.hundredListInterest ?? nextInterest)
+    setVisibleInReferrerSearch(draft?.visibleInReferrerSearch ?? nextVisibleInReferrerSearch)
     setCaptureOfferId(captureOffer?.id || null)
     snapshotRef.current = serializeSetupSnapshot({
       name: business.name || '',
@@ -409,6 +417,7 @@ export function useBusinessEditor(): BusinessEditor {
     })
   }, [
     business,
+    draftScope,
     captureOffer?.description,
     captureOffer?.headline,
     captureOffer?.id,
@@ -550,6 +559,7 @@ export function useBusinessEditor(): BusinessEditor {
         })
 
         setSaveState('saved')
+        clearOnboardingDraft('business-setup-fields', draftScope)
         refetchOffers({ silent: true })
         refetchBusinesses({ silent: true })
         return true
@@ -571,6 +581,7 @@ export function useBusinessEditor(): BusinessEditor {
       coverFile,
       coverUrl,
       description,
+      draftScope,
       insertOffer,
       logoFile,
       logoUrl,
@@ -606,6 +617,19 @@ export function useBusinessEditor(): BusinessEditor {
     })
 
     if (!snapshotRef.current || snapshot === snapshotRef.current) return
+
+    writeOnboardingDraft('business-setup-fields', draftScope, {
+      name,
+      categoryId,
+      description,
+      avgTicket,
+      keywords,
+      captureHeadline,
+      captureDescription,
+      captureValue,
+      hundredListInterest,
+      visibleInReferrerSearch,
+    })
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     saveTimeoutRef.current = setTimeout(() => {

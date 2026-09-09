@@ -33,8 +33,8 @@ export async function GET() {
   // Available balance should stay cashback-only. Network/bonus earnings are
   // displayed separately on the wallet/network pages so the same money is not
   // double-counted in the customer-facing earnings card.
-  const pickNumber = (payload: unknown, keys: string[]): number => {
-    if (typeof payload === 'number') return Number.isFinite(payload) ? payload : 0
+  const pickNumber = (payload: unknown, keys: string[]): number | null => {
+    if (typeof payload === 'number') return Number.isFinite(payload) ? payload : null
     if (payload && typeof payload === 'object') {
       for (const key of keys) {
         const raw = (payload as Record<string, unknown>)[key]
@@ -42,7 +42,7 @@ export async function GET() {
         if (typeof raw === 'string' && raw.trim() && Number.isFinite(Number(raw))) return Number(raw)
       }
     }
-    return 0
+    return null
   }
   const availableBase = pickNumber(available, ['availableAmount', 'amount', 'Amount'])
 

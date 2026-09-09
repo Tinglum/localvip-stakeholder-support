@@ -64,6 +64,7 @@ import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constan
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { clearOnboardingDraft, readOnboardingDraft, writeOnboardingDraft } from '@/lib/onboarding-draft'
 
 type DashboardTab = 'overview' | 'onboarding' | 'businesses' | 'network' | 'materials' | 'qr' | 'tasks' | 'activity'
 
@@ -184,10 +185,12 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   const [profileError, setProfileError] = React.useState<string | null>(null)
   const [logoAssetState, setLogoAssetState] = React.useState<AssetUploadState>({ status: 'idle' })
   const [coverAssetState, setCoverAssetState] = React.useState<AssetUploadState>({ status: 'idle' })
+  const profileDraftScope = scopedCause ? `${profile.id}:${scopedCause.id}` : ''
+  const profileDraftReady = React.useRef(false)
 
   React.useEffect(() => {
     if (!scopedCause) return
-    setProfileDraft({
+    const serverDraft = {
       name: scopedCause.name || '',
       email: scopedCause.email || '',
       phone: scopedCause.phone || '',
@@ -195,8 +198,19 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
       address: scopedCause.address || '',
       logoUrl: scopedCause.logo_url || '',
       coverPhotoUrl: scopedCause.cover_photo_url || '',
-    })
-  }, [scopedCause])
+    }
+    const savedDraft = readOnboardingDraft<typeof serverDraft>('cause-profile-fields', `${profile.id}:${scopedCause.id}`)
+    setProfileDraft(savedDraft || serverDraft)
+    profileDraftReady.current = true
+  }, [profile.id, scopedCause])
+
+  React.useEffect(() => {
+    if (!profileDraftScope || !profileDraftReady.current) return
+    const timer = window.setTimeout(() => {
+      writeOnboardingDraft('cause-profile-fields', profileDraftScope, profileDraft)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [profileDraft, profileDraftScope])
 
   async function saveCauseProfile() {
     if (!scopedCause) return
@@ -215,6 +229,7 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'The organization profile could not be saved.')
+      clearOnboardingDraft('cause-profile-fields', profileDraftScope)
       setProfileSaved(true)
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : 'The organization profile could not be saved.')

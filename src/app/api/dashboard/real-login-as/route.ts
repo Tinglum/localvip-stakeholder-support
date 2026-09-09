@@ -25,7 +25,6 @@
  * result is a real session without ever knowing or exposing the user's password.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { qaAdminLoginAs, QaApiError } from '@/lib/auth/qa-api'
 import { requireQaRouteAccess } from '@/lib/server/qa-route'
 import {
@@ -37,6 +36,7 @@ import {
 import {
   QA_COOKIE_NAMES,
   buildQaSessionFromTokens,
+  clearQaSessionCookies,
   setQaSessionCookies,
 } from '@/lib/auth/qa-auth'
 
@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
   const access = await requireQaRouteAccess(['admin'])
   if ('error' in access) return access.error
 
-  const jar = cookies()
 
   let body: { targetUserId?: number | string; businessAccountId?: number | string } = {}
   try {
@@ -69,7 +68,7 @@ export async function POST(request: NextRequest) {
 
   const targetUserId =
     typeof body.targetUserId === 'number' ? body.targetUserId : Number(body.targetUserId)
-  if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
+  if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
     return NextResponse.json(
       { error: 'A positive integer targetUserId is required.' },
       { status: 400 },
@@ -135,24 +134,15 @@ export async function POST(request: NextRequest) {
     // 1) Back up the admin's current session cookies (only if not already
     //    impersonating — avoids overwriting the original admin backup when an
     //    admin chains "real log in as" twice without returning).
-    const alreadyImpersonating = jar.get(IMPERSONATION_FLAG)?.value === '1'
-    if (!alreadyImpersonating) {
-      for (const name of QA_SESSION_COOKIE_KEYS) {
-        const current = jar.get(name)?.value
-        if (current) {
-          response.cookies.set(`${ADMIN_BACKUP_PREFIX}${name}`, current, {
-            httpOnly: true,
-            sameSite: 'lax',
-            secure,
-            path: '/',
-            maxAge: 60 * 60 * 8, // backup outlives a 1h impersonation token
-          })
-        }
-      }
+    for (const name of QA_SESSION_COOKIE_KEYS) {
+      response.cookies.set(`${ADMIN_BACKUP_PREFIX}${name}`, '', { path: '/', maxAge: 0 })
     }
 
     // 2) Overwrite the live QA session with the impersonation token → real
     //    authenticated session as the target user.
+    // Clear the old identity and refresh token before replacing the session.
+    // Otherwise a target session could refresh back into the previous admin.
+    clearQaSessionCookies(response)
     setQaSessionCookies(response, session)
 
     // 3) Mark the impersonation so exit/UI can detect it. Readable by client so
@@ -203,26 +193,10 @@ export async function POST(request: NextRequest) {
  * back to the original admin session it was created from.
  */
 export async function DELETE() {
-  const jar = cookies()
-  const response = NextResponse.json({ ok: true, restored: true })
-  const secure = process.env.NODE_ENV === 'production'
-
-  let restoredAny = false
+  const response = NextResponse.json({ ok: true, restored: false, redirectTo: '/login' })
+  clearQaSessionCookies(response)
   for (const name of QA_SESSION_COOKIE_KEYS) {
-    const backup = jar.get(`${ADMIN_BACKUP_PREFIX}${name}`)?.value
-    if (backup) {
-      restoredAny = true
-      response.cookies.set(name, backup, {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure,
-        path: '/',
-        maxAge: 60 * 60 * 24 * 30,
-      })
-    } else {
-      // No backup for this key → ensure the impersonation value is cleared.
-      response.cookies.set(name, '', { path: '/', maxAge: 0 })
-    }
+    response.cookies.set(name, '', { path: '/', maxAge: 0 })
     // Always expire the backup copy.
     response.cookies.set(`${ADMIN_BACKUP_PREFIX}${name}`, '', { path: '/', maxAge: 0 })
   }
@@ -230,13 +204,6 @@ export async function DELETE() {
   response.cookies.set(IMPERSONATION_FLAG, '', { path: '/', maxAge: 0 })
   response.cookies.set('lvip_view_as', '', { path: '/', maxAge: 0 })
   response.cookies.set(PORTAL_BUSINESS_COOKIE, '', { path: '/', maxAge: 0 })
-
-  if (!restoredAny) {
-    return NextResponse.json(
-      { error: 'No admin session backup found to restore.' },
-      { status: 409 },
-    )
-  }
 
   return response
 }

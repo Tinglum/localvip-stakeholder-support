@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi, parseQaResponse, QaApiError } from '@/lib/auth/qa-api'
+import { mapQaRoleFromSignals } from '@/lib/auth/qa-auth'
 import {
   EMPTY_FALLBACK_TABLES,
   QA_ENTITY_MAP,
@@ -27,7 +28,7 @@ async function call(
   }
 
   const config = QA_ENTITY_MAP[table]
-  const url = `${config.endpoint}/${id}`
+  const url = table === 'profiles' ? `/api/dashboard/v1/User/${id}` : `${config.endpoint}/${id}`
 
   const init: RequestInit = { method }
   if (method === 'PUT' || method === 'PATCH') {
@@ -41,8 +42,34 @@ async function call(
   }
 
   try {
+    if (table === 'profiles' && (method === 'PUT' || method === 'PATCH')) {
+      const payload = JSON.parse(init.body as string)
+      if (payload.role) await parseQaResponse(await fetchQaApi(`${url}/role`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: payload.role }) }), 'Could not update role.')
+      if (payload.status) await parseQaResponse(await fetchQaApi(`${url}/status`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ active: payload.status === 'active' }) }), 'Could not update status.')
+      init.method = 'GET'; delete init.body; delete init.headers
+    }
     const res = await fetchQaApi(url, init)
     const json = await parseQaResponse<unknown>(res, `Failed ${method} on ${table}.`)
+    if (table === 'profiles' && json && typeof json === 'object' && 'user' in json) {
+      const detail = json as { user: Record<string, unknown>; roles?: string[] }
+      const accountType = typeof detail.user.accountType === 'string' ? detail.user.accountType : null
+      const mapped = mapQaRoleFromSignals({
+        accountType,
+        claims: {
+          sub: String(detail.user.id || id),
+          email: null,
+          name: null,
+          given_name: null,
+          family_name: null,
+          preferred_username: null,
+          roles: detail.roles || [],
+          scopes: [],
+          exp: null,
+          raw: {},
+        },
+      })
+      return NextResponse.json(toFrontendShape(table, { ...detail.user, role: mapped.role, roleSubtype: mapped.roleSubtype || null, brandContext: 'localvip' }))
+    }
     const shaped = toFrontendShape(table, json)
     return NextResponse.json(shaped ?? null)
   } catch (error) {

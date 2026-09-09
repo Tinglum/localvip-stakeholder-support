@@ -16,10 +16,11 @@ import { CommunitySupportQrCard } from '@/components/community/community-support
 import { useAuth } from '@/lib/auth/context'
 import { useCauses, useContacts, useQrCodes } from '@/lib/supabase/hooks'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { CauseLoadError } from '@/components/community/cause-load-error'
 
 export default function CommunityQrPage() {
   const { profile } = useAuth()
-  const { data: causes } = useCauses()
+  const { data: causes, loading: causesLoading, error: causesError, refetch: reloadCauses } = useCauses()
   const { data: contacts } = useContacts()
 
   const scopedCause = React.useMemo(
@@ -34,6 +35,9 @@ export default function CommunityQrPage() {
 
   const { data: qrCodes } = useQrCodes({ cause_id: scopedCause?.id || '__none__' })
   const isSchool = scopedCause?.type === 'school'
+
+  if (causesLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your cause...</div>
+  if (causesError) return <CauseLoadError onRetry={() => reloadCauses()} />
 
   if (!scopedCause) {
     return <EmptyState icon={<QrCode className="h-8 w-8" />} title="No cause linked" description="QR codes will appear once a cause or school is linked to your account." />

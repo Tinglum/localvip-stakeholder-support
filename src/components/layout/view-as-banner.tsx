@@ -54,9 +54,9 @@ export function ViewAsBanner() {
         const response = await fetch('/api/dashboard/real-login-as', { method: 'DELETE' })
         if (!response.ok) throw new Error('Could not restore your admin session.')
         // Hard navigate so the restored admin session is picked up cleanly.
-        window.location.replace('/dashboard')
+        window.location.replace('/login')
       } catch {
-        setError('Could not return to admin. Please try again.')
+        setError('Could not sign out. Please try again.')
       } finally {
         setReturning(false)
       }
@@ -67,7 +67,7 @@ export function ViewAsBanner() {
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3 px-4 py-2 text-sm">
           <div className="flex items-center gap-2 text-rose-900">
             <Eye className="h-4 w-4" />
-            <span className="font-medium">Admin previewing this account</span>
+            <span className="font-medium">Signed in as this account. Sign out to log in as admin.</span>
             <span className="rounded-full bg-rose-200 px-2 py-0.5 text-xs font-medium text-rose-900">
               live account view
             </span>
@@ -79,7 +79,7 @@ export function ViewAsBanner() {
             className="inline-flex items-center gap-1 rounded-md bg-rose-900 px-3 py-1 text-xs font-medium text-rose-50 hover:bg-rose-800 disabled:opacity-50"
           >
             <X className="h-3 w-3" />
-            {returning ? 'Returning...' : 'Return to admin'}
+            {returning ? 'Signing out...' : 'Sign out'}
           </button>
         </div>
         {error && <p role="alert" className="px-4 pb-2 text-sm text-rose-900">{error}</p>}
