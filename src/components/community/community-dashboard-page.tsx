@@ -67,6 +67,25 @@ import { resolveCommunityCause } from '@/lib/community-cause'
 
 type DashboardTab = 'overview' | 'onboarding' | 'businesses' | 'network' | 'materials' | 'qr' | 'tasks' | 'activity'
 
+const LOGO_MAX_BYTES = 5 * 1024 * 1024
+const LOGO_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'tif', 'ico', 'heic', 'heif', 'avif']
+const COVER_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']
+
+type CauseMediaType = 'logo' | 'cover_photo'
+type AssetUploadState = { status: 'idle' | 'uploading' | 'saved' | 'error'; message?: string }
+
+function validateCauseAssetFile(mediaType: CauseMediaType, file: File): string | null {
+  const extension = file.name.split('.').pop()?.toLowerCase() || ''
+  const allowed = mediaType === 'logo' ? LOGO_ALLOWED_EXTENSIONS : COVER_ALLOWED_EXTENSIONS
+  if (!allowed.includes(extension)) {
+    return `Unsupported file type. Allowed: ${allowed.join(', ')}.`
+  }
+  if (mediaType === 'logo' && file.size > LOGO_MAX_BYTES) {
+    return 'Logo exceeds the 5MB limit.'
+  }
+  return null
+}
+
 function getCauseQaAccountId(cause: { external_id?: string | null; metadata?: Record<string, unknown> | null } | null): string | null {
   if (!cause) return null
   if (cause.external_id && /^\d+$/.test(cause.external_id.trim())) {
@@ -163,8 +182,8 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   const [profileDraft, setProfileDraft] = React.useState({ name: '', email: '', phone: '', website: '', address: '', logoUrl: '', coverPhotoUrl: '' })
   const [profileSaved, setProfileSaved] = React.useState(false)
   const [profileError, setProfileError] = React.useState<string | null>(null)
-  const [logoFile, setLogoFile] = React.useState<File | null>(null)
-  const [coverFile, setCoverFile] = React.useState<File | null>(null)
+  const [logoAssetState, setLogoAssetState] = React.useState<AssetUploadState>({ status: 'idle' })
+  const [coverAssetState, setCoverAssetState] = React.useState<AssetUploadState>({ status: 'idle' })
 
   React.useEffect(() => {
     if (!scopedCause) return
@@ -196,20 +215,53 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'The organization profile could not be saved.')
-      for (const [mediaType, file] of [['logo', logoFile], ['cover_photo', coverFile]] as const) {
-        if (!file) continue
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('mediaType', mediaType)
-        const upload = await fetch(`/api/crm/causes/${encodeURIComponent(scopedCause.id)}/media`, { method: 'POST', body: formData })
-        const uploadPayload = await upload.json().catch(() => ({}))
-        if (!upload.ok) throw new Error(uploadPayload.error || `The ${mediaType === 'logo' ? 'logo' : 'cover image'} could not be uploaded.`)
-      }
       setProfileSaved(true)
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : 'The organization profile could not be saved.')
     } finally {
       setSavingCause(false)
+    }
+  }
+
+  // Logo and cover each upload the moment a file is chosen, independently of one
+  // another and of the "Save profile and assets" button (which only covers the text
+  // fields above). A failed cover must not discard a successful logo, so each asset
+  // gets its own request and its own state instead of a shared loop that throws on
+  // the first failure.
+  async function uploadCauseAsset(mediaType: CauseMediaType, file: File) {
+    const setState = mediaType === 'logo' ? setLogoAssetState : setCoverAssetState
+    const validationError = validateCauseAssetFile(mediaType, file)
+    if (validationError) {
+      setState({ status: 'error', message: validationError })
+      return
+    }
+    if (!scopedCause) {
+      setState({ status: 'error', message: 'No cause selected.' })
+      return
+    }
+    setState({ status: 'uploading' })
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('mediaType', mediaType)
+      const upload = await fetch(`/api/crm/causes/${encodeURIComponent(scopedCause.id)}/media`, { method: 'POST', body: formData })
+      const uploadPayload = await upload.json().catch(() => ({}))
+      if (!upload.ok) {
+        const reason = typeof uploadPayload.error === 'string' && uploadPayload.error.trim()
+          ? uploadPayload.error.trim()
+          : `Upload failed (status ${upload.status}).`
+        throw new Error(reason)
+      }
+      setState({ status: 'saved' })
+      if (typeof uploadPayload.fileUrl === 'string' && uploadPayload.fileUrl) {
+        setProfileDraft((value) => ({
+          ...value,
+          [mediaType === 'logo' ? 'logoUrl' : 'coverPhotoUrl']: uploadPayload.fileUrl,
+        }))
+      }
+    } catch (error) {
+      const fallback = `The ${mediaType === 'logo' ? 'logo' : 'cover image'} could not be uploaded.`
+      setState({ status: 'error', message: error instanceof Error ? error.message : fallback })
     }
   }
 
@@ -681,10 +733,54 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
           <Card id="brand-assets">
             <CardHeader><CardTitle>2. Brand assets</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-surface-600">Add the logo and cover image used on your cause page and campaign materials.</p>
+              <p className="text-sm text-surface-600">Logo and cover image save automatically as soon as you pick a file.</p>
               <div className="grid gap-3 md:grid-cols-2">
-                <label className="space-y-2 text-sm font-medium text-surface-700">Logo image<Input type="file" accept="image/*" onChange={(event) => setLogoFile(event.target.files?.[0] || null)} /></label>
-                <label className="space-y-2 text-sm font-medium text-surface-700">Cover image<Input type="file" accept="image/*" onChange={(event) => setCoverFile(event.target.files?.[0] || null)} /></label>
+                <label className="space-y-2 text-sm font-medium text-surface-700">
+                  Logo image
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null
+                      event.target.value = ''
+                      if (file) void uploadCauseAsset('logo', file)
+                    }}
+                  />
+                  <div className="flex items-center gap-1.5 text-xs font-normal">
+                    {logoAssetState.status === 'uploading' && (
+                      <span className="inline-flex items-center gap-1 text-surface-500"><Loader2 className="h-3 w-3 animate-spin" />Uploading...</span>
+                    )}
+                    {logoAssetState.status === 'saved' && (
+                      <span className="inline-flex items-center gap-1 text-success-600"><CheckCircle2 className="h-3 w-3" />Saved</span>
+                    )}
+                    {logoAssetState.status === 'error' && (
+                      <span className="text-danger-600">{logoAssetState.message}</span>
+                    )}
+                  </div>
+                </label>
+                <label className="space-y-2 text-sm font-medium text-surface-700">
+                  Cover image
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null
+                      event.target.value = ''
+                      if (file) void uploadCauseAsset('cover_photo', file)
+                    }}
+                  />
+                  <div className="flex items-center gap-1.5 text-xs font-normal">
+                    {coverAssetState.status === 'uploading' && (
+                      <span className="inline-flex items-center gap-1 text-surface-500"><Loader2 className="h-3 w-3 animate-spin" />Uploading...</span>
+                    )}
+                    {coverAssetState.status === 'saved' && (
+                      <span className="inline-flex items-center gap-1 text-success-600"><CheckCircle2 className="h-3 w-3" />Saved</span>
+                    )}
+                    {coverAssetState.status === 'error' && (
+                      <span className="text-danger-600">{coverAssetState.message}</span>
+                    )}
+                  </div>
+                </label>
               </div>
               <div className="flex items-center gap-3">
                 <Button onClick={() => void saveCauseProfile()} disabled={savingCause || !profileDraft.name.trim()}>{savingCause ? 'Saving...' : 'Save profile and assets'}</Button>

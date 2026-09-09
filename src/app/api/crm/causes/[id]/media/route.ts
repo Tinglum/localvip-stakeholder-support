@@ -1,11 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
-import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
+import { fetchQaApi, parseQaResponse, QaApiError } from '@/lib/auth/qa-api'
 import { buildQaAccountMetadata, buildQaCauseLogoUrl, getQaAccountIdFromLocal, isRecord, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
 import { syncQaCauseLogo } from '@/lib/server/qa-dashboard-causes'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
 import type { Cause } from '@/lib/types/database'
+
+/**
+ * QaApiError carries the raw upstream body (parseQaResponse's createQaApiError already
+ * captured it) but its `.message` collapses to the caller's fallback whenever that raw
+ * body was a bare JSON string, e.g. `"No image provided."` -- JSON.parse gives back a
+ * JS string, not an object, so the {error/message/detail/title} field lookup finds
+ * nothing and silently discards the real reason. Recover it here from `.body` instead
+ * of touching parseQaResponse's shared parsing.
+ */
+function extractQaErrorMessage(err: unknown): { message: string; status: number } {
+  if (err instanceof QaApiError) {
+    const status = err.status
+    if (err.body && err.body.trim()) {
+      try {
+        const parsed = JSON.parse(err.body) as unknown
+        if (typeof parsed === 'string' && parsed.trim()) {
+          return { message: parsed.trim(), status }
+        }
+        if (parsed && typeof parsed === 'object') {
+          const record = parsed as Record<string, unknown>
+          const candidate = [record.error, record.message, record.detail, record.title]
+            .find((value) => typeof value === 'string' && value.trim())
+          if (typeof candidate === 'string') {
+            return { message: candidate.trim(), status }
+          }
+        }
+      } catch {
+        // Not JSON -- plain-text body, use it as-is below.
+      }
+      return { message: err.body.trim(), status }
+    }
+    return { message: err.message || `Upload failed (status ${status}).`, status }
+  }
+  const message = err instanceof Error ? err.message : 'QA upload failed.'
+  return { message, status: 500 }
+}
 
 export async function POST(
   request: NextRequest,
@@ -49,10 +85,8 @@ export async function POST(
         || null
       return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true })
     } catch (err) {
-      return NextResponse.json(
-        { error: err instanceof Error ? err.message : 'QA upload failed.' },
-        { status: 500 },
-      )
+      const { message, status } = extractQaErrorMessage(err)
+      return NextResponse.json({ error: message }, { status })
     }
   }
 
