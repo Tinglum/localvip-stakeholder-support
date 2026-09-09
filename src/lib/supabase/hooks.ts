@@ -662,27 +662,11 @@ export function useStakeholderAssignments(filters?: Record<string, string>, opti
     enabled: options?.enabled,
   })
 }
-export function useStakeholders(filters?: Record<string, string>, options?: UseQueryOptions) {
-  return useQaQuery<Stakeholder>('stakeholders', { filters, orderBy: 'updated_at', enabled: options?.enabled })
-}
-export function useStakeholderInsert() { return useQaInsert<Stakeholder>('stakeholders') }
-export function useStakeholderUpdate() { return useQaUpdate<Stakeholder>('stakeholders') }
-export function useStakeholderCodes(filters?: Record<string, string>, options?: UseQueryOptions) {
-  const stakeholderId = filters?.stakeholder_id
-  const useDirectPath = !!stakeholderId && /^\d+$/.test(stakeholderId)
-  const direct = useQaArrayEndpoint<StakeholderCode>(
-    useDirectPath ? `/api/qa/dashboard/stakeholder_codes/${encodeURIComponent(stakeholderId)}` : null,
-    { orderBy: 'updated_at', enabled: (options?.enabled ?? true) && useDirectPath },
-  )
-  const fallback = useQaQuery<StakeholderCode>('stakeholder_codes', {
-    filters,
-    orderBy: 'updated_at',
-    enabled: (options?.enabled ?? true) && !useDirectPath,
-  })
-  return useDirectPath ? direct : fallback
-}
-export function useStakeholderCodeInsert() { return useQaInsert<StakeholderCode>('stakeholder_codes') }
-export function useStakeholderCodeUpdate() { return useQaUpdate<StakeholderCode>('stakeholder_codes') }
+// The `stakeholders` and `stakeholder_codes` hooks lived here. Both tables were
+// retired in the QA cutover and returned [] unconditionally, so every caller
+// silently rendered empty. Callers now key off the cause or business account
+// directly; join/referral codes come from deriveCommunityCodes in
+// @/lib/community-codes, which reads the account's real QR row.
 
 export function useMaterialTemplates(filters?: Record<string, string>) {
   return useQaQuery<MaterialTemplate>('material_templates', { filters, orderBy: 'updated_at' })

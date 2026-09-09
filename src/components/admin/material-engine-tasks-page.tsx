@@ -2,12 +2,12 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, Clock3, FolderCog } from 'lucide-react'
+import { Clock3, FolderCog } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageHeader } from '@/components/ui/page-header'
-import { useAdminTasks, useGeneratedMaterials, useStakeholders } from '@/lib/supabase/hooks'
+import { useAdminTasks, useGeneratedMaterials } from '@/lib/supabase/hooks'
 import { formatDateTime } from '@/lib/utils'
 import type { AdminTaskStatus } from '@/lib/types/database'
 
@@ -28,7 +28,6 @@ function badgeForStatus(status: string) {
 
 export function MaterialEngineTasksPage() {
   const { data: tasks, loading } = useAdminTasks()
-  const { data: stakeholders } = useStakeholders()
   const { data: generatedMaterials } = useGeneratedMaterials()
   const [filter, setFilter] = React.useState<AdminTaskStatus | 'all'>('all')
 
@@ -71,12 +70,11 @@ export function MaterialEngineTasksPage() {
         <EmptyState
           icon={<FolderCog className="h-8 w-8" />}
           title="No tasks in this state"
-          description="Change the filter or create a new stakeholder to populate the queue."
+          description="Nothing is queued for the material engine right now."
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {filtered.map((task) => {
-            const stakeholder = stakeholders.find((item) => item.id === task.stakeholder_id)
             const generatedCount = generatedMaterials.filter((item) => item.stakeholder_id === task.stakeholder_id && item.generation_status === 'generated').length
 
             return (
@@ -86,7 +84,7 @@ export function MaterialEngineTasksPage() {
                     <div>
                       <CardTitle>{task.title}</CardTitle>
                       <p className="mt-1 text-sm text-surface-500">
-                        {stakeholder?.name || 'Unknown stakeholder'} · {stakeholder?.type || 'untyped'}
+                        {task.task_type || 'Material setup'}
                       </p>
                     </div>
                     <Badge variant={badgeForStatus(task.status) as 'default' | 'info' | 'success' | 'warning' | 'danger'}>
@@ -111,11 +109,6 @@ export function MaterialEngineTasksPage() {
                       Created {formatDateTime(task.created_at)}
                     </div>
                   </div>
-                  <Link href={`/admin/stakeholders/${task.stakeholder_id}`}>
-                    <div className="inline-flex items-center gap-2 text-sm font-medium text-brand-700">
-                      Open stakeholder <ArrowRight className="h-4 w-4" />
-                    </div>
-                  </Link>
                 </CardContent>
               </Card>
             )

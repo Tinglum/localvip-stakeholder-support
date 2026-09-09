@@ -45,10 +45,10 @@ import {
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
 import { EMPTY_UUID } from '@/lib/uuid'
 import { formatDate } from '@/lib/utils'
-import { useBusinesses, useGeneratedMaterials, useMaterialAssignments, useMaterialInsert, useMaterialTemplates, useMaterials, useStakeholders } from '@/lib/supabase/hooks'
+import { useBusinesses, useGeneratedMaterials, useMaterialAssignments, useMaterialInsert, useMaterialTemplates, useMaterials } from '@/lib/supabase/hooks'
 import { resolveScopedBusiness } from '@/lib/business-portal'
 import type { BusinessJoinResource } from '@/lib/business-join'
-import type { GeneratedMaterial, Material, MaterialTemplate, Stakeholder } from '@/lib/types/database'
+import type { GeneratedMaterial, Material, MaterialTemplate } from '@/lib/types/database'
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   one_pager: <File className="h-5 w-5" />,
@@ -85,16 +85,6 @@ function isReadyGeneratedMaterial(row: GeneratedMaterial) {
   return row.generation_status === 'generated' && row.is_active !== false && !row.is_outdated
 }
 
-function resolveCurrentStakeholder(stakeholders: Stakeholder[], profile: ReturnType<typeof useAuth>['profile']) {
-  if (stakeholders.length === 0) return null
-
-  return stakeholders.find((stakeholder) => {
-    if (stakeholder.profile_id === profile.id || stakeholder.owner_user_id === profile.id) return true
-    if (profile.business_id && stakeholder.business_id === profile.business_id) return true
-    if (profile.organization_id && stakeholder.organization_id === profile.organization_id) return true
-    return false
-  }) || null
-}
 
 function generatedToMaterial(row: GeneratedMaterial, template?: MaterialTemplate): Material {
   const metadata = (row.metadata || template?.metadata || {}) as Record<string, unknown>
@@ -540,14 +530,15 @@ export function MyMaterialsView({ embedded = false }: { embedded?: boolean }) {
 function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
   const { profile, isAdmin, localProfileId } = useAuth()
   const { data: allMaterials, loading: materialsLoading, error, refetch } = useMaterials()
-  const { data: stakeholders, loading: stakeholdersLoading } = useStakeholders()
-  const stakeholder = React.useMemo(() => resolveCurrentStakeholder(stakeholders, profile), [profile, stakeholders])
-  const stakeholderId = stakeholder?.id || EMPTY_UUID
+  // useMaterialAssignments ignores its filter argument, and the stakeholder it
+  // was keyed on came from a retired table that always returned []. Kept as the
+  // empty sentinel so the call shape is unchanged.
+  const stakeholderId = EMPTY_UUID
   // Stakeholders were removed from the backend — generated materials are keyed by
   // the business (or cause) account. Resolve the current business account id.
   const { data: scopedBusinesses } = useBusinesses(profile.business_id ? { id: profile.business_id } : undefined)
   const scopedBusiness = React.useMemo(() => resolveScopedBusiness(profile, scopedBusinesses), [profile, scopedBusinesses])
-  const businessAccountId = scopedBusiness?.id ? String(scopedBusiness.id) : (profile.business_id || stakeholder?.business_id || null)
+  const businessAccountId = scopedBusiness?.id ? String(scopedBusiness.id) : (profile.business_id || null)
   const businessId = businessAccountId
   const { data: assignments, loading: assignmentsLoading } = useMaterialAssignments({ stakeholder_id: stakeholderId })
   const { data: generatedMaterials, loading: generatedLoading, refetch: refetchGenerated } = useGeneratedMaterials(
@@ -593,7 +584,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
     })
   }, [materials, search])
 
-  const loading = materialsLoading || assignmentsLoading || generatedLoading || stakeholdersLoading || templatesLoading
+  const loading = materialsLoading || assignmentsLoading || generatedLoading || templatesLoading
   const uploadedCount = localProfileId
     ? materials.filter(material => material.created_by === localProfileId).length
     : 0
