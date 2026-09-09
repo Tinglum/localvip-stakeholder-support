@@ -19,32 +19,66 @@ export async function GET(request: NextRequest) {
   }
 
   if (session.source === 'qa') {
-    // For QA causes, derive a shareable resource from the cause's stakeholder codes.
+    // Reads the cause's own QR row. This used to call
+    // /api/dashboard/v1/Stakeholder — an endpoint that does not exist, because
+    // the stakeholder concept was retired in the QA cutover — so every cause got
+    // "No stakeholder for this cause" even when its QR was live. It also
+    // returned a shape the card does not consume, so it could not have rendered
+    // even had the lookup succeeded.
     const { fetchQaApi, parseQaResponse } = await import('@/lib/auth/qa-api')
     try {
-      const sRes = await fetchQaApi(`/api/dashboard/v1/Stakeholder?causeAccountId=${encodeURIComponent(causeId)}`)
-      const sJson = await parseQaResponse<unknown>(sRes, 'Failed to load stakeholder.').catch(() => null)
-      const items = Array.isArray(sJson) ? sJson
-        : (sJson && typeof sJson === 'object' && Array.isArray((sJson as Record<string, unknown>).items))
-          ? (sJson as Record<string, unknown>).items as Array<Record<string, unknown>>
+      const qRes = await fetchQaApi(
+        `/api/dashboard/v1/QrCode?entityId=${encodeURIComponent(causeId)}&entityType=cause`,
+      )
+      const qJson = await parseQaResponse<unknown>(qRes, 'Failed to load the cause QR code.').catch(() => null)
+      const rows = Array.isArray(qJson) ? qJson
+        : (qJson && typeof qJson === 'object' && Array.isArray((qJson as Record<string, unknown>).items))
+          ? (qJson as Record<string, unknown>).items as Array<Record<string, unknown>>
           : []
-      const stakeholder = items[0]
-      if (!stakeholder?.id) {
-        return NextResponse.json({ error: 'No stakeholder for this cause.' }, { status: 404 })
+
+      const read = (row: Record<string, unknown>, ...keys: string[]) => {
+        for (const key of keys) {
+          const value = row[key]
+          if (typeof value === 'string' && value.trim()) return value.trim()
+        }
+        return null
       }
-      const cRes = await fetchQaApi(`/api/dashboard/v1/StakeholderCode/${encodeURIComponent(String(stakeholder.id))}`)
-      const cJson = await parseQaResponse<unknown>(cRes, '').catch(() => null)
-      const codes = Array.isArray(cJson) ? cJson
-        : (cJson && typeof cJson === 'object' && Array.isArray((cJson as Record<string, unknown>).items))
-          ? (cJson as Record<string, unknown>).items as Array<Record<string, unknown>>
-          : []
-      const code = codes[0] || {}
+
+      // An active code is the one a supporter can actually use; fall back to the
+      // first so an archived-but-present QR still renders.
+      const qr = rows.find((row) => (read(row, 'status', 'Status') || '').toLowerCase() === 'active') || rows[0]
+      if (!qr) {
+        return NextResponse.json(
+          { error: 'This cause does not have a supporter QR code yet.' },
+          { status: 404 },
+        )
+      }
+
+      const targetUrl = read(qr, 'targetUrl', 'TargetUrl', 'destinationUrl')
+      const shortCode = read(qr, 'code', 'Code', 'shortCode') || ''
+      if (!targetUrl) {
+        return NextResponse.json(
+          { error: 'The supporter QR code has no destination set.' },
+          { status: 409 },
+        )
+      }
+
       return NextResponse.json({
-        stakeholderId: stakeholder.id,
-        joinUrl: code.joinUrl || code.JoinUrl || null,
-        referralCode: code.referralCode || code.ReferralCode || null,
-        connectionCode: code.connectionCode || code.ConnectionCode || null,
-        causeName: stakeholder.name || null,
+        causeId,
+        causeName: read(qr, 'name', 'Name') || '',
+        brand: 'localvip',
+        supportSlug: shortCode || causeId,
+        supportUrl: targetUrl,
+        // The card prints displayUrl and encodes redirectUrl. Both are the real
+        // destination: there is no separate tracking hop for cause QRs, and
+        // inventing one would produce a code that resolves nowhere.
+        displayUrl: targetUrl.replace(/^https?:\/\//, ''),
+        redirectUrl: targetUrl,
+        shortCode,
+        qrCodeId: String(read(qr, 'id', 'Id') ?? ''),
+        frameText: 'Scan to support',
+        headline: 'Support this cause',
+        description: 'Scan to join and support this cause through LocalVIP.',
       })
     } catch (err) {
       return NextResponse.json(
