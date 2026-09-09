@@ -34,6 +34,8 @@ import {
 } from '@/components/crm/cause-lifecycle-modals'
 import { useAuth } from '@/lib/auth/context'
 import type { CommunityCodes } from '@/lib/community-codes'
+import { deriveCommunityCodes } from '@/lib/community-codes'
+import { getCauseQaAccountId } from '@/lib/community-cause'
 import { asUuid } from '@/lib/uuid'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -73,9 +75,6 @@ import {
   useQrCodes,
   useStakeholderAssignments,
   useOutreachInsert,
-  useStakeholderCodeInsert,
-  useStakeholderCodes,
-  useStakeholders,
   useTasks,
 } from '@/lib/supabase/hooks'
 import type {
@@ -90,9 +89,7 @@ import type {
   OutreachActivity,
   Profile,
   QrCode as QrCodeRow,
-  Stakeholder,
   StakeholderAssignment,
-  StakeholderType,
   Task,
 } from '@/lib/types/database'
 
@@ -143,18 +140,14 @@ interface CauseDetailData {
   latestOutreach: OutreachActivity | undefined
   nextFollowUp: OutreachActivity | undefined
   linkedBusinesses: Business[]
-  stakeholder: Stakeholder | null
   codes: CommunityCodes | null
   codesReady: boolean
   joinUrl: string | null
   generated: GeneratedMaterial[]
   generatedCount: number
-  taskStatus: string | null
   qrCount: number
   qrGeneratorHref: string
   coverPhotoUrl: string | null
-  setupLoading: boolean
-  setupMessage: string | null
   checklist: CauseOnboardingChecklist
 }
 
@@ -220,12 +213,6 @@ function normalizeSteps(stage: OnboardingStage, flow: OnboardingFlow | undefined
     completed: step.is_completed,
     current: !step.is_completed && (firstPendingIndex === -1 ? index === steps.length - 1 : index === firstPendingIndex),
   }))
-}
-
-function mapCauseToStakeholderType(cause: Cause): StakeholderType {
-  if (cause.type === 'school') return 'school'
-  if (cause.type === 'community') return 'community'
-  return 'cause'
 }
 
 function StageChanger({ cause, onStageChanged }: { cause: Cause; onStageChanged: () => void }) {
@@ -375,22 +362,14 @@ export default function CauseOnboardingPage() {
   const { data: steps } = useOnboardingSteps()
   const { data: tasks } = useTasks()
   const { data: outreach } = useOutreach()
-  const { data: stakeholders, refetch: refetchStakeholders } = useStakeholders()
-  const { data: stakeholderCodes, refetch: refetchCodes } = useStakeholderCodes()
   const { data: generatedMaterials, refetch: refetchGenerated } = useGeneratedMaterials()
-  const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks()
   const { data: qrCodes, refetch: refetchQrCodes } = useQrCodes()
   const [insertingCause, setInsertingCause] = React.useState(false)
-  const { insert: insertAdminTask, loading: creatingAdminTask } = useAdminTaskInsert()
-  const { insert: insertStakeholderCode } = useStakeholderCodeInsert()
 
   const [addOpen, setAddOpen] = React.useState(false)
   const [form, setForm] = React.useState<CauseForm>(INITIAL_FORM)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [feedback, setFeedback] = React.useState<string | null>(null)
-  const [setupError, setSetupError] = React.useState<string | null>(null)
-  const [setupLoadingCauseId, setSetupLoadingCauseId] = React.useState<string | null>(null)
-  const [setupStatusByCause, setSetupStatusByCause] = React.useState<Record<string, string>>({})
 
   // Filter state
   const [cityFilter, setCityFilter] = React.useState('all')
@@ -461,50 +440,54 @@ export default function CauseOnboardingPage() {
     return map
   }, [outreach])
 
-  const stakeholderByCause = React.useMemo(() => {
-    const map = new Map<string, Stakeholder>()
-    stakeholders.filter((stakeholder) => !!stakeholder.cause_id).forEach((stakeholder) => {
-      if (!stakeholder.cause_id || map.has(stakeholder.cause_id)) return
-      map.set(stakeholder.cause_id, stakeholder)
+  // The QA account id every backend filter below is actually keyed on.
+  // cause.id is the dashboard's own id and is NOT interchangeable with it —
+  // see getCauseQaAccountId in src/lib/community-cause.ts.
+  const qaAccountIdByCause = React.useMemo(() => {
+    const map = new Map<string, string>()
+    causes.forEach((cause) => {
+      const qaAccountId = getCauseQaAccountId(cause)
+      if (qaAccountId) map.set(cause.id, qaAccountId)
     })
     return map
-  }, [stakeholders])
+  }, [causes])
 
-  const codesByStakeholder = React.useMemo(() => {
-    const map = new Map<string, (typeof stakeholderCodes)[number]>()
-    stakeholderCodes.forEach((code) => map.set(code.stakeholder_id, code))
-    return map
-  }, [stakeholderCodes])
-
-  const generatedByStakeholder = React.useMemo(() => {
-    const map = new Map<string, GeneratedMaterial[]>()
-    generatedMaterials.forEach((generated) => {
-      const current = map.get(generated.stakeholder_id) || []
-      current.push(generated)
-      map.set(generated.stakeholder_id, current)
-    })
-    return map
-  }, [generatedMaterials])
-
-  const adminTaskByStakeholder = React.useMemo(() => {
-    const map = new Map<string, AdminTask>()
-    adminTasks.filter((task) => task.task_type === 'stakeholder_setup').forEach((task) => {
-      if (map.has(task.stakeholder_id)) return
-      map.set(task.stakeholder_id, task)
-    })
-    return map
-  }, [adminTasks])
-
+  // Keyed by QA account id (qr.cause_id mirrors qr.entity_id for cause rows),
+  // not by the dashboard's cause.id.
   const qrByCause = React.useMemo(() => {
     const map = new Map<string, QrCodeRow[]>()
     qrCodes.filter((code) => !!code.cause_id).forEach((code) => {
-      const causeId = code.cause_id as string
-      const current = map.get(causeId) || []
+      const qaAccountId = code.cause_id as string
+      const current = map.get(qaAccountId) || []
       current.push(code)
-      map.set(causeId, current)
+      map.set(qaAccountId, current)
     })
     return map
   }, [qrCodes])
+
+  // Replaces the retired stakeholder_codes lookup (always []). The join/referral
+  // codes live on the account's own QR row — see src/lib/community-codes.ts.
+  const codesByCause = React.useMemo(() => {
+    const map = new Map<string, CommunityCodes | null>()
+    causes.forEach((cause) => {
+      const qaAccountId = qaAccountIdByCause.get(cause.id) || null
+      map.set(cause.id, deriveCommunityCodes(qrByCause.get(qaAccountId || '') || [], qaAccountId))
+    })
+    return map
+  }, [causes, qaAccountIdByCause, qrByCause])
+
+  // Generated materials belong to the account: keyed by QA account id via
+  // generatedMaterial.cause_id, same as qrByCause above.
+  const generatedByCause = React.useMemo(() => {
+    const map = new Map<string, GeneratedMaterial[]>()
+    generatedMaterials.filter((item) => !!item.cause_id).forEach((item) => {
+      const qaAccountId = item.cause_id as string
+      const current = map.get(qaAccountId) || []
+      current.push(item)
+      map.set(qaAccountId, current)
+    })
+    return map
+  }, [generatedMaterials])
 
   // ─── Filter causes based on role, city, campaign, search ───
 
@@ -551,14 +534,14 @@ export default function CauseOnboardingPage() {
     const assigned = causes.filter((cause) => !!cause.owner_id || assignmentsByCause.has(cause.id)).length
     const linkedBusinesses = businesses.filter((business) => !!business.linked_cause_id).length
     const materialReady = causes.filter((cause) => {
-      const stakeholder = stakeholderByCause.get(cause.id)
-      if (!stakeholder) return false
-      const generated = generatedByStakeholder.get(stakeholder.id) || []
+      const qaAccountId = qaAccountIdByCause.get(cause.id)
+      if (!qaAccountId) return false
+      const generated = generatedByCause.get(qaAccountId) || []
       return generated.some((item) => item.generation_status === 'generated')
     }).length
 
     return { live, onboarding, followUps, assigned, linkedBusinesses, materialReady }
-  }, [assignmentsByCause, businesses, causes, generatedByStakeholder, outreach, stakeholderByCause])
+  }, [assignmentsByCause, businesses, causes, generatedByCause, outreach, qaAccountIdByCause])
 
   const cityOptions = React.useMemo(() => {
     const ids = new Set(causes.map((cause) => cause.city_id).filter(Boolean) as string[])
@@ -579,16 +562,15 @@ export default function CauseOnboardingPage() {
   const nextBestActionCause = React.useMemo(() => {
     const ranked = causes
       .map((cause) => {
-        const stakeholder = stakeholderByCause.get(cause.id) || null
-        const code = stakeholder ? codesByStakeholder.get(stakeholder.id) || null : null
-        const generated = stakeholder ? generatedByStakeholder.get(stakeholder.id) || [] : []
+        const qaAccountId = qaAccountIdByCause.get(cause.id) || null
+        const code = codesByCause.get(cause.id) || null
+        const generated = qaAccountId ? generatedByCause.get(qaAccountId) || [] : []
         const causeOutreach = (outreachByCause.get(cause.id) || [])
           .slice()
           .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
         const dueFollowUp = causeOutreach.find((item) => !!item.next_step_date)
         const priority =
-          !stakeholder ? 0
-          : !code ? 1
+          !code?.join_url ? 1
           : generated.filter((item) => item.generation_status === 'generated').length === 0 ? 2
           : dueFollowUp ? 3
           : 4
@@ -598,13 +580,10 @@ export default function CauseOnboardingPage() {
       .sort((left, right) => left.priority - right.priority)
 
     return ranked[0] || null
-  }, [causes, codesByStakeholder, generatedByStakeholder, outreachByCause, stakeholderByCause])
+  }, [causes, codesByCause, generatedByCause, outreachByCause, qaAccountIdByCause])
 
   async function refreshAll() {
     refetch({ silent: true })
-    refetchStakeholders({ silent: true })
-    refetchAdminTasks({ silent: true })
-    refetchCodes({ silent: true })
     refetchGenerated({ silent: true })
     refetchQrCodes({ silent: true })
   }
@@ -623,12 +602,11 @@ export default function CauseOnboardingPage() {
       .slice()
       .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
     const linkedBusinesses = linkedBusinessesByCause.get(cause.id) || []
-    const stakeholder = stakeholderByCause.get(cause.id) || null
-    const codes = stakeholder ? codesByStakeholder.get(stakeholder.id) || null : null
-    const generated = stakeholder ? generatedByStakeholder.get(stakeholder.id) || [] : []
+    const causeQaAccountId = qaAccountIdByCause.get(cause.id) || null
+    const codes = codesByCause.get(cause.id) || null
+    const generated = causeQaAccountId ? generatedByCause.get(causeQaAccountId) || [] : []
     const generatedCount = generated.filter((item) => item.generation_status === 'generated').length
-    const adminTask = stakeholder ? adminTaskByStakeholder.get(stakeholder.id) || null : null
-    const causeQrCodes = qrByCause.get(cause.id) || []
+    const causeQrCodes = causeQaAccountId ? qrByCause.get(causeQaAccountId) || [] : []
     const latestOutreach = causeOutreach[0]
     const nextFollowUp = causeOutreach
       .filter((activity) => activity.next_step || activity.next_step_date)
@@ -676,78 +654,39 @@ export default function CauseOnboardingPage() {
       latestOutreach,
       nextFollowUp,
       linkedBusinesses,
-      stakeholder,
       codes,
       codesReady: !!codes?.join_url,
       joinUrl: codes?.join_url || null,
       generated,
       generatedCount,
-      taskStatus: adminTask?.status || null,
       qrCount: causeQrCodes.length,
       qrGeneratorHref,
       coverPhotoUrl,
-      setupLoading: setupLoadingCauseId === cause.id || creatingAdminTask,
-      setupMessage: setupStatusByCause[cause.id] || null,
       checklist,
     }
   }
 
-  async function ensureStakeholderSetup(cause: Cause) {
-    setSetupError(null)
-    setSetupLoadingCauseId(cause.id)
-
-    try {
-      let stakeholder = stakeholderByCause.get(cause.id) || null
-
-      if (!stakeholder) {
-        throw new Error('The stakeholder setup record is missing. Recreate this cause from the CRM or refresh after server setup completes.')
-      }
-
-      if (!codesByStakeholder.get(stakeholder.id)) {
-        const createdCode = await insertStakeholderCode({
-          stakeholder_id: stakeholder.id,
-          referral_code: null,
-          connection_code: null,
-          join_url: null,
-        })
-
-        if (!createdCode) {
-          throw new Error('The setup record exists, but the empty code record could not be added.')
-        }
-      }
-
-      const task = adminTaskByStakeholder.get(stakeholder.id) || null
-
-      if (!task) {
-        const insertedTask = await insertAdminTask({
-          stakeholder_id: stakeholder.id,
-          task_type: 'stakeholder_setup',
-          title: `Complete setup for ${cause.name}`,
-          status: 'needs_setup',
-          payload_json: {
-            checklist: ['Add referral code', 'Add connection code', 'Generate materials'],
-            source: 'cause_onboarding',
-            cause_id: cause.id,
-          },
-          due_at: null,
-        })
-
-        if (!insertedTask) {
-          throw new Error('The setup record was created, but the setup task could not be added.')
-        }
-      }
-
-      setSetupStatusByCause((current) => ({
-        ...current,
-        [cause.id]: task ? 'Material setup already exists.' : 'Material setup is ready for codes and generation.',
-      }))
-      await refreshAll()
-    } catch (caughtError) {
-      setSetupError(caughtError instanceof Error ? caughtError.message : 'Could not create the setup record.')
-    } finally {
-      setSetupLoadingCauseId(null)
-    }
-  }
+  // TODO: this used to create a `stakeholders` row for the cause (via
+  // ensureStakeholderSetup), then an empty `stakeholder_codes` row, then a
+  // DashboardAdminTask (task_type "stakeholder_setup") keyed on that
+  // stakeholder's id so ops had a work-queue item to fill in codes and kick
+  // off material generation. All three steps were already dead in production:
+  // stakeholders/stakeholder_codes have returned [] unconditionally since the
+  // Supabase cutover, so stakeholderByCause.get(cause.id) was always undefined
+  // and this function always threw "The stakeholder setup record is missing."
+  // before it could reach the code/task inserts.
+  //
+  // There is no real equivalent to reconnect it to. Codes are no longer a
+  // manually-entered record — deriveCommunityCodes() reads them straight off
+  // the account's QR row, so there is nothing left to "create" there. But the
+  // admin work-queue task genuinely has no replacement: DashboardAdminTask
+  // (backend App/Models/Dashboard/DashboardAdminTask.cs, App/Controllers/
+  // Dashboard/AdminTaskController.cs) only has a StakeholderId column — no
+  // CauseId/BusinessId — so a task can no longer be tied to a specific cause
+  // without a backend migration. Ops has lost the "flag this cause's material
+  // setup as needing attention" workflow; there is no dashboard-only fix.
+  // Flagging this to Kenneth per his instructions rather than inventing an
+  // endpoint.
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -859,12 +798,6 @@ export default function CauseOnboardingPage() {
       {feedback ? (
         <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
           {feedback}
-        </div>
-      ) : null}
-
-      {setupError ? (
-        <div className="rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
-          {setupError}
         </div>
       ) : null}
 
@@ -982,9 +915,7 @@ export default function CauseOnboardingPage() {
                 {nextBestActionCause ? `Keep ${nextBestActionCause.cause.name} moving` : 'Complete supporter-launch setup'}
               </p>
               <p className="mt-1 text-sm text-surface-500">
-                {nextBestActionCause?.priority === 0
-                  ? 'Create the stakeholder setup record before QR and materials.'
-                  : nextBestActionCause?.priority === 1
+                {nextBestActionCause?.priority === 1
                   ? 'Add codes so supporter materials and QR can go live.'
                   : nextBestActionCause?.priority === 2
                   ? 'Generate materials before the community rollout starts.'
@@ -1076,7 +1007,6 @@ export default function CauseOnboardingPage() {
             <CauseDetailModal
               cause={selectedCause}
               detail={getCauseDetail(selectedCause)}
-              onCreateSetup={() => void ensureStakeholderSetup(selectedCause)}
               onStageChanged={refetch}
             />
           ) : null}
@@ -1143,299 +1073,6 @@ function SimpleSummaryCard({
           </div>
         </div>
       </CardContent>
-    </Card>
-  )
-}
-
-// ─── Redesigned CauseOnboardingCard ────────────────────────
-
-function CauseOnboardingCard({
-  cause,
-  owner,
-  city,
-  campaign,
-  helperAssignments,
-  steps,
-  tasks,
-  dueTask,
-  outreach,
-  latestOutreach,
-  nextFollowUp,
-  linkedBusinesses,
-  stakeholder,
-  codesReady,
-  joinUrl,
-  generatedCount,
-  taskStatus,
-  qrCount,
-  qrGeneratorHref,
-  setupLoading,
-  setupMessage,
-  onCreateSetup,
-  onStageChanged,
-  checklist,
-  expanded,
-  onToggleExpand,
-}: {
-  cause: Cause
-  owner: Profile | null
-  city: { id: string; name: string; state: string } | null
-  campaign: { id: string; name: string } | null
-  helperAssignments: Array<{ assignment: StakeholderAssignment; profile: Profile }>
-  steps: Array<{ id: string; label: string; completed: boolean; current: boolean }>
-  tasks: Task[]
-  dueTask: Task | undefined
-  outreach: OutreachActivity[]
-  latestOutreach: OutreachActivity | undefined
-  nextFollowUp: OutreachActivity | undefined
-  linkedBusinesses: Business[]
-  stakeholder: Stakeholder | null
-  codesReady: boolean
-  joinUrl: string | null
-  generatedCount: number
-  taskStatus: string | null
-  qrCount: number
-  qrGeneratorHref: string
-  setupLoading: boolean
-  setupMessage: string | null
-  onCreateSetup: () => void
-  onStageChanged: () => void
-  checklist: CauseOnboardingChecklist
-  expanded: boolean
-  onToggleExpand: () => void
-}) {
-  return (
-    <Card className={`overflow-hidden border ${causeTheme.border}`}>
-      {/* ── Progress bar row ──────────────────────────────── */}
-      <div className="flex items-center gap-3 border-b border-surface-200 bg-surface-50 px-5 py-3">
-        <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-surface-200">
-          <div
-            className={cn('h-full rounded-full transition-all duration-500 ease-out', getProgressColor(checklist.percent))}
-            style={{ width: `${checklist.percent}%` }}
-          />
-        </div>
-        <span className={cn('whitespace-nowrap text-xs font-semibold', getProgressTextColor(checklist.percent))}>
-          {checklist.percent}% ({checklist.completedCount}/{checklist.totalCount})
-        </span>
-        <button
-          onClick={onToggleExpand}
-          className="flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-surface-600 transition-colors hover:bg-surface-100 hover:text-surface-900"
-        >
-          View Checklist
-          <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-90')} />
-        </button>
-      </div>
-
-      {/* ── Header row ────────────────────────────────────── */}
-      <div className={`bg-gradient-to-r ${causeTheme.gradient} px-5 py-4`}>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href={`/crm/causes/${cause.id}`} className="text-lg font-semibold text-surface-900 transition-colors hover:text-brand-700">
-                {cause.name}
-              </Link>
-              <Badge variant={getStageBadgeVariant(cause.stage)} dot>
-                {ONBOARDING_STAGES[cause.stage]?.label}
-              </Badge>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${causeTheme.badge}`}>{cause.type}</span>
-              <Badge variant={cause.brand === 'hato' ? 'hato' : 'info'}>
-                {BRANDS[cause.brand]?.label || cause.brand}
-              </Badge>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-surface-500">
-              {city ? (
-                <Link href={`/crm/cities/${city.id}`} className="flex items-center gap-1 hover:text-surface-700">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {city.name}, {city.state}
-                </Link>
-              ) : null}
-              {campaign ? <Link href={`/campaigns/${campaign.id}`} className="hover:text-surface-700">Campaign: {campaign.name}</Link> : null}
-              <span>Added {formatDate(cause.created_at)}</span>
-            </div>
-          </div>
-          <StageChanger cause={cause} onStageChanged={onStageChanged} />
-        </div>
-      </div>
-
-      {/* ── Body: Steps + Leadership ──────────────────────── */}
-      <CardContent className="space-y-5 p-5">
-        <div className="grid gap-4 lg:grid-cols-[1.3fr,0.9fr]">
-          {/* Onboarding steps */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-surface-500">
-              <ClipboardList className="h-3.5 w-3.5" />
-              Onboarding Steps
-            </div>
-            <div className="space-y-1.5">
-              {steps.map((step) => {
-                const isLocked = !step.completed && !step.current
-                return (
-                  <div
-                    key={step.id}
-                    className={cn(
-                      'flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm',
-                      step.completed
-                        ? 'border-success-200 bg-success-50 text-success-700'
-                        : step.current
-                        ? `border-pink-200 ${causeTheme.softSurface} ${causeTheme.mutedText}`
-                        : 'border-surface-200 bg-surface-50 text-surface-400'
-                    )}
-                  >
-                    {step.completed ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    ) : step.current ? (
-                      <Clock3 className="h-4 w-4 shrink-0" />
-                    ) : (
-                      <Lock className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    <span className="font-medium">{step.label}</span>
-                    {step.current && (
-                      <Link
-                        href={`/crm/causes/${cause.id}`}
-                        className="ml-auto flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-800"
-                      >
-                        Fix <ArrowRight className="h-3 w-3" />
-                      </Link>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Leadership */}
-          <div className="space-y-3 rounded-2xl border border-surface-200 bg-surface-50 p-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Leadership</p>
-              {owner ? (
-                <Link href={`/admin/users/${owner.id}`} className="mt-2 inline-flex text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
-                  {owner.full_name} - Primary owner
-                </Link>
-              ) : (
-                <p className="mt-2 text-sm font-semibold text-surface-900">Unassigned owner</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Helpers</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {helperAssignments.length > 0 ? helperAssignments.map(({ assignment, profile: helper }) => (
-                  <Link
-                    key={helper.id}
-                    href={`/admin/users/${helper.id}`}
-                    className="rounded-full border border-surface-200 bg-white px-2.5 py-1 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 hover:text-surface-900"
-                  >
-                    {helper.full_name}
-                    {assignment.role ? ` - ${assignment.role}` : ''}
-                  </Link>
-                )) : (
-                  <span className="text-xs text-surface-400">None</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Metrics row ─────────────────────────────────── */}
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Tasks</p>
-            <p className="mt-1 text-xl font-semibold text-surface-900">{tasks.length}</p>
-            <p className="mt-1 text-xs text-surface-500">Outreach: {outreach.length}</p>
-            <p className="mt-0.5 text-xs text-surface-500">Businesses: {linkedBusinesses.length}</p>
-          </div>
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Launch Assets</p>
-            <div className="mt-2 space-y-1 text-xs text-surface-500">
-              <p>Setup: <span className="font-medium text-surface-800">{stakeholder ? 'Ready' : 'Missing'}</span></p>
-              <p>Codes: <span className="font-medium text-surface-800">{codesReady ? 'Ready' : 'Missing'}</span></p>
-              <p>QR: <span className="font-medium text-surface-800">{qrCount > 0 ? `${qrCount} ready` : 'Missing'}</span></p>
-              <p>Materials: <span className="font-medium text-surface-800">{generatedCount > 0 ? `${generatedCount} ready` : 'Waiting'}</span></p>
-            </div>
-          </div>
-          <MetricBlock
-            label="Outreach Activity"
-            value={outreach.length}
-            detail={latestOutreach ? `${latestOutreach.type.replace('_', ' ')} / ${formatDate(latestOutreach.created_at)}` : 'No outreach logged yet'}
-            secondary={nextFollowUp?.next_step ? `${nextFollowUp.next_step}${nextFollowUp.next_step_date ? ` by ${formatDate(nextFollowUp.next_step_date)}` : ''}` : undefined}
-          />
-          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Business Links</p>
-            <p className="mt-1 text-xl font-semibold text-surface-900">{linkedBusinesses.length}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {linkedBusinesses.length > 0 ? linkedBusinesses.slice(0, 3).map((business) => (
-                <Link key={business.id} href={`/crm/businesses/${business.id}`} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${businessTheme.badge}`}>
-                  {business.name}
-                </Link>
-              )) : (
-                <span className="text-xs text-surface-400">No connected businesses yet</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Action buttons ──────────────────────────────── */}
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/crm/causes/${cause.id}`}>
-            <Button variant="outline" size="sm">
-              <School className="h-3.5 w-3.5" /> Open CRM
-            </Button>
-          </Link>
-          <Link href={qrGeneratorHref}>
-            <Button size="sm">
-              <QrCode className="h-3.5 w-3.5" /> QR Code
-            </Button>
-          </Link>
-          {!stakeholder || !taskStatus ? (
-            <Button variant="outline" size="sm" onClick={onCreateSetup} disabled={setupLoading}>
-              {setupLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-              {!stakeholder ? 'Create Material Setup' : 'Create Setup Task'}
-            </Button>
-          ) : null}
-          <Link href={`/crm/outreach?cause=${cause.id}`}>
-            <Button variant="outline" size="sm">
-              <MessageSquare className="h-3.5 w-3.5" /> Log Outreach
-            </Button>
-          </Link>
-          {joinUrl ? (
-            <a href={joinUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm">
-                <ArrowRight className="h-3.5 w-3.5" /> Support Page
-              </Button>
-            </a>
-          ) : null}
-        </div>
-
-        {setupMessage ? (
-          <div className="rounded-xl border border-success-200 bg-success-50 px-3 py-2 text-xs text-success-700">
-            {setupMessage}
-          </div>
-        ) : null}
-      </CardContent>
-
-      {/* ── Expanded checklist ────────────────────────────── */}
-      {expanded && (
-        <div className="border-t border-surface-200 bg-surface-50 p-5">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-surface-400">
-            Onboarding Checklist — {checklist.completedCount}/{checklist.totalCount} completed
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {checklist.items.map(item => (
-              <Link
-                key={item.id}
-                href={`${item.href}?tab=${item.tab}`}
-                className={cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                  item.met ? 'text-success-700 bg-success-50' : 'text-surface-700 bg-surface-0 hover:bg-surface-100'
-                )}
-              >
-                {item.met ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-500" /> : <Circle className="h-4 w-4 shrink-0 text-surface-400" />}
-                <span className={item.met ? 'line-through opacity-60' : ''}>{item.label}</span>
-                {!item.met && <ArrowRight className="ml-auto h-3.5 w-3.5 text-surface-400" />}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
     </Card>
   )
 }
@@ -1550,12 +1187,10 @@ function CauseOnboardingSummaryCard({
 function CauseDetailModal({
   cause,
   detail,
-  onCreateSetup,
   onStageChanged,
 }: {
   cause: Cause
   detail: CauseDetailData
-  onCreateSetup: () => void
   onStageChanged: () => void
 }) {
   const { profile } = useAuth()
@@ -1911,10 +1546,8 @@ function CauseDetailModal({
               <ActionableDetailButton label={`Referral: ${detail.codes?.referral_code || 'Missing'}`} onClick={() => jumpToSection('codes')} />
               <ActionableDetailButton label={`Connection: ${detail.codes?.connection_code || 'Missing'}`} onClick={() => jumpToSection('codes')} />
               <ActionableDetailButton label={`Join page: ${detail.joinUrl ? 'Ready' : 'Waiting on codes'}`} onClick={() => jumpToSection('codes')} />
-              <ActionableDetailButton label={`Setup: ${detail.stakeholder ? 'Ready' : 'Missing'}`} onClick={() => jumpToSection('codes')} />
               <ActionableDetailButton label={`QR: ${detail.qrCount > 0 ? `${detail.qrCount} ready` : 'Missing'}`} onClick={() => jumpToSection('codes')} />
               <ActionableDetailButton label={`Materials: ${detail.generatedCount > 0 ? `${detail.generatedCount} ready` : 'Waiting'}`} onClick={() => jumpToSection('codes')} />
-              <ActionableDetailButton label={`Task: ${detail.taskStatus || 'Not started'}`} onClick={() => jumpToSection('codes')} />
             </div>
           </div>
           <div ref={setSectionRef('activity')} className={cn('transition-shadow', getCauseSectionHighlight(activeSection, 'activity'))}>
@@ -1986,12 +1619,6 @@ function CauseDetailModal({
           <Button variant="outline" size="sm" onClick={() => setLifecycleModal('activation_decision')}>
             <Heart className="h-3.5 w-3.5" /> Activation
           </Button>
-          {!detail.stakeholder || !detail.taskStatus ? (
-            <Button variant="outline" size="sm" onClick={onCreateSetup} disabled={detail.setupLoading}>
-              {detail.setupLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-              {!detail.stakeholder ? 'Create Material Setup' : 'Create Setup Task'}
-            </Button>
-          ) : null}
           {detail.joinUrl ? (
             <a href={detail.joinUrl} target="_blank" rel="noopener noreferrer">
               <Button variant="outline" size="sm">
@@ -2006,11 +1633,6 @@ function CauseDetailModal({
           </Link>
         </div>
 
-        {detail.setupMessage ? (
-          <div className="rounded-xl border border-success-200 bg-success-50 px-3 py-2 text-xs text-success-700">
-            {detail.setupMessage}
-          </div>
-        ) : null}
       </div>
 
       {/* ── Lifecycle Modals (stay in onboarding, don't navigate away) ── */}
@@ -2076,7 +1698,15 @@ function CauseDetailModal({
         generatedCount={detail.generatedCount}
         qrCount={detail.qrCount}
         codesReady={detail.codesReady}
-        stakeholderReady={!!detail.stakeholder}
+        // TODO: `stakeholderReady` is a prop on ActivationDecisionModal
+        // (src/components/crm/cause-lifecycle-modals.tsx, out of scope for
+        // this migration) that expects a "was a stakeholder setup record
+        // created" flag. That record no longer exists — see the note by
+        // getCauseDetail above. This was already always false in production
+        // (stakeholders always returned []), so the modal has always shown
+        // "Stakeholder: Missing" here; passing `false` keeps that unchanged
+        // rather than fabricating readiness.
+        stakeholderReady={false}
         saving={false}
         blocker={null}
         readyToComplete={detail.codesReady && detail.generatedCount > 0}

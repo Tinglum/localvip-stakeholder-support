@@ -54,8 +54,8 @@ import { cn, formatDate, formatDateTime } from '@/lib/utils'
 import { asUuid } from '@/lib/uuid'
 import { useAuth } from '@/lib/auth/context'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { getBusinessQaAccountId } from '@/lib/business-portal'
 import {
-  useAdminTasks,
   useBusinesses,
   useBusinessUpdate,
   useCampaigns,
@@ -70,8 +70,6 @@ import {
   useOutreach,
   useProfiles,
   useQrCodes,
-  useStakeholders,
-  useStakeholderCodes,
   useOutreachInsert,
   useAuditLogInsert,
   useStakeholderAssignments,
@@ -89,7 +87,7 @@ import type {
   OutreachActivity,
   Offer,
   Profile,
-  Stakeholder,
+  StakeholderCode,
   Task,
 } from '@/lib/types/database'
 
@@ -270,14 +268,11 @@ export default function BusinessOnboardingPage() {
   const { data: campaigns } = useCampaigns()
   const { data: profiles } = useProfiles()
   const { data: assignments, refetch: refetchAssignments } = useStakeholderAssignments()
-  const { data: stakeholders, refetch: refetchStakeholders } = useStakeholders()
-  const { data: stakeholderCodes, refetch: refetchStakeholderCodes } = useStakeholderCodes()
   const { data: generatedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials()
   const { data: flows, refetch: refetchFlows } = useOnboardingFlows()
   const { data: steps, refetch: refetchSteps } = useOnboardingSteps()
   const { data: offers, refetch: refetchOffers } = useOffers()
   const { data: qrCodes, refetch: refetchQrCodes } = useQrCodes()
-  const { data: adminTasks } = useAdminTasks()
   const { data: tasks } = useTasks()
   const { data: outreach } = useOutreach()
 
@@ -340,42 +335,31 @@ export default function BusinessOnboardingPage() {
     return map
   }, [steps])
 
-  const stakeholderByBusiness = React.useMemo(() => {
-    const map = new Map<string, typeof stakeholders[number]>()
-    stakeholders
-      .filter((stakeholder) => !!stakeholder.business_id)
-      .forEach((stakeholder) => {
-        if (stakeholder.business_id) map.set(stakeholder.business_id, stakeholder)
-      })
+  // The QA account id every backend filter below is actually keyed on.
+  // business.id is the dashboard's own id and is NOT interchangeable with it —
+  // see getBusinessQaAccountId in src/lib/business-portal.ts.
+  const qaAccountIdByBusiness = React.useMemo(() => {
+    const map = new Map<string, string>()
+    businesses.forEach((business) => {
+      const qaAccountId = getBusinessQaAccountId(business)
+      if (qaAccountId) map.set(business.id, qaAccountId)
+    })
     return map
-  }, [stakeholders])
+  }, [businesses])
 
-  const codesByStakeholder = React.useMemo(() => {
-    const map = new Map<string, typeof stakeholderCodes[number]>()
-    stakeholderCodes.forEach((code) => map.set(code.stakeholder_id, code))
-    return map
-  }, [stakeholderCodes])
-
-  const generatedByStakeholder = React.useMemo(() => {
-    const map = new Map<string, typeof generatedMaterials>()
-    generatedMaterials.forEach((item) => {
-      const current = map.get(item.stakeholder_id) || []
+  // Generated materials belong to the account: keyed by QA account id via
+  // generatedMaterial.business_id, which the entity map aliases to
+  // BusinessAccountId (same id getBusinessQaAccountId resolves).
+  const generatedByBusiness = React.useMemo(() => {
+    const map = new Map<string, GeneratedMaterial[]>()
+    generatedMaterials.filter((item) => !!item.business_id).forEach((item) => {
+      const qaAccountId = item.business_id as string
+      const current = map.get(qaAccountId) || []
       current.push(item)
-      map.set(item.stakeholder_id, current)
+      map.set(qaAccountId, current)
     })
     return map
   }, [generatedMaterials])
-
-  const adminTaskByStakeholder = React.useMemo(() => {
-    const map = new Map<string, typeof adminTasks[number]>()
-    adminTasks
-      .filter((task) => task.task_type === 'stakeholder_setup')
-      .forEach((task) => {
-        if (map.has(task.stakeholder_id)) return
-        map.set(task.stakeholder_id, task)
-      })
-    return map
-  }, [adminTasks])
 
   const offersByBusiness = React.useMemo(() => {
     const map = new Map<string, typeof offers>()
@@ -387,6 +371,8 @@ export default function BusinessOnboardingPage() {
     return map
   }, [offers])
 
+  // Keyed by QA account id (qr.business_id mirrors qr.entity_id for business
+  // rows), not by the dashboard's business.id.
   const qrByBusiness = React.useMemo(() => {
     const map = new Map<string, typeof qrCodes>()
     qrCodes.forEach((item) => {
@@ -547,15 +533,13 @@ export default function BusinessOnboardingPage() {
 
   const refreshExecutionBoards = React.useCallback(() => {
     refetch({ silent: true })
-    refetchStakeholders({ silent: true })
-    refetchStakeholderCodes({ silent: true })
     refetchGeneratedMaterials({ silent: true })
     refetchFlows({ silent: true })
     refetchSteps({ silent: true })
     refetchOffers({ silent: true })
     refetchQrCodes({ silent: true })
     refetchAssignments({ silent: true })
-  }, [refetch, refetchAssignments, refetchFlows, refetchGeneratedMaterials, refetchOffers, refetchQrCodes, refetchStakeholderCodes, refetchStakeholders, refetchSteps])
+  }, [refetch, refetchAssignments, refetchFlows, refetchGeneratedMaterials, refetchOffers, refetchQrCodes, refetchSteps])
 
   async function handleCompleteStep(businessId: string, stepId: string) {
     setBusyStepId(stepId)
@@ -590,16 +574,24 @@ export default function BusinessOnboardingPage() {
   // ── Helper: build enriched business data ──────────────────────
   function getBusinessDetail(business: Business) {
     const flow = flowByBusiness.get(business.id)
-    const stakeholder = stakeholderByBusiness.get(business.id) || null
-    const stakeholderCodesForBusiness = stakeholder ? codesByStakeholder.get(stakeholder.id) || null : null
+    const businessQaAccountId = qaAccountIdByBusiness.get(business.id) || null
     const businessMetadata = (business.metadata as Record<string, unknown> | null) || {}
-    // QA business records have explicit capture and network fields. Do not
-    // synthesize legacy stakeholder codes by copying one value into another.
-    const codes = stakeholderCodesForBusiness || null
-    const generated = stakeholder ? generatedByStakeholder.get(stakeholder.id) || [] : []
+    // Replaces the retired stakeholder_codes lookup (always []). QA business
+    // records have explicit capture and network fields; do not synthesize
+    // legacy stakeholder codes by copying one value into another. The
+    // backend-assigned referral code IS the join/connection code in the
+    // stakeholder-free QA model — same convention as
+    // src/components/crm/business-execution-overview.tsx. business-execution.ts
+    // types this as StakeholderCode for historical reasons but only reads
+    // referral_code/connection_code/join_url off it.
+    const businessReferralCode = (business as Business & { referral_code?: string | null }).referral_code || null
+    const codes = businessReferralCode
+      ? ({ referral_code: businessReferralCode, connection_code: null, join_url: null } as unknown as StakeholderCode)
+      : null
+    const generated = businessQaAccountId ? generatedByBusiness.get(businessQaAccountId) || [] : []
     const generatedReady = generated.filter((item) => item.generation_status === 'generated')
     const businessOffers = offersByBusiness.get(business.id) || []
-    const businessQrCodes = qrByBusiness.get(business.id) || []
+    const businessQrCodes = businessQaAccountId ? qrByBusiness.get(businessQaAccountId) || [] : []
     const captureMetadata = businessMetadata.customer_capture
     const captureRecord = captureMetadata && typeof captureMetadata === 'object'
       ? captureMetadata as Record<string, unknown>
@@ -672,7 +664,16 @@ export default function BusinessOnboardingPage() {
     const businessOutreach = (outreachByBusiness.get(business.id) || [])
       .slice()
       .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-    const adminTask = stakeholder ? adminTaskByStakeholder.get(stakeholder.id) || null : null
+    // TODO: this used to look up a DashboardAdminTask (task_type
+    // "stakeholder_setup") keyed on the now-retired per-business stakeholder
+    // row, and surfaced it below as `taskStatus` ("Setup task" pill + link).
+    // stakeholders always returned [] since the Supabase cutover, so
+    // stakeholderByBusiness.get(business.id) was always undefined and this was
+    // always null in production already. There is no replacement: backend
+    // App/Models/Dashboard/DashboardAdminTask.cs only has a StakeholderId
+    // column, no BusinessId, so a task can no longer be tied to a specific
+    // business without a backend migration. Flagging to Kenneth rather than
+    // inventing an endpoint — same gap as the cause onboarding page.
     const latestOutreach = businessOutreach[0]
     const nextFollowUp = businessOutreach
       .filter((activity) => activity.next_step || activity.next_step_date)
@@ -696,7 +697,6 @@ export default function BusinessOnboardingPage() {
 
     return {
       flow,
-      stakeholder,
       codes,
       generated: generatedReady,
       generatedAll: generated,
@@ -717,7 +717,7 @@ export default function BusinessOnboardingPage() {
       engagementAssets,
       generatedCount: generatedReady.length,
       qrCount: businessQrCodes.length,
-      taskStatus: adminTask?.status || null,
+      taskStatus: null as string | null,
       captureOffer,
       qrGeneratorHref,
       qrCodes: businessQrCodes,
