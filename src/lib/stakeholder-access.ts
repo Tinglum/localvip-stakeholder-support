@@ -84,7 +84,6 @@ const CONSUMER_NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
   { label: 'My Wallet', href: '/portal/me/wallet', icon: 'TrendingUp', minLevel: 0 },
   { label: 'My Network', href: '/portal/me/network', icon: 'Users', minLevel: 0 },
-  { label: 'Pay it Forward', href: '/portal/me/pay-it-forward', icon: 'HandHeart', minLevel: 0 },
   { label: 'My Transactions', href: '/portal/me/transactions', icon: 'ScrollText', minLevel: 0 },
   { label: 'My Causes', href: '/portal/me/causes', icon: 'Heart', minLevel: 0 },
 ]
