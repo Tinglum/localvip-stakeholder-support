@@ -48,8 +48,6 @@ import {
   useOnboardingFlows,
   useOnboardingSteps,
   useQrCodes,
-  useStakeholderCodes,
-  useStakeholders,
   useTaskInsert,
   useTaskUpdate,
   useTasks,
@@ -61,6 +59,7 @@ import {
   getTabForReadinessCheck,
 } from '@/lib/cause-execution'
 import { buildStakeholderJoinUrl, MATERIAL_LIBRARY_FOLDERS, getMaterialLibraryFolderMeta } from '@/lib/material-engine'
+import { deriveCommunityCodes } from '@/lib/community-codes'
 import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
@@ -83,7 +82,7 @@ function getCauseQaAccountId(cause: { external_id?: string | null; metadata?: Re
 export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab?: DashboardTab }) {
   const { profile, roleLabel } = useAuth()
   const [activeTab, setActiveTab] = React.useState<DashboardTab>(initialTab)
-  const { data: causes } = useCauses()
+  const { data: causes, loading: causesLoading } = useCauses()
   const { data: contacts } = useContacts()
   const { data: businesses } = useBusinesses()
   const [savingCause, setSavingCause] = React.useState(false)
@@ -118,25 +117,26 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
     [contacts, scopedCause?.id]
   )
 
-  const { data: stakeholderRecords } = useStakeholders(
-    { cause_id: scopedCause?.id || '' },
-    { enabled: Boolean(scopedCause?.id) },
-  )
-  const scopedStakeholder = React.useMemo(
-    () => stakeholderRecords.find((s) => s.cause_id === scopedCause?.id) || null,
-    [scopedCause?.id, stakeholderRecords]
+  // The QA account id, which is what every backend filter below is keyed on.
+  // scopedCause.id is the dashboard's own id and is NOT interchangeable with it.
+  const causeQaAccountId = React.useMemo(() => getCauseQaAccountId(scopedCause), [scopedCause])
+
+  const { data: qrCodes } = useQrCodes(
+    { cause_id: causeQaAccountId || '__none__' },
+    { enabled: Boolean(causeQaAccountId) },
   )
 
-  const { data: stakeholderCodes } = useStakeholderCodes(
-    { stakeholder_id: scopedStakeholder?.id || '' },
-    { enabled: Boolean(scopedStakeholder?.id) },
+  // Replaces the retired stakeholder_codes lookup. That table returns [] for
+  // every caller, so this page could never resolve a code and always rendered
+  // "No stakeholder for this cause" — including for causes whose QR was live.
+  const codes = React.useMemo(
+    () => deriveCommunityCodes(qrCodes, causeQaAccountId),
+    [qrCodes, causeQaAccountId],
   )
-  const codes = stakeholderCodes[0] || null
 
-  const { data: qrCodes } = useQrCodes({ cause_id: scopedCause?.id || '__none__' })
   const { data: generatedMaterials } = useGeneratedMaterials(
-    { stakeholder_id: scopedStakeholder?.id || '' },
-    { enabled: Boolean(scopedStakeholder?.id) },
+    { cause_id: causeQaAccountId || '' },
+    { enabled: Boolean(causeQaAccountId) },
   )
   const { data: allMaterials } = useMaterials()
   const { data: flows } = useOnboardingFlows({ entity_type: 'cause', entity_id: scopedCause?.id || '__none__' })
@@ -436,6 +436,8 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   }
 
   // ─── No cause linked ───
+  if (causesLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your cause...</div>
+
   if (!scopedCause) {
     return (
       <EmptyState

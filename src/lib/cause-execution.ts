@@ -4,8 +4,8 @@ import type {
   OnboardingStage,
   OnboardingStep,
   QrCode,
-  StakeholderCode,
 } from '@/lib/types/database'
+import type { CommunityCodes } from '@/lib/community-codes'
 
 // ─── Step keys ──────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ export function getCauseExecutionStepKey(step: OnboardingStep, index: number): C
 export function computeCauseExecutionSteps(input: {
   cause: Cause
   steps: OnboardingStep[]
-  codes: StakeholderCode | null
+  codes: CommunityCodes | null
   generatedMaterials: GeneratedMaterial[]
   qrCodes: QrCode[]
   outreachCount: number
@@ -148,7 +148,7 @@ export interface CauseReadinessScore {
 export function computeCauseReadiness(input: {
   cause: Cause
   steps: OnboardingStep[]
-  codes: StakeholderCode | null
+  codes: CommunityCodes | null
   generatedMaterials: GeneratedMaterial[]
   qrCodes: QrCode[]
   outreachCount: number
@@ -213,7 +213,7 @@ export function getTabForReadinessCheck(label: string): string {
 export function getCauseNextActions(input: {
   cause: Cause
   steps: CauseExecutionStepSummary[]
-  codes: StakeholderCode | null
+  codes: CommunityCodes | null
   generatedMaterials: GeneratedMaterial[]
   qrCodes: QrCode[]
   outreachCount: number
@@ -302,7 +302,7 @@ export interface CauseOnboardingChecklist {
 export function computeCauseOnboardingChecklist(input: {
   cause: Cause
   steps: OnboardingStep[]
-  codes: StakeholderCode | null
+  codes: CommunityCodes | null
   generatedMaterials: GeneratedMaterial[]
   qrCodes: QrCode[]
   outreachCount: number

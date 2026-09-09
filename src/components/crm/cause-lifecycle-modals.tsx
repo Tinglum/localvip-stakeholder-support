@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { formatDateTime } from '@/lib/utils'
+import type { CommunityCodes } from '@/lib/community-codes'
 import type {
   Cause,
   City,
@@ -38,7 +39,6 @@ import type {
   OutreachActivity,
   Profile,
   QrCode as QrCodeType,
-  StakeholderCode,
 } from '@/lib/types/database'
 
 // ═══════════════════════════════════════════
@@ -440,7 +440,7 @@ export function LeaderConversationModal({
 export interface CauseMaterialsQrModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  codes: StakeholderCode | null
+  codes: CommunityCodes | null
   generatedMaterials: GeneratedMaterial[]
   qrCodes: QrCodeType[]
   joinUrl: string | null

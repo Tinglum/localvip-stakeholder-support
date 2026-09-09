@@ -175,6 +175,13 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     created_by: 'CreatedByUserId',
     entity_id: 'EntityId',
     entity_type: 'EntityType',
+    // Callers ask for a cause's or a business's QR codes by account id. The
+    // backend filters on EntityId, and causes and businesses share one Accounts
+    // id space, so both alias onto it. Without these the filter fell through as
+    // an unrecognised ?causeId=, ASP.NET dropped it, and every caller silently
+    // received EVERY QR code in the system.
+    cause_id: 'EntityId',
+    business_id: 'EntityId',
     short_code: 'Code',
     destination_url: 'TargetUrl',
     qr_image_url: 'QrImageUrl',

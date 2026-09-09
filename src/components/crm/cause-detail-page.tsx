@@ -62,6 +62,7 @@ import {
 } from '@/components/crm/cause-lifecycle-modals'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { buildConsumerReferralUrl, MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
+import type { CommunityCodes } from '@/lib/community-codes'
 import { EMPTY_UUID, asUuid } from '@/lib/uuid'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/context'
@@ -92,8 +93,6 @@ import {
   useProfiles,
   useQrCodes,
   useStakeholderAssignments,
-  useStakeholderCodes,
-  useStakeholders,
   useTaskInsert,
   useTaskUpdate,
   useTasks,
@@ -104,7 +103,6 @@ import type {
   GeneratedMaterial,
   OnboardingStage,
   OutreachType,
-  StakeholderCode,
   TaskPriority,
 } from '@/lib/types/database'
 
@@ -169,8 +167,6 @@ export default function CauseDetailPage() {
   const { data: cities } = useCities()
   const { data: campaigns } = useCampaigns()
   const { data: allBusinesses } = useBusinesses()
-  const { data: allStakeholders, refetch: refetchStakeholders } = useStakeholders()
-  const { data: allStakeholderCodes, refetch: refetchCodes } = useStakeholderCodes()
   const { data: allGeneratedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials()
   const { data: allMaterialRecords, refetch: refetchMaterialRecords } = useMaterials()
   const { data: assignments } = useStakeholderAssignments({ entity_id: causeId })
@@ -226,19 +222,16 @@ export default function CauseDetailPage() {
           referral_code: rc,
           connection_code: rc,
           join_url: buildConsumerReferralUrl(rc),
-        } as unknown as StakeholderCode)
+        } as CommunityCodes)
       : null
   }, [cause])
   const { data: adminTasks, refetch: refetchAdminTasks } = useAdminTasks({ stakeholder_id: EMPTY_UUID })
-  const causeStakeholder = React.useMemo(
-    () => allStakeholders.find((stakeholder) => stakeholder.cause_id === causeId) || null,
-    [allStakeholders, causeId],
-  )
+  // Materials belong to the cause account directly. The stakeholder indirection
+  // this used to try first was retired with the QA cutover and always resolved
+  // to null, so only the cause_id branch ever ran.
   const generatedMaterials = React.useMemo(
-    () => causeStakeholder
-      ? allGeneratedMaterials.filter((material) => material.stakeholder_id === causeStakeholder.id)
-      : allGeneratedMaterials.filter((material) => material.cause_id === causeId),
-    [allGeneratedMaterials, causeId, causeStakeholder],
+    () => allGeneratedMaterials.filter((material) => material.cause_id === causeId),
+    [allGeneratedMaterials, causeId],
   )
   const causeMaterialMap = React.useMemo(() => new Map(allMaterialRecords.map(m => [m.id, m])), [allMaterialRecords])
   const generatedMaterialPairs = React.useMemo(() =>

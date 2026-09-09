@@ -33,6 +33,7 @@ import {
   ActivationDecisionModal,
 } from '@/components/crm/cause-lifecycle-modals'
 import { useAuth } from '@/lib/auth/context'
+import type { CommunityCodes } from '@/lib/community-codes'
 import { asUuid } from '@/lib/uuid'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -91,7 +92,6 @@ import type {
   QrCode as QrCodeRow,
   Stakeholder,
   StakeholderAssignment,
-  StakeholderCode,
   StakeholderType,
   Task,
 } from '@/lib/types/database'
@@ -144,7 +144,7 @@ interface CauseDetailData {
   nextFollowUp: OutreachActivity | undefined
   linkedBusinesses: Business[]
   stakeholder: Stakeholder | null
-  codes: StakeholderCode | null
+  codes: CommunityCodes | null
   codesReady: boolean
   joinUrl: string | null
   generated: GeneratedMaterial[]
