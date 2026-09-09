@@ -1913,7 +1913,7 @@ export default function CauseDetailPage() {
             generatedCount={generatedCount}
             qrCount={causeQrCodes.length}
             codesReady={false}
-            stakeholderReady={false}
+            stakeholderReady={Boolean(cause.name && cause.email)}
             onCompleteStep={(() => {
               const step = getExecutionStep('activation_decision')
               return step?.step.id && step.state === 'active' && step.readyToComplete

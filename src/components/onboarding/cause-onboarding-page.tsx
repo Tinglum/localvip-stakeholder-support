@@ -146,6 +146,7 @@ interface CauseDetailData {
   joinUrl: string | null
   generated: GeneratedMaterial[]
   generatedCount: number
+  qrCodes: QrCodeRow[]
   qrCount: number
   qrGeneratorHref: string
   coverPhotoUrl: string | null
@@ -676,6 +677,7 @@ export default function CauseOnboardingPage() {
       joinUrl: codes?.join_url || null,
       generated,
       generatedCount,
+      qrCodes: causeQrCodes,
       qrCount: causeQrCodes.length,
       qrGeneratorHref,
       coverPhotoUrl,
@@ -1224,6 +1226,9 @@ function CauseDetailModal({
   const [uploadBusy, setUploadBusy] = React.useState<'logo' | 'cover' | null>(null)
   const [assetError, setAssetError] = React.useState<string | null>(null)
   const [assetMessage, setAssetMessage] = React.useState<string | null>(null)
+  const [engineBusy, setEngineBusy] = React.useState<'generate' | null>(null)
+  const [engineMessage, setEngineMessage] = React.useState<string | null>(null)
+  const [engineError, setEngineError] = React.useState<string | null>(null)
   const [localLogoUrl, setLocalLogoUrl] = React.useState(cause.logo_url)
   const [localCoverUrl, setLocalCoverUrl] = React.useState(detail.coverPhotoUrl)
   const logoInputRef = React.useRef<HTMLInputElement | null>(null)
@@ -1237,6 +1242,43 @@ function CauseDetailModal({
 
   React.useEffect(() => setLocalLogoUrl(cause.logo_url), [cause.logo_url])
   React.useEffect(() => setLocalCoverUrl(coverPhotoUrl), [coverPhotoUrl])
+
+  async function handleGenerateMaterials() {
+    setEngineBusy('generate')
+    setEngineMessage('Preparing materials...')
+    setEngineError(null)
+    try {
+      const listResponse = await fetch(`/api/crm/causes/${cause.id}/execution`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list_generation_templates' }),
+      })
+      const listBody = await listResponse.json().catch(() => ({}))
+      if (!listResponse.ok) throw new Error(listBody.error || 'Templates could not be loaded.')
+      const templates = Array.isArray(listBody.templates) ? listBody.templates : []
+      if (templates.length === 0) {
+        setEngineMessage('No active auto-generation templates were found.')
+        return
+      }
+      for (const [index, template] of templates.entries()) {
+        setEngineMessage(`Generating materials (${index + 1}/${templates.length})...`)
+        const response = await fetch(`/api/crm/causes/${cause.id}/execution`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'generate_template', templateId: template.id }),
+        })
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(body.error || 'A material could not be generated.')
+      }
+      setEngineMessage('Materials generated. Refreshing...')
+      onStageChanged()
+    } catch (error) {
+      setEngineMessage(null)
+      setEngineError(error instanceof Error ? error.message : 'Materials could not be generated.')
+    } finally {
+      setEngineBusy(null)
+    }
+  }
 
   async function handleUploadMedia(mediaType: 'logo' | 'cover_photo', file: File) {
     if (!file.type.startsWith('image/')) {
@@ -1699,13 +1741,15 @@ function CauseDetailModal({
         onOpenChange={(v) => !v && setLifecycleModal(null)}
         codes={detail.codes}
         generatedMaterials={detail.generated}
-        qrCodes={[]}
+        qrCodes={detail.qrCodes}
         joinUrl={detail.joinUrl}
-        engineBusy={null}
-        saving={false}
-        blocker={null}
+        engineBusy={engineBusy}
+        engineMessage={engineMessage}
+        engineError={engineError}
+        saving={engineBusy !== null}
+        blocker={detail.qrCount === 0 ? 'Create the cause QR code before generating materials.' : null}
         readyToComplete={false}
-        onGenerateMaterials={async () => {}}
+        onGenerateMaterials={handleGenerateMaterials}
       />
 
       <ActivationDecisionModal
@@ -1716,15 +1760,7 @@ function CauseDetailModal({
         generatedCount={detail.generatedCount}
         qrCount={detail.qrCount}
         codesReady={detail.codesReady}
-        // TODO: `stakeholderReady` is a prop on ActivationDecisionModal
-        // (src/components/crm/cause-lifecycle-modals.tsx, out of scope for
-        // this migration) that expects a "was a stakeholder setup record
-        // created" flag. That record no longer exists — see the note by
-        // getCauseDetail above. This was already always false in production
-        // (stakeholders always returned []), so the modal has always shown
-        // "Stakeholder: Missing" here; passing `false` keeps that unchanged
-        // rather than fabricating readiness.
-        stakeholderReady={false}
+        stakeholderReady={Boolean(cause.name && cause.email)}
         saving={false}
         blocker={null}
         readyToComplete={detail.codesReady && detail.generatedCount > 0}

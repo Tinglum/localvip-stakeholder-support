@@ -664,16 +664,6 @@ export default function BusinessOnboardingPage() {
     const businessOutreach = (outreachByBusiness.get(business.id) || [])
       .slice()
       .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-    // TODO: this used to look up a DashboardAdminTask (task_type
-    // "stakeholder_setup") keyed on the now-retired per-business stakeholder
-    // row, and surfaced it below as `taskStatus` ("Setup task" pill + link).
-    // stakeholders always returned [] since the Supabase cutover, so
-    // stakeholderByBusiness.get(business.id) was always undefined and this was
-    // always null in production already. There is no replacement: backend
-    // App/Models/Dashboard/DashboardAdminTask.cs only has a StakeholderId
-    // column, no BusinessId, so a task can no longer be tied to a specific
-    // business without a backend migration. Flagging to Kenneth rather than
-    // inventing an endpoint — same gap as the cause onboarding page.
     const latestOutreach = businessOutreach[0]
     const nextFollowUp = businessOutreach
       .filter((activity) => activity.next_step || activity.next_step_date)
@@ -717,7 +707,7 @@ export default function BusinessOnboardingPage() {
       engagementAssets,
       generatedCount: generatedReady.length,
       qrCount: businessQrCodes.length,
-      taskStatus: null as string | null,
+      taskStatus: businessTasks[0]?.status || null,
       captureOffer,
       qrGeneratorHref,
       qrCodes: businessQrCodes,

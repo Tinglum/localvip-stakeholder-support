@@ -712,7 +712,7 @@ export function ActivationDecisionModal({
             <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
               <p className="text-sm font-semibold text-surface-900">Setup Status</p>
               <div className="mt-3 space-y-2">
-                <Stat label="Stakeholder" value={stakeholderReady ? 'Created' : 'Missing'} ok={stakeholderReady} />
+                <Stat label="Profile" value={stakeholderReady ? 'Ready' : 'Needs details'} ok={stakeholderReady} />
                 <Stat label="Codes" value={codesReady ? 'Ready' : 'Missing'} ok={codesReady} />
               </div>
             </div>
