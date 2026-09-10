@@ -750,6 +750,8 @@ export interface QaDealRow {
   cash_back: number
   description: string | null
   active: boolean
+  super_cashback?: boolean
+  super_cb_date?: string | null
   is_recurring: boolean
   days_of_week_mask: number | null
   daily_start_minutes: number | null

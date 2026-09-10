@@ -65,6 +65,7 @@ interface DealForm {
   id: string | null
   cashBack: string
   active: boolean
+  isGiveBackDay: boolean
   isRecurring: boolean
   days: boolean[]
   startTime: string
@@ -78,6 +79,7 @@ const emptyForm: DealForm = {
   id: null,
   cashBack: String(STANDARD_TOTAL_CONTRIBUTION),
   active: true,
+  isGiveBackDay: false,
   isRecurring: false,
   days: [false, true, true, true, true, true, false],
   startTime: '',
@@ -94,6 +96,7 @@ function dealToForm(deal: QaDealRow): DealForm {
     id: deal.id,
     cashBack: String(deal.cash_back ?? STANDARD_TOTAL_CONTRIBUTION),
     active: !!deal.active,
+    isGiveBackDay: !!deal.super_cashback,
     isRecurring: !!deal.is_recurring,
     days: maskToDays(deal.days_of_week_mask),
     startTime: minutesToTime(deal.daily_start_minutes),
@@ -114,6 +117,7 @@ function validateDeal(form: DealForm): string[] {
   if (!Number.isFinite(cashback) || cashback < MIN_TOTAL_CONTRIBUTION || cashback > MAX_TOTAL_CONTRIBUTION) {
     errors.push(`Total contribution must be between ${MIN_TOTAL_CONTRIBUTION}% and ${MAX_TOTAL_CONTRIBUTION}%.`)
   }
+  if (form.isGiveBackDay && cashback !== 20) errors.push('Give Back Day must use a 20% total contribution.')
   if (!start) errors.push('Choose a valid start date.')
   if (!Number.isInteger(duration) || duration < 1) {
     errors.push('Duration must be at least 1 day.')
@@ -228,6 +232,8 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
         cash_back: Number(form.cashBack),
         description: `${Number(form.cashBack)}% total contribution`,
         active: form.active,
+        super_cashback: form.isGiveBackDay,
+        super_cb_date: form.isGiveBackDay ? new Date(`${form.startDate}T00:00:00Z`).toISOString() : null,
         is_recurring: form.isRecurring,
         days_of_week_mask: form.isRecurring ? daysToMask(form.days) : null,
         daily_start_minutes: timeToMinutes(form.startTime),
@@ -260,6 +266,8 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
         cash_back: deal.cash_back,
         description: deal.description,
         active: !deal.active,
+        super_cashback: deal.super_cashback,
+        super_cb_date: deal.super_cb_date,
         is_recurring: deal.is_recurring,
         days_of_week_mask: deal.days_of_week_mask,
         daily_start_minutes: deal.daily_start_minutes,
@@ -362,6 +370,25 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
             </div>
 
             <div className="rounded-2xl border border-brand-200 bg-white p-5">
+              <label className="mb-5 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={form.isGiveBackDay}
+                  onChange={(event) => setForm({
+                    ...form,
+                    isGiveBackDay: event.target.checked,
+                    cashBack: event.target.checked ? '20' : form.cashBack,
+                    isRecurring: event.target.checked ? false : form.isRecurring,
+                    durationDays: event.target.checked ? '1' : form.durationDays,
+                    endDate: event.target.checked && form.startDate ? form.startDate : form.endDate,
+                  })}
+                  className="mt-1 h-4 w-4 accent-amber-600"
+                />
+                <span>
+                  <span className="block font-semibold text-amber-950">Make this the annual Give Back Day</span>
+                  <span className="mt-1 block text-sm text-amber-800">For this one day, customers receive no cashback. The full 20% goes to the business&apos;s designated cause.</span>
+                </span>
+              </label>
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <label htmlFor="deal-cashback" className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
@@ -371,7 +398,7 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
                     {form.cashBack}<span className="text-2xl text-brand-600">%</span>
                   </p>
                 </div>
-                <Badge variant="info">Customer bank cashback: {Math.max(0, Number(form.cashBack) - FIXED_SUCCESS_ALLOCATION)}%</Badge>
+                <Badge variant="info">{form.isGiveBackDay ? 'Cause receives 20%' : `Customer bank cashback: ${Math.max(0, Number(form.cashBack) - FIXED_SUCCESS_ALLOCATION)}%`}</Badge>
               </div>
               <input
                   id="deal-cashback"
