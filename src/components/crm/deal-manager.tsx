@@ -322,7 +322,7 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
             <CardTitle>{isPortal ? 'Your LocalVIP deals' : isSetup ? 'Create your LocalVIP deal' : 'LocalVIP Deals'}</CardTitle>
             <p className="mt-2 text-sm leading-6 text-surface-600">
               {isPortal
-                ? 'Choose your total contribution, dates, days, and times. Customer cashback is calculated automatically after the fixed 12% success allocation.'
+                ? 'Choose your total contribution, dates, days, and times. LocalVIP shows customers the reward available before they pay.'
                 : isSetup
                   ? 'Choose your total contribution and exactly when customers can use the deal.'
                 : 'Create and schedule business contributions shown to customers as calculated cashback. Overlapping active schedules are blocked.'}

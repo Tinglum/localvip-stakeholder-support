@@ -292,7 +292,7 @@ export default function MyCausesPage() {
     <div className="mx-auto max-w-4xl">
       <PageHeader
         title="My Causes"
-        description="Choose where your support goes. Pick up to five causes and decide how to split your impact between them."
+        description="Choose the causes you care about and see the support you are creating for each one."
         breadcrumb={[{ label: 'Portal', href: '/portal' }, { label: 'My Causes' }]}
         actions={<SaveIndicator status={saveStatus} />}
       />
