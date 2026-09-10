@@ -31,7 +31,6 @@ import {
   useBusinessEditor,
 } from '@/components/business/business-editor'
 import { getActivationLabel, getActivationTone } from '@/lib/business-portal'
-import { formatCashbackLabel } from '@/lib/offers'
 import { useCauses } from '@/lib/supabase/hooks'
 
 function launchPhaseLabel(value: string) {
@@ -83,7 +82,7 @@ export function BusinessProfilePage() {
         : 'in_progress')
   const cashbackDeal = editor.deals.find((deal) => deal.active) || editor.deals[0] || null
   const cashbackValue = cashbackDeal ? Number(cashbackDeal.cash_back) : NaN
-  const cashbackLabel = Number.isFinite(cashbackValue) ? formatCashbackLabel(cashbackValue) : 'No deal configured'
+  const cashbackLabel = Number.isFinite(cashbackValue) ? `${cashbackValue}% total contribution` : 'No deal configured'
   const linkedCause = causes.find((cause) => cause.id === business.linked_cause_id) || null
 
   return (
@@ -155,7 +154,7 @@ export function BusinessProfilePage() {
       <ActionSection
         id="deal"
         title="LocalVIP deal"
-        description="The cashback percentage and the days and times customers can shop and earn it."
+        description="The total contribution and the days and times customers can shop and earn calculated cashback."
         complete={isStepComplete('cashback')}
         bodyClassName="p-0"
       >

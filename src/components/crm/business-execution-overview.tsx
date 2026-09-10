@@ -197,7 +197,7 @@ export function BusinessExecutionOverview({
   const captureOffer = resolveBusinessOffer(biz, offers, 'capture')
   const cashbackDeal = deals.find((deal) => deal.active) || deals[0] || null
   const cashbackValue = cashbackDeal ? Number(cashbackDeal.cash_back) : NaN
-  const cashbackReady = Number.isFinite(cashbackValue) && cashbackValue >= 1 && cashbackValue <= 36
+  const cashbackReady = Number.isFinite(cashbackValue) && cashbackValue >= 12 && cashbackValue <= 25
   const generatedCount = generatedMaterials.filter((item) => item.generation_status === 'generated' && !!item.generated_file_url).length
   const generationState = generatedCount > 0
     ? 'generated'
@@ -937,7 +937,7 @@ export function BusinessExecutionOverview({
             <WorkspaceTabButton
               active={activeWorkspaceTab === 'deal'}
               label="Deal"
-              meta="LocalVIP cashback"
+              meta="Total contribution"
               onClick={() => setActiveWorkspaceTab('deal')}
             />
             <WorkspaceTabButton

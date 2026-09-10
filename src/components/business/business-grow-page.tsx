@@ -328,7 +328,7 @@ export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = 
   const cashbackPercent = React.useMemo(() => {
     const deal = sourceDeals.find((item) => item.active) || sourceDeals[0]
     const value = Number(deal?.cash_back)
-    return Number.isFinite(value) ? value : null
+    return Number.isFinite(value) && value > 12 ? value - 12 : null
   }, [sourceDeals])
 
   const joinedCount = React.useMemo(

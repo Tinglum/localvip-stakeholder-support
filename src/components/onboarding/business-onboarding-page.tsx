@@ -1256,7 +1256,7 @@ function getChecklistItemGuidance(itemId: string) {
     case 'capture_offer':
       return { action: 'Set capture offer', detail: 'Create the offer used to build the first customer list.' }
     case 'live_offer':
-      return { action: 'Manage live offers', detail: 'Set live LocalVIP cashback offers separately from pre-launch capture.' }
+      return { action: 'Manage live offers', detail: 'Set total contribution and scheduling separately from pre-launch capture.' }
     case 'logo':
     case 'cover':
       return { action: 'Upload branding', detail: 'Upload the image used on the business profile and materials.' }

@@ -10,6 +10,10 @@ import { Input } from '@/components/ui/input'
 import { useDealInsert, useDeals, useDealUpdate, type QaDealRow } from '@/lib/supabase/hooks'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MIN_TOTAL_CONTRIBUTION = 12
+const MAX_TOTAL_CONTRIBUTION = 25
+const STANDARD_TOTAL_CONTRIBUTION = 20
+const FIXED_SUCCESS_ALLOCATION = 12
 
 function minutesToTime(minutes: number | null | undefined): string {
   if (minutes == null) return ''
@@ -72,7 +76,7 @@ interface DealForm {
 
 const emptyForm: DealForm = {
   id: null,
-  cashBack: '10',
+  cashBack: String(STANDARD_TOTAL_CONTRIBUTION),
   active: true,
   isRecurring: false,
   days: [false, true, true, true, true, true, false],
@@ -88,7 +92,7 @@ function dealToForm(deal: QaDealRow): DealForm {
   const endDate = (deal.end_date || '').slice(0, 10)
   return {
     id: deal.id,
-    cashBack: String(deal.cash_back ?? 10),
+    cashBack: String(deal.cash_back ?? STANDARD_TOTAL_CONTRIBUTION),
     active: !!deal.active,
     isRecurring: !!deal.is_recurring,
     days: maskToDays(deal.days_of_week_mask),
@@ -107,8 +111,8 @@ function validateDeal(form: DealForm): string[] {
   const start = parseDate(form.startDate)
   const end = parseDate(form.endDate)
 
-  if (!Number.isFinite(cashback) || cashback < 1 || cashback > 36) {
-    errors.push('Cashback must be between 1% and 36%.')
+  if (!Number.isFinite(cashback) || cashback < MIN_TOTAL_CONTRIBUTION || cashback > MAX_TOTAL_CONTRIBUTION) {
+    errors.push(`Total contribution must be between ${MIN_TOTAL_CONTRIBUTION}% and ${MAX_TOTAL_CONTRIBUTION}%.`)
   }
   if (!start) errors.push('Choose a valid start date.')
   if (!Number.isInteger(duration) || duration < 1) {
@@ -222,7 +226,7 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
       const payload: Partial<QaDealRow> = {
         business_account_id: businessAccountId,
         cash_back: Number(form.cashBack),
-        description: `${Number(form.cashBack)}% cashback`,
+        description: `${Number(form.cashBack)}% total contribution`,
         active: form.active,
         is_recurring: form.isRecurring,
         days_of_week_mask: form.isRecurring ? daysToMask(form.days) : null,
@@ -318,10 +322,10 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
             <CardTitle>{isPortal ? 'Your LocalVIP deals' : isSetup ? 'Create your LocalVIP deal' : 'LocalVIP Deals'}</CardTitle>
             <p className="mt-2 text-sm leading-6 text-surface-600">
               {isPortal
-                ? 'Choose the cashback, dates, days, and times when customers can use each deal. You stay in control and can deactivate a deal whenever you need to.'
+                ? 'Choose your total contribution, dates, days, and times. Customer cashback is calculated automatically after the fixed 12% success allocation.'
                 : isSetup
-                  ? 'Choose your cashback percentage and exactly when customers can use the deal.'
-                : 'Create and schedule the cashback deals shown to customers. Overlapping active schedules are blocked.'}
+                  ? 'Choose your total contribution and exactly when customers can use the deal.'
+                : 'Create and schedule business contributions shown to customers as calculated cashback. Overlapping active schedules are blocked.'}
             </p>
           </div>
           {!form ? (
@@ -361,19 +365,19 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <label htmlFor="deal-cashback" className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
-                    Customer cashback
+                    Total business contribution
                   </label>
                   <p className="mt-1 text-4xl font-bold tracking-tight text-surface-900">
                     {form.cashBack}<span className="text-2xl text-brand-600">%</span>
                   </p>
                 </div>
-                <Badge variant="info">Set the reward customers receive</Badge>
+                <Badge variant="info">Customer bank cashback: {Math.max(0, Number(form.cashBack) - FIXED_SUCCESS_ALLOCATION)}%</Badge>
               </div>
               <input
                   id="deal-cashback"
                   type="range"
-                  min={1}
-                  max={36}
+                  min={MIN_TOTAL_CONTRIBUTION}
+                  max={MAX_TOTAL_CONTRIBUTION}
                   step={1}
                   value={form.cashBack}
                   onChange={(event) => setForm({ ...form, cashBack: event.target.value })}
@@ -381,9 +385,9 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
                   className="mt-5 h-2 w-full cursor-pointer appearance-none rounded-full bg-surface-200 accent-brand-600"
                 />
               <div id="deal-cashback-help" className="mt-2 flex justify-between text-xs text-surface-500">
-                <span>1%</span>
-                <span>Recommended: 10%</span>
-                <span>36%</span>
+                <span>{MIN_TOTAL_CONTRIBUTION}%</span>
+                <span>Standard: {STANDARD_TOTAL_CONTRIBUTION}%</span>
+                <span>{MAX_TOTAL_CONTRIBUTION}%</span>
               </div>
             </div>
 
@@ -553,7 +557,7 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
                 <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xl font-bold text-surface-900">{Number(deal.cash_back)}% cashback</span>
+                      <span className="text-xl font-bold text-surface-900">{Number(deal.cash_back)}% total contribution</span>
                       <Badge variant={deal.active ? 'success' : 'default'}>{deal.active ? 'Active' : 'Inactive'}</Badge>
                       <Badge variant="info">{deal.is_recurring ? 'Recurring weekly' : 'One-time'}</Badge>
                     </div>
@@ -569,7 +573,7 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
                       variant={deal.active ? 'outline' : 'success'}
                       onClick={() => void changeActiveStatus(deal)}
                       disabled={changingStatusId === deal.id}
-                      aria-label={`${deal.active ? 'Deactivate' : 'Activate'} ${Number(deal.cash_back)}% cashback deal`}
+                      aria-label={`${deal.active ? 'Deactivate' : 'Activate'} ${Number(deal.cash_back)}% contribution deal`}
                     >
                       {changingStatusId === deal.id
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />

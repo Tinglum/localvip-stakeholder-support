@@ -412,7 +412,7 @@ export function BusinessSetupWizardPage() {
               <p className="text-sm text-surface-600">
                 {isStepComplete('cashback')
                   ? 'Your LocalVIP deal is saved and ready for the next step.'
-                  : 'Save a cashback percentage and schedule before continuing.'}
+                  : 'Save a total contribution percentage and schedule before continuing.'}
               </p>
               <Button
                 className="h-12 shrink-0 px-6 text-base font-semibold"

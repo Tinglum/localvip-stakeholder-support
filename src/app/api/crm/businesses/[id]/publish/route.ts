@@ -102,12 +102,12 @@ export async function POST(
     const dealsResponse = await fetchQaApi(`/api/dashboard/v1/Deal?businessAccountId=${qaBusinessId}`)
     const dealsPayload = await parseQaResponse<unknown>(dealsResponse, 'Failed to verify business deals.')
     const cashbackValues = asItems<QaDeal>(dealsPayload).map((deal) => Number(deal.cashBack ?? deal.cash_back))
-    const hasValidCashback = cashbackValues.some((value) => Number.isFinite(value) && value >= 5 && value <= 25)
+    const hasValidCashback = cashbackValues.some((value) => Number.isFinite(value) && value >= 12 && value <= 25)
     if (!captureOffer || !(captureOffer.headline || captureOffer.title)?.trim()) {
       missingProfileItems.push('customer capture offer')
     }
     if (!hasValidCashback) {
-      missingProfileItems.push('cashback percentage')
+      missingProfileItems.push('total contribution percentage')
     }
     if (missingProfileItems.length > 0) {
       return NextResponse.json(

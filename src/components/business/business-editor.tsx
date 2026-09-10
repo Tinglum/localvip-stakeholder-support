@@ -688,7 +688,7 @@ export function useBusinessEditor(): BusinessEditor {
     hundredListInterest,
     dealConfigured: deals.some((deal) => {
       const cashback = Number(deal.cash_back)
-      if (!Number.isFinite(cashback) || cashback < 1 || cashback > 36) return false
+      if (!Number.isFinite(cashback) || cashback < 12 || cashback > 25) return false
       if (!deal.start_date || !deal.end_date) return false
       const start = new Date(deal.start_date)
       const end = new Date(deal.end_date)
