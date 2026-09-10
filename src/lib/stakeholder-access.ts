@@ -97,6 +97,9 @@ const SHARED_OPERATOR_CRM_ITEMS: NavItem = {
     { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 0 },
     { label: 'Schools / Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
     { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
+    // The people AT those accounts. Previously reachable only by opening a
+    // customer's profile and clicking through — reported as bug 168.
+    { label: 'Contacts', href: '/crm/people', icon: 'Contact', minLevel: 0 },
     { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 0 },
     { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
     { label: 'Outreach', href: '/crm/outreach', icon: 'Send', minLevel: 0 },

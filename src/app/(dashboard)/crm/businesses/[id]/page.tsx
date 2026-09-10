@@ -27,6 +27,7 @@ import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { RealLogInAsButton } from '@/components/crm/real-log-in-as-button'
 import { OpenInWebappButton } from '@/components/crm/open-in-webapp-button'
 import { QaImportedFieldsPanel, QaUniversalBacklogTable, type QaImportedFact } from '@/components/crm/qa-linking-panels'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -189,6 +190,7 @@ export default function BusinessDetailPage() {
     { enabled: fallbackEntityHooksEnabled },
   )
   const qrCodes = preferQaWorkspace ? qaQrCodes : (localState?.qrCodes || [])
+  const [causeSearch, setCauseSearch] = React.useState('')
   const { data: outreach, loading: outreachLoading, refetch: refetchOutreachItems } = useOutreach({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
   const { data: tasks, loading: tasksLoading, refetch: refetchTaskItems } = useTasks({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
   const { data: notes, loading: notesLoading, refetch: refetchNoteItems } = useNotes({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
@@ -979,11 +981,23 @@ export default function BusinessDetailPage() {
                   <SelectValue placeholder="Select a cause or school..." />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* Search as well as sort. Alphabetical alone still means
+                      scrolling a long list, which is what was asked for
+                      alongside the ordering. */}
+                  <div className="sticky top-0 z-10 bg-surface-0 p-2">
+                    <Input
+                      autoFocus
+                      value={causeSearch}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) => setCauseSearch(event.target.value)}
+                      placeholder="Search causes..."
+                      onKeyDown={(event: React.KeyboardEvent) => event.stopPropagation()}
+                    />
+                  </div>
                   <SelectItem value="__none">No linked cause</SelectItem>
-                  {/* Sorted by name: the list arrives in API order, which is
-                      neither alphabetical nor stable, so picking a cause out of
-                      more than a handful meant reading the whole dropdown. */}
                   {[...causes]
+                    .filter((item) =>
+                      !causeSearch.trim()
+                      || (item.name || '').toLowerCase().includes(causeSearch.trim().toLowerCase()))
                     .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
                     .map((item) => (
                       <SelectItem key={item.id} value={item.id}>

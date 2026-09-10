@@ -153,6 +153,7 @@ export default function OutreachPage() {
         onOpenChange={setAddOpen}
         performedByName={profile?.full_name}
         performedById={profile?.id}
+        people={profiles.map((item) => ({ id: item.id, full_name: item.full_name }))}
         businesses={businessOptions}
         causes={causeOptions}
         contacts={contactOptions}
@@ -165,6 +166,7 @@ export default function OutreachPage() {
         activity={editingActivity}
         performedByName={editingActivity ? (profileMap[editingActivity.performed_by] || profile?.full_name) : profile?.full_name}
         performedById={profile?.id}
+        people={profiles.map((item) => ({ id: item.id, full_name: item.full_name }))}
         businesses={businessOptions}
         causes={causeOptions}
         contacts={contactOptions}

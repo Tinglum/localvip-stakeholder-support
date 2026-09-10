@@ -99,6 +99,8 @@ export interface OutreachActivityDialogProps {
   activity?: OutreachActivity | null
   performedByName?: string
   performedById?: string
+  /** Everyone who can be recorded as having performed the activity. */
+  people?: Array<{ id: string; full_name: string }>
   businesses: OutreachEntityOption[]
   causes: OutreachEntityOption[]
   contacts: OutreachEntityOption[]
@@ -106,7 +108,7 @@ export interface OutreachActivityDialogProps {
 }
 
 export function OutreachActivityDialog({
-  open, onOpenChange, activity, performedByName, performedById,
+  open, onOpenChange, activity, performedByName, performedById, people = [],
   businesses, causes, contacts, onSaved,
 }: OutreachActivityDialogProps) {
   const isEdit = !!activity
@@ -120,6 +122,7 @@ export function OutreachActivityDialog({
   const [entityType, setEntityType] = React.useState<'business' | 'cause' | 'contact'>('business')
   const [entityId, setEntityId] = React.useState('')
   const [outcome, setOutcome] = React.useState('')
+  const [performerId, setPerformerId] = React.useState('')
   const [nextStep, setNextStep] = React.useState('')
   const [nextStepDate, setNextStepDate] = React.useState('')
 
@@ -143,6 +146,7 @@ export function OutreachActivityDialog({
       setEntityType(activity.entity_type)
       setEntityId(activity.entity_id)
       setOutcome(activity.outcome || '')
+      setPerformerId(activity.performed_by || performedById || '')
       setNextStep(activity.next_step || '')
       setNextStepDate(activity.next_step_date ? activity.next_step_date.slice(0, 10) : '')
       setError(null)
@@ -171,6 +175,9 @@ export function OutreachActivityDialog({
         subject: subject || null,
         entity_type: entityType,
         entity_id: entityId,
+        // Included on the UPDATE too, or reassigning the performer would appear
+        // to save and silently keep the original person.
+        performed_by: performerId || performedById,
         outcome: outcome || null,
         next_step: nextStep || null,
         next_step_date: nextStepDate || null,
@@ -190,7 +197,7 @@ export function OutreachActivityDialog({
       subject: subject || null,
       entity_type: entityType,
       entity_id: entityId,
-      performed_by: performedById,
+      performed_by: performerId || performedById,
       outcome: outcome || null,
       next_step: nextStep || null,
       next_step_date: nextStepDate || null,
@@ -245,12 +252,28 @@ export function OutreachActivityDialog({
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">Performed By</label>
-              <input
-                type="text"
-                readOnly
-                value={performedByName || ''}
-                className="h-9 w-full rounded-lg border border-surface-300 bg-surface-50 px-3 text-sm text-surface-500 cursor-not-allowed"
-              />
+              {/* Editable: an activity is often logged by someone other than the
+                  person who made the call, and reassigning it was asked for
+                  explicitly. Falls back to a read-only box only when there is no
+                  list of people to choose from. */}
+              {people.length > 0 ? (
+                <select
+                  value={performerId}
+                  onChange={(event) => setPerformerId(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
+                >
+                  {people.map((person) => (
+                    <option key={person.id} value={person.id}>{person.full_name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  readOnly
+                  value={performedByName || ''}
+                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-50 px-3 text-sm text-surface-500 cursor-not-allowed"
+                />
+              )}
             </div>
           </div>
           <div>
