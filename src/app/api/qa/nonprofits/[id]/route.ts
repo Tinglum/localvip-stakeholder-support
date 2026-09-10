@@ -60,6 +60,10 @@ export async function PUT(
     if (body.address === null || typeof body.address === 'string') profilePayload.address1 = body.address
     if (body.email === null || typeof body.email === 'string') profilePayload.ownerEmail = body.email
 
+    // The Website box on the setup dialog was collected, sent, and dropped here:
+    // there was no forwarding line, and until now no column behind it either.
+    if (body.website === null || typeof body.website === 'string') profilePayload.website = body.website
+
     // The backend stores a city NAME and STATE on the account; it has no concept
     // of the dashboard's city id. Only city_id was ever sent, so it matched
     // nothing here and the city silently failed to save while the dialog still
