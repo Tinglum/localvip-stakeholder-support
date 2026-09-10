@@ -25,14 +25,17 @@ import { getEntityTheme } from '@/lib/entity-themes'
 import { formatDate } from '@/lib/utils'
 import {
   useBusinesses,
+  useBusinessUpdate,
   useCampaigns,
   useCauses,
+  useCauseUpdate,
   useOutreach,
   useProfiles,
   useRecord,
   useTasks,
 } from '@/lib/supabase/hooks'
 import type { Business, Cause, City, OnboardingStage } from '@/lib/types/database'
+import { CityLinkEntityDialog } from '@/components/crm/city-link-entity-dialog'
 
 const businessTheme = getEntityTheme('business')
 const causeTheme = getEntityTheme('cause')
@@ -63,20 +66,29 @@ function StageColumn({
   items,
   theme,
   hrefBase,
+  onAdd,
 }: {
   title: string
   items: Array<Business | Cause>
   theme: ReturnType<typeof getEntityTheme>
   hrefBase: string
+  onAdd?: () => void
 }) {
   return (
     <Card className={`border ${theme.border}`}>
       <CardContent className="space-y-4 p-5">
         <div className="flex items-center justify-between">
           <p className={`text-sm font-semibold ${theme.text}`}>{title}</p>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${theme.badge}`}>
-            {items.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${theme.badge}`}>
+              {items.length}
+            </span>
+            {onAdd && (
+              <Button variant="outline" size="sm" type="button" onClick={onAdd}>
+                Link existing
+              </Button>
+            )}
+          </div>
         </div>
         <div className="space-y-2">
           {items.length > 0 ? items.slice(0, 6).map(item => (
@@ -131,12 +143,16 @@ export default function CityDetailPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not save this city.') }
     finally { setSaving(false) }
   }
-  const { data: businesses } = useBusinesses()
-  const { data: causes } = useCauses()
+  const { data: businesses, refetch: refetchBusinesses } = useBusinesses()
+  const { data: causes, refetch: refetchCauses } = useCauses()
   const { data: campaigns } = useCampaigns()
   const { data: profiles } = useProfiles()
   const { data: outreach } = useOutreach()
   const { data: tasks } = useTasks()
+  const { update: updateBusiness } = useBusinessUpdate()
+  const { update: updateCause } = useCauseUpdate()
+  const [linkBusinessOpen, setLinkBusinessOpen] = React.useState(false)
+  const [linkCauseOpen, setLinkCauseOpen] = React.useState(false)
 
   const cityBusinesses = React.useMemo(() => businesses.filter(business => business.city_id === cityId), [businesses, cityId])
   const cityCauses = React.useMemo(() => causes.filter(cause => cause.city_id === cityId), [causes, cityId])
@@ -195,6 +211,31 @@ export default function CityDetailPage() {
 
     return { liveBusinesses, readyCauses, followUps, openTasks }
   }, [cityBusinesses, cityCauses, cityTasks, recentOutreach])
+
+  const unlinkedBusinessOptions = React.useMemo(
+    () => businesses
+      .filter(business => business.city_id !== cityId)
+      .map(business => ({ value: business.id, label: business.name })),
+    [businesses, cityId],
+  )
+  const unlinkedCauseOptions = React.useMemo(
+    () => causes
+      .filter(cause => cause.city_id !== cityId)
+      .map(cause => ({ value: cause.id, label: cause.name })),
+    [causes, cityId],
+  )
+
+  const handleLinkBusiness = React.useCallback(async (businessId: string) => {
+    const result = await updateBusiness(businessId, { city_id: cityId })
+    if (result) { refetchBusinesses(); return true }
+    return false
+  }, [cityId, updateBusiness, refetchBusinesses])
+
+  const handleLinkCause = React.useCallback(async (causeId: string) => {
+    const result = await updateCause(causeId, { city_id: cityId })
+    if (result) { refetchCauses(); return true }
+    return false
+  }, [cityId, updateCause, refetchCauses])
 
   const roleCounts = React.useMemo(() => {
     const counts = new Map<string, number>()
@@ -389,9 +430,24 @@ export default function CityDetailPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <div id="city-businesses"><StageColumn title="Businesses In This City" items={cityBusinesses} theme={businessTheme} hrefBase="/crm/businesses" /></div>
-        <div id="city-causes"><StageColumn title="Schools / Causes In This City" items={cityCauses} theme={causeTheme} hrefBase="/crm/causes" /></div>
+        <div id="city-businesses"><StageColumn title="Businesses In This City" items={cityBusinesses} theme={businessTheme} hrefBase="/crm/businesses" onAdd={() => setLinkBusinessOpen(true)} /></div>
+        <div id="city-causes"><StageColumn title="Schools / Causes In This City" items={cityCauses} theme={causeTheme} hrefBase="/crm/causes" onAdd={() => setLinkCauseOpen(true)} /></div>
       </div>
+
+      <CityLinkEntityDialog
+        open={linkBusinessOpen}
+        onOpenChange={setLinkBusinessOpen}
+        entityLabel="business"
+        options={unlinkedBusinessOptions}
+        onLink={handleLinkBusiness}
+      />
+      <CityLinkEntityDialog
+        open={linkCauseOpen}
+        onOpenChange={setLinkCauseOpen}
+        entityLabel="cause"
+        options={unlinkedCauseOptions}
+        onLink={handleLinkCause}
+      />
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr,0.9fr]">
         <Card>

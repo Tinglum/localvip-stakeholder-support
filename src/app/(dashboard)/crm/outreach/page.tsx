@@ -10,16 +10,11 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-  DialogDescription, DialogFooter,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { formatDateTime } from '@/lib/utils'
-import { useOutreach, useOutreachInsert, useProfiles, useBusinesses, useCauses, useContacts } from '@/lib/supabase/hooks'
+import { useOutreach, useProfiles, useBusinesses, useCauses, useContacts } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
-import type { OutreachActivity, OutreachType } from '@/lib/types/database'
+import type { OutreachActivity } from '@/lib/types/database'
+import { OutreachActivityDialog } from '@/components/crm/outreach-activity-dialog'
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   call: <Phone className="h-3.5 w-3.5" />,
@@ -31,66 +26,12 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   other: <Send className="h-3.5 w-3.5" />,
 }
 
-function SearchableSelect({ options, value, onChange, placeholder }: {
-  options: { value: string; label: string }[]
-  value: string
-  onChange: (value: string) => void
-  placeholder: string
-}) {
-  const [search, setSearch] = React.useState('')
-  const [open, setOpen] = React.useState(false)
-  const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
-  const selected = options.find(o => o.value === value)
-
-  return (
-    <div className="relative">
-      <input
-        type="text"
-        value={open ? search : (selected?.label || '')}
-        onChange={e => { setSearch(e.target.value); setOpen(true) }}
-        onFocus={() => setOpen(true)}
-        placeholder={placeholder}
-        className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-      />
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-surface-200 bg-surface-0 py-1 shadow-lg">
-            {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-surface-400">No results</p>
-            ) : filtered.map(o => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => { onChange(o.value); setSearch(''); setOpen(false) }}
-                className="flex w-full items-center px-3 py-1.5 text-sm text-left hover:bg-surface-50 text-surface-700"
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
 export default function OutreachPage() {
   const { profile } = useAuth()
   const [addOpen, setAddOpen] = React.useState(false)
-  const [submitting, setSubmitting] = React.useState(false)
-
-  // Form state
-  const [type, setType] = React.useState<OutreachType | ''>('')
-  const [subject, setSubject] = React.useState('')
-  const [entityType, setEntityType] = React.useState<'business' | 'cause' | 'contact'>('business')
-  const [entityId, setEntityId] = React.useState('')
-  const [outcome, setOutcome] = React.useState('')
-  const [nextStep, setNextStep] = React.useState('')
-  const [nextStepDate, setNextStepDate] = React.useState('')
+  const [editingActivity, setEditingActivity] = React.useState<OutreachActivity | null>(null)
 
   const { data: activities, loading, error, refetch } = useOutreach()
-  const { insert } = useOutreachInsert()
 
   // Lookup data
   const { data: profiles } = useProfiles()
@@ -113,48 +54,9 @@ export default function OutreachPage() {
     return map
   }, [businesses, causes, contacts])
 
-  // Dropdown options based on entity type
-  const entityOptions = React.useMemo(() => {
-    if (entityType === 'business') return businesses.map(b => ({ value: b.id, label: b.name }))
-    if (entityType === 'cause') return causes.map(c => ({ value: c.id, label: c.name }))
-    if (entityType === 'contact') return contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))
-    return []
-  }, [entityType, businesses, causes, contacts])
-
-  const resetForm = () => {
-    setType('')
-    setSubject('')
-    setEntityType('business')
-    setEntityId('')
-    setOutcome('')
-    setNextStep('')
-    setNextStepDate('')
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!type) return
-    setSubmitting(true)
-
-    const result = await insert({
-      type,
-      subject: subject || null,
-      entity_type: entityType,
-      entity_id: entityId,
-      performed_by: profile.id,
-      outcome: outcome || null,
-      next_step: nextStep || null,
-      next_step_date: nextStepDate || null,
-    })
-
-    setSubmitting(false)
-
-    if (result) {
-      setAddOpen(false)
-      resetForm()
-      refetch()
-    }
-  }
+  const businessOptions = React.useMemo(() => businesses.map(b => ({ value: b.id, label: b.name })), [businesses])
+  const causeOptions = React.useMemo(() => causes.map(c => ({ value: c.id, label: c.name })), [causes])
+  const contactOptions = React.useMemo(() => contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` })), [contacts])
 
   const columns: Column<OutreachActivity>[] = [
     {
@@ -242,97 +144,32 @@ export default function OutreachPage() {
         data={activities}
         keyField="id"
         searchPlaceholder="Search by subject, outcome, or next step..."
+        onRowClick={(item) => setEditingActivity(item)}
         emptyState={<EmptyState icon={<Send className="h-8 w-8" />} title="No outreach logged yet" description="Log your first outreach activity to start building history." action={{ label: 'Log Activity', onClick: () => setAddOpen(true) }} />}
       />
 
-      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm() }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Log Outreach Activity</DialogTitle>
-            <DialogDescription>Record a call, visit, email, or message. This builds the relationship history.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Type *</label>
-                <select
-                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  required
-                  value={type}
-                  onChange={e => setType(e.target.value as OutreachType)}
-                >
-                  <option value="">Select type</option>
-                  <option value="call">Phone Call</option>
-                  <option value="email">Email</option>
-                  <option value="in_person">In Person</option>
-                  <option value="text">Text Message</option>
-                  <option value="social_media">Social Media</option>
-                  <option value="referral">Referral</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Performed By</label>
-                <input
-                  type="text"
-                  readOnly
-                  value={profile?.full_name || ''}
-                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-50 px-3 text-sm text-surface-500 cursor-not-allowed"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700">Subject</label>
-              <Input placeholder="Brief subject line" value={subject} onChange={e => setSubject(e.target.value)} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Entity Type *</label>
-                <select
-                  className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  required
-                  value={entityType}
-                  onChange={e => { setEntityType(e.target.value as 'business' | 'cause' | 'contact'); setEntityId('') }}
-                >
-                  <option value="business">Business</option>
-                  <option value="cause">Cause</option>
-                  <option value="contact">Contact</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Entity *</label>
-                <SearchableSelect
-                  options={entityOptions}
-                  value={entityId}
-                  onChange={setEntityId}
-                  placeholder={`Search ${entityType}s...`}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-surface-700">Outcome</label>
-              <Textarea placeholder="What happened? Be specific — this is the relationship record." value={outcome} onChange={e => setOutcome(e.target.value)} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Next Step</label>
-                <Input placeholder="What should happen next?" value={nextStep} onChange={e => setNextStep(e.target.value)} />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700">Next Step Date</label>
-                <Input type="date" value={nextStepDate} onChange={e => setNextStepDate(e.target.value)} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => { setAddOpen(false); resetForm() }}>Cancel</Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {submitting ? 'Logging...' : 'Log Activity'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <OutreachActivityDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        performedByName={profile?.full_name}
+        performedById={profile?.id}
+        businesses={businessOptions}
+        causes={causeOptions}
+        contacts={contactOptions}
+        onSaved={refetch}
+      />
+
+      <OutreachActivityDialog
+        open={!!editingActivity}
+        onOpenChange={(open) => { if (!open) setEditingActivity(null) }}
+        activity={editingActivity}
+        performedByName={editingActivity ? (profileMap[editingActivity.performed_by] || profile?.full_name) : profile?.full_name}
+        performedById={profile?.id}
+        businesses={businessOptions}
+        causes={causeOptions}
+        contacts={contactOptions}
+        onSaved={refetch}
+      />
     </div>
   )
 }

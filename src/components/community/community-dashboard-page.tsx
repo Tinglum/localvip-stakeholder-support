@@ -130,6 +130,13 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
     return null
   }, [profile.metadata])
 
+  // Admin is previewing this cause account (the "view as" read-only overlay —
+  // same signal family the ViewAsBanner reads from the session/profile
+  // metadata). While previewing, print/download controls are hidden: printing
+  // from an admin session would produce material stamped for the previewed
+  // account, which is misleading.
+  const isAdminPreview = Boolean(selectedQaCauseId || selectedQaOwnerId)
+
   const scopedCause = React.useMemo(() => resolveCommunityCause(profile, causes), [causes, profile])
 
   const supporterContacts = React.useMemo(
@@ -992,7 +999,11 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <Badge variant="success">Ready</Badge>
-                          {(generated.generated_file_url || material?.file_url) && (
+                          {/* Opening the file is how a user prints/downloads it here.
+                              Hide it while an admin is previewing this cause account
+                              so nothing gets printed/downloaded under the previewed
+                              account from an admin session. See isAdminPreview above. */}
+                          {!isAdminPreview && (generated.generated_file_url || material?.file_url) && (
                             <a href={generated.generated_file_url || material?.file_url || ''} target="_blank" rel="noopener noreferrer">
                               <Button variant="outline" size="sm"><ExternalLink className="h-3.5 w-3.5" /> Open</Button>
                             </a>
