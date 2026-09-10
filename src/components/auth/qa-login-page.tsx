@@ -251,9 +251,8 @@ export function QaLoginPage({
               Turn slow days into busy days.
             </h1>
             <p className="max-w-xl text-base leading-7 text-surface-600 sm:text-lg">
-              Stop advertising to strangers — start giving back to neighbors. LocalVIP fills your slow days with new
-              customers who care, and a share of every sale supports local schools. $0 upfront: you only pay for
-              performance.
+              Turn the days you want to grow into reasons for local families to visit. A share of every sale supports
+              the community, and you only contribute when a customer buys.
             </p>
           </div>
 
@@ -261,7 +260,7 @@ export function QaLoginPage({
             <InfoTile
               icon={<Users className="h-4 w-4" />}
               title="Get more new customers"
-              description="Reward neighbors for choosing you — on the days you choose."
+              description="Reward neighbors for choosing you on the days you choose."
             />
             <InfoTile
               icon={<GraduationCap className="h-4 w-4" />}
@@ -282,8 +281,8 @@ export function QaLoginPage({
             <div>
               <p className="text-sm font-semibold text-surface-900">Zero risk. Real results.</p>
               <p className="mt-1 text-sm leading-6 text-surface-600">
-                100% guaranteed to work, or you don&apos;t pay. Just a 10% success fee — never the 30% the delivery
-                apps take.
+                No upfront advertising cost. Your total contribution includes LocalVIP&apos;s 12% success fee, plus
+                payment processing, and you choose the amount that becomes customer rewards.
               </p>
             </div>
           </div>
