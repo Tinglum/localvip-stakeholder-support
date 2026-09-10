@@ -788,6 +788,10 @@ export default function CauseDetailPage() {
               userId={causeResponse?.qaCause?.ownerUserId || null}
               userName={owner?.full_name || cause.name}
               stakeholderType={isSchool ? 'School' : 'Cause'}
+              // Without this the session opens on whichever account the by-user
+              // lookup returns first, which for an owner who also has a business
+              // is the business.
+              causeAccountId={causeResponse?.qaCauseId || causeResponse?.qaCause?.id || null}
             />
             <OpenInWebappButton
               userId={causeResponse?.qaCause?.ownerUserId || null}

@@ -4,6 +4,8 @@ import {
   getQaSessionFromCookieStore,
   mapQaRoleFromSignals,
   PORTAL_BUSINESS_COOKIE,
+  PORTAL_CAUSE_COOKIE,
+  readSignedPortalCausePayload,
   readSignedPortalBusinessPayload,
   readSignedViewAsPayload,
   type QaAuthClaims,
@@ -61,6 +63,13 @@ export interface ResolvedAuthSession {
    * `resolvePortalBusinessId`.
    */
   portalBusinessAccountId?: number
+  /**
+   * Cause account explicitly selected for this portal session. Same role as
+   * portalBusinessAccountId, and needed for the same reason: one user can own a
+   * business AND a cause, so a session that knows only the user id resolves to
+   * whichever the by-user lookup happens to return first.
+   */
+  portalCauseAccountId?: number
 }
 
 interface ViewAsCookiePayload {
@@ -163,6 +172,42 @@ function applyViewAsOverride(
  * belongs to that account — so it is not re-verified on every page load. Server
  * API routes go through `resolvePortalBusinessId`, which does re-check membership.
  */
+/**
+ * Pin the cause this session opens on.
+ *
+ * The cause counterpart of applyPortalBusinessSelection. Where that one sets
+ * `profile.business_id`, this sets `metadata.view_as_cause_account_id` — the
+ * hinge `resolveCommunityCause` already reads — so the community portal lands on
+ * the right cause with no change to the resolution logic itself.
+ *
+ * Bound to the user it was minted for, so a leftover cookie from a previous
+ * impersonation cannot bleed into a different session.
+ */
+async function applyPortalCauseSelection(session: ResolvedAuthSession): Promise<ResolvedAuthSession> {
+  const raw = cookies().get(PORTAL_CAUSE_COOKIE)?.value
+  if (!raw) return session
+
+  const payload = await readSignedPortalCausePayload(raw)
+  if (!payload) return session
+
+  const effectiveUserId =
+    session.viewingAs?.targetUserId
+    ?? (session.localProfileId != null && /^\d+$/.test(session.localProfileId) ? Number(session.localProfileId) : null)
+  if (effectiveUserId == null || effectiveUserId !== payload.userId) return session
+
+  return {
+    ...session,
+    profile: {
+      ...session.profile,
+      metadata: {
+        ...((session.profile.metadata as Record<string, unknown> | null) || {}),
+        view_as_cause_account_id: payload.accountId,
+      },
+    },
+    portalCauseAccountId: payload.accountId,
+  }
+}
+
 async function applyPortalBusinessSelection(session: ResolvedAuthSession): Promise<ResolvedAuthSession> {
   const raw = cookies().get(PORTAL_BUSINESS_COOKIE)?.value
   if (!raw) return session
@@ -284,7 +329,8 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
         source: 'demo',
       }
       const viewAs = await getViewAsPayload(cookieStore)
-      return applyPortalBusinessSelection(viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession)
+      return applyPortalCauseSelection(
+        await applyPortalBusinessSelection(viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession))
     }
   }
 
@@ -317,7 +363,8 @@ export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | n
     }
 
     const viewAs = await getViewAsPayload(cookieStore)
-    return applyPortalBusinessSelection(viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession)
+    return applyPortalCauseSelection(
+        await applyPortalBusinessSelection(viewAs ? applyViewAsOverride(baseSession, viewAs) : baseSession))
   }
 
   return null

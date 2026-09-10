@@ -702,6 +702,54 @@ export async function readSignedViewAsPayload(value: string | null | undefined):
  * is part of the signed payload so a cookie minted for one target cannot be
  * replayed against a different session.
  */
+export const PORTAL_CAUSE_COOKIE = 'lvip_portal_cause'
+
+/**
+ * Which cause a session is pinned to.
+ *
+ * One user can own several accounts — a business AND a cause — since owner email
+ * stopped being unique. Without a pin, logging in as that user resolves to
+ * whichever the by-user lookup returns first, so "Real log in as Cause" landed
+ * on the business. Mirrors the business selection exactly, including the
+ * user binding that stops a stale cookie bleeding across sessions.
+ */
+export interface PortalCauseSignedPayload {
+  /** QA user id whose portal this selection applies to. */
+  userId: number
+  /** Cause (nonprofit) account id the admin launched from. */
+  accountId: number
+  since: string
+}
+
+export async function signPortalCausePayload(payload: PortalCauseSignedPayload): Promise<string> {
+  const payloadBase64Url = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)))
+  const signature = await signQaStatePayload(payloadBase64Url)
+  return `${payloadBase64Url}.${signature}`
+}
+
+export async function readSignedPortalCausePayload(
+  value: string | null | undefined,
+): Promise<PortalCauseSignedPayload | null> {
+  if (!value) return null
+
+  const [payloadBase64Url, signature] = value.split('.')
+  if (!payloadBase64Url || !signature) return null
+
+  const expectedSignature = await signQaStatePayload(payloadBase64Url)
+  if (signature !== expectedSignature) return null
+
+  try {
+    const payload = JSON.parse(base64UrlToString(payloadBase64Url)) as Partial<PortalCauseSignedPayload>
+    const userId = Number(payload.userId)
+    const accountId = Number(payload.accountId)
+    if (!Number.isFinite(userId) || userId <= 0) return null
+    if (!Number.isFinite(accountId) || accountId <= 0) return null
+    return { userId, accountId, since: String(payload.since || '') }
+  } catch {
+    return null
+  }
+}
+
 export const PORTAL_BUSINESS_COOKIE = 'lvip_portal_business'
 
 export interface PortalBusinessSignedPayload {

@@ -34,6 +34,12 @@ import {
   readRequestedBusinessAccountId,
 } from '@/lib/server/portal-business'
 import {
+  PORTAL_CAUSE_COOKIE,
+  buildPortalCauseSelection,
+  portalCauseCookieOptions,
+  readRequestedCauseAccountId,
+} from '@/lib/server/portal-cause'
+import {
   QA_COOKIE_NAMES,
   buildQaSessionFromTokens,
   clearQaSessionCookies,
@@ -59,7 +65,11 @@ export async function POST(request: NextRequest) {
   if ('error' in access) return access.error
 
 
-  let body: { targetUserId?: number | string; businessAccountId?: number | string } = {}
+  let body: {
+    targetUserId?: number | string
+    businessAccountId?: number | string
+    causeAccountId?: number | string
+  } = {}
   try {
     body = await request.json()
   } catch {
@@ -102,6 +112,29 @@ export async function POST(request: NextRequest) {
       )
     }
     businessSelectionCookie = selection.cookie
+  }
+
+  // Same treatment for a cause, and for the same reason: an admin can name any
+  // account id, so membership is confirmed with the admin's own token BEFORE any
+  // session cookie is swapped. Without this pin a user who owns both a business
+  // and a cause resolves to whichever the by-user lookup returns first — which is
+  // exactly why "Real log in as Cause" was landing on the business.
+  const requestedCauseAccountId = readRequestedCauseAccountId(body as Record<string, unknown>)
+  let causeSelectionCookie: { name: string; value: string } | null = null
+  if (requestedCauseAccountId != null) {
+    const selection = await buildPortalCauseSelection(targetUserId, requestedCauseAccountId)
+    if (!selection.ok) {
+      return NextResponse.json(
+        {
+          error:
+            selection.reason === 'not-a-member'
+              ? 'That cause does not belong to this user.'
+              : 'Could not verify the cause belongs to this user.',
+        },
+        { status: selection.reason === 'not-a-member' ? 403 : 502 },
+      )
+    }
+    causeSelectionCookie = selection.cookie
   }
 
   try {
@@ -168,6 +201,20 @@ export async function POST(request: NextRequest) {
       )
     } else {
       response.cookies.set(PORTAL_BUSINESS_COOKIE, '', { path: '/', maxAge: 0 })
+  response.cookies.set(PORTAL_CAUSE_COOKIE, '', { path: '/', maxAge: 0 })
+    }
+
+    // Same for the cause. Clearing when none was named matters as much as
+    // setting: a previous target's pin would otherwise survive into this session
+    // and open their cause instead.
+    if (causeSelectionCookie) {
+      response.cookies.set(
+        causeSelectionCookie.name,
+        causeSelectionCookie.value,
+        portalCauseCookieOptions(),
+      )
+    } else {
+      response.cookies.set(PORTAL_CAUSE_COOKIE, '', { path: '/', maxAge: 0 })
     }
 
     return response

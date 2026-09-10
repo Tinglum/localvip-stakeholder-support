@@ -32,6 +32,12 @@ interface RealLogInAsButtonProps {
    * belongs to it before honouring it.
    */
   businessAccountId?: string | number | null
+  /**
+   * Cause account to open on. Needed because one user can own a business AND a
+   * cause; without it the session resolves to whichever the by-user lookup
+   * returns first, which is why this button landed on the business.
+   */
+  causeAccountId?: string | number | null
   variant?: 'default' | 'outline' | 'ghost'
   size?: 'default' | 'sm' | 'lg' | 'icon'
 }
@@ -41,6 +47,7 @@ export function RealLogInAsButton({
   userName,
   stakeholderType,
   businessAccountId = null,
+  causeAccountId = null,
   variant = 'default',
   size = 'sm',
 }: RealLogInAsButtonProps) {
@@ -55,6 +62,11 @@ export function RealLogInAsButton({
   const numericBusinessAccountId =
     businessAccountId != null && /^\d+$/.test(String(businessAccountId).trim())
       ? Number(String(businessAccountId).trim())
+      : null
+
+  const numericCauseAccountId =
+    causeAccountId != null && /^\d+$/.test(String(causeAccountId).trim())
+      ? Number(String(causeAccountId).trim())
       : null
 
   if (!isAdmin || numericId === null) return null
@@ -76,6 +88,7 @@ export function RealLogInAsButton({
         body: JSON.stringify({
           targetUserId: numericId,
           ...(numericBusinessAccountId != null ? { businessAccountId: numericBusinessAccountId } : {}),
+          ...(numericCauseAccountId != null ? { causeAccountId: numericCauseAccountId } : {}),
         }),
       })
       // Read as text first so a non-JSON error page (HTML 500) still surfaces a
