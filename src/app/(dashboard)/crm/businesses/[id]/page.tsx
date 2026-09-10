@@ -44,6 +44,7 @@ import {
   useGeneratedMaterials,
   useMaterials,
   useOutreach, useOutreachInsert,
+  useQrCodes,
   useTasks, useTaskInsert, useTaskUpdate,
   useNotes, useNoteInsert,
   useBusinessUpdate,
@@ -176,10 +177,18 @@ export default function BusinessDetailPage() {
     })),
     [qaCampaigns],
   )
-  const qrCodes = localState?.qrCodes || []
   const materials = preferQaWorkspace ? qaMaterials : (localState?.materials || qaMaterials)
   const assignments = React.useMemo(() => localState?.assignments ?? [], [localState?.assignments])
   const fallbackEntityHooksEnabled = (!localState || preferQaWorkspace) && !localStateLoading && !!resolvedBusinessId
+  // QR codes live in the QA backend (DashboardQrCodes); local-state reads them
+  // from the retired Supabase workspace, which is empty for a QA business. That
+  // emptiness was reported as "no QR code has been generated" and "QR status:
+  // Missing" on businesses whose QR had just been created.
+  const { data: qaQrCodes } = useQrCodes(
+    { business_id: fallbackEntityId },
+    { enabled: fallbackEntityHooksEnabled },
+  )
+  const qrCodes = preferQaWorkspace ? qaQrCodes : (localState?.qrCodes || [])
   const { data: outreach, loading: outreachLoading, refetch: refetchOutreachItems } = useOutreach({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
   const { data: tasks, loading: tasksLoading, refetch: refetchTaskItems } = useTasks({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
   const { data: notes, loading: notesLoading, refetch: refetchNoteItems } = useNotes({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
