@@ -284,7 +284,7 @@ export function ConsumerDashboardPage() {
       ? (data.cashback?.recent || []).map((row) => ({ ...row, kind: 'Cashback' as const }))
       : []),
     ...(rewardFilter === 'all' || rewardFilter === 'bonus'
-      ? (data.bonusCash?.recent || []).map((row) => ({ ...row, kind: 'Bonus cash' as const }))
+      ? (data.bonusCash?.recent || []).map((row) => ({ ...row, kind: 'Community Cash' as const }))
       : []),
   ].sort((a, b) => new Date(b.createdDate || '').getTime() - new Date(a.createdDate || '').getTime())
   const timeline = [
@@ -666,7 +666,7 @@ export function ConsumerDashboardPage() {
               explanation="This is the total cashback you have earned over time."
             />
             <MoneyRow
-              label="Bonus cash"
+              label="Community Cash"
               value={formatMoney(data.summary.lifetimeBonusCash)}
               explanation="This is extra reward money earned through sharing and network activity."
             />
@@ -1001,7 +1001,7 @@ export function ConsumerDashboardPage() {
               <summary className="cursor-pointer font-medium text-surface-700">What is my share code?</summary>
               <p className="mt-3 leading-6">
                 This is your personal code for inviting friends. When someone joins with it, the people you invite are
-                linked to you - that is how your network and bonus cash grow.
+                linked to you. Eligible activity can add Community Cash to your wallet.
               </p>
             </details>
             <details className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
@@ -1112,12 +1112,12 @@ function MiniMilestone({ label, complete, href }: { label: string; complete: boo
 function MergedRewardHistory({
   rows,
 }: {
-  rows: Array<{ id: number; amount: number; accountId: number; createdDate: string | null; kind: 'Cashback' | 'Bonus cash' }>
+  rows: Array<{ id: number; amount: number; accountId: number; createdDate: string | null; kind: 'Cashback' | 'Community Cash' }>
 }) {
   return (
     <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
       {rows.length === 0 ? (
-        <p className="text-sm text-surface-500">No matching rewards yet. Cashback and bonus cash will show here after qualifying activity.</p>
+        <p className="text-sm text-surface-500">No matching rewards yet. Cashback and Community Cash will show here after qualifying activity.</p>
       ) : (
         <div className="space-y-2 text-sm">
           {rows.slice(0, 10).map((row) => (

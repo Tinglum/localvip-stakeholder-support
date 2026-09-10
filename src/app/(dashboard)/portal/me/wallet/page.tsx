@@ -231,7 +231,7 @@ export default function MyWalletPage() {
               <a href="https://my.localvip.com/wallet" target="_blank" rel="noopener noreferrer">Manage withdrawals</a>
             </Button>
             <Button asChild variant="outline" size="sm">
-              <Link href="/portal/me/network">See network earnings</Link>
+              <Link href="/portal/me/network">See Community Cash</Link>
             </Button>
           </div>
         </CardContent>
@@ -272,7 +272,7 @@ export default function MyWalletPage() {
           loading={loading}
         />
         <WalletTile
-          label="Lifetime Network Earnings"
+          label="Lifetime Community Cash"
           value={bonusCash}
           icon={<Network className="h-5 w-5 text-hato-600" />}
           accent="bg-hato-50"
@@ -350,7 +350,7 @@ export default function MyWalletPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Cashback breakdown</CardTitle>
-                <CardDescription>Your own cashback only. Network earnings are shown separately.</CardDescription>
+                <CardDescription>Your cashback from your own purchases.</CardDescription>
               </div>
               <Badge variant="info" className="gap-1">
                 <Sparkles className="h-3 w-3" />
@@ -367,7 +367,7 @@ export default function MyWalletPage() {
               loading={loading}
             />
             <BreakdownRow
-              label="Lifetime network earnings"
+              label="Lifetime Community Cash"
               description="Extra money earned because your network is active"
               value={bonusCash}
               icon={<Network className="h-4 w-4" />}
@@ -408,7 +408,7 @@ export default function MyWalletPage() {
             </p>
             <p>
               <span className="font-medium text-surface-800">Lifetime cashback</span> shows money back from
-              your own purchases. Network earnings are shown separately.
+              your own purchases. Community Cash is shown separately.
             </p>
             <p>
               <span className="font-medium text-surface-800">Cause impact</span> shows the aggregated

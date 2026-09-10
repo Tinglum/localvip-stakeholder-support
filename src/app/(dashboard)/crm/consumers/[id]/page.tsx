@@ -373,7 +373,7 @@ export default function ConsumerDetailPage() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
         <MetricActionCard label="Wallet balance" value={formatMoney(summary.wallet.availableAmount)} onClick={() => scrollToSection('wallet-referral')} />
         <MetricActionCard label="Lifetime cashback" value={formatMoney(summary.lifetimeCashback)} onClick={() => scrollToSection('cashback-history')} />
-        <MetricActionCard label="Bonus cash" value={formatMoney(summary.lifetimeBonusCash)} onClick={() => scrollToSection('bonus-history')} />
+        <MetricActionCard label="Community Cash" value={formatMoney(summary.lifetimeBonusCash)} onClick={() => scrollToSection('bonus-history')} />
         <MetricActionCard label="Transactions" value={String(summary.counts.transactions)} onClick={() => scrollToSection('transactions')} />
         <MetricActionCard label="5 friends" value={`${summary.counts.friends}/5`} onClick={() => scrollToSection('network')} />
         <MetricActionCard label="10 causes" value={`${summary.counts.causes}/10`} onClick={() => scrollToSection('network')} />
@@ -576,14 +576,14 @@ export default function ConsumerDetailPage() {
 
         <Card id="bonus-history" className="scroll-mt-24">
           <CardHeader>
-            <CardTitle>Bonus cash (lifetime {formatMoney(bonusCash?.lifetimeTotal)})</CardTitle>
+            <CardTitle>Community Cash (lifetime {formatMoney(bonusCash?.lifetimeTotal)})</CardTitle>
           </CardHeader>
           <CardContent>
             {(bonusCash?.recent.length ?? 0) === 0 ? (
               <div className="py-4 text-center">
-                <p className="text-sm text-surface-400">No bonus cash yet.</p>
+                <p className="text-sm text-surface-400">No Community Cash yet.</p>
                 <Button variant="outline" size="sm" className="mt-3" onClick={() => setReloadKey((key) => key + 1)}>
-                  <RefreshCw className="h-3.5 w-3.5" /> Refresh bonus cash
+                  <RefreshCw className="h-3.5 w-3.5" /> Refresh Community Cash
                 </Button>
               </div>
             ) : (
