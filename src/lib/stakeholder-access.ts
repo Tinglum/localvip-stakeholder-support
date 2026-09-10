@@ -152,6 +152,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
       { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 0 },
       { label: 'Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
       { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
+      { label: 'Contacts', href: '/crm/people', icon: 'Contact', minLevel: 0 },
       { label: 'Team', href: '/crm/stakeholders', icon: 'UserCheck', minLevel: 0 },
       { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 0 },
       { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
@@ -417,6 +418,9 @@ export function canAccessPath(profile: Profile, pathname: string) {
     '/crm/businesses',
     '/crm/causes',
     '/crm/contacts',
+    // The contacts section is an operator surface like the rest of CRM; without
+    // it here an operator following the nav item is bounced to /dashboard.
+    '/crm/people',
     '/crm/cities',
     '/crm/scripts',
     '/crm/outreach',

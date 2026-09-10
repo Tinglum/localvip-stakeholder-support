@@ -189,7 +189,13 @@ export default function BusinessDetailPage() {
     { business_id: fallbackEntityId },
     { enabled: fallbackEntityHooksEnabled },
   )
-  const qrCodes = preferQaWorkspace ? qaQrCodes : (localState?.qrCodes || [])
+  // The QA workspace is the source of truth for QR codes; the localState branch
+  // reads the retired Supabase workspace, which is empty for a QA business. When
+  // it has nothing, fall through to the QA codes rather than rendering "No QR
+  // codes generated yet" over five live ones.
+  const qrCodes = preferQaWorkspace
+    ? qaQrCodes
+    : (localState?.qrCodes?.length ? localState.qrCodes : qaQrCodes)
   const [causeSearch, setCauseSearch] = React.useState('')
   const { data: outreach, loading: outreachLoading, refetch: refetchOutreachItems } = useOutreach({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
   const { data: tasks, loading: tasksLoading, refetch: refetchTaskItems } = useTasks({ entity_type: 'business', entity_id: fallbackEntityId }, { enabled: fallbackEntityHooksEnabled })
