@@ -219,7 +219,17 @@ export default function BusinessDetailPage() {
   const city = biz?.city_id ? cities.find(item => item.id === biz.city_id) || null : null
   const linkedCause = biz?.linked_cause_id ? causes.find(item => item.id === biz.linked_cause_id) || null : null
   const campaign = biz?.campaign_id ? campaigns.find(item => item.id === biz.campaign_id) || null : null
-  const linkedQr = biz?.linked_qr_code_id ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null : null
+  // linked_qr_code_id is only set when someone explicitly pins a code, which
+  // almost never happens - so a business with five live QR codes still reported
+  // "No QR codes generated yet". Fall back to the business's own codes,
+  // preferring an active one, and treat the pinned code as an override.
+  const linkedQr = React.useMemo(() => {
+    const pinned = biz?.linked_qr_code_id
+      ? qrCodes.find(item => item.id === biz.linked_qr_code_id) || null
+      : null
+    if (pinned) return pinned
+    return qrCodes.find(item => item.status === 'active') || qrCodes[0] || null
+  }, [biz?.linked_qr_code_id, qrCodes])
   const linkedMaterial = biz?.linked_material_id ? materials.find(item => item.id === biz.linked_material_id) || null : null
   const owner = React.useMemo(() => {
     if (!biz) return null
