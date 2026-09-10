@@ -971,11 +971,16 @@ export default function BusinessDetailPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">No linked cause</SelectItem>
-                  {causes.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
+                  {/* Sorted by name: the list arrives in API order, which is
+                      neither alphabetical nor stable, so picking a cause out of
+                      more than a handful meant reading the whole dropdown. */}
+                  {[...causes]
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

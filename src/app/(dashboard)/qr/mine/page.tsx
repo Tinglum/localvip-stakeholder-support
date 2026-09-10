@@ -26,6 +26,16 @@ export default function MyQrCodesPage() {
     localProfileId ? { created_by: localProfileId } : undefined,
   )
   const { remove } = useQrCodeDelete()
+
+  // Sorted by name, falling back to the short code for rows that never got one.
+  // Both grid and list read from this so the two views cannot disagree about
+  // ordering, which they would if each sorted separately.
+  const sortedQrCodes = React.useMemo(
+    () => [...qrCodes].sort((a, b) =>
+      (a.name || a.short_code || '').localeCompare(
+        b.name || b.short_code || '', undefined, { sensitivity: 'base' })),
+    [qrCodes],
+  )
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [qrPreviews, setQrPreviews] = React.useState<Record<string, string>>({})
   const [deleting, setDeleting] = React.useState<string | null>(null)
@@ -118,7 +128,7 @@ export default function MyQrCodesPage() {
         }
       />
 
-      {qrCodes.length === 0 ? (
+      {sortedQrCodes.length === 0 ? (
         <EmptyState
           icon={<QrCode className="h-8 w-8" />}
           title="You haven't created any QR codes yet"
@@ -127,7 +137,7 @@ export default function MyQrCodesPage() {
         />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {qrCodes.map(qr => (
+          {sortedQrCodes.map(qr => (
             <Card key={qr.id} className="group transition-shadow hover:shadow-card-hover">
               <div className="flex items-center justify-center border-b border-surface-100 bg-surface-50 p-6">
                 {qrPreviews[qr.id] ? (
@@ -191,7 +201,7 @@ export default function MyQrCodesPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {qrCodes.map(qr => (
+          {sortedQrCodes.map(qr => (
             <Card key={qr.id} className="transition-shadow hover:shadow-card-hover">
               <CardContent className="flex flex-wrap items-center gap-4 py-3">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-50 border border-surface-100">

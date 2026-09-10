@@ -884,6 +884,10 @@ export default function MaterialsLibraryPage() {
       if (useCaseFilter && m.use_case !== useCaseFilter) return false
       return true
     })
+    // Sorted by title. The list previously rendered in whatever order the API
+    // returned, which is neither insertion nor alphabetical and so reads as
+    // random once the library grows past a screenful.
+    .sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }))
   }, [materials, search, typeFilter, brandFilter, useCaseFilter, showGenerated])
 
   // Clear selection when filters change
