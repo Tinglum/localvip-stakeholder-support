@@ -65,12 +65,18 @@ export default function OutreachPage() {
     },
     {
       key: 'type', header: 'Type', width: '120px',
-      render: (o) => (
-        <span className="flex items-center gap-1.5">
-          <span className="text-surface-400">{TYPE_ICONS[o.type]}</span>
-          <span className="text-sm capitalize text-surface-600">{o.type.replace('_', ' ')}</span>
-        </span>
-      ),
+      // The backend stores the activity type in the `channel` column and the
+      // QA field map round-trips it back under that name, so `type` arrives
+      // empty and every row rendered a blank Type cell.
+      render: (o) => {
+        const kind = o.type || (o as { channel?: string }).channel || ''
+        return (
+          <span className="flex items-center gap-1.5">
+            <span className="text-surface-400">{TYPE_ICONS[kind]}</span>
+            <span className="text-sm capitalize text-surface-600">{kind.replace('_', ' ')}</span>
+          </span>
+        )
+      },
     },
     {
       key: 'subject', header: 'Subject',

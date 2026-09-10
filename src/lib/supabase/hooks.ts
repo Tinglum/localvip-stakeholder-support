@@ -798,14 +798,13 @@ export function useQrCodes(filters?: Record<string, string>, options?: UseQueryO
   const normalizedFilters = React.useMemo(() => {
     if (!filters) return filters
     if (filters.entity_id || filters.entity_type) return filters
-    if (filters.business_id) {
-      const { business_id, ...rest } = filters
-      return { ...rest, entity_type: 'business', entity_id: business_id }
-    }
-    if (filters.cause_id) {
-      const { cause_id, ...rest } = filters
-      return { ...rest, entity_type: 'cause', entity_id: cause_id }
-    }
+    // business_id / cause_id are passed through, NOT rewritten into an exact
+    // entity_type match. Stored rows use the specific purpose as their type -
+    // business_custom, business_network_referral, cause_custom - so filtering on
+    // entity_type = 'business' matched nothing and a business with five live QR
+    // codes reported "No QR codes generated yet". The field map aliases both ids
+    // onto EntityId, which is what actually identifies the owner.
+    if (filters.business_id || filters.cause_id) return filters
     if (filters.contact_id) {
       const { contact_id, ...rest } = filters
       return { ...rest, entity_type: 'contact', entity_id: contact_id }

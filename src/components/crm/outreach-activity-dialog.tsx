@@ -21,7 +21,9 @@ import type { OutreachActivity, OutreachType } from '@/lib/types/database'
 // directly rather than adding a hook there.
 async function updateOutreachActivity(
   id: string,
-  changes: Partial<OutreachActivity>,
+  // A plain record rather than Partial<OutreachActivity>: the payload may clear
+  // performed_by with null, which the stored row type does not model.
+  changes: Record<string, unknown>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const res = await fetch(`/api/qa/dashboard/outreach_activities/${id}`, {
@@ -141,7 +143,10 @@ export function OutreachActivityDialog({
   React.useEffect(() => {
     if (!open) return
     if (activity) {
-      setType(activity.type)
+      // Same channel/type round-trip as the list: without the fallback the
+      // required Type select opens empty on an existing activity and the form
+      // refuses to submit.
+      setType(activity.type || ((activity as { channel?: string }).channel as OutreachType) || '')
       setSubject(activity.subject || '')
       setEntityType(activity.entity_type)
       setEntityId(activity.entity_id)
@@ -177,7 +182,7 @@ export function OutreachActivityDialog({
         entity_id: entityId,
         // Included on the UPDATE too, or reassigning the performer would appear
         // to save and silently keep the original person.
-        performed_by: performerId || performedById,
+        performed_by: people.length > 0 ? (performerId || null) : (performerId || performedById || null),
         outcome: outcome || null,
         next_step: nextStep || null,
         next_step_date: nextStepDate || null,
@@ -197,11 +202,11 @@ export function OutreachActivityDialog({
       subject: subject || null,
       entity_type: entityType,
       entity_id: entityId,
-      performed_by: performerId || performedById,
+      performed_by: people.length > 0 ? (performerId || null) : (performerId || performedById || null),
       outcome: outcome || null,
       next_step: nextStep || null,
       next_step_date: nextStepDate || null,
-    } as Partial<OutreachActivity>)
+    } as unknown as Partial<OutreachActivity>)
 
     setSubmitting(false)
 
@@ -262,6 +267,11 @@ export function OutreachActivityDialog({
                   onChange={(event) => setPerformerId(event.target.value)}
                   className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
                 >
+                  {/* Without this a null performer renders as the first name in
+                      the list, so the table says "Unknown" while the dialog shows
+                      a person - and saving would write whoever happened to be
+                      first. An unassigned activity has to be able to say so. */}
+                  <option value="">Unassigned</option>
                   {people.map((person) => (
                     <option key={person.id} value={person.id}>{person.full_name}</option>
                   ))}
