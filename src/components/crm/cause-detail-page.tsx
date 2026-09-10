@@ -1848,10 +1848,13 @@ export default function CauseDetailPage() {
             linkedBusinessCount={linkedBusinesses.length}
             helperCount={assignments.length}
             onSave={async (changes) => {
-              if (localCauseId) {
-                await updateCause(localCauseId, changes as any)
-                refetchCause()
-              }
+              // saveCauseCrm, not updateCause: a cause created in QA has no local
+              // row, so the old `if (localCauseId)` guard skipped the write
+              // entirely and the dialog still reported "saved". saveCauseCrm
+              // routes a QA-backed cause to PUT /api/qa/nonprofits/{id} and only
+              // falls back to the local table when there genuinely is one.
+              await saveCauseCrm(changes as Record<string, unknown>)
+              refetchCause()
             }}
             onCompleteStep={(() => {
               const step = getExecutionStep('initial_connection')

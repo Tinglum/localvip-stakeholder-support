@@ -93,7 +93,11 @@ export interface CauseInitialConnectionModalProps {
   city: { id: string; name: string; state: string } | null
   linkedBusinessCount: number
   helperCount: number
-  onSave: (changes: Partial<Cause>) => Promise<void>
+  /**
+   * Carries Partial<Cause> plus the resolved city name/state, which the QA
+   * backend stores instead of the dashboard's city id.
+   */
+  onSave: (changes: Partial<Cause> & Record<string, unknown>) => Promise<void>
   onCompleteStep?: () => void
   readyToComplete: boolean
   saving: boolean
@@ -150,11 +154,17 @@ export function CauseInitialConnectionModal({
     setLocalSaving(true)
     setSaved(false)
     try {
+      // The QA backend stores a city NAME and STATE on the account, not the
+      // dashboard's city id, so resolve it here where the full record is already
+      // loaded. Sending only the id is why the city silently failed to persist.
+      const selectedCity = cities.find((entry) => String(entry.id) === String(cityId)) || null
       await onSave({
         email: email.trim() || null,
         phone: phone.trim() || null,
         website: website.trim() || null,
         city_id: cityId || null,
+        city_name: selectedCity?.name || null,
+        city_state: selectedCity?.state || null,
         type: causeType,
       })
       setSaved(true)

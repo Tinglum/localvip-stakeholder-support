@@ -58,6 +58,25 @@ export async function PUT(
     if (typeof body.name === 'string' && body.name.trim()) profilePayload.name = body.name.trim()
     if (body.phone === null || typeof body.phone === 'string') profilePayload.ownerPhone = body.phone
     if (body.address === null || typeof body.address === 'string') profilePayload.address1 = body.address
+    if (body.email === null || typeof body.email === 'string') profilePayload.ownerEmail = body.email
+
+    // The backend stores a city NAME and STATE on the account; it has no concept
+    // of the dashboard's city id. Only city_id was ever sent, so it matched
+    // nothing here and the city silently failed to save while the dialog still
+    // reported success. The caller resolves the name/state from the record it
+    // already has loaded.
+    if (typeof body.city_name === 'string' && body.city_name.trim()) {
+      profilePayload.city = body.city_name.trim()
+    }
+    if (typeof body.city_state === 'string' && body.city_state.trim()) {
+      profilePayload.state = body.city_state.trim()
+    }
+
+    // Organisation type. The backend keys school/PTA/booster detection off
+    // Category, which is what the GET above reads back to derive `type`.
+    if (typeof body.type === 'string' && body.type.trim()) {
+      profilePayload.category = body.type.trim()
+    }
     const referrerVisibility = body.is_visible_in_referrer_search ?? body.isVisibleInReferrerSearch
     if (typeof referrerVisibility === 'boolean') {
       profilePayload.isVisibleInReferrerSearch = referrerVisibility
