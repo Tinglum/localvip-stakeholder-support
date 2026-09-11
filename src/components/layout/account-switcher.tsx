@@ -6,8 +6,8 @@
  * Someone who owns a business AND leads a cause previously landed on whichever
  * account the by-user lookup happened to return first, with nothing on screen
  * saying there was another one or how to reach it. This surfaces the set and
- * makes the choice explicit: a modal the first time in a session, and a
- * permanent dropdown in the top bar after that.
+ * makes the choice explicit: a modal on every load stating who you are signed
+ * in as and what you can reach, plus a permanent dropdown in the top bar.
  *
  * Renders nothing for the overwhelming majority of users, who have exactly one
  * account — there is no choice to make, so there is no UI to show.
@@ -35,10 +35,6 @@ interface AccountsResponse {
   incomplete?: boolean
 }
 
-// Per tab, so the modal introduces the choice once rather than nagging on every
-// navigation.
-const SEEN_KEY = 'lvip_account_choice_seen'
-
 export function AccountSwitcher() {
   const [data, setData] = React.useState<AccountsResponse | null>(null)
   const [modalOpen, setModalOpen] = React.useState(false)
@@ -54,11 +50,10 @@ export function AccountSwitcher() {
         const json: AccountsResponse = await response.json()
         if (cancelled) return
         setData(json)
-        if (json.accounts.length > 1) {
-          let seen = false
-          try { seen = sessionStorage.getItem(SEEN_KEY) === '1' } catch { /* private mode */ }
-          if (!seen) setModalOpen(true)
-        }
+        // Every load, deliberately: the point is to state which account you are
+        // in before you act in it, and a once-per-session gate meant the answer
+        // was missing exactly when someone came back later and had forgotten.
+        if (json.accounts.length > 1) setModalOpen(true)
       } catch { /* the dropdown simply does not appear */ }
     }
     load()
@@ -67,7 +62,6 @@ export function AccountSwitcher() {
 
   function dismiss() {
     setModalOpen(false)
-    try { sessionStorage.setItem(SEEN_KEY, '1') } catch { /* private mode */ }
   }
 
   async function choose(account: PortalAccount) {
@@ -85,7 +79,6 @@ export function AccountSwitcher() {
         setSwitching(null)
         return
       }
-      try { sessionStorage.setItem(SEEN_KEY, '1') } catch { /* private mode */ }
       // Hard reload: the shell, nav and data are all resolved server-side from
       // the pin cookie, so a client-side route change would keep the old portal.
       window.location.href = '/dashboard'
