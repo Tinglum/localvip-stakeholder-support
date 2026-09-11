@@ -83,6 +83,7 @@ export const ROLE_TOOLS: Record<UserRole, { label: string; href: string; icon: s
     { label: 'Materials', href: '/materials/mine', icon: 'FileDown', description: 'Download materials' },
   ],
   community: [
+    { label: 'Landing Pages', href: '/community/landing-page', icon: 'LayoutTemplate', description: 'Build and publish your campaign pages' },
     { label: 'Supporters', href: '/community/supporters', icon: 'Users', description: 'See your supporter list' },
     { label: 'Share', href: '/community/share', icon: 'Megaphone', description: 'Grow your supporter base' },
     { label: 'Activity', href: '/community/activity', icon: 'BarChart3', description: 'Track supporter growth' },

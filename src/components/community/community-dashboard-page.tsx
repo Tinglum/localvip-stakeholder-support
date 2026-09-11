@@ -817,7 +817,7 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
               { number: 3, title: 'Connect supporting businesses', text: 'See current partners and build the list of businesses supporting your cause.', href: '/community/businesses', cta: 'Manage businesses' },
               { number: 4, title: 'Invite families and supporters', text: 'Use your cause link and ready-made message to invite your community.', href: '/community/share', cta: 'Invite supporters' },
               { number: 5, title: 'Prepare QR codes and links', text: 'Review the QR code and link supporters will use to join your cause.', href: '/community/qr', cta: 'Review QR and links' },
-              { number: 6, title: 'Review and share materials', text: 'Open your generated flyers and campaign assets before launch.', href: '/community/materials', cta: 'Open materials' },
+              { number: 6, title: 'Publish your landing pages', text: 'Use your logo, cover photo and colors to publish pages for families, businesses and your organization.', href: '/community/landing-page', cta: 'Build landing pages' },
             ].map((step) => (
               <Card key={step.number} id={`step-${step.number}`}>
                 <CardHeader><CardTitle>{step.number}. {step.title}</CardTitle></CardHeader>

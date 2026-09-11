@@ -486,6 +486,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
       '/community/qr',
       '/community/tasks',
       '/community/share',
+      '/community/landing-page',
       '/community/activity',
       '/materials/mine',
     ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
