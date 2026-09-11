@@ -10,8 +10,12 @@ import { Input } from '@/components/ui/input'
 import { useDealInsert, useDeals, useDealUpdate, type QaDealRow } from '@/lib/supabase/hooks'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MIN_TOTAL_CONTRIBUTION = 12
-const MAX_TOTAL_CONTRIBUTION = 25
+// Mirrors PaymentEconomics.Minimum/MaximumBusinessCashbackPct. 20 is the lowest
+// contribution that still pays a card customer anything (20 - 12 fixed fee - 3
+// card reserve = 5pp); the old 12 left them with exactly nothing, which is what
+// made live deals advertise "0% Back".
+const MIN_TOTAL_CONTRIBUTION = 20
+const MAX_TOTAL_CONTRIBUTION = 35
 const STANDARD_TOTAL_CONTRIBUTION = 20
 const FIXED_SUCCESS_ALLOCATION = 12
 
