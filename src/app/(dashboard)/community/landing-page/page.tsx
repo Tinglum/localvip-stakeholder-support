@@ -107,7 +107,7 @@ export default function CauseLandingPageEditor() {
   const [dirty, setDirty] = React.useState(false)
   const loadedId = React.useRef<number | null>(null)
   const uploadRef = React.useRef<HTMLInputElement | null>(null)
-  const uploadKind = React.useRef<'logo' | 'cover_photo'>('logo')
+  const uploadKind = React.useRef<'logo' | 'cover_photo' | 'team' | 'community' | 'people'>('logo')
 
   React.useEffect(() => {
     if (!cause || !causeId || loadedId.current === causeId) return
@@ -180,11 +180,17 @@ export default function CauseLandingPageEditor() {
     try {
       const data = new FormData()
       data.append('file', file)
-      data.append('mediaType', uploadKind.current)
-      const response = await fetch(`/api/crm/causes/${causeId}/media`, { method: 'POST', body: data })
+      const isPrimary = uploadKind.current === 'logo' || uploadKind.current === 'cover_photo'
+      if (isPrimary) data.append('mediaType', uploadKind.current)
+      else data.append('slot', uploadKind.current)
+      const response = await fetch(
+        isPrimary ? `/api/crm/causes/${causeId}/media` : `/api/crm/causes/${causeId}/landing-page/assets`,
+        { method: 'POST', body: data },
+      )
       const body = await response.json()
       if (!response.ok || !body.fileUrl) throw new Error(body.error || 'Upload failed.')
-      updateAsset(uploadKind.current === 'logo' ? 'mark' : 'crowd', { src: body.fileUrl })
+      const asset = uploadKind.current === 'logo' ? 'mark' : uploadKind.current === 'cover_photo' ? 'crowd' : uploadKind.current
+      updateAsset(asset, { src: body.fileUrl, alt: config?.assets[asset]?.alt || `${cause.name} ${asset}` })
       setMessage('Image uploaded. The page draft will save automatically.')
     } catch (uploadError) {
       setMessage(uploadError instanceof Error ? uploadError.message : 'Upload failed.')
@@ -251,6 +257,20 @@ export default function CauseLandingPageEditor() {
             <Button variant="outline" onClick={() => { uploadKind.current = mediaType; uploadRef.current?.click() }}><Upload className="h-4 w-4" />Upload</Button>
           </div>)}
           <p className="text-sm text-surface-500">Use a transparent logo and a wide, high resolution cover photo featuring your real community.</p>
+          <div className="border-t border-surface-200 pt-5">
+            <h3 className="text-sm font-semibold text-surface-900">Story photos</h3>
+            <p className="mt-1 text-sm text-surface-500">Optional photos help each audience page tell a richer story.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {([['team', 'Who you support'], ['community', 'Your community'], ['people', 'Families and volunteers']] as const).map(([asset, label]) => <div key={asset} className="overflow-hidden rounded-xl border border-surface-200 bg-surface-50">
+                <div className="flex h-28 items-center justify-center overflow-hidden bg-surface-100">{config.assets[asset]?.src ? <img src={config.assets[asset]?.src} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-surface-400" />}</div>
+                <div className="space-y-2 p-3">
+                  <p className="text-sm font-medium text-surface-800">{label}</p>
+                  <Input aria-label={`${label} image description`} value={config.assets[asset]?.alt || ''} onChange={(e) => updateAsset(asset, { alt: e.target.value })} placeholder="Image description" />
+                  <Button className="w-full" variant="outline" onClick={() => { uploadKind.current = asset; uploadRef.current?.click() }}><Upload className="h-4 w-4" />Upload</Button>
+                </div>
+              </div>)}
+            </div>
+          </div>
         </CardContent></Card>
 
         <Card><CardHeader><CardTitle>Brand colors</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-4 md:grid-cols-3">
