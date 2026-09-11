@@ -278,6 +278,16 @@ function isConsumerProfile(profile: Profile) {
 }
 
 export function getStakeholderShell(profile: Profile): StakeholderShell {
+  // A session pinned to a cause opens the community shell, whatever the user's
+  // own role says. Jamaica owns both a business and a cause; her role is
+  // "business", so "Real log in as Cause" set the cause pin correctly and then
+  // landed her in the business portal anyway - the pin was honoured everywhere
+  // except here, which is the part that decides what you actually see.
+  const pinnedCauseAccountId = (profile.metadata as Record<string, unknown> | null)?.view_as_cause_account_id
+  if (pinnedCauseAccountId != null && pinnedCauseAccountId !== '') {
+    return 'community'
+  }
+
   if (isConsumerProfile(profile)) {
     return 'consumer'
   }

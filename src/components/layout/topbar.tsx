@@ -23,6 +23,7 @@ import { canAccessPath, getStakeholderAccess, isAdminProfile } from '@/lib/stake
 import type { Profile } from '@/lib/types/database'
 import { ViewAsPicker } from '@/components/layout/view-as-picker'
 import { OperatorPicker } from '@/components/admin/operator-picker'
+import { AccountSwitcher } from '@/components/layout/account-switcher'
 import { TopbarSearch } from '@/components/layout/topbar-search'
 import { SystemStatusIndicator } from '@/components/layout/system-status-indicator'
 import { FeaturedCarouselToggle } from '@/components/layout/featured-carousel-toggle'
@@ -476,6 +477,9 @@ export function Topbar({
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
+
+        {/* Only renders when this user actually has more than one account. */}
+        <AccountSwitcher />
 
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
