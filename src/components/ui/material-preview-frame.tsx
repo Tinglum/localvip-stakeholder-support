@@ -29,9 +29,18 @@ function isPdfSource(src: string | null, mimeType?: string | null) {
     || src.toLowerCase().includes('.pdf')
 }
 
+// Extensions matter as much as the mime type: a template whose design was moved
+// out of an inline data: URL onto disk arrives as "/uploads/.../template-77.svg"
+// with no mimeType at all. Matching only data:image/ sent those to the generic
+// file-icon placeholder, so the whole template library rendered as broken cards.
+const IMAGE_EXTENSIONS = ['.svg', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif']
+
 function isImageSource(src: string | null, mimeType?: string | null) {
   if (!src) return false
-  return mimeType?.startsWith('image/') || src.startsWith('data:image/')
+  if (mimeType?.startsWith('image/')) return true
+  if (src.startsWith('data:image/')) return true
+  const path = src.split('?')[0].split('#')[0].toLowerCase()
+  return IMAGE_EXTENSIONS.some(ext => path.endsWith(ext))
 }
 
 export function MaterialPreviewFrame({
@@ -101,8 +110,11 @@ export function MaterialPreviewFrame({
   if (image) {
     return (
       <div className={cn('relative overflow-hidden bg-surface-50', className)}>
+        {/* Proxied for the same reason PDFs are: the file is served by
+            qa.localvip.com, so a bare /uploads/... path resolves against the
+            dashboard origin and 404s. */}
         <NextImage
-          src={src}
+          src={toProxiedMaterialUrl(src)}
           alt={title}
           fill
           unoptimized

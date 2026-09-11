@@ -181,6 +181,18 @@ export default function BusinessDetailPage() {
   const materials = preferQaWorkspace ? qaMaterials : (localState?.materials || qaMaterials)
   const assignments = React.useMemo(() => localState?.assignments ?? [], [localState?.assignments])
   const fallbackEntityHooksEnabled = (!localState || preferQaWorkspace) && !localStateLoading && !!resolvedBusinessId
+  // What the business itself sees under "My materials". The Materials tab used to
+  // render only linked_material_id, which nobody sets, so a business with five
+  // generated flyers reported "No materials assigned". The backend requires an
+  // account scope on this list, so it is filtered by the business account id.
+  const { data: businessGeneratedMaterials } = useGeneratedMaterials(
+    { business_id: fallbackEntityId },
+    { enabled: fallbackEntityHooksEnabled },
+  )
+  const businessMaterials = React.useMemo(
+    () => (businessGeneratedMaterials || []).filter(item => item.is_active !== false),
+    [businessGeneratedMaterials],
+  )
   // QR codes live in the QA backend (DashboardQrCodes); local-state reads them
   // from the retired Supabase workspace, which is empty for a QA business. That
   // emptiness was reported as "no QR code has been generated" and "QR status:
@@ -965,8 +977,44 @@ export default function BusinessDetailPage() {
             </div>
           )}
 
+          {/* The business's own generated flyers - the same set it sees under
+              "My materials" in its portal. */}
+          {businessMaterials.length > 0 && (
+            <div className="grid gap-3">
+              {businessMaterials.map((item) => {
+                const name = item.generated_file_name || `Material ${item.id}`
+                const ready = item.generation_status === 'generated'
+                return (
+                  <Card key={item.id}>
+                    <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-surface-900">{name}</p>
+                        <p className="mt-1 text-xs text-surface-500">
+                          {item.library_folder || 'Generated'}
+                          {item.generated_at ? ` · ${formatDateTime(item.generated_at)}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={ready ? 'success' : 'warning'} dot>
+                          {item.generation_status || 'pending'}
+                        </Badge>
+                        {item.generated_file_url && (
+                          <a href={item.generated_file_url} target="_blank" rel="noopener noreferrer">
+                            <Button variant="outline" size="sm">
+                              <ExternalLink className="h-3.5 w-3.5" /> Open
+                            </Button>
+                          </a>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+
           {/* Empty state — only if nothing at all */}
-          {!linkedMaterial && (
+          {!linkedMaterial && businessMaterials.length === 0 && (
             <Card>
               <CardContent className="flex flex-col items-center py-8 text-center">
                 <FileText className="mb-3 h-10 w-10 text-surface-300" />
