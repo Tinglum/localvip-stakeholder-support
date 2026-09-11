@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useDealInsert, useDeals, useDealUpdate, type QaDealRow } from '@/lib/supabase/hooks'
+import { useAuth } from '@/lib/auth/context'
+import { isAdminProfile } from '@/lib/stakeholder-access'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 // Mirrors PaymentEconomics.Minimum/MaximumBusinessCashbackPct. 20 is the lowest
@@ -156,6 +158,12 @@ export interface DealManagerProps {
 }
 
 export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }: DealManagerProps) {
+  // Give Back Day is admin-only: it commits the business to paying 20% with
+  // the consumer earning nothing, so a business cannot schedule it for
+  // itself. The server refuses it either way - this just stops showing a
+  // control whose save would be rejected.
+  const { profile } = useAuth()
+  const canScheduleGiveBackDay = isAdminProfile(profile)
   const isPortal = mode === 'portal'
   const isSetup = mode === 'setup'
   const { data: deals, loading, error: loadError, refetch } = useDeals({
@@ -374,6 +382,7 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
             </div>
 
             <div className="rounded-2xl border border-brand-200 bg-white p-5">
+              {canScheduleGiveBackDay ? (
               <label className="mb-5 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
                 <input
                   type="checkbox"
@@ -393,6 +402,7 @@ export function DealManager({ businessAccountId, mode = 'crm', onDealsChanged }:
                   <span className="mt-1 block text-sm text-amber-800">For this one day, customers receive no cashback. The full 20% goes to the business&apos;s designated cause.</span>
                 </span>
               </label>
+              ) : null}
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <label htmlFor="deal-cashback" className="text-xs font-semibold uppercase tracking-[0.16em] text-surface-500">
