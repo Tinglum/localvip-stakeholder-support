@@ -137,7 +137,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
     : businessAccountId
       ? { business_id: businessAccountId }
       : undefined
-  const { data: generated, loading: generatedLoading, error: generatedError } = useGeneratedMaterials(
+  const { data: generated, loading: generatedLoading, error: generatedError, refetch: refetchGenerated } = useGeneratedMaterials(
     generatedScope,
     { enabled: Boolean(generatedScope) },
   )
@@ -188,7 +188,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
     <div className="space-y-8">
       {!embedded && <PageHeader title={copy.pageTitle} description={copy.pageDescription} />}
       <MaterialPreviewDialog material={preview} open={!!preview} onOpenChange={open => { if (!open) setPreview(null) }} />
-      <CauseMaterialGenerateDialog material={customizing} causeAccountId={causeAccountId} onClose={() => setCustomizing(null)} />
+      <CauseMaterialGenerateDialog material={customizing} causeAccountId={causeAccountId} onClose={() => setCustomizing(null)} onGenerated={() => refetchGenerated()} />
       <div className="rounded-2xl border border-surface-200 bg-white p-4">
         <div className="relative max-w-xl">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
@@ -216,7 +216,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   )
 }
 
-function CauseMaterialGenerateDialog({ material, causeAccountId, onClose }: { material: Material | null; causeAccountId: string | null; onClose: () => void }) {
+function CauseMaterialGenerateDialog({ material, causeAccountId, onClose, onGenerated }: { material: Material | null; causeAccountId: string | null; onClose: () => void; onGenerated: () => void }) {
   const [generating, setGenerating] = React.useState(false)
   const [done, setDone] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -236,6 +236,7 @@ function CauseMaterialGenerateDialog({ material, causeAccountId, onClose }: { ma
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Could not create this material.')
       setDone(true)
+      onGenerated()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create this material.')
     } finally {
