@@ -11,7 +11,9 @@ import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/lib/auth/context'
-import { useGeneratedMaterials, useMaterialTemplates, useMaterials } from '@/lib/supabase/hooks'
+import { useBusinesses, useCauses, useGeneratedMaterials, useMaterialTemplates, useMaterials } from '@/lib/supabase/hooks'
+import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-portal'
+import { getCauseQaAccountId, resolveCommunityCause } from '@/lib/community-cause'
 import {
   explainMaterialAvailability,
   getMaterialDelivery,
@@ -112,15 +114,35 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const { profile, shell, localProfileId } = useAuth()
   const copy = getStakeholderMaterialCopy(shell)
   const { data: allMaterials, loading: materialsLoading, error } = useMaterials()
-  const { data: generated, loading: generatedLoading } = useGeneratedMaterials()
+  const { data: causes, loading: causesLoading } = useCauses(undefined, { enabled: shell === 'community' })
+  const { data: businesses, loading: businessesLoading } = useBusinesses(undefined, { enabled: shell === 'business' })
+  const scopedCause = React.useMemo(
+    () => shell === 'community' ? resolveCommunityCause(profile, causes) : null,
+    [causes, profile, shell],
+  )
+  const scopedBusiness = React.useMemo(
+    () => shell === 'business' ? resolveScopedBusiness(profile, businesses) : null,
+    [businesses, profile, shell],
+  )
+  const causeAccountId = getCauseQaAccountId(scopedCause)
+  const businessAccountId = getBusinessQaAccountId(scopedBusiness)
+  const generatedScope: Record<string, string> | undefined = causeAccountId
+    ? { cause_id: causeAccountId }
+    : businessAccountId
+      ? { business_id: businessAccountId }
+      : undefined
+  const { data: generated, loading: generatedLoading, error: generatedError } = useGeneratedMaterials(
+    generatedScope,
+    { enabled: Boolean(generatedScope) },
+  )
   const { data: templates, loading: templateLoading } = useMaterialTemplates({ is_active: 'true' })
   const [search, setSearch] = React.useState('')
   const [preview, setPreview] = React.useState<Material | null>(null)
 
   const templateMap = React.useMemo(() => new Map(templates.map(item => [String(item.id), item])), [templates])
   const accountIds = React.useMemo(() => new Set([
-    profile.business_id, profile.organization_id, profile.id, localProfileId,
-  ].filter(Boolean).map(String)), [localProfileId, profile.business_id, profile.id, profile.organization_id])
+    profile.business_id, profile.organization_id, profile.id, localProfileId, causeAccountId, businessAccountId,
+  ].filter(Boolean).map(String)), [businessAccountId, causeAccountId, localProfileId, profile.business_id, profile.id, profile.organization_id])
 
   const generatedMaterials = React.useMemo(() => generated.filter(row => {
     if (row.generation_status !== 'generated' || row.is_active === false || row.is_outdated || !row.generated_file_url) return false
@@ -150,7 +172,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const saved = eligible.filter(item => !item.is_template && !!localProfileId && item.created_by === localProfileId).filter(matches)
   const savedIds = new Set(saved.map(item => item.id))
   const resources = eligible.filter(item => getMaterialDelivery(item) === 'ready' && !savedIds.has(item.id)).filter(matches)
-  const loading = materialsLoading || generatedLoading || templateLoading
+  const loading = materialsLoading || generatedLoading || templateLoading || causesLoading || businessesLoading
 
   return (
     <div className="space-y-8">
@@ -162,7 +184,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
           <Input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${copy.pageTitle.toLowerCase()}...`} className="pl-9" />
         </div>
       </div>
-      {error && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{error}</div>}
+      {(error || generatedError) && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{error || generatedError}</div>}
       {loading ? (
         <div className="flex items-center justify-center rounded-2xl border border-surface-200 bg-white py-16 text-surface-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Preparing your materials...</div>
       ) : madeForYou.length + customizable.length + resources.length + saved.length === 0 ? (
