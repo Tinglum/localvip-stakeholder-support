@@ -54,6 +54,7 @@ export function QrPlacementPicker({
   const [imageLoaded, setImageLoaded] = React.useState(false)
   const draggingIdRef = React.useRef<string | null>(null)
   const dragOffsetRef = React.useRef({ x: 0, y: 0 })
+  const previewImgRef = React.useRef<HTMLImageElement | null>(null)
 
   const placementsOnCurrentPage = React.useMemo(
     () => placements.filter((placement) => placement.page === currentPage),
@@ -70,6 +71,31 @@ export function QrPlacementPicker({
     setImageLoaded(false)
     setRenderedSize({ width: 0, height: 0 })
   }, [previewUrl])
+
+  // The zone overlay is positioned in percentages of this frame, so the frame has
+  // to stay exactly the size of the image. Measuring once in onLoad was not
+  // enough: the frame then adopts that size, a scrollbar appears and the image
+  // re-lays out shorter, leaving the overlay positioned against a stale, taller
+  // basis - which drew every zone lower than it exports. Re-measure whenever the
+  // image's own box changes.
+  React.useEffect(() => {
+    const image = previewImgRef.current
+    if (isPdf || !image) return
+    const sync = () => {
+      const width = Math.round(image.clientWidth)
+      const height = Math.round(image.clientHeight)
+      if (!width || !height) return
+      setRenderedSize((current) =>
+        current.width === width && current.height === height
+          ? current
+          : { width, height },
+      )
+    }
+    sync()
+    const observer = new ResizeObserver(sync)
+    observer.observe(image)
+    return () => observer.disconnect()
+  }, [isPdf, previewUrl, imageLoaded])
 
   React.useEffect(() => {
     const observer = new ResizeObserver((entries) => {
@@ -264,6 +290,7 @@ export function QrPlacementPicker({
               ) : (
                 <>
                   <img
+                    ref={previewImgRef}
                     src={previewUrl}
                     alt="Material preview"
                     className="block h-auto max-w-full"
@@ -271,8 +298,8 @@ export function QrPlacementPicker({
                       const element = event.currentTarget
                       setImageLoaded(true)
                       setRenderedSize({
-                        width: element.clientWidth,
-                        height: element.clientHeight,
+                        width: Math.round(element.clientWidth),
+                        height: Math.round(element.clientHeight),
                       })
                     }}
                   />
