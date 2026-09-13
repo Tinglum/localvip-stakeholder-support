@@ -357,7 +357,7 @@ function UploadMaterialDialog({
       }
     } catch { /* fall through */ }
 
-    // 2) QA upload failed — keep the material usable with an inline data URL.
+    // 2) QA upload failed. Keep the material usable with an inline data URL.
     // (The old Supabase Storage fallback was a stub that always failed through
     // to this same data-URL path, so it was removed.)
     console.warn('QA upload failed, falling back to data URL')
@@ -472,7 +472,7 @@ function UploadMaterialDialog({
         const body = await res.json().catch(() => ({}))
         setError(body.error || `Upload failed (${res.status})`)
       } else {
-        // The uploaded DashboardMaterial (is_template=true) IS the template — the
+        // The uploaded DashboardMaterial (is_template=true) IS the template. The
         // portal Template Library and material generation both read it directly.
         // We deliberately do NOT also create a separate MaterialTemplate row: that
         // produced a duplicate card in the library (one DashboardMaterial + one
@@ -825,7 +825,7 @@ export default function MaterialsLibraryPage() {
   // Templates are DashboardMaterials flagged is_template=true (the rich row with
   // QR zones + visibility tags, used by the portal + generation). Generated
   // files come from GeneratedMaterials. We intentionally do NOT also pull the
-  // legacy MaterialTemplates table — every uploaded template lived there too,
+  // legacy MaterialTemplates table. Every uploaded template lived there too,
   // producing a duplicate card per upload.
   const { data: legacy, loading: legacyLoading, error: legacyError, refetch: refetchLegacy } = useMaterials()
   // GeneratedMaterial listing REQUIRES a business or cause scope - the backend

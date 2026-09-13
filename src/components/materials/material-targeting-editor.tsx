@@ -37,6 +37,11 @@ export function MaterialReachReview({ materialId, targeting, onReviewed }: { mat
   const [confirmation, setConfirmation] = React.useState('')
   const [activating, setActivating] = React.useState(false)
   const [activationMessage, setActivationMessage] = React.useState<string | null>(null)
+  const runCount = !data ? 0 : generationMode === 'missing'
+    ? data.counts.wouldGenerate
+    : generationMode === 'outdated'
+      ? data.counts.outdated
+      : data.counts.eligible
 
   React.useEffect(() => {
     let active = true
@@ -98,8 +103,8 @@ export function MaterialReachReview({ materialId, targeting, onReviewed }: { mat
       <p className="mt-1 text-xs text-surface-500">Choose what to create. The job runs safely in the background.</p>
       <select value={generationMode} onChange={(e) => setGenerationMode(e.target.value as typeof generationMode)} className="mt-3 h-10 w-full rounded-lg border border-surface-300 bg-white px-3 text-sm"><option value="missing">Create only missing files</option><option value="outdated">Replace outdated files</option><option value="all">Create for every eligible account</option></select>
       {!materialId ? <p className="mt-3 rounded-lg bg-surface-50 p-3 text-sm text-surface-600">Save this material first. You can activate automatic creation from Edit Material after the material has an ID.</p> : <>
-        {data.counts.wouldGenerate >= 250 && <div className="mt-3"><label className="text-xs font-medium text-surface-700">Type {data.counts.wouldGenerate} to confirm this large run</label><Input className="mt-1" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} inputMode="numeric" /></div>}
-        <Button type="button" className="mt-3" onClick={activate} disabled={activating || (data.counts.wouldGenerate >= 250 && Number(confirmation) !== data.counts.wouldGenerate)}>{activating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Activate and create</Button>
+        {runCount >= 250 && <div className="mt-3"><label className="text-xs font-medium text-surface-700">Type {runCount} to confirm this large run</label><Input className="mt-1" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} inputMode="numeric" /></div>}
+        <Button type="button" className="mt-3" onClick={activate} disabled={activating || (runCount >= 250 && Number(confirmation) !== runCount)}>{activating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Activate and create</Button>
       </>}
       {activationMessage && <p className="mt-3 text-sm text-success-700">{activationMessage}</p>}
     </div>}

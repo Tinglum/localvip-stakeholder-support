@@ -61,14 +61,13 @@ function normalizeEntity(row: BackendRow): ReachEntity {
 function filters(value?: string) {
   if (!value || value === 'all') return undefined
   if (value === 'ready') return { statuses: ['eligible', 'blocked'] }
-  if (value === 'outdated' || value === 'generated') return undefined
   return { statuses: [value] }
 }
 
 export const materialReachApi = {
   preview: async (input: { materialId?: string; targeting: MaterialClassification; page: number; pageSize: number; filter?: string; search?: string }) => {
     const raw = await request<{ counts: { eligible: number; blocked: number; ineligible: number; readyToGenerate: number; alreadyGenerated: number; outdated: number }; entities: BackendRow[]; page: number; pageSize: number; total: number }>('/api/admin/material-reach/preview', { ...input, materialId: input.materialId ? Number(input.materialId) : undefined, targeting: toBackendTargeting(input.targeting), filters: filters(input.filter) })
-    const entities = raw.entities.map(normalizeEntity).filter((row) => input.filter !== 'outdated' || row.outdated).filter((row) => input.filter !== 'generated' || row.state === 'generated')
+    const entities = raw.entities.map(normalizeEntity)
     return { ...raw, entities, counts: { eligible: raw.counts.eligible, blocked: raw.counts.blocked, ineligible: raw.counts.ineligible, generated: raw.counts.alreadyGenerated, outdated: raw.counts.outdated, wouldGenerate: raw.counts.readyToGenerate, byType: {} } }
   },
   check: async (input: { materialId?: string; targeting: MaterialClassification; query: string }) => {
@@ -80,5 +79,5 @@ export const materialReachApi = {
     return { entity: normalizeEntity(raw) }
   },
   activate: (input: { materialId: string; targeting: MaterialClassification; mode: 'all' | 'missing' | 'outdated' | 'selected'; selectedEntityIds?: string[]; confirmationCount?: number }) =>
-    request<{ message: string; entityIds: number[] }>('/api/admin/material-reach/activate', { ...input, materialId: Number(input.materialId), targeting: toBackendTargeting(input.targeting), selectedEntityIds: input.selectedEntityIds?.map(Number) }).then((result) => ({ message: result.message, ready: result.entityIds.length, entityIds: result.entityIds.map(String) })),
+    request<{ message: string; entityIds: number[]; generation?: { generated: number; skipped: number; failed: number; unsupported: number } }>('/api/admin/material-reach/activate', { ...input, materialId: Number(input.materialId), targeting: toBackendTargeting(input.targeting), selectedEntityIds: input.selectedEntityIds?.map(Number) }).then((result) => ({ message: result.message, ready: result.entityIds.length, entityIds: result.entityIds.map(String), generation: result.generation })),
 }

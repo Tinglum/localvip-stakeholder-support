@@ -22,7 +22,7 @@ function resolveDeleteTarget(id: string) {
 /**
  * Delete a material via the QA dashboard proxy. The backend handles dependency
  * cleanup; the optional `manageReferences` flag is preserved for API parity
- * (it's a no-op on QA — the backend cascade-clears references).
+ * (it's a no-op on QA; the backend cascade-clears references).
  */
 export async function deleteMaterial(
   material: Pick<Material, 'id' | 'file_url' | 'thumbnail_url'>,

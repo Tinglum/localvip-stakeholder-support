@@ -3,7 +3,7 @@
  * this origin's same-origin proxy so the browser will fetch/render it without
  * cross-origin restrictions.
  *
- * - Data URLs and blob URLs are already local — returned unchanged.
+ * - Data URLs and blob URLs are already local and are returned unchanged.
  * - Server-relative paths (/uploads/...) and absolute http(s) URLs are wrapped
  *   in `/api/qa/material-proxy?url=<encoded>`. The proxy only forwards
  *   qa.localvip.com /uploads/* assets, so other absolute URLs that aren't on QA

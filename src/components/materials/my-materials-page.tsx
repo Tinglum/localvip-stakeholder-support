@@ -335,7 +335,7 @@ function UploadMaterialDialog({
         if (qaFileUrl) {
           fileUrl = qaFileUrl
         } else {
-          // 2) QA upload failed — keep the material usable with an inline data
+          // 2) QA upload failed. Keep the material usable with an inline data
           // URL. (The old Supabase Storage fallback was a stub that always
           // failed through to this same path, so it was removed.)
           fileUrl = await fileToDataUrl(selectedFile)
@@ -533,7 +533,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
   // was keyed on came from a retired table that always returned []. Kept as the
   // empty sentinel so the call shape is unchanged.
   const stakeholderId = EMPTY_UUID
-  // Stakeholders were removed from the backend — generated materials are keyed by
+  // Stakeholders were removed from the backend. Generated materials are keyed by
   // the business (or cause) account. Resolve the current business account id.
   const { data: scopedBusinesses } = useBusinesses(profile.business_id ? { id: profile.business_id } : undefined)
   const scopedBusiness = React.useMemo(() => resolveScopedBusiness(profile, scopedBusinesses), [profile, scopedBusinesses])

@@ -14,7 +14,7 @@ import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
 import type { Material } from '@/lib/types/database'
 
-// Office formats a browser genuinely cannot render inline — no <iframe>/<object>
+// Office formats a browser genuinely cannot render inline. No <iframe>/<object>
 // trick fixes this, and we deliberately don't route these through a third-party
 // viewer (Google/Microsoft) since that would send a customer's private document
 // off-platform. The honest answer is: tell the user, offer the download.
@@ -111,7 +111,7 @@ export function MaterialPreviewDialog({
               </div>
             </div>
           ) : isUnpreviewable ? (
-            // Word/PowerPoint/Excel files can't be rendered inline by a browser —
+            // Word/PowerPoint/Excel files cannot be rendered inline by a browser.
             // that's a real platform limitation, not something an iframe trick
             // fixes. Say so plainly and hand over the download instead of leaving
             // a blank/broken preview frame, which reads as a failure.
