@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Loader2, PencilLine, Tags } from 'lucide-react'
+import { Loader2, PencilLine } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,7 +17,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { MaterialTagPicker } from '@/components/material-tags/material-tag-picker'
 import { MaterialTargetingEditor } from '@/components/materials/material-targeting-editor'
 import { useAuth } from '@/lib/auth/context'
-import { MATERIAL_CATEGORIES, MATERIAL_USE_CASES } from '@/lib/constants'
 import {
   AUTOMATION_TEMPLATE_STAKEHOLDER_TYPES,
   deriveMaterialAutomationStakeholderTypes,
@@ -187,27 +186,11 @@ export function MaterialEditDialog({
 
         {material && (
           <form onSubmit={handleSave} className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div>
               {false && <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">Title</label>
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} required />
               </div>}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
-                <select
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                >
-                  <option value="">None</option>
-                  {MATERIAL_CATEGORIES.map((item) => (
-                    <option key={item.value} value={item.value}>{item.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
                 <Textarea
@@ -216,36 +199,6 @@ export function MaterialEditDialog({
                   rows={4}
                   placeholder="What is this material for?"
                 />
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">Use case</label>
-                  <select
-                    value={useCase}
-                    onChange={(event) => setUseCase(event.target.value)}
-                    className="h-10 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm"
-                  >
-                    <option value="">None</option>
-                    {MATERIAL_USE_CASES.map((item) => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700">
-                    <Tags className="h-4 w-4 text-brand-600" />
-                    Audience / search tags
-                  </label>
-                  <Input
-                    value={customTags}
-                    onChange={(event) => setCustomTags(event.target.value)}
-                    placeholder="customers, coffee, poster, launch"
-                  />
-                  <p className="mt-1 text-xs text-surface-500">
-                    Use comma-separated tags to make the material easier to find and describe.
-                  </p>
-                </div>
               </div>
             </div>
 

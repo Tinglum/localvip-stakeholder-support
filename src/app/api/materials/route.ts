@@ -34,8 +34,12 @@ export async function GET() {
           ? (json as Record<string, unknown>).items as unknown[]
           : []
       return NextResponse.json(items as Material[])
-    } catch {
-      return NextResponse.json([] as Material[])
+    } catch (error) {
+      console.error('[materials-api] QA list failed', error)
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to load materials.' },
+        { status: 502 },
+      )
     }
   }
 
