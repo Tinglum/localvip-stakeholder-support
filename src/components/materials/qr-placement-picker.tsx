@@ -268,7 +268,11 @@ export function QrPlacementPicker({
             <div
               ref={pageFrameRef}
               className={cn(
-                'relative cursor-crosshair overflow-hidden rounded-lg border border-surface-200 bg-white shadow-sm',
+                // self-start: as a flex item this would otherwise stretch to the
+                // scroll host's max-h-[70vh] and clip the image, leaving the
+                // overlay resolving against a frame shorter than the artwork.
+                // It has to wrap its content so the frame IS the image box.
+                'relative self-start cursor-crosshair overflow-hidden rounded-lg border border-surface-200 bg-white shadow-sm',
                 !imageLoaded && !isPdf && 'min-h-[18rem] min-w-[12rem]',
               )}
               // Sized explicitly only for the PDF branch, where the canvas needs
