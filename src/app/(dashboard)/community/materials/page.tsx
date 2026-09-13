@@ -1,5 +1,5 @@
-import { CommunityDashboardPage } from '@/components/community/community-dashboard-page'
+import { StakeholderMaterialsPage } from '@/components/materials/stakeholder-materials-page'
 
 export default function CommunityMaterialsPage() {
-  return <CommunityDashboardPage initialTab="materials" />
+  return <StakeholderMaterialsPage />
 }

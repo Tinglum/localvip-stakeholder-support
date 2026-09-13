@@ -49,6 +49,7 @@ import { useBusinesses, useGeneratedMaterials, useMaterialAssignments, useMateri
 import { resolveScopedBusiness } from '@/lib/business-portal'
 import type { BusinessJoinResource } from '@/lib/business-join'
 import type { GeneratedMaterial, Material, MaterialTemplate } from '@/lib/types/database'
+import { StakeholderMaterialsPage } from '@/components/materials/stakeholder-materials-page'
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   one_pager: <File className="h-5 w-5" />,
@@ -516,10 +517,8 @@ function UploadMaterialDialog({
  * to false, so every other role renders exactly as before.
  */
 export default function MyMaterialsPage() {
-  // All users now use the standard materials page. This default export is
-  // mounted directly as the `/materials/mine` route, so it must stay
-  // prop-free — Next validates route component props.
-  return <StandardMaterialsPage />
+  const { isAdmin } = useAuth()
+  return isAdmin ? <StandardMaterialsPage /> : <StakeholderMaterialsPage />
 }
 
 /** Same view, embeddable. Used by the business Materials hub. */

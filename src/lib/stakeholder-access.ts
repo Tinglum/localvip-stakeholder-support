@@ -61,9 +61,9 @@ export const STAKEHOLDER_SUBTYPE_OPTIONS: Record<
  * Grow is every way to add customers, businesses and causes; Materials is QR
  * and printable assets.
  *
- * The old nine items are absorbed, not deleted — Dashboard+Activity → Home,
- * My Business+Setup → My Business, My 100 List+My Network+Grow → Grow,
- * Materials+Template Library → Materials. Every old route still resolves via
+ * The old nine items are absorbed, not deleted. Dashboard and Activity become Home,
+ * My Business and Setup become My Business, and the growth tools become Grow.
+ * Materials and Template Library become Materials. Every old route still resolves via
  * the redirects in `next.config.js`.
  */
 const BUSINESS_NAV_ITEMS: NavItem[] = [
@@ -74,7 +74,7 @@ const BUSINESS_NAV_ITEMS: NavItem[] = [
 ]
 
 /**
- * The first-run wizard is no longer a nav item at all — it is reached from the
+ * The first-run wizard is no longer a nav item. It is reached from the
  * "Needs your input" panel on Home and from `?step=` deep links. Kept as an
  * export because the shell still filters on it when setup is complete.
  */
@@ -86,6 +86,7 @@ const CONSUMER_NAV_ITEMS: NavItem[] = [
   { label: 'My Network', href: '/portal/me/network', icon: 'Users', minLevel: 0 },
   { label: 'My Transactions', href: '/portal/me/transactions', icon: 'ScrollText', minLevel: 0 },
   { label: 'My Causes', href: '/portal/me/causes', icon: 'Heart', minLevel: 0 },
+  { label: 'Share LocalVIP', href: '/materials/mine', icon: 'Megaphone', minLevel: 0 },
 ]
 
 const SHARED_OPERATOR_CRM_ITEMS: NavItem = {
@@ -98,7 +99,7 @@ const SHARED_OPERATOR_CRM_ITEMS: NavItem = {
     { label: 'Schools / Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
     { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
     // The people AT those accounts. Previously reachable only by opening a
-    // customer's profile and clicking through — reported as bug 168.
+    // customer's profile and clicking through. Reported as bug 168.
     { label: 'Contacts', href: '/crm/people', icon: 'Contact', minLevel: 0 },
     { label: 'Cities', href: '/crm/cities', icon: 'MapPin', minLevel: 0 },
     { label: 'Outreach Scripts', href: '/crm/scripts', icon: 'FileText', minLevel: 0 },
@@ -134,6 +135,7 @@ const COMMUNITY_NAV_ITEMS: NavItem[] = [
   { label: 'Onboarding', href: '/onboarding/cause', icon: 'CheckSquare', minLevel: 0 },
   { label: 'Businesses', href: '/community/businesses', icon: 'Store', minLevel: 0 },
   { label: 'Supporters', href: '/community/supporters', icon: 'Users', minLevel: 0 },
+  { label: 'Campaign Materials', href: '/community/materials', icon: 'FileDown', minLevel: 0 },
 ]
 
 const INFLUENCER_NAV_ITEMS: NavItem[] = [
@@ -458,6 +460,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
     return [
       '/dashboard',
       '/portal/me',
+      '/materials/mine',
     ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   }
 

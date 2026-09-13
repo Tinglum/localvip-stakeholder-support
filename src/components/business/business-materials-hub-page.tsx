@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * MATERIALS — QR and printable assets in one tab.
+ * MATERIALS: QR and printable assets in one tab.
  *
  * Absorbs the old "Materials" and "Template Library" nav items.
  *
@@ -15,18 +15,18 @@ import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FileDown, LayoutTemplate } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
-import { MyMaterialsView } from '@/components/materials/my-materials-page'
 import { TemplateLibraryPage } from '@/components/portal/template-library-page'
+import { StakeholderMaterialsPage } from '@/components/materials/stakeholder-materials-page'
 import { cn } from '@/lib/utils'
 
 type TabKey = 'mine' | 'templates'
 
 const TABS: Array<{ key: TabKey; label: string; hint: string; icon: React.ReactNode }> = [
-  { key: 'mine', label: 'My materials', hint: 'Your QR code and saved files', icon: <FileDown className="h-4 w-4" /> },
+  { key: 'mine', label: 'Materials home', hint: 'Made for you, resources, and saved files', icon: <FileDown className="h-4 w-4" /> },
   {
     key: 'templates',
-    label: 'Template library',
-    hint: 'Generate printable assets',
+    label: 'Customize',
+    hint: 'Create a material from an approved design',
     icon: <LayoutTemplate className="h-4 w-4" />,
   },
 ]
@@ -56,7 +56,7 @@ export function BusinessMaterialsHubPage() {
     <div className="space-y-6">
       <PageHeader
         title="Materials"
-        description="Your QR code, printable assets, and the templates you can generate them from."
+        description="Everything you need to invite customers, promote offers, and support your cause."
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -93,7 +93,7 @@ export function BusinessMaterialsHubPage() {
       </div>
 
       <div id="materials-panel" role="tabpanel" aria-labelledby={`materials-tab-${tab}`}>
-        {tab === 'mine' ? <MyMaterialsView embedded /> : <TemplateLibraryPage embedded actionsContainer={templateActions} />}
+        {tab === 'mine' ? <StakeholderMaterialsPage embedded /> : <TemplateLibraryPage embedded actionsContainer={templateActions} />}
       </div>
     </div>
   )
