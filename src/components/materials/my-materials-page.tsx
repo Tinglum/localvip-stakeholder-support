@@ -628,7 +628,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
       ) : (
         <PageHeader
           title="My Materials"
-          description="Your uploaded and assigned materials, with direct PDF previews ready for field use."
+          description="Your uploaded, assigned, and generated materials ready for field use."
           actions={
             <div className="flex items-center gap-2">
               <Button onClick={() => setUploadOpen(true)}>
@@ -681,7 +681,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
               <div>
                 <p className="text-sm font-semibold text-surface-900">Field-ready materials</p>
                 <p className="mt-1 max-w-2xl text-sm text-surface-600">
-                  PDFs now preview directly inside the app, so the same file you upload is the same file everyone sees.
+                  Open any material to preview the finished file, then download or share it when you are ready.
                 </p>
               </div>
             </div>

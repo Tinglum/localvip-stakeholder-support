@@ -66,6 +66,22 @@ export function MaterialPreviewFrame({
   }
 
   if (pdf) {
+    if (!interactive) {
+      return (
+        <div className={cn('relative flex flex-col items-center justify-center gap-3 overflow-hidden bg-gradient-to-br from-surface-50 to-surface-100 text-surface-500', className)}>
+          <div className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm">
+            <FileText className="h-9 w-9 text-brand-600" />
+          </div>
+          <span className="text-xs font-semibold uppercase tracking-[0.16em]">PDF document</span>
+          {showPdfBadge && (
+            <div className="absolute left-2 top-2 rounded-full bg-surface-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+              PDF
+            </div>
+          )}
+        </div>
+      )
+    }
+
     // Cross-origin PDFs (served from qa.localvip.com) won't render inline in an
     // <object> on the dashboard/webapp origin — the preview comes up blank. Route
     // remote PDFs through a same-origin proxy so the bytes are same-origin. Data
@@ -90,7 +106,7 @@ export function MaterialPreviewFrame({
         <iframe
           src={previewUrl}
           title={`${title} PDF preview`}
-          className={cn('h-full w-full border-0', interactive ? '' : 'pointer-events-none', pdfClassName)}
+          className={cn('h-full w-full border-0', pdfClassName)}
         />
         <noscript>
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-surface-400">
