@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { MaterialTagPicker } from '@/components/material-tags/material-tag-picker'
+import { MaterialTargetingEditor } from '@/components/materials/material-targeting-editor'
 import { useAuth } from '@/lib/auth/context'
 import { MATERIAL_CATEGORIES, MATERIAL_USE_CASES } from '@/lib/constants'
 import {
@@ -32,6 +33,7 @@ import {
   withUpdatedMaterialCustomTags,
 } from '@/lib/materials/material-targeting'
 import { useMaterialUpdate } from '@/lib/supabase/hooks'
+import { classificationToLegacy, classificationToStorageFields, getMaterialClassification, withMaterialClassification, type MaterialClassification } from '@/lib/materials/material-classification'
 import type {
   Material,
   MaterialLibraryFolder,
@@ -74,6 +76,8 @@ export function MaterialEditDialog({
   const [automationAudienceTags, setAutomationAudienceTags] = React.useState('')
   const [feedback, setFeedback] = React.useState<string | null>(null)
   const [materialTagIds, setMaterialTagIds] = React.useState<number[]>([])
+  const [classification, setClassification] = React.useState<MaterialClassification>({ audiences: ['everyone'], purpose: '', availability: { mode: 'everywhere', entityIds: [] }, delivery: 'ready' })
+  const [reachReviewed, setReachReviewed] = React.useState(false)
 
   React.useEffect(() => {
     if (!material) return
@@ -92,6 +96,8 @@ export function MaterialEditDialog({
     setAutomationAudienceTags(automation.audienceTags.join(', '))
     setFeedback(null)
     setMaterialTagIds([])
+    setClassification(getMaterialClassification(material))
+    setReachReviewed(false)
   }, [material])
 
   function toggleRoleTag(role: UserRole) {
@@ -122,12 +128,14 @@ export function MaterialEditDialog({
     event.preventDefault()
     if (!material) return
 
+    const legacyTargeting = classificationToLegacy(classification)
+
     const supportsAutomation = materialSupportsAutomationTemplate(material)
-    const nextAutomationEnabled = isAdmin && automationEnabled && supportsAutomation
-    const nextTargetSubtypes = subtypeTags.filter(Boolean) as Exclude<UserRoleSubtype, null>[]
+    const nextAutomationEnabled = isAdmin && classification.delivery !== 'ready'
+    const nextTargetSubtypes = legacyTargeting.target_subtypes
     const inferredStakeholderTypes = deriveMaterialAutomationStakeholderTypes({
       ...material,
-      target_roles: roleTags,
+      target_roles: legacyTargeting.target_roles,
       target_subtypes: nextTargetSubtypes,
       metadata: withUpdatedMaterialCustomTags(material, parseTags(customTags)),
     })
@@ -136,50 +144,31 @@ export function MaterialEditDialog({
       title: title.trim(),
       description: description.trim() || null,
       category: category || null,
-      use_case: useCase || null,
-      target_roles: roleTags,
+      target_roles: legacyTargeting.target_roles,
       target_subtypes: nextTargetSubtypes,
+      use_case: legacyTargeting.use_case,
+      campaign_id: classification.availability.mode === 'campaigns' ? classification.availability.entityIds[0] || null : null,
+      city_id: classification.availability.mode === 'cities' ? classification.availability.entityIds[0] || null : null,
       is_template: nextAutomationEnabled,
       metadata: withUpdatedMaterialAutomationTemplate(
         {
           ...material,
-          metadata: withUpdatedMaterialCustomTags(material, parseTags(customTags)),
+          metadata: withMaterialClassification(withUpdatedMaterialCustomTags(material, parseTags(customTags)), classification),
         },
         {
           enabled: nextAutomationEnabled,
           isActive: automationActive,
           stakeholderTypes: automationStakeholderTypes.length > 0 ? automationStakeholderTypes : inferredStakeholderTypes,
-          audienceTags: parseTags(automationAudienceTags),
+          audienceTags: classification.audiences,
           libraryFolder: automationLibraryFolder,
         },
       ),
+      ...classificationToStorageFields(classification),
     } as Partial<Material>)
 
     if (!updatedMaterial) return
 
-    // The audience-tag assignment is saved as a separate call against the material
-    // engine's own tag table — it needs the material's id, which only exists once
-    // the material itself has been saved (a brand-new material has none before
-    // this point). Save it after the material update succeeds, using the id from
-    // the just-saved record rather than the (possibly still-empty) prop.
-    try {
-      const res = await fetch(`/api/admin/material-tags/material/${encodeURIComponent(updatedMaterial.id)}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ tagIds: materialTagIds }),
-      })
-      if (!res.ok) {
-        setFeedback('Material saved, but audience tags could not be saved.')
-        onSaved(updatedMaterial)
-        return
-      }
-    } catch {
-      setFeedback('Material saved, but audience tags could not be saved.')
-      onSaved(updatedMaterial)
-      return
-    }
-
-    setFeedback('Material tags and visibility updated.')
+    setFeedback('Material details and availability updated.')
     onSaved(updatedMaterial)
   }
 
@@ -192,17 +181,17 @@ export function MaterialEditDialog({
             Edit Material
           </DialogTitle>
           <DialogDescription>
-            Update the material details, visibility tags, and stakeholder targeting so it shows up in the right libraries.
+            Update what this is, who it is for, and where it should appear.
           </DialogDescription>
         </DialogHeader>
 
         {material && (
           <form onSubmit={handleSave} className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
+              {false && <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">Title</label>
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} required />
-              </div>
+              </div>}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-surface-700">Category</label>
                 <select
@@ -260,7 +249,7 @@ export function MaterialEditDialog({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+            {false && <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
               <p className="text-sm font-semibold text-surface-900">Visibility tags</p>
               <p className="mt-1 text-xs text-surface-500">
                 Add more stakeholder roles here to make this material visible in more stakeholder libraries.
@@ -316,15 +305,15 @@ export function MaterialEditDialog({
                   </p>
                 </div>
               </div>
-            </div>
+            </div>}
 
-            <MaterialTagPicker
-              materialId={material.id}
+            {false && <MaterialTagPicker
+              materialId={material!.id}
               selectedTagIds={materialTagIds}
               onChange={setMaterialTagIds}
-            />
+            />}
 
-            <div className="flex flex-wrap gap-2">
+            {false && <div className="flex flex-wrap gap-2">
               {roleTags.length > 0 && roleTags.map((role) => (
                 <Badge key={role} variant="info">{role}</Badge>
               ))}
@@ -334,9 +323,9 @@ export function MaterialEditDialog({
               {parseTags(customTags).map((tag) => (
                 <Badge key={tag} variant="default">{tag}</Badge>
               ))}
-            </div>
+            </div>}
 
-            {isAdmin && material && (
+            {false && isAdmin && material && (
               <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -432,6 +421,13 @@ export function MaterialEditDialog({
               </div>
             )}
 
+            <MaterialTargetingEditor value={classification} onChange={setClassification} materialId={material.id} onReachReviewed={setReachReviewed} />
+            {classification.delivery !== 'ready' && !materialSupportsAutomationTemplate(material) && (
+              <div className="rounded-xl border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700">
+                Add a QR placement zone before saving this as a customizable or automatic material.
+              </div>
+            )}
+
             {(feedback || error) && (
               <div className={`rounded-xl px-3 py-2 text-sm ${error ? 'border border-danger-200 bg-danger-50 text-danger-700' : 'border border-success-200 bg-success-50 text-success-700'}`}>
                 {error || feedback}
@@ -442,7 +438,7 @@ export function MaterialEditDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={loading || !classification.purpose || (classification.delivery !== 'ready' && !materialSupportsAutomationTemplate(material)) || (classification.delivery === 'automatic' && !reachReviewed)}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PencilLine className="h-4 w-4" />}
                 Save Changes
               </Button>

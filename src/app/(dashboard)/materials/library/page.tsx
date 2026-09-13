@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { MaterialEditDialog } from '@/components/materials/material-edit-dialog'
+import { MaterialTargetingEditor } from '@/components/materials/material-targeting-editor'
 import { MaterialQrZonesDialog } from '@/components/materials/material-qr-zones-dialog'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
@@ -42,6 +43,7 @@ import {
 import { BRANDS, MATERIAL_CATEGORIES, MATERIAL_TYPES, MATERIAL_USE_CASES } from '@/lib/constants'
 import { MATERIAL_LIBRARY_FOLDERS } from '@/lib/material-engine'
 import { formatDate } from '@/lib/utils'
+import { classificationToLegacy, classificationToStorageFields, withMaterialClassification, type MaterialClassification } from '@/lib/materials/material-classification'
 import { useMaterials } from '@/lib/supabase/hooks'
 import type { Material, MaterialLibraryFolder, StakeholderType, UserRole, UserRoleSubtype } from '@/lib/types/database'
 
@@ -229,6 +231,10 @@ function UploadMaterialDialog({
   const [templateAudienceTags, setTemplateAudienceTags] = React.useState('customers')
   const [templateStatus, setTemplateStatus] = React.useState<'active' | 'inactive'>('active')
   const [templateError, setTemplateError] = React.useState<string | null>(null)
+  const [classification, setClassification] = React.useState<MaterialClassification>({
+    audiences: ['everyone'], purpose: '', availability: { mode: 'everywhere', entityIds: [] }, delivery: 'ready',
+  })
+  const [reachReviewed, setReachReviewed] = React.useState(false)
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const loading = insertLoading || uploading
@@ -257,6 +263,8 @@ function UploadMaterialDialog({
     setTemplateAudienceTags('customers')
     setTemplateStatus('active')
     setTemplateError(null)
+    setClassification({ audiences: ['everyone'], purpose: '', availability: { mode: 'everywhere', entityIds: [] }, delivery: 'ready' })
+    setReachReviewed(false)
   }
 
   function toggleRoleTag(role: UserRole) {
@@ -360,8 +368,10 @@ function UploadMaterialDialog({
     e.preventDefault()
     setTemplateError(null)
 
-    if (templateEnabled && qrPlacements.length === 0) {
-      setTemplateError('Add at least one QR zone before using this material as an automation template.')
+    const nextTemplateEnabled = classification.delivery !== 'ready'
+    const legacyTargeting = classificationToLegacy(classification)
+    if (nextTemplateEnabled && qrPlacements.length === 0) {
+      setTemplateError('Place the QR code on the preview before saving a customizable or automatic material.')
       return
     }
 
@@ -386,7 +396,7 @@ function UploadMaterialDialog({
 
     setUploading(false)
 
-    const metadata: Record<string, unknown> = {}
+    let metadata: Record<string, unknown> = withMaterialClassification(null, classification)
     if (qrPlacements.length > 0) {
       Object.assign(metadata, qrPlacementMetadata(qrPlacements))
     }
@@ -404,11 +414,11 @@ function UploadMaterialDialog({
       thumbnail_url: thumbnailUrl,
       category: category || null,
       use_case: useCase || null,
-      target_roles: roleTags,
-      target_subtypes: subtypeTags.filter(Boolean) as Exclude<UserRoleSubtype, null>[],
-      campaign_id: null,
-      city_id: null,
-      is_template: templateEnabled,
+      target_roles: legacyTargeting.target_roles,
+      target_subtypes: legacyTargeting.target_subtypes,
+      campaign_id: classification.availability.mode === 'campaigns' ? classification.availability.entityIds[0] || null : null,
+      city_id: classification.availability.mode === 'cities' ? classification.availability.entityIds[0] || null : null,
+      is_template: nextTemplateEnabled,
       version: 1,
       status: 'active',
       created_by: localProfileId || '',
@@ -418,14 +428,14 @@ function UploadMaterialDialog({
     } as Material
 
     const automationConfig: MaterialAutomationTemplateConfig = {
-      enabled: templateEnabled,
-      isActive: templateStatus === 'active',
+      enabled: nextTemplateEnabled,
+      isActive: classification.delivery === 'automatic' ? false : templateStatus === 'active',
       stakeholderTypes: templateStakeholderTypes.length > 0 ? templateStakeholderTypes : ['business'],
-      audienceTags: parseTemplateTags(templateAudienceTags),
+      audienceTags: classification.audiences,
       libraryFolder: templateLibraryFolder,
     }
 
-    const finalMetadata = templateEnabled
+    const finalMetadata = nextTemplateEnabled
       ? withUpdatedMaterialAutomationTemplate(baseMaterial, automationConfig)
       : (Object.keys(metadata).length > 0 ? metadata : null)
 
@@ -441,20 +451,21 @@ function UploadMaterialDialog({
           type,
           brand,
           category: category || null,
-          use_case: useCase || null,
+          use_case: legacyTargeting.use_case,
           file_url: fileUrl,
           file_name: fileName,
           file_size: fileSize,
           mime_type: mimeType,
           thumbnail_url: thumbnailUrl,
-          target_roles: roleTags,
-          target_subtypes: subtypeTags.filter(Boolean) as Exclude<UserRoleSubtype, null>[],
-          campaign_id: null,
-          city_id: null,
-          is_template: templateEnabled,
+          target_roles: legacyTargeting.target_roles,
+          target_subtypes: legacyTargeting.target_subtypes,
+          campaign_id: classification.availability.mode === 'campaigns' ? classification.availability.entityIds[0] || null : null,
+          city_id: classification.availability.mode === 'cities' ? classification.availability.entityIds[0] || null : null,
+          is_template: nextTemplateEnabled,
           version: 1,
           status: 'active',
           metadata: finalMetadata,
+          ...classificationToStorageFields(classification),
         }),
       })
       if (!res.ok) {
@@ -489,6 +500,10 @@ function UploadMaterialDialog({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 p-6 max-h-[90vh] overflow-y-auto">
+          <div>
+            <h3 className="text-sm font-semibold text-surface-900">1. File and details</h3>
+            <p className="mt-1 text-xs text-surface-500">Add the file and a clear title so people know when to use it.</p>
+          </div>
           {/* File drop zone */}
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-600">File</label>
@@ -557,7 +572,7 @@ function UploadMaterialDialog({
           )}
 
           {/* QR placement works directly against the uploaded previewable file */}
-          {file && qrPreviewUrl && (
+          {file && qrPreviewUrl && classification.delivery !== 'ready' && (
             <QrPlacementPicker
               previewUrl={qrPreviewUrl}
               previewMimeType={file?.type}
@@ -566,7 +581,7 @@ function UploadMaterialDialog({
             />
           )}
 
-          {isAdmin ? (
+          {false && isAdmin ? (
             <div className="rounded-lg border border-surface-200 bg-surface-50 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -691,7 +706,7 @@ function UploadMaterialDialog({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          {false && <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-surface-600">Category</label>
                 <select
@@ -718,9 +733,9 @@ function UploadMaterialDialog({
                 ))}
               </select>
             </div>
-          </div>
+          </div>}
 
-          <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+          {false && <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
             <p className="text-sm font-semibold text-surface-900">Visibility tags</p>
             <p className="mt-1 text-xs text-surface-500">
               Add more stakeholder roles here to make this material visible in more stakeholder libraries.
@@ -776,12 +791,14 @@ function UploadMaterialDialog({
                 </p>
               </div>
             </div>
-          </div>
+          </div>}
+
+          <MaterialTargetingEditor value={classification} onChange={setClassification} onReachReviewed={setReachReviewed} />
 
           {(templateError || error) && <p className="text-xs text-red-600">{templateError || error}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={loading || !title}>
+            <Button type="submit" disabled={loading || !title || !classification.purpose || (classification.delivery === 'automatic' && !reachReviewed)}>
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -790,7 +807,7 @@ function UploadMaterialDialog({
               ) : (
                 <>
                   <Upload className="h-4 w-4" />
-                  Upload
+                  {classification.delivery === 'automatic' ? 'Save without generating' : 'Upload and publish'}
                 </>
               )}
             </Button>
