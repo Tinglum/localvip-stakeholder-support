@@ -238,8 +238,12 @@ export const FIELD_ALIASES: Partial<Record<QaEntityKey, Record<string, string>>>
     created_by: 'CreatedByUserId',
   },
   cities: {
-    state_code: 'State',
-    country_code: 'Country',
+    // Bug 169: editing a city's State never saved. The alias exposed the backend
+    // City.State as `state_code`, but the City type and every consumer use
+    // `state` - so the form loaded blank and saved a key nothing reads. Nothing
+    // in the app referenced state_code/country_code at all.
+    state: 'State',
+    country: 'Country',
     created_by: 'CreatedByUserId',
   },
   qr_code_collections: {
