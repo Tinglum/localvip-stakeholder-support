@@ -131,7 +131,7 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
     return null
   }, [profile.metadata])
 
-  // Admin is previewing this cause account (the "view as" read-only overlay —
+  // Admin is previewing this cause account (the "view as" read-only overlay.
   // same signal family the ViewAsBanner reads from the session/profile
   // metadata). While previewing, print/download controls are hidden: printing
   // from an admin session would produce material stamped for the previewed
@@ -155,7 +155,7 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
 
   // Replaces the retired stakeholder_codes lookup. That table returns [] for
   // every caller, so this page could never resolve a code and always rendered
-  // "No stakeholder for this cause" — including for causes whose QR was live.
+  // "No stakeholder for this cause", including for causes whose QR was live.
   const codes = React.useMemo(
     () => deriveCommunityCodes(qrCodes, causeQaAccountId),
     [qrCodes, causeQaAccountId],
@@ -968,7 +968,7 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
                 <div className="flex items-center justify-between rounded-lg bg-surface-50 px-4 py-3">
                   <div>
                     <p className="text-xs text-surface-500">Referral Code</p>
-                    <p className="text-sm font-mono font-semibold text-surface-900">{codes.referral_code || '—'}</p>
+                    <p className="text-sm font-mono font-semibold text-surface-900">{codes.referral_code || 'Not available'}</p>
                   </div>
                   {codes.referral_code && (
                     <Button variant="ghost" size="sm" onClick={() => navigator.clipboard.writeText(codes.referral_code!)}>
@@ -979,7 +979,7 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
                 <div className="flex items-center justify-between rounded-lg bg-surface-50 px-4 py-3">
                   <div>
                     <p className="text-xs text-surface-500">Connection Code</p>
-                    <p className="text-sm font-mono font-semibold text-surface-900">{codes.connection_code || '—'}</p>
+                    <p className="text-sm font-mono font-semibold text-surface-900">{codes.connection_code || 'Not available'}</p>
                   </div>
                   {codes.connection_code && (
                     <Button variant="ghost" size="sm" onClick={() => navigator.clipboard.writeText(codes.connection_code!)}>
