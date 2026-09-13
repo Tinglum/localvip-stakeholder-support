@@ -10,6 +10,21 @@
 #   ./deploy-dashboard.sh rollback
 set -euo pipefail
 
+LOCK_FILE="/var/lock/localvip-dashboard-deploy.lock"
+
+# Only one deploy of this app at a time.
+#
+# The PowerShell wrapper has hung or died mid-run more than once; retrying while
+# the first run was still going let two deploys interleave on the same directory
+# - one restarted pm2 while the other was still writing .next, and the site then
+# served the previous build while the deploy reported success. flock makes the
+# second run wait rather than corrupt the first.
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "Another deploy is already running (holding $LOCK_FILE). Waiting up to 20 minutes..."
+  flock -w 1200 9 || { echo "FATAL: timed out waiting for the running deploy to finish"; exit 1; }
+fi
+
 APP_PATH="/var/www/localvip-dashboard"
 BACKUP_PATH="/var/www/.next-rollback"
 COMMIT_FILE="/var/www/.dashboard-rollback-commit"

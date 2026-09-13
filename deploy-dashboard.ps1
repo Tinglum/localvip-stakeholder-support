@@ -49,7 +49,15 @@ $action = if ($Rollback) { "rollback" } else { "deploy" }
 $install = if ($ForceInstall) { "1" } else { "0" }
 
 Write-Host "=== Running: $action $Ref ===" -ForegroundColor Cyan
+# npm writes warnings to stderr. With $ErrorActionPreference = 'Stop',
+# PowerShell 5.1 turns a native command's stderr into a terminating
+# NativeCommandError and kills this wrapper mid-deploy - the remote script
+# carries on regardless, so the deploy either half-finishes or reports
+# failure for work that actually succeeded. Exit codes are checked instead.
+$ErrorActionPreference = 'Continue'
+
 ssh -o BatchMode=yes -i $keyFile $server "chmod +x $remoteSh && $remoteSh $action $Ref $install"
+$ErrorActionPreference = 'Stop'
 $deployExit = $LASTEXITCODE
 
 Write-Host "`n=== Public health check ===" -ForegroundColor Cyan
