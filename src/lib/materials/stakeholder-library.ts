@@ -101,7 +101,11 @@ export function getMaterialDelivery(material: Material): MaterialDelivery {
   return 'ready'
 }
 
-export function materialIsAvailableToProfile(material: Material, profile: Profile) {
+export function materialIsAvailableToProfile(
+  material: Material,
+  profile: Profile,
+  accountContext?: { causeAccountId?: string | null; businessAccountId?: string | null },
+) {
   if (material.status !== 'active') return false
   const classification = getMaterialClassification(material)
   const access = getStakeholderAccess(profile)
@@ -120,8 +124,10 @@ export function materialIsAvailableToProfile(material: Material, profile: Profil
   if (classification.availability.mode === 'internal' && access.shell !== 'admin' && access.shell !== 'field' && access.shell !== 'launch_partner') return false
   if (classification.availability.mode === 'cities' && !entityIds.includes(String(profile.city_id || ''))) return false
   if (classification.availability.mode === 'campaigns' && !entityIds.includes(campaignId)) return false
-  if (classification.availability.mode === 'causes' && !entityIds.includes(String(profile.organization_id || ''))) return false
-  if (classification.availability.mode === 'businesses' && !entityIds.includes(String(profile.business_id || ''))) return false
+  if (classification.availability.mode === 'causes'
+    && !entityIds.some(id => id === String(accountContext?.causeAccountId || '') || id === String(profile.organization_id || ''))) return false
+  if (classification.availability.mode === 'businesses'
+    && !entityIds.some(id => id === String(accountContext?.businessAccountId || '') || id === String(profile.business_id || ''))) return false
   return true
 }
 

@@ -50,9 +50,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Cause generation from this generic portal endpoint is currently an
-    // operator workflow. Cause self-service needs a signed cause-scope resolver
-    // before it can safely accept a cause id from the browser.
     const causeAccountId = causeId == null ? null : Number(causeId)
     if (causeId != null && (!Number.isInteger(causeAccountId) || (causeAccountId ?? 0) <= 0)) {
       return NextResponse.json({ error: 'A valid cause account is required.' }, { status: 400 })
@@ -61,7 +58,8 @@ export async function POST(request: NextRequest) {
     const isCauseMaterialOperator =
       ['admin', 'super_admin', 'internal_admin'].includes(profile.role)
       || qaRoles.some((role) => role.includes('sysadmin') || role.includes('employee'))
-    if (causeId && !isCauseMaterialOperator) {
+    const ownsCauseScope = causeAccountId != null && session.portalCauseAccountId === causeAccountId
+    if (causeId && !isCauseMaterialOperator && !ownsCauseScope) {
       return NextResponse.json({ error: 'You do not have access to that cause.' }, { status: 403 })
     }
     // Self-serve from the business portal: resolve the business from the session

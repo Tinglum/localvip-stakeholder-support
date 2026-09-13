@@ -2,11 +2,12 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, Download, Eye, FileText, Loader2, Search, Sparkles } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Download, Eye, FileText, Loader2, QrCode, Search, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { PageHeader } from '@/components/ui/page-header'
@@ -40,11 +41,12 @@ function generatedToMaterial(row: GeneratedMaterial, template?: MaterialTemplate
   }
 }
 
-function MaterialCard({ material, profile, actionLabel, actionHref, onPreview }: {
+function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize, onPreview }: {
   material: Material
   profile: ReturnType<typeof useAuth>['profile']
   actionLabel?: string
   actionHref?: string
+  onCustomize?: () => void
   onPreview: () => void
 }) {
   const source = material.file_url || material.thumbnail_url
@@ -69,7 +71,9 @@ function MaterialCard({ material, profile, actionLabel, actionHref, onPreview }:
         </p>
         <div className="flex flex-wrap gap-2">
           {source && <Button size="sm" variant="outline" onClick={onPreview}><Eye className="h-3.5 w-3.5" /> Preview</Button>}
-          {actionHref ? (
+          {onCustomize ? (
+            <Button size="sm" onClick={onCustomize}>{actionLabel}<ArrowRight className="h-3.5 w-3.5" /></Button>
+          ) : actionHref ? (
             <Button size="sm" asChild><Link href={actionHref}>{actionLabel}<ArrowRight className="h-3.5 w-3.5" /></Link></Button>
           ) : material.file_url ? (
             <Button size="sm" asChild><a href={material.file_url} download><Download className="h-3.5 w-3.5" /> {actionLabel || 'Download'}</a></Button>
@@ -80,7 +84,7 @@ function MaterialCard({ material, profile, actionLabel, actionHref, onPreview }:
   )
 }
 
-function MaterialSection({ title, description, materials, profile, customize, empty, onPreview }: {
+function MaterialSection({ title, description, materials, profile, customize, empty, onPreview, onCustomize }: {
   title: string
   description: string
   materials: Material[]
@@ -88,6 +92,7 @@ function MaterialSection({ title, description, materials, profile, customize, em
   customize?: boolean
   empty: string
   onPreview: (material: Material) => void
+  onCustomize?: (material: Material) => void
 }) {
   return (
     <section className="space-y-3" aria-label={title}>
@@ -99,6 +104,7 @@ function MaterialSection({ title, description, materials, profile, customize, em
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {materials.map(material => (
             <MaterialCard key={material.id} material={material} profile={profile} onPreview={() => onPreview(material)}
+              onCustomize={customize && onCustomize ? () => onCustomize(material) : undefined}
               actionLabel={customize ? 'Customize' : undefined}
               actionHref={customize ? `/portal/materials?tab=templates&generateTemplate=${encodeURIComponent(String((material.metadata as Record<string, unknown> | null)?.generation_template_id || material.id))}` : undefined} />
           ))}
@@ -138,6 +144,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const { data: templates, loading: templateLoading } = useMaterialTemplates({ is_active: 'true' })
   const [search, setSearch] = React.useState('')
   const [preview, setPreview] = React.useState<Material | null>(null)
+  const [customizing, setCustomizing] = React.useState<Material | null>(null)
 
   const templateMap = React.useMemo(() => new Map(templates.map(item => [String(item.id), item])), [templates])
   const accountIds = React.useMemo(() => new Set([
@@ -150,7 +157,10 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
     return ids.some(id => accountIds.has(id))
   }).map(row => generatedToMaterial(row, templateMap.get(String(row.template_id)))), [accountIds, generated, templateMap])
 
-  const eligible = React.useMemo(() => allMaterials.filter(material => materialIsAvailableToProfile(material, profile)), [allMaterials, profile])
+  const eligible = React.useMemo(
+    () => allMaterials.filter(material => materialIsAvailableToProfile(material, profile, { causeAccountId, businessAccountId })),
+    [allMaterials, businessAccountId, causeAccountId, profile],
+  )
   const customizableMaterials = React.useMemo(() => eligible
     .filter(item => getMaterialDelivery(item) === 'customizable')
     .map(item => {
@@ -178,6 +188,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
     <div className="space-y-8">
       {!embedded && <PageHeader title={copy.pageTitle} description={copy.pageDescription} />}
       <MaterialPreviewDialog material={preview} open={!!preview} onOpenChange={open => { if (!open) setPreview(null) }} />
+      <CauseMaterialGenerateDialog material={customizing} causeAccountId={causeAccountId} onClose={() => setCustomizing(null)} />
       <div className="rounded-2xl border border-surface-200 bg-white p-4">
         <div className="relative max-w-xl">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
@@ -196,11 +207,62 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
       ) : (
         <>
           <MaterialSection title={copy.madeTitle} description={copy.madeDescription} materials={madeForYou} profile={profile} empty="Personalized materials will appear here when they are ready." onPreview={setPreview} />
-          <MaterialSection title={copy.customizeTitle} description={copy.customizeDescription} materials={customizable} profile={profile} customize empty="No optional templates match your account yet." onPreview={setPreview} />
+          <MaterialSection title={copy.customizeTitle} description={copy.customizeDescription} materials={customizable} profile={profile} customize empty="No optional templates match your account yet." onPreview={setPreview} onCustomize={shell === 'community' ? setCustomizing : undefined} />
           <MaterialSection title={copy.resourceTitle} description={copy.resourceDescription} materials={resources} profile={profile} empty="No general resources match your account yet." onPreview={setPreview} />
           <MaterialSection title={copy.savedTitle} description={copy.savedDescription} materials={saved} profile={profile} empty="Materials you save or create will appear here." onPreview={setPreview} />
         </>
       )}
     </div>
   )
+}
+
+function CauseMaterialGenerateDialog({ material, causeAccountId, onClose }: { material: Material | null; causeAccountId: string | null; onClose: () => void }) {
+  const [generating, setGenerating] = React.useState(false)
+  const [done, setDone] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => { setDone(false); setError(null) }, [material])
+
+  async function generate() {
+    if (!material || !causeAccountId) return
+    setGenerating(true)
+    setError(null)
+    try {
+      const response = await fetch('/api/portal/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ templateId: material.id, causeId: causeAccountId }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'Could not create this material.')
+      setDone(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not create this material.')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  return <Dialog open={!!material} onOpenChange={open => { if (!open) onClose() }}>
+    <DialogContent className="max-w-3xl">
+      <DialogHeader>
+        <DialogTitle>{material?.title || 'Create campaign material'}</DialogTitle>
+        <DialogDescription>Your cause name, branding, and assigned QR code are added automatically.</DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-4 md:grid-cols-[1fr,240px]">
+        <MaterialPreviewFrame src={material?.file_url || material?.thumbnail_url || null} mimeType={material?.mime_type} title={material?.title || 'Template'} className="h-96 rounded-xl border border-surface-200" fit="contain" interactive />
+        <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
+          <QrCode className="h-7 w-7 text-brand-600" />
+          <h3 className="mt-3 font-semibold text-surface-900">Your campaign QR is included</h3>
+          <p className="mt-2 text-sm leading-6 text-surface-600">The finished file will link supporters and businesses to your cause.</p>
+          {done && <p className="mt-4 flex items-center gap-2 text-sm font-medium text-success-700"><CheckCircle2 className="h-4 w-4" /> Added to Made for you</p>}
+          {error && <p className="mt-4 text-sm text-danger-700">{error}</p>}
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>{done ? 'Close' : 'Cancel'}</Button>
+        {!done && <Button onClick={() => void generate()} disabled={generating || !causeAccountId}>{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Create my material</Button>}
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 }
