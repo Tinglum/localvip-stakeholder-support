@@ -271,7 +271,15 @@ export function QrPlacementPicker({
                 'relative cursor-crosshair overflow-hidden rounded-lg border border-surface-200 bg-white shadow-sm',
                 !imageLoaded && !isPdf && 'min-h-[18rem] min-w-[12rem]',
               )}
-              style={renderedSize.width && renderedSize.height ? { width: renderedSize.width, height: renderedSize.height } : undefined}
+              // Sized explicitly only for the PDF branch, where the canvas needs
+              // it. For an image, forcing the frame to the measured image size
+              // fed back into the image's own max-w-full and collapsed both to
+              // nothing on every observer tick. Letting the frame shrink-wrap the
+              // image makes its box exactly the image's box, which is what the
+              // percentage overlay has to resolve against anyway.
+              style={isPdf && renderedSize.width && renderedSize.height
+                ? { width: renderedSize.width, height: renderedSize.height }
+                : undefined}
               onClick={handleCanvasClick}
             >
               {isPdf ? (
