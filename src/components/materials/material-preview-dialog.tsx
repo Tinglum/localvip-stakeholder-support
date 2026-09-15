@@ -1,5 +1,8 @@
 'use client'
 
+import * as React from 'react'
+import DOMPurify from 'dompurify'
+import mammoth from 'mammoth'
 import { Download, FileText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,6 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { BRANDS, MATERIAL_TYPES } from '@/lib/constants'
+import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import type { Material } from '@/lib/types/database'
 
 // Office formats a browser genuinely cannot render inline. No <iframe>/<object>
@@ -42,6 +46,58 @@ function isUnpreviewableOfficeFile(material: Material | null): boolean {
   return false
 }
 
+function isWordDocument(material: Material | null): boolean {
+  if (!material) return false
+  const extension = getFileExtension(material.file_name, material.file_url)
+  return extension === 'docx'
+    || material.mime_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+}
+
+function WordDocumentPreview({ source, title }: { source: string; title: string }) {
+  const [html, setHtml] = React.useState<string | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    setHtml(null)
+    setError(null)
+
+    async function render() {
+      try {
+        const response = await fetch(toProxiedMaterialUrl(source), { cache: 'no-store' })
+        if (!response.ok) throw new Error(`Document returned ${response.status}.`)
+        const result = await mammoth.convertToHtml({ arrayBuffer: await response.arrayBuffer() })
+        const safeHtml = DOMPurify.sanitize(result.value, {
+          USE_PROFILES: { html: true },
+          ADD_ATTR: ['target'],
+        })
+        if (!cancelled) setHtml(safeHtml)
+      } catch {
+        if (!cancelled) setError('The Word preview could not be generated. You can still download the document.')
+      }
+    }
+
+    void render()
+    return () => { cancelled = true }
+  }, [source])
+
+  if (error) {
+    return <div className="flex h-full items-center justify-center p-8 text-center text-sm text-surface-600">{error}</div>
+  }
+  if (html === null) {
+    return <div className="flex h-full items-center justify-center text-sm text-surface-500">Preparing Word preview…</div>
+  }
+  return (
+    <div className="h-full overflow-auto bg-surface-100 p-4 sm:p-8">
+      <article
+        aria-label={`${title} Word preview`}
+        className="prose prose-sm mx-auto min-h-full max-w-4xl bg-white p-8 text-surface-900 shadow-sm sm:p-12"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  )
+}
+
 function formatFileSize(bytes: number | null | undefined): string | null {
   if (!bytes || bytes <= 0) return null
   const units = ['B', 'KB', 'MB', 'GB']
@@ -65,7 +121,8 @@ export function MaterialPreviewDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const previewSource = material?.file_url || material?.thumbnail_url || null
-  const isUnpreviewable = isUnpreviewableOfficeFile(material)
+  const isWord = isWordDocument(material)
+  const isUnpreviewable = !isWord && isUnpreviewableOfficeFile(material)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,6 +166,10 @@ export function MaterialPreviewDialog({
                 <FileText className="mx-auto h-10 w-10" />
                 <p className="text-sm font-medium text-surface-600">No preview file is available.</p>
               </div>
+            </div>
+          ) : isWord ? (
+            <div className="h-full overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-sm">
+              <WordDocumentPreview source={previewSource} title={material?.title || 'Material'} />
             </div>
           ) : isUnpreviewable ? (
             // Word/PowerPoint/Excel files cannot be rendered inline by a browser.
