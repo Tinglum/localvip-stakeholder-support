@@ -21,7 +21,7 @@ export async function GET() {
     const b = assets.business as unknown as Record<string, unknown>
     const code = assets.networkReferral.networkReferralCode || ''
     const networkUrl = assets.networkReferral.networkReferralUrl
-      || (code ? `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(code)}` : '')
+      || (code ? `https://my.localvip.com/newmainpage5?ref=${encodeURIComponent(code)}` : '')
 
     // The logo lives on the QA host under /uploads; route it through the same-
     // origin proxy so the client can draw it onto a <canvas> without tainting it.

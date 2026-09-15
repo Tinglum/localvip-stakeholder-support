@@ -284,7 +284,7 @@ export function BusinessExecutionOverview({
   // (the Branch link is often empty / not yet generated for a business).
   const joinLocalVipLink = qaBranchReferralUrl
     || (referralCode
-      ? `${(process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com').replace(/\/$/, '')}/auth/signup?ref=${encodeURIComponent(referralCode)}`
+      ? `${(process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com').replace(/\/$/, '')}/newmainpage5?ref=${encodeURIComponent(referralCode)}`
       : '')
 
   async function copyToClipboard(value: string, message: string) {
