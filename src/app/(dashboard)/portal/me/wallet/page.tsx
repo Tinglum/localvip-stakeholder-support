@@ -255,11 +255,11 @@ export default function MyWalletPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <WalletTile
-          label="Cashback Available"
+          label="Balance Available"
           value={available}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption="Cashback ready to transfer in your LocalVIP wallet"
+          caption="Money ready to transfer or donate in your LocalVIP wallet"
           loading={loading}
           emphasize
         />
@@ -403,8 +403,8 @@ export default function MyWalletPage() {
           </CardHeader>
           <CardContent className="space-y-3 pt-2 text-sm text-surface-600">
             <p>
-              <span className="font-medium text-surface-800">Cashback available</span> is the cashback amount
-              ready for you to request now.
+              <span className="font-medium text-surface-800">Balance Available</span> is the money ready for
+              you to transfer or donate now.
             </p>
             <p>
               <span className="font-medium text-surface-800">Lifetime cashback</span> shows money back from
