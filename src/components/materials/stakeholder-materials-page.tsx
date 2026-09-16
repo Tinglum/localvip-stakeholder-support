@@ -47,13 +47,15 @@ function CauseOutreachQrCards({ codes, loading, error }: { codes: CauseOutreachQ
 function generatedToMaterial(row: GeneratedMaterial, template?: MaterialTemplate): Material {
   const meta = (row.metadata || template?.metadata || {}) as Record<string, unknown>
   const generatedAt = row.generated_at || row.updated_at || new Date().toISOString()
+  const generatedPath = `${row.generated_file_name || ''} ${row.generated_file_url || ''}`.toLowerCase()
+  const isImage = template?.output_format === 'png' || /\.(png|jpe?g|webp|gif|svg)(?:[?#]|\s|$)/i.test(generatedPath)
   return {
     id: `generated-${row.id}`,
     title: template?.name || row.generated_file_name?.replace(/\.[^/.]+$/, '') || 'Personalized material',
     description: typeof meta.description === 'string' ? meta.description : 'Prepared with your account details and QR code.',
-    type: template?.output_format === 'png' ? 'print_asset' : 'pdf',
+    type: isImage ? 'print_asset' : 'pdf',
     brand: 'localvip', file_url: row.generated_file_url, file_name: row.generated_file_name,
-    file_size: null, mime_type: template?.output_format === 'png' ? 'image/png' : 'application/pdf',
+    file_size: null, mime_type: isImage ? 'image/png' : 'application/pdf',
     thumbnail_url: row.generated_file_url, category: row.library_folder || template?.library_folder || 'generated',
     use_case: 'generated_template', target_roles: [], target_subtypes: [], campaign_id: null, city_id: null,
     is_template: false, version: row.version_number || row.template_version || 1, status: 'active',
