@@ -161,7 +161,10 @@ export default function CauseDetailPage() {
   const { data: causeResponse, loading: causeLoading, error: causeError, refetch: refetchCause } = useCrmCause(routeId, qaCauseId)
   const cause = causeResponse?.cause || null
   const localCauseId = causeResponse?.localCauseId || null
-  const materialCauseAccountId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
+  const materialCauseAccountId = causeResponse?.qaCauseId
+    || cause?.qa_account_id
+    || qaCauseId
+    || (/^\d+$/.test(routeId) ? Number(routeId) : null)
   const readOnly = causeResponse?.readOnly || false
   const detailQaError = causeResponse?.qaError || null
   const causeId = localCauseId || EMPTY_UUID
