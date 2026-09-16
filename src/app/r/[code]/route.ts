@@ -57,6 +57,27 @@ export async function GET(
   { params }: { params: { code: string } },
 ) {
   const code = params.code
+  // Current QR codes and redirects live in the LocalVIP API. Resolve there first
+  // so every scan is counted against the same records used by Materials.
+  const qaBase = (process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').replace(/\/$/, '')
+  try {
+    const response = await fetch(`${qaBase}/api/dashboard/v1/Redirect/resolve/${encodeURIComponent(code)}`, {
+      cache: 'no-store',
+      headers: {
+        'user-agent': request.headers.get('user-agent') || '',
+        referer: request.headers.get('referer') || '',
+        'x-forwarded-for': request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
+      },
+    })
+    if (response.ok) {
+      const resolved = await response.json() as { destinationUrl?: string; DestinationUrl?: string }
+      const destination = resolved.destinationUrl || resolved.DestinationUrl
+      if (destination) return NextResponse.redirect(destination)
+    }
+  } catch {
+    // Keep the legacy lookup below so QR codes created before the SQL migration
+    // continue to work during the transition.
+  }
   const supabase = createServiceClient()
 
   const { data: redirectRow } = await (supabase

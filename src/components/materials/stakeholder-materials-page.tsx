@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, CheckCircle2, Download, Eye, FileText, Loader2, QrCode, Search, Sparkles } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Copy, Download, Eye, Loader2, QrCode, Search, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth/context'
 import { useBusinesses, useCauses, useGeneratedMaterials, useMaterialTemplates, useMaterials } from '@/lib/supabase/hooks'
 import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-portal'
 import { getCauseQaAccountId, resolveCommunityCause } from '@/lib/community-cause'
+import { generateQRDataURL } from '@/lib/qr/generate'
 import {
   explainMaterialAvailability,
   getMaterialDelivery,
@@ -22,6 +23,26 @@ import {
   materialIsAvailableToProfile,
 } from '@/lib/materials/stakeholder-library'
 import type { GeneratedMaterial, Material, MaterialTemplate } from '@/lib/types/database'
+
+type CauseOutreachQr = { id: number | string; name: string; purpose: string; targetUrl: string; trackedUrl: string }
+
+function CauseOutreachQrCards({ codes, loading, error }: { codes: CauseOutreachQr[]; loading: boolean; error: string | null }) {
+  const [images, setImages] = React.useState<Record<string, string>>({})
+  React.useEffect(() => {
+    void Promise.all(codes.map(async code => [String(code.id), await generateQRDataURL({ data: code.trackedUrl, size: 480 })] as const))
+      .then(entries => setImages(Object.fromEntries(entries)))
+  }, [codes])
+  async function copy(value: string) { await navigator.clipboard.writeText(value) }
+  return <section className="space-y-3">
+    <div><h2 className="text-lg font-semibold text-surface-900">Your outreach QR codes</h2><p className="mt-1 text-sm text-surface-500">Use the right code for each audience. Every scan keeps your cause referral attached.</p></div>
+    {loading ? <div className="rounded-2xl border border-surface-200 bg-white p-6 text-sm text-surface-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Preparing your codes...</div>
+      : error ? <div className="rounded-xl border border-danger-200 bg-danger-50 p-4 text-sm text-danger-700">{error}</div>
+      : <div className="grid gap-4 md:grid-cols-3">{codes.map(code => <Card key={code.id}><CardContent className="p-5">
+        <div className="flex items-start gap-4"><div className="h-24 w-24 shrink-0 rounded-lg border bg-white p-1">{images[String(code.id)] && <img src={images[String(code.id)]} alt={`${code.name} QR code`} className="h-full w-full" />}</div><div><Badge variant="info">{code.purpose}</Badge><h3 className="mt-2 text-sm font-semibold text-surface-900">{code.name}</h3><p className="mt-1 text-xs leading-5 text-surface-500">Opens the matching referral page for this audience.</p></div></div>
+        <div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => void copy(code.trackedUrl)}><Copy className="h-3.5 w-3.5" /> Copy link</Button>{images[String(code.id)] && <Button size="sm" asChild><a href={images[String(code.id)]} download={`localvip-${code.purpose}-qr.png`}><Download className="h-3.5 w-3.5" /> QR</a></Button>}</div>
+      </CardContent></Card>)}</div>}
+  </section>
+}
 
 function generatedToMaterial(row: GeneratedMaterial, template?: MaterialTemplate): Material {
   const meta = (row.metadata || template?.metadata || {}) as Record<string, unknown>
@@ -145,6 +166,20 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const [search, setSearch] = React.useState('')
   const [preview, setPreview] = React.useState<Material | null>(null)
   const [customizing, setCustomizing] = React.useState<Material | null>(null)
+  const [templatesOpen, setTemplatesOpen] = React.useState(false)
+  const [causeQrCodes, setCauseQrCodes] = React.useState<CauseOutreachQr[]>([])
+  const [causeQrLoading, setCauseQrLoading] = React.useState(false)
+  const [causeQrError, setCauseQrError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (shell !== 'community' || !causeAccountId) return
+    setCauseQrLoading(true); setCauseQrError(null)
+    fetch('/api/portal/cause-qrcodes', { method: 'POST' }).then(async response => {
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error || 'Could not prepare outreach QR codes.')
+      setCauseQrCodes(Array.isArray(payload.qrCodes) ? payload.qrCodes : [])
+    }).catch(error => setCauseQrError(error instanceof Error ? error.message : 'Could not prepare outreach QR codes.')).finally(() => setCauseQrLoading(false))
+  }, [causeAccountId, shell])
 
   const templateMap = React.useMemo(() => new Map(templates.map(item => [String(item.id), item])), [templates])
   const accountIds = React.useMemo(() => new Set([
@@ -188,7 +223,8 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
     <div className="space-y-8">
       {!embedded && <PageHeader title={copy.pageTitle} description={copy.pageDescription} />}
       <MaterialPreviewDialog material={preview} open={!!preview} onOpenChange={open => { if (!open) setPreview(null) }} />
-      <CauseMaterialGenerateDialog material={customizing} causeAccountId={causeAccountId} onClose={() => setCustomizing(null)} onGenerated={() => refetchGenerated()} />
+      <CauseMaterialGenerateDialog material={customizing} causeAccountId={causeAccountId} qrCodes={causeQrCodes} onClose={() => setCustomizing(null)} onGenerated={() => refetchGenerated()} />
+      <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}><DialogContent className="max-h-[88vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>Explore templates</DialogTitle><DialogDescription>Choose a design, then select the audience QR code to add.</DialogDescription></DialogHeader><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{customizable.map(material => <MaterialCard key={material.id} material={material} profile={profile} onPreview={() => setPreview(material)} onCustomize={() => { setTemplatesOpen(false); setCustomizing(material) }} actionLabel="Customize" />)}</div></DialogContent></Dialog>
       <div className="rounded-2xl border border-surface-200 bg-white p-4">
         <div className="relative max-w-xl">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
@@ -196,6 +232,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
         </div>
       </div>
       {(error || generatedError) && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{error || generatedError}</div>}
+      {shell === 'community' && <CauseOutreachQrCards codes={causeQrCodes} loading={causeQrLoading} error={causeQrError} />}
       {loading ? (
         <div className="flex items-center justify-center rounded-2xl border border-surface-200 bg-white py-16 text-surface-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Preparing your materials...</div>
       ) : madeForYou.length + customizable.length + resources.length + saved.length === 0 ? (
@@ -207,8 +244,8 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
       ) : (
         <>
           <MaterialSection title={copy.madeTitle} description={copy.madeDescription} materials={madeForYou} profile={profile} empty="Personalized materials will appear here when they are ready." onPreview={setPreview} />
-          <MaterialSection title={copy.customizeTitle} description={copy.customizeDescription} materials={customizable} profile={profile} customize empty="No optional templates match your account yet." onPreview={setPreview} onCustomize={shell === 'community' ? setCustomizing : undefined} />
-          <MaterialSection title={copy.resourceTitle} description={copy.resourceDescription} materials={resources} profile={profile} empty="No general resources match your account yet." onPreview={setPreview} />
+          {customizable.length > 0 && <section className="rounded-2xl border border-brand-100 bg-brand-50/40 p-5"><h2 className="text-lg font-semibold text-surface-900">Explore templates</h2><p className="mt-1 text-sm text-surface-600">Pick a LocalVIP design and add the QR code for businesses, families and friends, or other causes.</p><Button className="mt-4" onClick={() => setTemplatesOpen(true)}><Sparkles className="h-4 w-4" /> Explore templates</Button></section>}
+          <MaterialSection title="LocalVIP material library" description="Ready-made flyers, guides, and campaign resources you can preview and download." materials={resources} profile={profile} empty="No general resources match your account yet." onPreview={setPreview} />
           <MaterialSection title={copy.savedTitle} description={copy.savedDescription} materials={saved} profile={profile} empty="Materials you save or create will appear here." onPreview={setPreview} />
         </>
       )}
@@ -216,12 +253,19 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   )
 }
 
-function CauseMaterialGenerateDialog({ material, causeAccountId, onClose, onGenerated }: { material: Material | null; causeAccountId: string | null; onClose: () => void; onGenerated: () => void }) {
+function CauseMaterialGenerateDialog({ material, causeAccountId, qrCodes, onClose, onGenerated }: { material: Material | null; causeAccountId: string | null; qrCodes: CauseOutreachQr[]; onClose: () => void; onGenerated: () => void }) {
   const [generating, setGenerating] = React.useState(false)
   const [done, setDone] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [selectedPurpose, setSelectedPurpose] = React.useState('business')
 
-  React.useEffect(() => { setDone(false); setError(null) }, [material])
+  React.useEffect(() => {
+    setDone(false); setError(null)
+    if (!material) return
+    const text = `${material.title} ${material.description || ''} ${material.category || ''} ${material.use_case || ''}`.toLowerCase()
+    const inferred = /school|cause|nonprofit/.test(text) ? (qrCodes.find(code => code.purpose === 'schools') ? 'schools' : 'causes') : /family|parent|friend|supporter/.test(text) ? 'families' : 'business'
+    setSelectedPurpose(inferred)
+  }, [material, qrCodes])
 
   async function generate() {
     if (!material || !causeAccountId) return
@@ -231,7 +275,7 @@ function CauseMaterialGenerateDialog({ material, causeAccountId, onClose, onGene
       const response = await fetch('/api/portal/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ templateId: material.id, causeId: causeAccountId }),
+        body: JSON.stringify({ templateId: material.id, causeId: causeAccountId, qrContent: selected?.trackedUrl, qrCodeId: selected?.id, qrPurpose: selected?.purpose }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Could not create this material.')
@@ -244,6 +288,7 @@ function CauseMaterialGenerateDialog({ material, causeAccountId, onClose, onGene
     }
   }
 
+  const selected = qrCodes.find(code => code.purpose === selectedPurpose) || qrCodes[0]
   return <Dialog open={!!material} onOpenChange={open => { if (!open) onClose() }}>
     <DialogContent className="max-w-3xl">
       <DialogHeader>
@@ -254,15 +299,16 @@ function CauseMaterialGenerateDialog({ material, causeAccountId, onClose, onGene
         <MaterialPreviewFrame src={material?.file_url || material?.thumbnail_url || null} mimeType={material?.mime_type} title={material?.title || 'Template'} className="h-96 rounded-xl border border-surface-200" fit="contain" interactive />
         <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
           <QrCode className="h-7 w-7 text-brand-600" />
-          <h3 className="mt-3 font-semibold text-surface-900">Your campaign QR is included</h3>
-          <p className="mt-2 text-sm leading-6 text-surface-600">The finished file will link supporters and businesses to your cause.</p>
+          <h3 className="mt-3 font-semibold text-surface-900">Choose who this is for</h3>
+          <p className="mt-2 text-sm leading-6 text-surface-600">We will add the matching tracked referral QR to the finished material.</p>
+          <div className="mt-4 space-y-2">{qrCodes.map(code => <button type="button" key={code.id} onClick={() => setSelectedPurpose(code.purpose)} className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${selectedPurpose === code.purpose ? 'border-brand-500 bg-brand-50 font-medium text-brand-800' : 'border-surface-200 bg-white text-surface-700'}`}>{code.name}</button>)}</div>
           {done && <p className="mt-4 flex items-center gap-2 text-sm font-medium text-success-700"><CheckCircle2 className="h-4 w-4" /> Added to Made for you</p>}
           {error && <p className="mt-4 text-sm text-danger-700">{error}</p>}
         </div>
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>{done ? 'Close' : 'Cancel'}</Button>
-        {!done && <Button onClick={() => void generate()} disabled={generating || !causeAccountId}>{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Create my material</Button>}
+        {!done && <Button onClick={() => void generate()} disabled={generating || !causeAccountId || !selected}>{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Create my material</Button>}
       </DialogFooter>
     </DialogContent>
   </Dialog>
