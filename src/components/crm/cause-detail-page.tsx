@@ -241,8 +241,11 @@ export default function CauseDetailPage() {
   // this used to try first was retired with the QA cutover and always resolved
   // to null, so only the cause_id branch ever ran.
   const generatedMaterials = React.useMemo(
-    () => allGeneratedMaterials.filter((material) => String(material.cause_id || '') === String(materialCauseAccountId || '')),
-    [allGeneratedMaterials, materialCauseAccountId],
+    // The backend query above is already account-scoped and access-controlled.
+    // Do not re-filter its rows by a frontend alias: older response shapes used
+    // cause_account_id, which made valid, scoped rows disappear here.
+    () => allGeneratedMaterials,
+    [allGeneratedMaterials],
   )
   const causeMaterialMap = React.useMemo(() => new Map(allMaterialRecords.map(m => [m.id, m])), [allMaterialRecords])
   const generatedMaterialPairs = React.useMemo(() =>
