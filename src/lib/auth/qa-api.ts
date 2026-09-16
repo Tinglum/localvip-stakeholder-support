@@ -708,3 +708,81 @@ export async function updateQaConsumerType(id: number, consumerTypeId: number) {
     'The QA consumer type update failed.',
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard transactions (SysAdmin) — list + per-transaction payment breakdown.
+// Backed by /api/dashboard/v1/Transactions; the breakdown mirrors the webapp
+// impact model (TransactionEconomicsSnapshot). All money is in integer cents.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface QaTransactionListItem {
+  id: number
+  date: string | null
+  status: string | null
+  fromName: string
+  fromCity: string
+  fromState: string
+  toName: string
+  toCity: string
+  toState: string
+  paymentIntentId: string | null
+  transferId: string | null
+  customerId: string | null
+  destinationAccountId: string | null
+  purchaseCents: number
+  tipCents: number
+  totalCents: number
+  cashbackCents: number
+  marketingCents: number
+  txFeeCents: number
+  totalFeeCents: number
+  netReceivedCents: number
+}
+
+export interface QaTransactionListResponse {
+  items: QaTransactionListItem[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
+export interface QaTransactionBreakdownRow {
+  level: number
+  item: string
+  amountCents: number
+  percent: number
+  key: string
+}
+
+export interface QaTransactionBreakdown {
+  transactionId: number
+  paymentId: string | null
+  paymentIntentId: string | null
+  businessName: string
+  totalPaymentCents: number
+  applicationFeePct: number
+  businessPct: number
+  economicsVersion: number
+  isGiveBackDay: boolean
+  rows: QaTransactionBreakdownRow[]
+}
+
+export async function fetchQaTransactions(params: {
+  search?: string
+  page?: number
+  pageSize?: number
+}): Promise<QaTransactionListResponse> {
+  const query = new URLSearchParams()
+  if (params.search) query.set('search', params.search)
+  query.set('page', String(params.page ?? 1))
+  query.set('pageSize', String(params.pageSize ?? 100))
+  const res = await fetchQaApi(`/api/dashboard/v1/Transactions?${query.toString()}`)
+  return parseQaJsonResponse<QaTransactionListResponse>(res, 'The transactions list could not be loaded.')
+}
+
+export async function fetchQaTransactionBreakdown(
+  id: number | string,
+): Promise<QaTransactionBreakdown> {
+  const res = await fetchQaApi(`/api/dashboard/v1/Transactions/${encodeURIComponent(String(id))}/breakdown`)
+  return parseQaJsonResponse<QaTransactionBreakdown>(res, 'The payment breakdown could not be loaded.')
+}

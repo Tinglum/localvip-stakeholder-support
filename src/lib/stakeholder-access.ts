@@ -188,6 +188,9 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
     ],
   },
   { label: 'Analytics', href: '/analytics', icon: 'TrendingUp', minLevel: 0 },
+  // SysAdmin-only in practice: the /api/qa/transactions API enforces SysAdmin, and
+  // the page shows an access notice to non-SysAdmin admins who open it.
+  { label: 'Transactions', href: '/transactions', icon: 'ScrollText', minLevel: 0 },
   {
     label: 'Admin', href: '/admin', icon: 'Settings', minLevel: 0,
     children: [
