@@ -8,7 +8,7 @@ export async function middleware(request: NextRequest) {
     && request.nextUrl.pathname === '/'
   const response = isPublicHome
     ? NextResponse.redirect(new URL(
-        `/newmainpage5${referralCode ? `?ref=${encodeURIComponent(referralCode)}` : ''}`,
+        `/home${referralCode ? `?ref=${encodeURIComponent(referralCode)}` : ''}`,
         'https://my.localvip.com',
       ))
     : await updateSession(request)

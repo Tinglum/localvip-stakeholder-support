@@ -295,7 +295,7 @@ export function ensureQaBusinessEngagementAssets(businessId: string) {
     const networkReferralCode = getQaBusinessNetworkReferralCode(qaBusiness)
     const networkReferralUrl = qaBusiness.branchReferralUrl?.trim()
       || (networkReferralCode
-        ? `https://my.localvip.com/newmainpage5?ref=${encodeURIComponent(networkReferralCode)}`
+        ? `https://my.localvip.com/home?ref=${encodeURIComponent(networkReferralCode)}`
         : null)
     const networkQr = networkReferralCode && networkReferralUrl
       ? await ensureQaBusinessQr(qaBusiness, {

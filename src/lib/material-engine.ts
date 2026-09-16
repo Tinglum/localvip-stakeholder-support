@@ -57,7 +57,7 @@ export function buildConsumerReferralUrl(
   baseUrl = getConsumerWebappBaseUrl(),
 ) {
   const code = referralCode.trim()
-  return code ? `${baseUrl}/newmainpage5?ref=${encodeURIComponent(code)}` : ''
+  return code ? `${baseUrl}/home?ref=${encodeURIComponent(code)}` : ''
 }
 
 export function getStakeholderJoinPath(type: StakeholderType, connectionCode: string) {
