@@ -65,6 +65,7 @@ interface Breakdown {
   paymentIntentId: string | null
   businessName: string
   totalPaymentCents: number
+  tipCents: number
   applicationFeePct: number
   businessPct: number
   economicsVersion: number
@@ -313,8 +314,11 @@ function BreakdownDialog({ transaction, onClose }: { transaction: TransactionLis
           <div className="space-y-4">
             <div className="flex items-start justify-between rounded-2xl bg-surface-50 p-4">
               <div>
-                <p className="text-xs text-surface-400">Total Payment</p>
+                <p className="text-xs text-surface-400">Purchase (split basis)</p>
                 <p className="text-2xl font-bold text-surface-900">{usd(breakdown.totalPaymentCents)} <span className="text-sm font-normal text-surface-400">USD</span></p>
+                {breakdown.tipCents > 0 ? (
+                  <p className="mt-1 text-xs text-surface-500">+ {usd(breakdown.tipCents)} tip · paid in full to the business, not part of the split</p>
+                ) : null}
               </div>
               <div className="text-right">
                 <p className="text-xs text-surface-400">Payment ID</p>
