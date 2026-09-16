@@ -174,7 +174,11 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   React.useEffect(() => {
     if (shell !== 'community' || !causeAccountId) return
     setCauseQrLoading(true); setCauseQrError(null)
-    fetch('/api/portal/cause-qrcodes', { method: 'POST' }).then(async response => {
+    fetch('/api/portal/cause-qrcodes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ causeId: causeAccountId }),
+    }).then(async response => {
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error || 'Could not prepare outreach QR codes.')
       setCauseQrCodes(Array.isArray(payload.qrCodes) ? payload.qrCodes : [])
