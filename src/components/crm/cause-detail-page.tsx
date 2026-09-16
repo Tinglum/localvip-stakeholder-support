@@ -161,6 +161,7 @@ export default function CauseDetailPage() {
   const { data: causeResponse, loading: causeLoading, error: causeError, refetch: refetchCause } = useCrmCause(routeId, qaCauseId)
   const cause = causeResponse?.cause || null
   const localCauseId = causeResponse?.localCauseId || null
+  const materialCauseAccountId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
   const readOnly = causeResponse?.readOnly || false
   const detailQaError = causeResponse?.qaError || null
   const causeId = localCauseId || EMPTY_UUID
@@ -168,7 +169,13 @@ export default function CauseDetailPage() {
   const { data: cities } = useCities()
   const { data: campaigns } = useCampaigns()
   const { data: allBusinesses } = useBusinesses()
-  const { data: allGeneratedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials()
+  // Generated materials live in the QA backend and are keyed by the numeric
+  // cause account id. Loading without this filter is rejected by the backend;
+  // comparing that numeric id to the dashboard-local UUID then hid every file.
+  const { data: allGeneratedMaterials, refetch: refetchGeneratedMaterials } = useGeneratedMaterials(
+    materialCauseAccountId ? { cause_id: String(materialCauseAccountId) } : undefined,
+    { enabled: Boolean(materialCauseAccountId) },
+  )
   const { data: allMaterialRecords, refetch: refetchMaterialRecords } = useMaterials()
   const { data: assignments } = useStakeholderAssignments({ entity_id: causeId })
   const { data: causeQrCodes, refetch: refetchQrCodes } = useQrCodes({ cause_id: causeId })
@@ -231,8 +238,8 @@ export default function CauseDetailPage() {
   // this used to try first was retired with the QA cutover and always resolved
   // to null, so only the cause_id branch ever ran.
   const generatedMaterials = React.useMemo(
-    () => allGeneratedMaterials.filter((material) => material.cause_id === causeId),
-    [allGeneratedMaterials, causeId],
+    () => allGeneratedMaterials.filter((material) => String(material.cause_id || '') === String(materialCauseAccountId || '')),
+    [allGeneratedMaterials, materialCauseAccountId],
   )
   const causeMaterialMap = React.useMemo(() => new Map(allMaterialRecords.map(m => [m.id, m])), [allMaterialRecords])
   const generatedMaterialPairs = React.useMemo(() =>
@@ -246,7 +253,7 @@ export default function CauseDetailPage() {
   const generationState = generatedCount > 0
     ? 'generated'
     : setupTask?.status || 'idle'
-  const qaLinkedCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
+  const qaLinkedCauseId = materialCauseAccountId
   const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
     if (!cause || !qaLinkedCauseId) return []
 
