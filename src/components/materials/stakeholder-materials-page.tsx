@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowRight, CheckCircle2, Copy, Download, Eye, Loader2, QrCode, Search, Sparkles } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Copy, Download, Eye, FileCheck2, FolderHeart, LayoutTemplate, LibraryBig, Loader2, QrCode, Search, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,6 +16,7 @@ import { useBusinesses, useCauses, useGeneratedMaterials, useMaterialTemplates, 
 import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-portal'
 import { getCauseQaAccountId, resolveCommunityCause } from '@/lib/community-cause'
 import { generateQRDataURL } from '@/lib/qr/generate'
+import { cn } from '@/lib/utils'
 import {
   explainMaterialAvailability,
   getMaterialDelivery,
@@ -26,6 +27,22 @@ import type { GeneratedMaterial, Material, MaterialTemplate } from '@/lib/types/
 
 type CauseOutreachQr = { id: number | string; name: string; purpose: string; targetUrl: string; trackedUrl: string }
 
+function qrAudienceDescription(code: CauseOutreachQr) {
+  if (code.purpose === 'business') return 'For local businesses. Opens the business information and signup page with your cause referral attached.'
+  if (code.purpose === 'families') return 'For families, friends, and supporters. Opens the family signup page with your cause referral attached.'
+  if (code.purpose === 'schools') return 'For other schools and causes. Opens the school partnership page with your cause referral attached.'
+  return 'For other causes and community groups. Opens the cause partnership page with your referral attached.'
+}
+
+function qrDestinationLabel(code: CauseOutreachQr) {
+  try {
+    const target = new URL(code.targetUrl)
+    return `${target.host}${target.pathname}`
+  } catch {
+    return code.targetUrl
+  }
+}
+
 function CauseOutreachQrCards({ codes, loading, error }: { codes: CauseOutreachQr[]; loading: boolean; error: string | null }) {
   const [images, setImages] = React.useState<Record<string, string>>({})
   React.useEffect(() => {
@@ -34,11 +51,11 @@ function CauseOutreachQrCards({ codes, loading, error }: { codes: CauseOutreachQ
   }, [codes])
   async function copy(value: string) { await navigator.clipboard.writeText(value) }
   return <section className="space-y-3">
-    <div><h2 className="text-lg font-semibold text-surface-900">Your outreach QR codes</h2><p className="mt-1 text-sm text-surface-500">Use the right code for each audience. Every scan keeps your cause referral attached.</p></div>
+    <div><h2 className="text-lg font-semibold text-surface-900">QR codes for each audience</h2><p className="mt-1 text-sm text-surface-500">Each code uses a permanent tracked link, then sends the visitor to the matching LocalVIP page with your cause referral attached.</p></div>
     {loading ? <div className="rounded-2xl border border-surface-200 bg-white p-6 text-sm text-surface-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Preparing your codes...</div>
       : error ? <div className="rounded-xl border border-danger-200 bg-danger-50 p-4 text-sm text-danger-700">{error}</div>
       : <div className="grid gap-4 md:grid-cols-3">{codes.map(code => <Card key={code.id}><CardContent className="p-5">
-        <div className="flex items-start gap-4"><div className="h-24 w-24 shrink-0 rounded-lg border bg-white p-1">{images[String(code.id)] && <img src={images[String(code.id)]} alt={`${code.name} QR code`} className="h-full w-full" />}</div><div><Badge variant="info">{code.purpose}</Badge><h3 className="mt-2 text-sm font-semibold text-surface-900">{code.name}</h3><p className="mt-1 text-xs leading-5 text-surface-500">Opens the matching referral page for this audience.</p></div></div>
+        <div className="flex items-start gap-4"><div className="h-24 w-24 shrink-0 rounded-lg border bg-white p-1">{images[String(code.id)] && <img src={images[String(code.id)]} alt={`${code.name} QR code`} className="h-full w-full" />}</div><div><Badge variant="info">{code.purpose}</Badge><h3 className="mt-2 text-sm font-semibold text-surface-900">{code.name}</h3><p className="mt-1 text-xs leading-5 text-surface-500">{qrAudienceDescription(code)}</p><p className="mt-2 break-all text-[11px] font-medium text-brand-700">{qrDestinationLabel(code)}</p></div></div>
         <div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => void copy(code.trackedUrl)}><Copy className="h-3.5 w-3.5" /> Copy link</Button>{images[String(code.id)] && <Button size="sm" asChild><a href={images[String(code.id)]} download={`localvip-${code.purpose}-qr.png`}><Download className="h-3.5 w-3.5" /> QR</a></Button>}</div>
       </CardContent></Card>)}</div>}
   </section>
@@ -168,10 +185,10 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const [search, setSearch] = React.useState('')
   const [preview, setPreview] = React.useState<Material | null>(null)
   const [customizing, setCustomizing] = React.useState<Material | null>(null)
-  const [templatesOpen, setTemplatesOpen] = React.useState(false)
   const [causeQrCodes, setCauseQrCodes] = React.useState<CauseOutreachQr[]>([])
   const [causeQrLoading, setCauseQrLoading] = React.useState(false)
   const [causeQrError, setCauseQrError] = React.useState<string | null>(null)
+  const [tab, setTab] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (shell !== 'community' || !causeAccountId) return
@@ -225,35 +242,84 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const resources = eligible.filter(item => getMaterialDelivery(item) === 'ready' && !savedIds.has(item.id)).filter(matches)
   const loading = materialsLoading || generatedLoading || templateLoading || causesLoading || businessesLoading
 
+  // One clear meaning per tab, in the order a user meets them: files already made
+  // for them → designs they can customize → the general library → their own saved
+  // work. Short labels for the buttons; the fuller shell-specific copy explains the
+  // active tab underneath.
+  const groups = [
+    { key: 'made', label: 'Ready for you', hint: 'Already personalized', icon: FileCheck2, title: copy.madeTitle, description: shell === 'community' ? 'LocalVIP created these from your cause details. Each audience version is already connected to the matching referral QR code and is ready to download.' : copy.madeDescription, materials: madeForYou, customize: false, empty: 'Personalized materials will appear here when they are ready.' },
+    { key: 'templates', label: 'Create from template', hint: 'Choose a design', icon: LayoutTemplate, title: copy.customizeTitle, description: shell === 'community' ? 'Start with an approved design, then choose which audience QR code should appear on your new file.' : copy.customizeDescription, materials: customizable, customize: true, empty: 'No optional templates match your account yet.' },
+    { key: 'library', label: 'Resource library', hint: 'General ready-made files', icon: LibraryBig, title: copy.resourceTitle, description: 'General LocalVIP flyers, guides, and campaign resources. These are useful references and are not automatically personalized for your account.', materials: resources, customize: false, empty: 'No general resources match your account yet.' },
+    { key: 'saved', label: 'Your saved files', hint: 'Files you created', icon: FolderHeart, title: copy.savedTitle, description: shell === 'community' ? 'Versions you created from a template, plus files saved to your cause account.' : copy.savedDescription, materials: saved, customize: false, empty: 'Materials you save or create will appear here.' },
+    ...(shell === 'community' ? [{ key: 'qr', label: 'Your QR codes', hint: 'One per audience', icon: QrCode, title: 'QR codes for each audience', description: 'Permanent tracked QR codes for businesses, families and friends, and other schools or causes.', materials: [] as Material[], customize: false, empty: 'Your audience QR codes are being prepared.' }] : []),
+  ]
+  const totalCount = madeForYou.length + customizable.length + resources.length + saved.length
+  const firstNonEmpty = groups.find(group => group.materials.length)?.key || (shell === 'community' && causeQrCodes.length ? 'qr' : 'made')
+  const activeKey = tab && groups.some(group => group.key === tab) ? tab : firstNonEmpty
+  const activeGroup = groups.find(group => group.key === activeKey) || groups[0]
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {!embedded && <PageHeader title={copy.pageTitle} description={copy.pageDescription} />}
       <MaterialPreviewDialog material={preview} open={!!preview} onOpenChange={open => { if (!open) setPreview(null) }} />
       <CauseMaterialGenerateDialog material={customizing} causeAccountId={causeAccountId} qrCodes={causeQrCodes} onClose={() => setCustomizing(null)} onGenerated={() => refetchGenerated()} />
-      <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}><DialogContent className="max-h-[88vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>Explore templates</DialogTitle><DialogDescription>Choose a design, then select the audience QR code to add.</DialogDescription></DialogHeader><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{customizable.map(material => <MaterialCard key={material.id} material={material} profile={profile} onPreview={() => setPreview(material)} onCustomize={() => { setTemplatesOpen(false); setCustomizing(material) }} actionLabel="Customize" />)}</div></DialogContent></Dialog>
-      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+
+      {/* Top-level navigation: one button per material kind, always visible so the
+          library never reads as one long, confusing scroll. */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5" role="tablist" aria-label={copy.pageTitle}>
+        {groups.map(group => {
+          const active = activeKey === group.key
+          const Icon = group.icon
+          const count = group.key === 'qr' ? causeQrCodes.length : group.materials.length
+          return (
+            <button
+              key={group.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(group.key)}
+              className={cn(
+                'group min-h-24 rounded-2xl border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+                active
+                  ? 'border-brand-600 bg-brand-600 text-white shadow-card'
+                  : 'border-surface-200 bg-white text-surface-700 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card',
+              )}
+            >
+              <span className="flex items-start justify-between gap-3"><Icon className="h-5 w-5" /><span className={cn('rounded-full px-2 py-0.5 text-xs tabular-nums', active ? 'bg-white/20 text-white' : 'bg-surface-100 text-surface-500')}>{count}</span></span>
+              <span className="mt-3 block text-sm font-semibold">{group.label}</span>
+              <span className={cn('mt-1 block text-xs', active ? 'text-white/75' : 'text-surface-500')}>{group.hint}</span>
+            </button>
+          )
+        })}
+      </div>
+      {activeKey !== 'qr' && <div className="rounded-2xl border border-surface-200 bg-white p-4">
         <div className="relative max-w-xl">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${copy.pageTitle.toLowerCase()}...`} className="pl-9" />
+          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${activeGroup.label.toLowerCase()}...`} className="pl-9" />
         </div>
-      </div>
+      </div>}
       {(error || generatedError) && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{error || generatedError}</div>}
-      {shell === 'community' && <CauseOutreachQrCards codes={causeQrCodes} loading={causeQrLoading} error={causeQrError} />}
-      {loading ? (
+      {(loading || (activeKey === 'qr' && causeQrLoading)) ? (
         <div className="flex items-center justify-center rounded-2xl border border-surface-200 bg-white py-16 text-surface-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Preparing your materials...</div>
-      ) : madeForYou.length + customizable.length + resources.length + saved.length === 0 ? (
+      ) : totalCount === 0 && activeKey !== 'qr' ? (
         <div className="rounded-3xl border border-brand-100 bg-brand-50/40 px-6 py-12 text-center">
           <Sparkles className="mx-auto h-8 w-8 text-brand-500" />
           <h2 className="mt-3 text-lg font-semibold text-surface-900">{copy.emptyTitle}</h2>
           <p className="mx-auto mt-2 max-w-xl text-sm text-surface-600">{copy.emptyDescription}</p>
         </div>
+      ) : activeKey === 'qr' ? (
+        <CauseOutreachQrCards codes={causeQrCodes} loading={causeQrLoading} error={causeQrError} />
       ) : (
-        <>
-          <MaterialSection title={copy.madeTitle} description={copy.madeDescription} materials={madeForYou} profile={profile} empty="Personalized materials will appear here when they are ready." onPreview={setPreview} />
-          {customizable.length > 0 && <section className="rounded-2xl border border-brand-100 bg-brand-50/40 p-5"><h2 className="text-lg font-semibold text-surface-900">Explore templates</h2><p className="mt-1 text-sm text-surface-600">Pick a LocalVIP design and add the QR code for businesses, families and friends, or other causes.</p><Button className="mt-4" onClick={() => setTemplatesOpen(true)}><Sparkles className="h-4 w-4" /> Explore templates</Button></section>}
-          <MaterialSection title="LocalVIP material library" description="Ready-made flyers, guides, and campaign resources you can preview and download." materials={resources} profile={profile} empty="No general resources match your account yet." onPreview={setPreview} />
-          <MaterialSection title={copy.savedTitle} description={copy.savedDescription} materials={saved} profile={profile} empty="Materials you save or create will appear here." onPreview={setPreview} />
-        </>
+        <MaterialSection
+          title={activeGroup.title}
+          description={activeGroup.description}
+          materials={activeGroup.materials}
+          profile={profile}
+          customize={activeGroup.customize}
+          empty={activeGroup.empty}
+          onPreview={setPreview}
+          onCustomize={activeGroup.customize && shell === 'community' ? setCustomizing : undefined}
+        />
       )}
     </div>
   )
