@@ -22,6 +22,8 @@ import type { Cause, OnboardingFlow, OnboardingStep, QrCode, Stakeholder, Stakeh
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
+const executionId = z.union([z.string().uuid(), z.string().regex(/^[1-9]\d*$/)])
+
 const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('save_codes'),
@@ -36,11 +38,11 @@ const actionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     action: z.literal('generate_template'),
-    templateId: z.string().uuid('A template is required.'),
+    templateId: executionId,
   }),
   z.object({
     action: z.literal('complete_step'),
-    stepId: z.string().uuid('A step is required.'),
+    stepId: executionId,
   }),
   z.object({
     action: z.literal('regenerate_all'),
@@ -161,13 +163,18 @@ async function handleQaCauseAction(
       return NextResponse.json({ success: true, result })
     }
     if (action.action === 'list_generation_templates') {
-      const res = await fetchQaApi('/api/dashboard/v1/MaterialTemplate')
+      const res = await fetchQaApi('/api/dashboard/v1/MaterialTemplate?isActive=true')
       const json = await parseQaResponse<unknown>(res, 'Failed to list templates.')
       const items = Array.isArray(json) ? json
         : (json && typeof json === 'object' && Array.isArray((json as Record<string, unknown>).items))
           ? (json as Record<string, unknown>).items as unknown[]
           : []
-      const templates = items.map((t) => {
+      const templates = items.filter((t) => {
+        const record = t as Record<string, unknown>
+        const rawTypes = record.stakeholderTypes ?? record.stakeholder_types
+        const types = Array.isArray(rawTypes) ? rawTypes : String(rawTypes || '').split(',').filter(Boolean)
+        return types.length === 0 || types.some(type => ['cause', 'school', 'community', 'nonprofit'].includes(String(type).trim().toLowerCase()))
+      }).map((t) => {
         const r = t as Record<string, unknown>
         return {
           id: String(r.id),

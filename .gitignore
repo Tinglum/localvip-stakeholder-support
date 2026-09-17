@@ -44,3 +44,9 @@ LocalVIP010626-main/
 tmp-*.log
 tmp-*.txt
 .claude/
+
+# agent scratch / local caches (do not commit)
+tmp/
+.agents/
+.codex/
+tests/

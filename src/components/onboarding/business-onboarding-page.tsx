@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { compareNames, onboardingLocation, onboardingLocations, sortOnboarding, ONBOARDING_SORT_LABELS, type OnboardingSort } from '@/lib/onboarding-list'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -278,6 +279,8 @@ export default function BusinessOnboardingPage() {
 
   // ── Filter state ──────────────────────────────────────────────
   const [cityFilter, setCityFilter] = React.useState('all')
+  const [stateFilter, setStateFilter] = React.useState('all')
+  const [sortOrder, setSortOrder] = React.useState<OnboardingSort>('alphabetical')
   const [campaignFilter, setCampaignFilter] = React.useState('all')
   const [searchQuery, setSearchQuery] = React.useState('')
   const [quickFilter, setQuickFilter] = React.useState<QuickFilter>('all')
@@ -423,14 +426,15 @@ export default function BusinessOnboardingPage() {
         .forEach(b => myIds.add(b.id))
       items = items.filter(b => myIds.has(b.id))
     }
-    if (cityFilter !== 'all') items = items.filter(b => b.city_id === cityFilter)
-    if (campaignFilter !== 'all') items = items.filter(b => b.campaign_id === campaignFilter)
+    if (cityFilter !== 'all') items = items.filter(b => onboardingLocation(b, cities).key === cityFilter)
+    if (stateFilter !== 'all') items = items.filter(b => onboardingLocation(b, cities).stateKey === stateFilter)
+    if (campaignFilter !== 'all') items = items.filter(b => (campaignFilter === 'none' ? !b.campaign_id : b.campaign_id === campaignFilter))
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
       items = items.filter(b => b.name.toLowerCase().includes(q))
     }
     return items
-  }, [businesses, isFieldUser, assignments, profile.id, cityFilter, campaignFilter, searchQuery])
+  }, [businesses, isFieldUser, assignments, profile.id, cities, cityFilter, stateFilter, campaignFilter, searchQuery])
 
   const filteredBusinesses = React.useMemo(() => {
     let items = baseFilteredBusinesses
@@ -467,12 +471,7 @@ export default function BusinessOnboardingPage() {
   }, [baseFilteredBusinesses, quickFilter, outreach, tasks])
 
   // ── Group filtered businesses by stage ────────────────────────
-  const groupedBusinesses = React.useMemo(() => {
-    return STAGE_ORDER.map(stage => ({
-      stage,
-      items: filteredBusinesses.filter(business => business.stage === stage),
-    })).filter(group => group.items.length > 0)
-  }, [filteredBusinesses])
+
 
   // ── Summary stats ─────────────────────────────────────────────
   const summary = React.useMemo(() => {
@@ -510,20 +509,15 @@ export default function BusinessOnboardingPage() {
   )
 
   // ── Unique city/campaign options for filter dropdowns ─────────
-  const cityOptions = React.useMemo(() => {
-    const ids = new Set(businesses.map(b => b.city_id).filter(Boolean) as string[])
-    return Array.from(ids)
-      .map(id => cityMap.get(id))
-      .filter(Boolean)
-      .sort((a, b) => (a!.name > b!.name ? 1 : -1)) as typeof cities
-  }, [businesses, cityMap])
+  const cityOptions = React.useMemo(() => onboardingLocations(businesses, cities), [businesses, cities])
+  const stateOptions = React.useMemo(() => [...new Set(businesses.map(item => onboardingLocation(item, cities).state).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [businesses, cities])
 
   const campaignOptions = React.useMemo(() => {
     const ids = new Set(businesses.map(b => b.campaign_id).filter(Boolean) as string[])
     return Array.from(ids)
       .map(id => campaignMap.get(id))
       .filter(Boolean)
-      .sort((a, b) => (a!.name > b!.name ? 1 : -1)) as typeof campaigns
+      .sort((a, b) => compareNames(a!, b!)) as typeof campaigns
   }, [businesses, campaignMap])
 
   // ── Step execution helpers ────────────────────────────────────
@@ -719,6 +713,8 @@ export default function BusinessOnboardingPage() {
   }
 
   // ── Selected business for modal ───────────────────────────────
+  const groupedBusinesses = [{ label: ONBOARDING_SORT_LABELS[sortOrder], items: sortOnboarding(filteredBusinesses, sortOrder, item => getRequiredChecklistProgress(getBusinessDetail(item).checklist).percent) }]
+
   const selectedBusiness = selectedBusinessId
     ? filteredBusinesses.find(b => b.id === selectedBusinessId) || businesses.find(b => b.id === selectedBusinessId) || null
     : null
@@ -872,22 +868,31 @@ export default function BusinessOnboardingPage() {
                 className="h-11 w-full rounded-xl border border-surface-200 bg-surface-0 py-2 pl-10 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
               />
             </div>
-            <select
-              value={cityFilter}
+            <select aria-label="Sort order" value={sortOrder} onChange={e => setSortOrder(e.target.value as OnboardingSort)} className="h-11 rounded-xl border border-surface-200 bg-white px-3 text-sm">
+              {Object.entries(ONBOARDING_SORT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <select aria-label="State" value={stateFilter} onChange={e => { setStateFilter(e.target.value); setCityFilter('all') }} className="h-11 rounded-xl border border-surface-200 bg-white px-3 text-sm">
+              <option value="all">All States</option>
+              <option value="">No State</option>
+              {stateOptions.map(state => <option key={state} value={state.trim().toLowerCase()}>{state}</option>)}
+            </select>
+            <select aria-label="City" value={cityFilter}
               onChange={e => setCityFilter(e.target.value)}
               className="h-11 rounded-xl border border-surface-200 bg-surface-0 px-3 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
             >
               <option value="all">All Cities</option>
+              <option value="missing">No City</option>
               {cityOptions.map(city => (
                 <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
               ))}
             </select>
             <select
-              value={campaignFilter}
+              aria-label="Campaign" value={campaignFilter}
               onChange={e => setCampaignFilter(e.target.value)}
               className="h-11 rounded-xl border border-surface-200 bg-surface-0 px-3 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
             >
               <option value="all">All Campaigns</option>
+              <option value="none">No Campaign</option>
               {campaignOptions.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -916,7 +921,7 @@ export default function BusinessOnboardingPage() {
             <Store className="h-8 w-8 text-surface-300" />
             <p className="text-sm font-medium text-surface-600">No businesses match your filters</p>
             <button
-              onClick={() => { setCityFilter('all'); setCampaignFilter('all'); setSearchQuery(''); setQuickFilter('all') }}
+              onClick={() => { setCityFilter('all'); setStateFilter('all'); setSortOrder('alphabetical'); setCampaignFilter('all'); setSearchQuery(''); setQuickFilter('all') }}
               className="text-sm font-medium text-brand-600 hover:text-brand-700"
             >
               Clear all filters
@@ -928,11 +933,11 @@ export default function BusinessOnboardingPage() {
       {/* ── Stage groups with compact cards ────────────────────── */}
       <div className="space-y-8">
         {groupedBusinesses.map(group => (
-          <section key={group.stage} className="space-y-4">
+          <section key={group.label} className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <Badge variant={getStageBadgeVariant(group.stage)} dot>
-                  {ONBOARDING_STAGES[group.stage]?.label}
+                <Badge variant="default">
+                  {group.label}
                 </Badge>
                 <span className="text-sm text-surface-500">{group.items.length} businesses</span>
               </div>

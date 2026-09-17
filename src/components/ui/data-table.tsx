@@ -149,7 +149,7 @@ export function DataTable<T extends Record<string, any>>({
                 <th
                   key={col.key}
                   style={col.width ? { width: col.width } : undefined}
-                  className={cn(col.sortable && 'cursor-pointer select-none', col.className)}
+                  className={cn(col.sortable && 'cursor-pointer select-text', col.className)}
                   onClick={() => col.sortable && handleSort(col.key)}
                 >
                   <span className="flex items-center gap-1">

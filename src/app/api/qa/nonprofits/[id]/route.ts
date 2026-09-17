@@ -56,24 +56,24 @@ export async function PUT(
     // so we forward the flag only when the caller actually sent it.
     const profilePayload: Record<string, unknown> = {}
     if (typeof body.name === 'string' && body.name.trim()) profilePayload.name = body.name.trim()
-    if (body.phone === null || typeof body.phone === 'string') profilePayload.ownerPhone = body.phone
+    if (body.phone === null || typeof body.phone === 'string') profilePayload.ownerPhone = body.phone ?? ''
     if (body.address === null || typeof body.address === 'string') profilePayload.address1 = body.address
-    if (body.email === null || typeof body.email === 'string') profilePayload.ownerEmail = body.email
+    if (body.email === null || typeof body.email === 'string') profilePayload.ownerEmail = body.email ?? ''
 
     // The Website box on the setup dialog was collected, sent, and dropped here:
     // there was no forwarding line, and until now no column behind it either.
-    if (body.website === null || typeof body.website === 'string') profilePayload.website = body.website
+    if (body.website === null || typeof body.website === 'string') profilePayload.website = body.website ?? ''
 
     // The backend stores a city NAME and STATE on the account; it has no concept
     // of the dashboard's city id. Only city_id was ever sent, so it matched
     // nothing here and the city silently failed to save while the dialog still
     // reported success. The caller resolves the name/state from the record it
     // already has loaded.
-    if (typeof body.city_name === 'string' && body.city_name.trim()) {
-      profilePayload.city = body.city_name.trim()
+    if (body.city_name === null || typeof body.city_name === 'string') {
+      profilePayload.city = typeof body.city_name === 'string' ? body.city_name.trim() : ''
     }
-    if (typeof body.city_state === 'string' && body.city_state.trim()) {
-      profilePayload.state = body.city_state.trim()
+    if (body.city_state === null || typeof body.city_state === 'string') {
+      profilePayload.state = typeof body.city_state === 'string' ? body.city_state.trim() : ''
     }
 
     // Organisation type. The backend keys school/PTA/booster detection off

@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { compareNames } from '@/lib/onboarding-list'
 import Link from 'next/link'
 import {
   BarChart3,
@@ -64,12 +65,12 @@ export default function CampaignsPage() {
   const [endDate, setEndDate] = React.useState('')
 
   const filteredCampaigns = React.useMemo(() => {
-    if (!search) return campaigns
+    if (!search) return [...campaigns].sort(compareNames)
     const query = search.toLowerCase()
     return campaigns.filter(campaign =>
       campaign.name.toLowerCase().includes(query)
       || (campaign.description || '').toLowerCase().includes(query)
-    )
+    ).sort(compareNames)
   }, [campaigns, search])
 
   async function handleSubmit(e: React.FormEvent) {

@@ -70,6 +70,7 @@ import { useAuth } from '@/lib/auth/context'
 import { useCrmCause } from '@/lib/hooks/crm-businesses'
 import type { CrmCause } from '@/lib/crm-api'
 import {
+  hasCauseCity,
   computeCauseExecutionSteps,
   computeCauseReadiness,
   getCauseNextActions,
@@ -155,7 +156,13 @@ export default function CauseDetailPage() {
   const { profile, isAdmin } = useAuth()
   const localProfileId = asUuid(profile.id)
   const requestedTab = searchParams.get('tab') as DashboardTab | null
-  const [activeTab, setActiveTab] = React.useState<DashboardTab>(requestedTab || 'mission')
+  const [activeTab, setActiveTabState] = React.useState<DashboardTab>(requestedTab || 'mission')
+  const setActiveTab = React.useCallback((tab: DashboardTab) => {
+    setActiveTabState(tab)
+    const query = new URLSearchParams(window.location.search)
+    query.set('tab', tab)
+    window.history.replaceState(null, '', `${window.location.pathname}?${query}`)
+  }, [])
 
   // ── Data hooks ──
   const { data: causeResponse, loading: causeLoading, error: causeError, refetch: refetchCause } = useCrmCause(routeId, qaCauseId)
@@ -188,7 +195,10 @@ export default function CauseDetailPage() {
 
   // ── Derived data ──
   const profileMap = React.useMemo(() => new Map(profiles.map(p => [p.id, p])), [profiles])
-  const city = cause?.city_id ? cities.find(c => c.id === cause.city_id) || null : null
+  const city = cities.find(c => cause?.city_name
+    ? c.name.trim().toLowerCase() === cause.city_name.trim().toLowerCase()
+      && (!cause.state || c.state.trim().toLowerCase() === cause.state.trim().toLowerCase())
+    : c.id === cause?.city_id) || null
   const qaCityLabel = [causeResponse?.qaCause?.city, causeResponse?.qaCause?.state]
     .filter(Boolean)
     .join(', ')
@@ -281,6 +291,32 @@ export default function CauseDetailPage() {
   const [stepBusyId, setStepBusyId] = React.useState<string | null>(null)
 
   const joinUrl = codes?.join_url || ''
+  const [generationTemplates, setGenerationTemplates] = React.useState<GenerationTemplateSummary[] | null>(null)
+  const [templateError, setTemplateError] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    if (!localCauseId || !codes) return
+    let cancelled = false
+    setGenerationTemplates(null)
+    setTemplateError(null)
+    fetch(`/api/crm/causes/${localCauseId}/execution`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'list_generation_templates' }),
+    }).then(async response => {
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || 'Templates could not be loaded.')
+      if (!cancelled) setGenerationTemplates(body.templates || [])
+    }).catch(error => { if (!cancelled) setTemplateError(error.message) })
+    return () => { cancelled = true }
+  }, [localCauseId, codes, activeTab])
+  const materialsActionLabel = !codes ? 'Setup Codes First'
+    : templateError ? 'Check Templates'
+    : generationTemplates === null ? 'Checking Templates…'
+    : generationTemplates.length === 0 ? 'Activate Templates' : 'Generate Materials'
+  function handleMaterialsAction() {
+    if (!codes) setActiveTab('codes')
+    else if (templateError || generationTemplates?.length === 0) router.push('/admin/material-engine/templates')
+    else if (generationTemplates) void handleGenerateMaterials()
+  }
 
   const writebackRows = React.useMemo<QaWritebackRow[]>(() => {
     if (!cause) return []
@@ -359,7 +395,9 @@ export default function CauseDetailPage() {
   React.useEffect(() => {
     if (!localCauseId || localCauseId === routeId) return
     const nextQaId = causeResponse?.qaCauseId || qaCauseId
-    const nextHref = `/crm/causes/${localCauseId}${nextQaId !== null ? `?qaId=${nextQaId}` : ''}`
+    const query = new URLSearchParams(window.location.search)
+    if (nextQaId !== null) query.set('qaId', String(nextQaId))
+    const nextHref = `/crm/causes/${localCauseId}?${query}`
     router.replace(nextHref)
   }, [causeResponse?.qaCauseId, localCauseId, qaCauseId, routeId, router])
 
@@ -377,6 +415,8 @@ export default function CauseDetailPage() {
       if (!res.ok) throw new Error('Failed to update cause CRM fields.')
     } else if (localCauseId) {
       await updateCause(localCauseId, changes as Partial<Cause>)
+    } else {
+      throw new Error('This cause has no writable account.')
     }
   }, [causeResponse?.qaCauseId, localCauseId, updateCause])
 
@@ -384,15 +424,15 @@ export default function CauseDetailPage() {
     if (!cause || !canEditCrm) return
     await saveCauseCrm({ stage: newStage })
     setStageDropdownOpen(false)
-    window.location.reload()
-  }, [cause, canEditCrm, saveCauseCrm])
+    refetchCause()
+  }, [cause, canEditCrm, saveCauseCrm, refetchCause])
 
   const handleCampaignLinkSave = React.useCallback(async () => {
     if (!cause || !canEditCrm) return
     await saveCauseCrm({ campaign_id: pendingCampaignId === '__none' ? null : pendingCampaignId })
     setLinkCampaignOpen(false)
-    window.location.reload()
-  }, [cause, canEditCrm, pendingCampaignId, saveCauseCrm])
+    refetchCause()
+  }, [cause, canEditCrm, pendingCampaignId, saveCauseCrm, refetchCause])
 
   // ── Referrer-search visibility ──
   // Causes default to visible: a null column on QA means "never answered".
@@ -528,7 +568,6 @@ export default function CauseDetailPage() {
       await callExecutionAction({ action: 'complete_step', stepId })
       setEngineMessage('Step completed.')
       setLifecycleModal(null)
-      setActiveTab('launch')
       await refetchExecution()
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : 'Step could not be completed.')
@@ -611,7 +650,7 @@ export default function CauseDetailPage() {
     setReviewDupLoading(true)
     await saveCauseCrm({ duplicate_of: null })
     setReviewDupOpen(false)
-    window.location.reload()
+    refetchCause()
   }
 
   async function handleArchiveAsDuplicate() {
@@ -619,7 +658,7 @@ export default function CauseDetailPage() {
     setReviewDupLoading(true)
     await saveCauseCrm({ status: 'archived' })
     setReviewDupOpen(false)
-    window.location.reload()
+    refetchCause()
   }
 
   // ── Lifecycle modals ──
@@ -647,7 +686,7 @@ export default function CauseDetailPage() {
   }
 
   // ── Loading / error states ──
-  if (causeLoading) {
+  if (causeLoading && !cause) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
@@ -1037,7 +1076,7 @@ export default function CauseDetailPage() {
                   modal: 'initial_connection' as const,
                   icon: <Target className="h-5 w-5 text-brand-600" />,
                   items: [
-                    { label: 'Profile complete (city + contact)', done: !!(cause.city_id && (cause.owner_email || cause.email || cause.owner_phone || cause.phone)), modal: 'initial_connection' as const },
+                    { label: 'Profile complete (city + contact)', done: !!(hasCauseCity(cause) && (cause.owner_email || cause.email || cause.owner_phone || cause.phone)), modal: 'initial_connection' as const },
                     { label: 'Materials generated', done: generatedCount > 0, tab: 'materials' as DashboardTab },
                     { label: 'QR code created', done: causeQrCodes.length > 0, modal: 'materials_qr' as const },
                   ],
@@ -1306,9 +1345,9 @@ export default function CauseDetailPage() {
                       <div className="rounded-2xl border-2 border-dashed border-surface-200 bg-surface-50 px-4 py-8 text-center">
                         <FileText className="mx-auto mb-2 h-8 w-8 text-surface-300" />
                         <p className="text-sm font-medium text-surface-700">No {isSchool ? 'parent' : 'supporter'} materials yet</p>
-                        <p className="mt-1 text-xs text-surface-500">Set up your codes first, then generate materials.</p>
-                        <Button variant="outline" size="sm" className="mt-3" onClick={() => setActiveTab('codes')}>
-                          <QrCode className="h-3.5 w-3.5" /> Setup Codes
+                        <p className="mt-1 text-xs text-surface-500">{codes ? 'Generate materials from active templates.' : 'Set up your codes first, then generate materials.'}</p>
+                        <Button variant="outline" size="sm" className="mt-3" onClick={handleMaterialsAction}>
+                          <QrCode className="h-3.5 w-3.5" /> {materialsActionLabel}
                         </Button>
                       </div>
                     )
@@ -1397,9 +1436,9 @@ export default function CauseDetailPage() {
                       <div className="rounded-2xl border-2 border-dashed border-surface-200 bg-surface-50 px-4 py-8 text-center">
                         <BookOpen className="mx-auto mb-2 h-8 w-8 text-surface-300" />
                         <p className="text-sm font-medium text-surface-700">No {isSchool ? 'PTA' : 'leadership'} materials yet</p>
-                        <p className="mt-1 text-xs text-surface-500">Generate materials after setting up your codes.</p>
-                        <Button variant="outline" size="sm" className="mt-3" onClick={() => setActiveTab('codes')}>
-                          <QrCode className="h-3.5 w-3.5" /> Setup Codes
+                        <p className="mt-1 text-xs text-surface-500">{codes ? 'Generate materials from active templates.' : 'Generate materials after setting up your codes.'}</p>
+                        <Button variant="outline" size="sm" className="mt-3" onClick={handleMaterialsAction}>
+                          <QrCode className="h-3.5 w-3.5" /> {materialsActionLabel}
                         </Button>
                       </div>
                     )
@@ -1448,10 +1487,10 @@ export default function CauseDetailPage() {
                 <FileText className="mx-auto mb-3 h-10 w-10 text-surface-300" />
                 <p className="text-sm font-semibold text-surface-700">No materials generated yet</p>
                 <p className="mt-1 text-xs text-surface-500 max-w-md mx-auto">
-                  Materials are generated automatically when you save your referral and connection codes. Each material gets your unique QR code stamped on it.
+                  {!codes ? 'Set up your codes before generating materials.' : templateError || (generationTemplates?.length === 0 ? 'Your codes are ready. Activate a template for this cause to generate materials.' : 'Your codes are ready. Generate materials using your active templates.')}
                 </p>
-                <Button size="sm" className="mt-4" onClick={() => setActiveTab('codes')}>
-                  <QrCode className="h-3.5 w-3.5" /> Setup Codes First
+                <Button size="sm" className="mt-4" onClick={handleMaterialsAction} disabled={engineBusy !== null || Boolean(codes && !templateError && generationTemplates === null)}>
+                  <QrCode className="h-3.5 w-3.5" /> {materialsActionLabel}
                 </Button>
               </CardContent>
             </Card>
@@ -1863,7 +1902,7 @@ export default function CauseDetailPage() {
             onCompleteStep={(() => {
               const step = getExecutionStep('initial_connection')
               return step?.step.id && step.state === 'active' && step.readyToComplete
-                ? () => void handleCompleteStep(step.step.id)
+                ? () => handleCompleteStep(step.step.id)
                 : undefined
             })()}
             readyToComplete={getExecutionStep('initial_connection')?.readyToComplete ?? false}
@@ -1881,7 +1920,7 @@ export default function CauseDetailPage() {
             onCompleteStep={(() => {
               const step = getExecutionStep('leader_conversation')
               return step?.step.id && step.state === 'active' && step.readyToComplete
-                ? () => void handleCompleteStep(step.step.id)
+                ? () => handleCompleteStep(step.step.id)
                 : undefined
             })()}
             readyToComplete={getExecutionStep('leader_conversation')?.readyToComplete ?? false}
@@ -1901,7 +1940,7 @@ export default function CauseDetailPage() {
             onCompleteStep={(() => {
               const step = getExecutionStep('materials_qr')
               return step?.step.id && step.state === 'active' && step.readyToComplete
-                ? () => void handleCompleteStep(step.step.id)
+                ? () => handleCompleteStep(step.step.id)
                 : undefined
             })()}
             readyToComplete={getExecutionStep('materials_qr')?.readyToComplete ?? false}
@@ -1919,12 +1958,12 @@ export default function CauseDetailPage() {
             linkedBusinessCount={linkedBusinesses.length}
             generatedCount={generatedCount}
             qrCount={causeQrCodes.length}
-            codesReady={false}
+            codesReady={Boolean(codes?.referral_code && codes?.connection_code)}
             stakeholderReady={Boolean(cause.name && cause.email)}
             onCompleteStep={(() => {
               const step = getExecutionStep('activation_decision')
               return step?.step.id && step.state === 'active' && step.readyToComplete
-                ? () => void handleCompleteStep(step.step.id)
+                ? () => handleCompleteStep(step.step.id)
                 : undefined
             })()}
             readyToComplete={getExecutionStep('activation_decision')?.readyToComplete ?? false}

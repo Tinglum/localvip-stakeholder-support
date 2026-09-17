@@ -246,7 +246,7 @@ function BugCenterInner() {
   const allSelected = visible.length > 0 && visible.every((r) => selected.has(String(r.id)))
   const filtersActive = Boolean(fPriority || fCategory || fStatus || fApp || search || dateFrom || dateTo)
   const SortHead = ({ k, children }: { k: SortKey; children: React.ReactNode }) => (
-    <th className="cursor-pointer select-none px-3 py-2 hover:text-surface-800" onClick={() => toggleSort(k)}>
+    <th className="cursor-pointer select-text px-3 py-2 hover:text-surface-800" onClick={() => toggleSort(k)}>
       <span className="inline-flex items-center gap-1">{children}{sortKey === k && (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}</span>
     </th>
   )

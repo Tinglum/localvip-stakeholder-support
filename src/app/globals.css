@@ -21,8 +21,13 @@
       linear-gradient(180deg, #f8fafc 0%, #ffffff 42%, #f3f8ff 100%);
   }
 
+  body, input, textarea, [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
   ::selection {
-    background: rgba(var(--brand-primary), 0.18);
+    background: rgb(var(--brand-primary) / 0.3);
     color: #0f172a;
   }
 

@@ -7,6 +7,10 @@ import type {
 } from '@/lib/types/database'
 import type { CommunityCodes } from '@/lib/community-codes'
 
+export function hasCauseCity(cause: Cause & { city_name?: string | null }) {
+  return Boolean(cause.city_id || cause.city_name?.trim())
+}
+
 // ─── Step keys ──────────────────────────────────────────────
 
 export type CauseExecutionStepKey =
@@ -78,7 +82,7 @@ export function computeCauseExecutionSteps(input: {
     let blocker: string | null = null
     switch (key) {
       case 'initial_connection':
-        if (!input.cause.city_id || !(input.cause.email || input.cause.phone || input.cause.website)) {
+        if (!hasCauseCity(input.cause) || !(input.cause.email || input.cause.phone || input.cause.website)) {
           blocker = 'Add a city and at least one contact path before completing this step.'
         }
         break
@@ -156,7 +160,7 @@ export function computeCauseReadiness(input: {
 }): CauseReadinessScore {
   const isSchool = input.cause.type === 'school'
   const checks: Array<{ label: string; met: boolean }> = [
-    { label: 'Profile complete', met: !!(input.cause.city_id && (input.cause.email || input.cause.phone)) },
+    { label: 'Profile complete', met: !!(hasCauseCity(input.cause) && (input.cause.email || input.cause.phone)) },
     { label: 'Codes entered', met: !!(input.codes?.referral_code && input.codes?.connection_code) },
     { label: 'Materials generated', met: input.generatedMaterials.filter((m) => m.generation_status === 'generated').length > 0 },
     { label: 'QR assets ready', met: input.qrCodes.length > 0 },
@@ -239,7 +243,7 @@ export function getCauseNextActions(input: {
     )
   }
 
-  if (!input.cause.city_id || !(input.cause.email || input.cause.phone || input.cause.website)) {
+  if (!hasCauseCity(input.cause) || !(input.cause.email || input.cause.phone || input.cause.website)) {
     add('Complete your profile with city and contact information.', 'mission')
   }
 
