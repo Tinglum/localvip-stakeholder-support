@@ -54,7 +54,7 @@ import {
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { RealLogInAsButton } from '@/components/crm/real-log-in-as-button'
 import { OpenInWebappButton } from '@/components/crm/open-in-webapp-button'
-import { QaImportedFieldsPanel, QaWritebackWishlistTable, type QaImportedFact, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
+import { QaWritebackWishlistTable, type QaWritebackRow } from '@/components/crm/qa-linking-panels'
 import {
   CauseInitialConnectionModal,
   LeaderConversationModal,
@@ -259,34 +259,6 @@ export default function CauseDetailPage() {
   const generationState = generatedCount > 0
     ? 'generated'
     : setupTask?.status || 'idle'
-  const qaLinkedCauseId = materialCauseAccountId
-  const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
-    if (!cause || !qaLinkedCauseId) return []
-
-    return [
-      { label: 'QA nonprofit ID', value: String(qaLinkedCauseId) },
-      { label: 'Name', value: cause.name },
-      { label: 'Headline', value: cause.headline },
-      { label: 'Primary contact', value: cause.owner_name },
-      { label: 'Contact email', value: cause.owner_email || cause.email },
-      { label: 'Contact phone', value: cause.owner_phone || cause.phone },
-      { label: 'Address 1', value: cause.address1 },
-      { label: 'Address 2', value: cause.address2 },
-      { label: 'Full address', value: cause.full_address || cause.address },
-      { label: 'City', value: cause.city_name },
-      { label: 'State', value: cause.state },
-      { label: 'Zip code', value: cause.zip_code },
-      { label: 'Country', value: cause.country },
-      { label: 'Description', value: cause.description },
-      { label: 'Marketing', value: cause.marketing !== null && cause.marketing !== undefined ? String(cause.marketing) : null },
-      { label: 'Transaction fee', value: cause.tx_fee !== null && cause.tx_fee !== undefined ? String(cause.tx_fee) : null },
-      { label: 'Sales tax', value: cause.sales_tax !== null && cause.sales_tax !== undefined ? String(cause.sales_tax) : null },
-      { label: 'Tax ID', value: cause.tax_id },
-      { label: 'Time zone', value: cause.time_zone },
-      { label: 'QA status', value: cause.active === null || cause.active === undefined ? null : cause.active ? 'Active' : 'Inactive' },
-    ]
-  }, [cause, qaLinkedCauseId])
-
   // ── Codes + Material Engine ──
   const [engineMessage, setEngineMessage] = React.useState<string | null>(null)
   const [engineError, setEngineError] = React.useState<string | null>(null)
@@ -1832,18 +1804,6 @@ export default function CauseDetailPage() {
             </Card>
           </div>
         </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════
-          QA PANELS (bottom — for reference only)
-         ══════════════════════════════════════════════════════════ */}
-      {qaImportedFacts.length > 0 && (
-        <QaImportedFieldsPanel
-          title="Imported From QA"
-          description="These values are refreshed from QA whenever this cause or nonprofit record is opened."
-          facts={qaImportedFacts}
-          accentLabel="QA cause fields"
-        />
       )}
 
       <QaWritebackWishlistTable

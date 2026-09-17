@@ -26,7 +26,7 @@ import { BusinessExecutionOverview } from '@/components/crm/business-execution-o
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { RealLogInAsButton } from '@/components/crm/real-log-in-as-button'
 import { OpenInWebappButton } from '@/components/crm/open-in-webapp-button'
-import { QaImportedFieldsPanel, QaUniversalBacklogTable, type QaImportedFact } from '@/components/crm/qa-linking-panels'
+import { QaUniversalBacklogTable } from '@/components/crm/qa-linking-panels'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -253,32 +253,6 @@ export default function BusinessDetailPage() {
     .map(assignment => ({ assignment, profile: profileMap.get(assignment.stakeholder_id) }))
     .filter((item): item is { assignment: StakeholderAssignment; profile: Profile } => !!item.profile), [assignments, localEntityId, profileMap])
   const qaLinkedBusinessId = businessResponse?.qaBusinessId || biz?.qa_account_id || qaBusinessId || null
-  const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
-    if (!biz || !qaLinkedBusinessId) return []
-
-    return [
-      { label: 'QA business ID', value: String(qaLinkedBusinessId) },
-      { label: 'Business name', value: biz.name },
-      { label: 'Headline', value: biz.headline },
-      { label: 'Owner name', value: biz.owner_name },
-      { label: 'Owner email', value: biz.owner_email || biz.email },
-      { label: 'Owner phone', value: biz.owner_phone || biz.phone },
-      { label: 'Address 1', value: biz.address1 },
-      { label: 'Address 2', value: biz.address2 },
-      { label: 'Full address', value: biz.full_address || biz.address },
-      { label: 'City', value: biz.city_name },
-      { label: 'State', value: biz.state },
-      { label: 'Zip code', value: biz.zip_code },
-      { label: 'Country', value: biz.country },
-      { label: 'Description', value: biz.description || biz.public_description },
-      { label: 'Marketing', value: biz.marketing !== null && biz.marketing !== undefined ? String(biz.marketing) : null },
-      { label: 'Transaction fee', value: biz.tx_fee !== null && biz.tx_fee !== undefined ? String(biz.tx_fee) : null },
-      { label: 'Sales tax', value: biz.sales_tax !== null && biz.sales_tax !== undefined ? String(biz.sales_tax) : null },
-      { label: 'Tax ID', value: biz.tax_id },
-      { label: 'Time zone', value: biz.time_zone },
-      { label: 'QA status', value: biz.active === null || biz.active === undefined ? null : biz.active ? 'Active' : 'Inactive' },
-    ]
-  }, [biz, qaLinkedBusinessId])
   const refetchBusinessDetail = React.useCallback(() => {
     refetchBusiness()
     refetchLocalState()
@@ -834,14 +808,6 @@ export default function BusinessDetailPage() {
               refetchWorkspace={refetchLocalState}
               onNavigateTab={(tab) => setActiveTab(tab as typeof activeTab)}
             />
-            {qaImportedFacts.length > 0 ? (
-              <QaImportedFieldsPanel
-                title="Imported From QA"
-                description="These values are refreshed from QA whenever this business record is opened."
-                facts={qaImportedFacts}
-                accentLabel="QA business fields"
-              />
-            ) : null}
             <QaUniversalBacklogTable
               title="Add To QA"
               description="This is the shared backlog of dashboard functionality that still needs QA fields, write support, or new APIs before the dashboard can run fully server-side."
