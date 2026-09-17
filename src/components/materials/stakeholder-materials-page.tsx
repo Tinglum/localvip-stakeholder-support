@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth/context'
 import { useBusinesses, useCauses, useGeneratedMaterials, useMaterialTemplates, useMaterials } from '@/lib/supabase/hooks'
 import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-portal'
 import { getCauseQaAccountId, resolveCommunityCause } from '@/lib/community-cause'
+import { cn } from '@/lib/utils'
 import {
   explainMaterialAvailability,
   getMaterialDelivery,
@@ -145,6 +146,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const [search, setSearch] = React.useState('')
   const [preview, setPreview] = React.useState<Material | null>(null)
   const [customizing, setCustomizing] = React.useState<Material | null>(null)
+  const [tab, setTab] = React.useState<string | null>(null)
 
   const templateMap = React.useMemo(() => new Map(templates.map(item => [String(item.id), item])), [templates])
   const accountIds = React.useMemo(() => new Set([
@@ -184,11 +186,55 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const resources = eligible.filter(item => getMaterialDelivery(item) === 'ready' && !savedIds.has(item.id)).filter(matches)
   const loading = materialsLoading || generatedLoading || templateLoading || causesLoading || businessesLoading
 
+  // One clear meaning per tab, in the order a user meets them: files already made
+  // for them → designs they can customize → the general library → their own saved
+  // work. Short labels for the buttons; the fuller shell-specific copy explains the
+  // active tab underneath.
+  const groups = [
+    { key: 'made', label: 'Made for you', hint: 'Auto-personalized', title: copy.madeTitle, description: copy.madeDescription, materials: madeForYou, customize: false, empty: 'Personalized materials will appear here when they are ready.' },
+    { key: 'templates', label: 'Templates', hint: 'Customize a design', title: copy.customizeTitle, description: copy.customizeDescription, materials: customizable, customize: true, empty: 'No optional templates match your account yet.' },
+    { key: 'library', label: 'Library', hint: 'Ready to use', title: copy.resourceTitle, description: copy.resourceDescription, materials: resources, customize: false, empty: 'No general resources match your account yet.' },
+    { key: 'saved', label: 'Saved', hint: 'Your files', title: copy.savedTitle, description: copy.savedDescription, materials: saved, customize: false, empty: 'Materials you save or create will appear here.' },
+  ]
+  const totalCount = madeForYou.length + customizable.length + resources.length + saved.length
+  const firstNonEmpty = groups.find(group => group.materials.length)?.key || 'made'
+  const activeKey = tab && groups.some(group => group.key === tab) ? tab : firstNonEmpty
+  const activeGroup = groups.find(group => group.key === activeKey) || groups[0]
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {!embedded && <PageHeader title={copy.pageTitle} description={copy.pageDescription} />}
       <MaterialPreviewDialog material={preview} open={!!preview} onOpenChange={open => { if (!open) setPreview(null) }} />
       <CauseMaterialGenerateDialog material={customizing} causeAccountId={causeAccountId} onClose={() => setCustomizing(null)} onGenerated={() => refetchGenerated()} />
+
+      {/* Top-level navigation: one button per material kind, always visible so the
+          library never reads as one long, confusing scroll. */}
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label={copy.pageTitle}>
+        {groups.map(group => {
+          const active = activeKey === group.key
+          return (
+            <button
+              key={group.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(group.key)}
+              className={cn(
+                'group inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+                active
+                  ? 'border-brand-600 bg-brand-600 text-white shadow-sm'
+                  : 'border-surface-200 bg-white text-surface-600 hover:border-brand-300 hover:text-brand-700',
+              )}
+            >
+              <span>{group.label}</span>
+              <span className={cn('rounded-full px-1.5 py-0.5 text-xs tabular-nums', active ? 'bg-white/20 text-white' : 'bg-surface-100 text-surface-500')}>
+                {group.materials.length}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="rounded-2xl border border-surface-200 bg-white p-4">
         <div className="relative max-w-xl">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
@@ -198,19 +244,23 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
       {(error || generatedError) && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">{error || generatedError}</div>}
       {loading ? (
         <div className="flex items-center justify-center rounded-2xl border border-surface-200 bg-white py-16 text-surface-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Preparing your materials...</div>
-      ) : madeForYou.length + customizable.length + resources.length + saved.length === 0 ? (
+      ) : totalCount === 0 ? (
         <div className="rounded-3xl border border-brand-100 bg-brand-50/40 px-6 py-12 text-center">
           <Sparkles className="mx-auto h-8 w-8 text-brand-500" />
           <h2 className="mt-3 text-lg font-semibold text-surface-900">{copy.emptyTitle}</h2>
           <p className="mx-auto mt-2 max-w-xl text-sm text-surface-600">{copy.emptyDescription}</p>
         </div>
       ) : (
-        <>
-          <MaterialSection title={copy.madeTitle} description={copy.madeDescription} materials={madeForYou} profile={profile} empty="Personalized materials will appear here when they are ready." onPreview={setPreview} />
-          <MaterialSection title={copy.customizeTitle} description={copy.customizeDescription} materials={customizable} profile={profile} customize empty="No optional templates match your account yet." onPreview={setPreview} onCustomize={shell === 'community' ? setCustomizing : undefined} />
-          <MaterialSection title={copy.resourceTitle} description={copy.resourceDescription} materials={resources} profile={profile} empty="No general resources match your account yet." onPreview={setPreview} />
-          <MaterialSection title={copy.savedTitle} description={copy.savedDescription} materials={saved} profile={profile} empty="Materials you save or create will appear here." onPreview={setPreview} />
-        </>
+        <MaterialSection
+          title={activeGroup.title}
+          description={activeGroup.description}
+          materials={activeGroup.materials}
+          profile={profile}
+          customize={activeGroup.customize}
+          empty={activeGroup.empty}
+          onPreview={setPreview}
+          onCustomize={activeGroup.customize && shell === 'community' ? setCustomizing : undefined}
+        />
       )}
     </div>
   )
