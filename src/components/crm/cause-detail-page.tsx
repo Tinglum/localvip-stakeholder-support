@@ -132,7 +132,7 @@ function stepVariant(step: CauseExecutionStepSummary) {
   return 'default' as const
 }
 
-type DashboardTab = 'mission' | 'launch' | 'businesses' | 'community' | 'leadership' | 'materials' | 'codes' | 'activity' | 'tasks'
+type DashboardTab = 'mission' | 'setup' | 'launch' | 'report' | 'businesses' | 'community' | 'leadership' | 'materials' | 'codes' | 'activity' | 'tasks'
 
 interface GenerationTemplateSummary {
   id: string
@@ -689,8 +689,10 @@ export default function CauseDetailPage() {
 
   // ── TAB CONFIG ──
   const tabs: Array<{ key: DashboardTab; label: string; icon: React.ReactNode; count?: number }> = [
-    { key: 'mission', label: 'Mission Control', icon: <Rocket className="h-4 w-4" /> },
-    { key: 'launch', label: 'Build My Launch', icon: <Zap className="h-4 w-4" /> },
+    { key: 'mission', label: 'Summary', icon: <Rocket className="h-4 w-4" /> },
+    { key: 'setup', label: 'Setup', icon: <Target className="h-4 w-4" /> },
+    { key: 'launch', label: 'Launch plan', icon: <Zap className="h-4 w-4" /> },
+    { key: 'report', label: 'Reports', icon: <TrendingUp className="h-4 w-4" /> },
     { key: 'businesses', label: 'Businesses', icon: <Store className="h-4 w-4" />, count: linkedBusinesses.length },
     { key: 'community', label: isSchool ? 'Parents & Community' : 'Supporters', icon: <Users className="h-4 w-4" /> },
     { key: 'leadership', label: isSchool ? 'PTA / Leadership' : 'Board / Leadership', icon: <BookOpen className="h-4 w-4" /> },
@@ -700,7 +702,7 @@ export default function CauseDetailPage() {
     { key: 'tasks', label: 'Tasks & Notes', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter(t => t.status !== 'completed').length },
   ]
   const workspaceGroups: Array<{ key: string; label: string; tabs: DashboardTab[] }> = [
-    { key: 'overview', label: 'Overview', tabs: ['mission', 'launch'] },
+    { key: 'overview', label: 'Overview', tabs: ['mission', 'setup', 'launch', 'report'] },
     { key: 'network', label: 'Network & growth', tabs: ['businesses', 'community', 'leadership'] },
     { key: 'marketing', label: 'Marketing', tabs: ['materials', 'codes'] },
     { key: 'history', label: 'History', tabs: ['activity', 'tasks'] },
@@ -821,16 +823,14 @@ export default function CauseDetailPage() {
         )}
       />
 
-      {/* ── Quick info cards ── */}
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
-        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLinkCampaignOpen(true)}>
-          <CardContent className="p-4">
+      {/* Compact account context stays visible without pushing the workspaces down the page. */}
+      <Card className="overflow-hidden">
+        <CardContent className="grid p-0 sm:grid-cols-2 xl:grid-cols-4 [&>*]:min-w-0 [&>*]:border-surface-100 [&>*]:p-4 [&>*:not(:last-child)]:border-b sm:[&>*:nth-child(odd)]:border-r xl:[&>*:not(:last-child)]:border-b-0 xl:[&>*:not(:last-child)]:border-r">
+        <button type="button" className="group text-left transition-colors hover:bg-brand-50/50" onClick={() => setLinkCampaignOpen(true)}>
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
             <p className="mt-1 text-sm font-semibold text-surface-900 truncate">{campaign?.name || 'Not linked'}</p>
-          </CardContent>
-        </Card>
-        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('initial_connection')}>
-          <CardContent className="p-4">
+        </button>
+        <button type="button" className="group text-left transition-colors hover:bg-brand-50/50" onClick={() => setLifecycleModal('initial_connection')}>
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Owner</p>
               <Pencil className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />
@@ -838,19 +838,15 @@ export default function CauseDetailPage() {
             <p className="mt-1 text-sm font-semibold text-surface-900 truncate">
               {owner?.full_name || causeResponse?.qaCause?.ownerName || 'Owner not added'}
             </p>
-          </CardContent>
-        </Card>
-        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('initial_connection')}>
-          <CardContent className="p-4">
+        </button>
+        <button type="button" className="group text-left transition-colors hover:bg-brand-50/50" onClick={() => setLifecycleModal('initial_connection')}>
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">City</p>
               <Pencil className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />
             </div>
             <p className="mt-1 text-sm font-semibold text-surface-900 truncate">{locationLabel}</p>
-          </CardContent>
-        </Card>
-        <Card className="group cursor-pointer hover:shadow-card-hover transition-shadow" onClick={() => setLifecycleModal('activation_decision')}>
-          <CardContent className="p-4">
+        </button>
+        <button type="button" className="group text-left transition-colors hover:bg-brand-50/50" onClick={() => setLifecycleModal('activation_decision')}>
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Readiness</p>
               <ArrowRight className="h-3 w-3 text-surface-300 group-hover:text-brand-500 transition-colors" />
@@ -864,9 +860,9 @@ export default function CauseDetailPage() {
               </div>
               <span className="text-sm font-bold text-surface-900">{cause.stage === 'live' ? 100 : readiness.percent}%</span>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+        </button>
+        </CardContent>
+      </Card>
 
       {/* Four task-oriented workspaces replace nine competing primary tabs.
           The second row keeps the existing specialist views close at hand. */}
@@ -964,7 +960,11 @@ export default function CauseDetailPage() {
             <StatusCard label="Contributing Businesses" value={`${contributingBusinessCount}`} ready={contributingBusinessCount > 0} onClick={() => setActiveTab('businesses')} />
             <StatusCard label="Materials" value={`${generatedCount} ready`} ready={generatedCount > 0} onClick={() => setActiveTab('materials')} />
           </div>
+        </div>
+      )}
 
+      {activeTab === 'setup' && (
+        <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
             {/* Lifecycle */}
             <Card>
@@ -974,7 +974,9 @@ export default function CauseDetailPage() {
               <CardContent className="space-y-3">
                 {executionSteps.length === 0 ? (
                   <p className="text-sm text-surface-500">No activation steps found. Trigger a save to create them.</p>
-                ) : executionSteps.map(item => (
+                ) : executionSteps.filter(item => item.state !== 'completed').length === 0 ? (
+                  <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">All activation steps are complete.</div>
+                ) : executionSteps.filter(item => item.state !== 'completed').map(item => (
                   <div key={item.step.id} className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1.5">
@@ -1040,11 +1042,11 @@ export default function CauseDetailPage() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Readiness Checklist</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
+              <details className="rounded-xl border border-surface-200 bg-white">
+                <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-surface-800 hover:bg-surface-50">
+                  Readiness checklist ({readiness.checks.filter(check => check.met).length}/{readiness.checks.length})
+                </summary>
+                <div className="space-y-2 border-t border-surface-100 p-4">
                   {readiness.checks.map(check => (
                     <button
                       key={check.label}
@@ -1063,38 +1065,15 @@ export default function CauseDetailPage() {
                       {!check.met && <ArrowRight className="h-3.5 w-3.5 text-surface-300" />}
                     </button>
                   ))}
-                </CardContent>
-              </Card>
-
-              {/* Quick actions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Quick Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setActiveTab('businesses')}>
-                    <Store className="h-3.5 w-3.5" /> Add Business
-                  </Button>
-                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setLifecycleModal('leader_conversation')}>
-                    <Send className="h-3.5 w-3.5" /> Log Outreach
-                  </Button>
-                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setLifecycleModal('materials_qr')}>
-                    <QrCode className="h-3.5 w-3.5" /> Setup Codes
-                  </Button>
-                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setActiveTab('materials')}>
-                    <FileText className="h-3.5 w-3.5" /> View Materials
-                  </Button>
-                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setActiveTab('community')}>
-                    <Users className="h-3.5 w-3.5" /> {isSchool ? 'Parents' : 'Supporters'}
-                  </Button>
-                  <Button variant="outline" size="sm" className="justify-start" onClick={() => setActiveTab('tasks')}>
-                    <ClipboardList className="h-3.5 w-3.5" /> Add Task
-                  </Button>
-                </CardContent>
-              </Card>
+                </div>
+              </details>
             </div>
           </div>
+        </div>
+      )}
 
+      {activeTab === 'report' && (
+        <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-2">
             <Card>
               <CardHeader>
@@ -1918,6 +1897,21 @@ export default function CauseDetailPage() {
                     <Badge variant={new Date(task.due_date || 0).getTime() < Date.now() ? 'danger' : 'info'}>{task.due_date ? formatDate(task.due_date) : 'No date'}</Badge>
                   </div>
                 ))}
+                {executionSteps.some(item => item.state === 'completed') ? (
+                  <details className="rounded-xl border border-surface-200 bg-white">
+                    <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-surface-600 hover:text-surface-900">
+                      Completed steps ({executionSteps.filter(item => item.state === 'completed').length})
+                    </summary>
+                    <div className="space-y-2 border-t border-surface-100 p-3">
+                      {executionSteps.filter(item => item.state === 'completed').map(item => (
+                        <div key={item.step.id} className="flex items-center justify-between gap-3 rounded-lg bg-surface-50 px-3 py-2 text-sm">
+                          <span className="flex items-center gap-2 text-surface-700"><CheckCircle2 className="h-4 w-4 text-success-500" />{item.label}</span>
+                          <span className="text-xs text-surface-400">{item.step.completed_at ? formatDate(item.step.completed_at) : 'Completed'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
               {openTasks.filter(task => task.due_date).length === 0 ? <p className="rounded-xl bg-surface-50 px-4 py-6 text-center text-sm text-surface-500">No dated follow-ups yet. Add due dates to make the support plan visible here.</p> : null}
             </CardContent>
           </Card>

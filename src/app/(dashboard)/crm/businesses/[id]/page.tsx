@@ -681,9 +681,9 @@ export default function BusinessDetailPage() {
         )}
       </div>
 
-      <div id="business-info-cards" className="grid gap-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
-        <Card>
-          <CardContent className="space-y-2 p-4">
+      <Card id="business-info-cards" className="overflow-hidden">
+        <CardContent className="grid p-0 sm:grid-cols-2 xl:grid-cols-4 [&>*]:min-w-0 [&>*]:border-surface-100 [&>*]:p-4 [&>*:not(:last-child)]:border-b sm:[&>*:nth-child(odd)]:border-r xl:[&>*:not(:last-child)]:border-b-0 xl:[&>*:not(:last-child)]:border-r">
+          <div className="space-y-1.5">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Primary Owner</p>
             {owner ? (
               <Link href={`/admin/users/${owner.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
@@ -700,10 +700,8 @@ export default function BusinessDetailPage() {
               </Link>
             )}
             <p className="text-xs text-surface-400">{helperAssignments.length} active helpers</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-2 p-4">
+          </div>
+          <div className="space-y-1.5">
             <p className="text-xs uppercase tracking-[0.16em] text-surface-500">City</p>
             {city ? (
               <Link href={`/crm/cities/${city.id}`} className="text-sm font-semibold text-surface-900 transition-colors hover:text-brand-700">
@@ -719,16 +717,14 @@ export default function BusinessDetailPage() {
               </Link>
             )}
             <p className="text-xs text-surface-400">{biz.full_address || biz.address || 'No address on file'}</p>
-          </CardContent>
-        </Card>
-        <Card className="transition-colors hover:border-brand-200">
+          </div>
           <button
             type="button"
             onClick={() => canEditCrm && setLinkCauseOpen(true)}
-            className="block w-full text-left"
+            className="block w-full text-left transition-colors hover:bg-brand-50/50"
             disabled={!canEditCrm}
           >
-            <CardContent className="space-y-2 p-4">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Linked Cause</p>
                 <span className="text-xs font-medium text-brand-700">
@@ -743,17 +739,15 @@ export default function BusinessDetailPage() {
                 <p className="text-sm text-surface-500">No school or cause linked yet.</p>
               )}
               <p className="text-xs text-surface-400">{linkedCause?.type || 'Click to link a cause and clarify the story.'}</p>
-            </CardContent>
+            </div>
           </button>
-        </Card>
-        <Card className="transition-colors hover:border-brand-200">
           <button
             type="button"
             onClick={() => canEditCrm && setLinkCampaignOpen(true)}
-            className="block w-full text-left"
+            className="block w-full text-left transition-colors hover:bg-brand-50/50"
             disabled={!canEditCrm}
           >
-            <CardContent className="space-y-2 p-4">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Campaign</p>
                 <span className="text-xs font-medium text-brand-700">
@@ -768,10 +762,10 @@ export default function BusinessDetailPage() {
                 <p className="text-sm text-surface-500">No campaign linked yet.</p>
               )}
               <p className="text-xs text-surface-400">{campaign?.status || 'Click to link this business into a launch campaign.'}</p>
-            </CardContent>
+            </div>
           </button>
-        </Card>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* A small number of task-oriented sections is easier to scan than one
           top-level tab for every data type. The secondary row preserves every

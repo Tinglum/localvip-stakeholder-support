@@ -224,6 +224,7 @@ export function BusinessExecutionOverview({
   const [outreachBody, setOutreachBody] = React.useState('')
   const [outreachOutcome, setOutreachOutcome] = React.useState('')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'deal' | 'outreach' | 'branding'>('materials')
+  const [activeCommandTab, setActiveCommandTab] = React.useState<'summary' | 'setup' | 'growth' | 'manage'>('summary')
   const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision' | null>(null)
   const { data: hookCities } = useCities({ enabled: localStateEnabled })
   const allCities = localState?.cities ?? hookCities
@@ -687,6 +688,7 @@ export function BusinessExecutionOverview({
     const resolved = tab === 'codes' ? 'materials' : tab
 
     if (workspaceTabs.includes(resolved)) {
+      setActiveCommandTab('manage')
       setActiveWorkspaceTab(resolved as 'materials' | 'offers' | 'deal' | 'outreach' | 'branding')
       if (typeof window !== 'undefined') {
         requestAnimationFrame(() => {
@@ -708,6 +710,7 @@ export function BusinessExecutionOverview({
         })
       }
     } else if (resolved === 'overview') {
+      setActiveCommandTab('summary')
       // Scroll to the business info cards at the top of the page
       onNavigateTab?.('overview')
       if (typeof window !== 'undefined') {
@@ -741,7 +744,25 @@ export function BusinessExecutionOverview({
 
   return (
     <div className="flex flex-col gap-6">
-      <Card className="order-1 overflow-hidden border-surface-200">
+      <nav className="order-1 flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1" aria-label="Business overview sections">
+        {([
+          ['summary', 'Summary'],
+          ['setup', 'Setup'],
+          ['growth', 'Growth'],
+          ['manage', 'Listing & offers'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveCommandTab(key)}
+            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeCommandTab === key ? 'bg-white text-surface-900 shadow-sm' : 'text-surface-500 hover:bg-white/60 hover:text-surface-800'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      <Card className={`${activeCommandTab === 'summary' ? '' : 'hidden'} order-1 overflow-hidden border-surface-200`}>
         <div className="grid lg:grid-cols-[0.8fr,1.2fr]">
           <div className="bg-surface-950 p-6 text-white">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">Account health</p>
@@ -790,7 +811,7 @@ export function BusinessExecutionOverview({
         </div>
       </Card>
 
-      {hundredListInterest === 'interested' ? (
+      {activeCommandTab === 'growth' && hundredListInterest === 'interested' ? (
         <div className={`order-1 rounded-3xl border-2 p-5 md:p-6 ${
           hundredListActivationStatus === 'active'
             ? 'border-emerald-300 bg-emerald-50'
@@ -833,7 +854,7 @@ export function BusinessExecutionOverview({
         </div>
       ) : null}
 
-      <div className="order-2 grid gap-4 lg:grid-cols-4">
+      <div className={`${activeCommandTab === 'summary' ? '' : 'hidden'} order-2 grid gap-4 lg:grid-cols-4`}>
         <StatusCard label="Onboarding" value={`${executionSteps.filter((item) => item.state === 'completed').length}/${executionSteps.length}`} ready={executionSteps.every((item) => item.state === 'completed')} />
         <StatusCard label="QR status" value={qrCodes.length > 0 ? 'Ready' : 'Missing'} ready={qrCodes.length > 0} />
         <StatusCard
@@ -844,7 +865,7 @@ export function BusinessExecutionOverview({
         <StatusCard label="LocalVIP deal" value={cashbackReady ? `${cashbackValue}%` : 'Not configured'} ready={cashbackReady} />
       </div>
 
-      <div className="order-2 grid gap-6 xl:grid-cols-2">
+      <div className={`${activeCommandTab === 'growth' ? '' : 'hidden'} order-2 grid gap-6 xl:grid-cols-2`}>
         <Card>
           <CardHeader>
             <CardTitle>Business performance</CardTitle>
@@ -885,7 +906,7 @@ export function BusinessExecutionOverview({
 
       {/* Main dashboard: the LocalVIP network referral — distinct from the
           100-list customer link (which lives in the Offers / 100-list view). */}
-      <Card className="order-2">
+      <Card className={`${activeCommandTab === 'growth' ? '' : 'hidden'} order-2`}>
         <CardHeader>
           <CardTitle>Grow the LocalVIP network</CardTitle>
           <p className="text-sm text-surface-500">
@@ -932,13 +953,15 @@ export function BusinessExecutionOverview({
         </CardContent>
       </Card>
 
-      <div className="order-3 grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
+      <div className={`${activeCommandTab === 'setup' ? '' : 'hidden'} order-3 grid gap-6 xl:grid-cols-[1.2fr,0.8fr]`}>
         <Card>
           <CardHeader>
             <CardTitle>Business lifecycle</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {executionSteps.map((item) => (
+            {executionSteps.filter(item => item.state !== 'completed').length === 0 ? (
+              <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">All setup steps are complete.</div>
+            ) : executionSteps.filter(item => item.state !== 'completed').map((item) => (
               <button
                 key={item.step.id}
                 type="button"
@@ -979,6 +1002,21 @@ export function BusinessExecutionOverview({
                 </div>
               </button>
             ))}
+            {executionSteps.some(item => item.state === 'completed') ? (
+              <details className="rounded-xl border border-surface-200 bg-white">
+                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-surface-600 hover:text-surface-900">
+                  Completed steps ({executionSteps.filter(item => item.state === 'completed').length})
+                </summary>
+                <div className="space-y-2 border-t border-surface-100 p-3">
+                  {executionSteps.filter(item => item.state === 'completed').map(item => (
+                    <div key={item.step.id} className="flex items-center justify-between gap-3 rounded-lg bg-surface-50 px-3 py-2 text-sm">
+                      <span className="flex items-center gap-2 text-surface-700"><CheckCircle2 className="h-4 w-4 text-success-500" />{item.label}</span>
+                      <span className="text-xs text-surface-400">{item.step.completed_at ? formatDate(item.step.completed_at) : 'Completed'}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -1021,7 +1059,7 @@ export function BusinessExecutionOverview({
         </Card>
       </div>
 
-      <Card id="business-workspace-tabs" className="order-1">
+      <Card id="business-workspace-tabs" className={`${activeCommandTab === 'manage' ? '' : 'hidden'} order-1`}>
         <CardHeader className="space-y-4">
           <div className="flex flex-col gap-1">
             <CardTitle>Business workspace</CardTitle>
