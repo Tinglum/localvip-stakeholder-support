@@ -366,6 +366,22 @@ export function BusinessExecutionOverview({
     openTaskCount: 0,
     assets: executionAssets,
   })
+  const businessHealthChecks = [
+    { label: 'Owner assigned', met: Boolean(owner) },
+    { label: 'Location complete', met: Boolean(city) },
+    { label: 'Stripe ready', met: biz.stripe_onboarding_complete === true },
+    { label: 'Cashback offer active', met: cashbackReady },
+    { label: 'Branding ready', met: Boolean(brandingLogoUrl) },
+    { label: 'QR code ready', met: qrCodes.length > 0 },
+    { label: 'Materials ready', met: generatedCount > 0 },
+    { label: 'Referral link ready', met: Boolean(joinLocalVipLink) },
+  ]
+  const businessHealthScore = Math.round((businessHealthChecks.filter(check => check.met).length / businessHealthChecks.length) * 100)
+  const latestOutreach = [...outreach].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null
+  const activeOfferCount = offers.filter(offer => offer.status === 'active').length
+  const latestCompletedStep = executionSteps
+    .filter(item => item.step.completed_at)
+    .sort((a, b) => new Date(b.step.completed_at || 0).getTime() - new Date(a.step.completed_at || 0).getTime())[0] || null
 
   /** Stub: no longer imports from stakeholder codes */
   async function handleImportFromLink() {
@@ -710,8 +726,70 @@ export function BusinessExecutionOverview({
     navigateToArea(tab)
   }
 
+  function runNextAction(action: { text: string; tab: string }) {
+    const modalMap: Record<string, typeof lifecycleModal> = {
+      overview: 'initial_connection',
+      outreach: 'owner_conversation',
+      codes: 'materials_qr',
+      materials: 'materials_qr',
+      offers: 'launch_decision',
+    }
+    const modal = modalMap[action.tab]
+    if (modal) setLifecycleModal(modal)
+    else navigateToArea(action.tab)
+  }
+
   return (
     <div className="flex flex-col gap-6">
+      <Card className="order-1 overflow-hidden border-surface-200">
+        <div className="grid lg:grid-cols-[0.8fr,1.2fr]">
+          <div className="bg-surface-950 p-6 text-white">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">Account health</p>
+            <div className="mt-3 flex items-end gap-3">
+              <span className="text-5xl font-bold tracking-tight">{businessHealthScore}</span>
+              <span className="pb-1 text-lg text-white/60">/ 100</span>
+            </div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+              <div className={`h-full rounded-full ${businessHealthScore >= 75 ? 'bg-emerald-400' : businessHealthScore >= 45 ? 'bg-amber-400' : 'bg-rose-400'}`} style={{ width: `${businessHealthScore}%` }} />
+            </div>
+            <p className="mt-3 text-sm text-white/70">
+              {businessHealthScore >= 75 ? 'Ready for growth and ongoing support.' : businessHealthScore >= 45 ? 'Making progress, with a few launch blockers.' : 'Needs focused setup support before launch.'}
+            </p>
+            <details className="mt-4">
+              <summary className="cursor-pointer text-xs font-medium text-white/70 hover:text-white">View score details</summary>
+              <div className="mt-3 grid gap-1.5">
+                {businessHealthChecks.map(check => (
+                  <div key={check.label} className="flex items-center gap-2 text-xs text-white/75">
+                    {check.met ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <span className="h-3.5 w-3.5 rounded-full border border-white/35" />}
+                    {check.label}
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
+          <div className="space-y-5 p-6">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">Recommended next action</p>
+              <h3 className="mt-2 text-xl font-bold text-surface-950">{nextActions[0]?.text || 'Monitor performance and keep the relationship active'}</h3>
+              <p className="mt-1 text-sm text-surface-600">The dashboard prioritizes the strongest blocker or growth opportunity for this account.</p>
+              {nextActions[0] ? (
+                <Button className="mt-4" onClick={() => runNextAction(nextActions[0])}>Open next step <ArrowRight className="h-4 w-4" /></Button>
+              ) : null}
+            </div>
+            <div className="grid gap-3 border-t border-surface-100 pt-4 sm:grid-cols-3">
+              <MiniStatus label="Last contact" value={latestOutreach ? formatDate(latestOutreach.created_at) : 'Not contacted'} />
+              <MiniStatus label="Customers joined" value={`${joinedCount}`} />
+              <MiniStatus label="Active offers" value={`${activeOfferCount}`} />
+            </div>
+            <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
+              <p><span className="font-semibold text-surface-900">Support owner:</span> {owner?.full_name || 'Unassigned'}</p>
+              <p className="mt-1"><span className="font-semibold text-surface-900">Latest outcome:</span> {latestOutreach?.outcome || latestOutreach?.subject || 'No support contact logged yet'}</p>
+              <p className="mt-1"><span className="font-semibold text-surface-900">Latest milestone:</span> {latestCompletedStep ? `${latestCompletedStep.label} · ${formatDate(latestCompletedStep.step.completed_at || '')}` : 'No lifecycle milestone completed'}</p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
       {hundredListInterest === 'interested' ? (
         <div className={`order-1 rounded-3xl border-2 p-5 md:p-6 ${
           hundredListActivationStatus === 'active'
@@ -764,6 +842,45 @@ export function BusinessExecutionOverview({
           ready={hundredListActivationStatus === 'active'}
         />
         <StatusCard label="LocalVIP deal" value={cashbackReady ? `${cashbackValue}%` : 'Not configured'} ready={cashbackReady} />
+      </div>
+
+      <div className="order-2 grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Business performance</CardTitle>
+            <p className="text-sm text-surface-500">Growth and operational metrics available to the support team.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <MiniStatus label="Customers joined" value={`${joinedCount}`} />
+              <MiniStatus label="QR codes" value={`${qrCodes.length}`} />
+              <MiniStatus label="Materials" value={`${generatedCount}`} />
+              <MiniStatus label="Contacts logged" value={`${outreach.length}`} />
+            </div>
+            <div className="rounded-xl border border-dashed border-surface-300 bg-surface-50 px-4 py-3 text-xs text-surface-500">
+              Completed purchases, unique customers, repeat customers, processed revenue, cashback and community support require the business reporting endpoint. They are intentionally shown as unavailable rather than estimated.
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Relationships & change history</CardTitle>
+            <p className="text-sm text-surface-500">The account context an administrator needs before contacting the business.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <MiniStatus label="Linked cause" value={linkedCause?.name || 'Not linked'} />
+              <MiniStatus label="Campaign" value={campaign?.name || 'Not linked'} />
+              <MiniStatus label="Internal owner" value={owner?.full_name || 'Unassigned'} />
+              <MiniStatus label="Referral code" value={referralCode || 'Not assigned'} />
+            </div>
+            <div className="rounded-xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-600">
+              <p><span className="font-semibold text-surface-900">Last lifecycle change:</span> {latestCompletedStep ? `${latestCompletedStep.label} · ${formatDateTime(latestCompletedStep.step.completed_at || '')}` : 'No completed milestone'}</p>
+              <p className="mt-1"><span className="font-semibold text-surface-900">Last support contact:</span> {latestOutreach ? `${formatDateTime(latestOutreach.created_at)} · ${latestOutreach.outcome || latestOutreach.subject || latestOutreach.type}` : 'No contact logged'}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Main dashboard: the LocalVIP network referral — distinct from the
@@ -880,18 +997,7 @@ export function BusinessExecutionOverview({
               <button
                 key={action.text}
                 type="button"
-                onClick={() => {
-                  const modalMap: Record<string, typeof lifecycleModal> = {
-                    overview: 'initial_connection',
-                    outreach: 'owner_conversation',
-                    codes: 'materials_qr',
-                    materials: 'materials_qr',
-                    offers: 'launch_decision',
-                  }
-                  const modal = modalMap[action.tab]
-                  if (modal) setLifecycleModal(modal)
-                  else navigateToArea(action.tab)
-                }}
+                onClick={() => runNextAction(action)}
                 className="flex w-full items-start gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50 transition-colors cursor-pointer group"
               >
                 <span className="text-sm text-surface-700 group-hover:text-brand-700 flex-1">{action.text}</span>

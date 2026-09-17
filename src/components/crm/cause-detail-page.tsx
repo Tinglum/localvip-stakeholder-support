@@ -330,6 +330,26 @@ export default function CauseDetailPage() {
       openTaskCount: tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length,
     })
   }, [cause, executionSteps, codes, generatedMaterials, causeQrCodes, outreach.length, linkedBusinesses.length, tasks])
+  const openTasks = tasks.filter(task => task.status !== 'completed' && task.status !== 'cancelled')
+  const activeBusinesses = linkedBusinesses.filter(business => business.stage === 'live' || business.stage === 'onboarded')
+  const contactedBusinesses = linkedBusinesses.filter(business => business.stage !== 'lead')
+  const qrScanCount = causeQrCodes.reduce((total, qr) => total + (Number(qr.scan_count) || 0), 0)
+  const latestOutreach = [...outreach].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null
+  const now = new Date()
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).getTime()
+  const monthlyOutreachCount = outreach.filter(item => new Date(item.created_at).getTime() >= monthStart).length
+  const monthlyMaterialCount = generatedMaterials.filter(item => item.generated_at && new Date(item.generated_at).getTime() >= monthStart).length
+  const causeHealthChecks = [
+    { label: 'Primary contact ready', met: Boolean(owner || cause?.email || cause?.phone) },
+    { label: 'Location complete', met: Boolean(city || qaCityLabel) },
+    { label: 'Campaign linked', met: Boolean(campaign) },
+    { label: 'Referral code ready', met: Boolean(codes?.referral_code) },
+    { label: 'Audience QR ready', met: causeQrCodes.length >= 3 },
+    { label: 'Materials ready', met: generatedCount > 0 },
+    { label: 'Business network started', met: linkedBusinesses.length > 0 },
+    { label: 'Recent outreach logged', met: outreach.length > 0 },
+  ]
+  const causeHealthScore = Math.round((causeHealthChecks.filter(check => check.met).length / causeHealthChecks.length) * 100)
 
   // ── Stage / dialogs ──
   const [stageDropdownOpen, setStageDropdownOpen] = React.useState(false)
@@ -885,6 +905,58 @@ export default function CauseDetailPage() {
          ══════════════════════════════════════════════════════════ */}
       {activeTab === 'mission' && (
         <div className="space-y-6">
+          <Card className="overflow-hidden border-surface-200">
+            <div className="grid lg:grid-cols-[0.8fr,1.2fr]">
+              <div className="bg-surface-950 p-6 text-white">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">{entityLabel} health</p>
+                <div className="mt-3 flex items-end gap-3">
+                  <span className="text-5xl font-bold tracking-tight">{causeHealthScore}</span>
+                  <span className="pb-1 text-lg text-white/60">/ 100</span>
+                </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+                  <div className={`h-full rounded-full ${causeHealthScore >= 75 ? 'bg-emerald-400' : causeHealthScore >= 45 ? 'bg-amber-400' : 'bg-rose-400'}`} style={{ width: `${causeHealthScore}%` }} />
+                </div>
+                <p className="mt-3 text-sm text-white/70">
+                  {cause.stage === 'live'
+                    ? 'Active account health across growth, sharing and engagement.'
+                    : 'Launch readiness across setup, materials, network and outreach.'}
+                </p>
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-xs font-medium text-white/70 hover:text-white">View score details</summary>
+                  <div className="mt-3 grid gap-1.5">
+                    {causeHealthChecks.map(check => (
+                      <div key={check.label} className="flex items-center gap-2 text-xs text-white/75">
+                        {check.met ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <span className="h-3.5 w-3.5 rounded-full border border-white/35" />}
+                        {check.label}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+              <div className="space-y-5 p-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-600">Recommended next action</p>
+                  <h3 className="mt-2 text-xl font-bold text-surface-950">{nextActions[0]?.text || 'Keep growing the business and supporter network'}</h3>
+                  <p className="mt-1 text-sm text-surface-600">The most important support action is promoted here so the account always has a clear owner and next step.</p>
+                  {nextActions[0] ? (
+                    <Button className="mt-4" onClick={() => setActiveTab(nextActions[0].tab as DashboardTab)}>Open next step <ArrowRight className="h-4 w-4" /></Button>
+                  ) : null}
+                </div>
+                <div className="grid gap-3 border-t border-surface-100 pt-4 sm:grid-cols-4">
+                  <MiniStatus label="Support created" value="Not connected" />
+                  <MiniStatus label="Active businesses" value={`${activeBusinesses.length}`} />
+                  <MiniStatus label="QR scans" value={`${qrScanCount}`} />
+                  <MiniStatus label="Open follow-ups" value={`${openTasks.length}`} />
+                </div>
+                <div className="rounded-xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
+                  <p><span className="font-semibold text-surface-900">Internal owner:</span> {owner?.full_name || 'Unassigned'}</p>
+                  <p className="mt-1"><span className="font-semibold text-surface-900">Last contact:</span> {latestOutreach ? `${formatDate(latestOutreach.created_at)} · ${latestOutreach.outcome || latestOutreach.subject || latestOutreach.type}` : 'No contact logged yet'}</p>
+                  <p className="mt-1"><span className="font-semibold text-surface-900">Financial reporting:</span> The support total is not exposed on this CRM record yet.</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+
           {/* Status cards */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatusCard label="Activation" value={`${completedStepCount}/${executionSteps.length}`} ready={executionSteps.every(s => s.state === 'completed')} onClick={() => setLifecycleModal('activation_decision')} />
@@ -1021,6 +1093,43 @@ export default function CauseDetailPage() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recruitment funnels</CardTitle>
+                <p className="text-sm text-surface-500">A practical view of where growth is moving and where follow-up is needed.</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FunnelRow label="Businesses" values={[['Identified', linkedBusinesses.length], ['Contacted', contactedBusinesses.length], ['Active', activeBusinesses.length]]} onClick={() => setActiveTab('businesses')} />
+                <FunnelRow label={isSchool ? 'Families & supporters' : 'Supporters'} values={[['QR scans', qrScanCount], ['Outreach', outreach.length], ['Joined', 0]]} onClick={() => setActiveTab('community')} unavailableLabel="Joined count needs reporting API" />
+                <FunnelRow label={isSchool ? 'PTA & leadership' : 'Board & leadership'} values={[['Conversations', outreach.length], ['Materials', generatedMaterials.filter(item => item.library_folder === 'share_with_pta').length], ['Activated', executionSteps.some(step => step.key === 'activation_decision' && step.state === 'completed') ? 1 : 0]]} onClick={() => setActiveTab('leadership')} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Monthly progress report</CardTitle>
+                <p className="text-sm text-surface-500">A share-ready operational summary for {now.toLocaleString('en-US', { month: 'long', year: 'numeric' })}.</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <MiniStatus label="New outreach" value={`${monthlyOutreachCount}`} />
+                  <MiniStatus label="Materials made" value={`${monthlyMaterialCount}`} />
+                  <MiniStatus label="Businesses active" value={`${activeBusinesses.length}`} />
+                  <MiniStatus label="QR scans total" value={`${qrScanCount}`} />
+                </div>
+                <div className="rounded-xl border border-surface-200 bg-surface-50 p-4 text-sm text-surface-700">
+                  <p className="font-semibold text-surface-900">Recommended focus</p>
+                  <p className="mt-1">{nextActions[0]?.text || 'Continue recruiting local businesses and sharing supporter materials.'}</p>
+                  <p className="mt-3 text-xs text-surface-500">Support dollars will appear here when the CRM receives account-level contribution totals from the reporting API.</p>
+                </div>
+                <Button variant="outline" onClick={() => void navigator.clipboard.writeText(`${cause.name} — ${now.toLocaleString('en-US', { month: 'long', year: 'numeric' })}\nActive businesses: ${activeBusinesses.length}\nQR scans: ${qrScanCount}\nOutreach logged: ${monthlyOutreachCount}\nNext focus: ${nextActions[0]?.text || 'Continue network growth'}`)}>
+                  <Copy className="h-4 w-4" /> Copy progress summary
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
@@ -1222,6 +1331,13 @@ export default function CauseDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
+              {linkedBusinesses.length > 0 ? (
+                <div className="mb-5 grid gap-3 sm:grid-cols-3">
+                  <StatusCard label="Identified" value={`${linkedBusinesses.length}`} ready={linkedBusinesses.length > 0} />
+                  <StatusCard label="Contacted" value={`${contactedBusinesses.length}`} ready={contactedBusinesses.length > 0} />
+                  <StatusCard label="Active" value={`${activeBusinesses.length}`} ready={activeBusinesses.length > 0} />
+                </div>
+              ) : null}
               {linkedBusinesses.length === 0 ? (
                 <div className="rounded-2xl border-2 border-dashed border-surface-200 bg-surface-50 px-6 py-12 text-center">
                   <Store className="mx-auto mb-3 h-10 w-10 text-surface-300" />
@@ -1448,6 +1564,19 @@ export default function CauseDetailPage() {
          ══════════════════════════════════════════════════════════ */}
       {activeTab === 'materials' && (
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Material effectiveness</CardTitle>
+              <p className="text-sm text-surface-500">Operational performance for the cause&apos;s current sharing toolkit.</p>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-4">
+              <MiniStatus label="Ready files" value={`${generatedCount}`} />
+              <MiniStatus label="QR scans" value={`${qrScanCount}`} />
+              <MiniStatus label="Audience QR codes" value={`${causeQrCodes.length} / 3`} />
+              <MiniStatus label="Registrations" value="Not connected" />
+              <p className="text-xs text-surface-400 sm:col-span-4">Registrations and completed activations will appear once material-level attribution is exposed by the reporting API.</p>
+            </CardContent>
+          </Card>
           {generatedMaterialPairs.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
@@ -1538,6 +1667,41 @@ export default function CauseDetailPage() {
          ══════════════════════════════════════════════════════════ */}
       {activeTab === 'codes' && (
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Audience sharing workspace</CardTitle>
+              <p className="text-sm text-surface-500">Each audience needs its own message, landing page and permanent tracked QR code.</p>
+            </CardHeader>
+            <CardContent className="grid gap-3 lg:grid-cols-3">
+              {[
+                { key: 'business', label: 'Businesses', description: 'Recruit local businesses to support this organization.', materialFolder: 'share_with_businesses' },
+                { key: 'famil', label: isSchool ? 'Families & friends' : 'Supporters', description: isSchool ? 'Invite parents, families and friends to join and shop.' : 'Invite supporters and friends to join and shop.', materialFolder: 'share_with_parents' },
+                { key: isSchool ? 'school' : 'cause', label: isSchool ? 'Other schools' : 'Other causes', description: 'Grow the LocalVIP network through peer organizations.', materialFolder: 'share_with_schools' },
+              ].map(audience => {
+                const qr = causeQrCodes.find(item => `${item.destination_preset || ''} ${item.name || ''} ${item.destination_url || ''}`.toLowerCase().includes(audience.key)) || null
+                const materialCount = generatedMaterials.filter(item => item.library_folder === audience.materialFolder && item.generation_status === 'generated').length
+                return (
+                  <div key={audience.key} className="rounded-2xl border border-surface-200 bg-surface-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-surface-900">{audience.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-surface-500">{audience.description}</p>
+                      </div>
+                      <Badge variant={qr ? 'success' : 'warning'}>{qr ? 'Ready' : 'Needs QR'}</Badge>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <MiniStatus label="Scans" value={qr ? `${qr.scan_count}` : '—'} />
+                      <MiniStatus label="Materials" value={`${materialCount}`} />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {qr ? <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(qr.redirect_url)}><Copy className="h-3.5 w-3.5" /> Copy link</Button> : <Link href={qrGeneratorHref}><Button size="sm" variant="outline"><QrCode className="h-3.5 w-3.5" /> Create QR</Button></Link>}
+                      <Button size="sm" variant="ghost" onClick={() => setActiveTab('materials')}>View materials</Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
           <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
             <Card>
               <CardHeader>
@@ -1735,6 +1899,28 @@ export default function CauseDetailPage() {
          ══════════════════════════════════════════════════════════ */}
       {activeTab === 'tasks' && (
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Engagement calendar</CardTitle>
+              <p className="text-sm text-surface-500">Upcoming follow-ups and scheduled outreach across this account.</p>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {[...openTasks]
+                .filter(task => task.due_date)
+                .sort((a, b) => new Date(a.due_date || 0).getTime() - new Date(b.due_date || 0).getTime())
+                .slice(0, 6)
+                .map(task => (
+                  <div key={task.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-surface-900">{task.title}</p>
+                      <p className="mt-1 text-xs text-surface-500">Owner: {task.assigned_to ? profileMap.get(task.assigned_to)?.full_name || 'Assigned team member' : 'Unassigned'}</p>
+                    </div>
+                    <Badge variant={new Date(task.due_date || 0).getTime() < Date.now() ? 'danger' : 'info'}>{task.due_date ? formatDate(task.due_date) : 'No date'}</Badge>
+                  </div>
+                ))}
+              {openTasks.filter(task => task.due_date).length === 0 ? <p className="rounded-xl bg-surface-50 px-4 py-6 text-center text-sm text-surface-500">No dated follow-ups yet. Add due dates to make the support plan visible here.</p> : null}
+            </CardContent>
+          </Card>
           <div className="grid gap-6 xl:grid-cols-2">
             {/* Tasks */}
             <Card>
@@ -1775,6 +1961,9 @@ export default function CauseDetailPage() {
                       </button>
                       <span className={`flex-1 text-sm ${task.status === 'completed' ? 'text-surface-400 line-through' : 'text-surface-800'}`}>
                         {task.title}
+                        <span className="mt-0.5 block text-[11px] font-normal text-surface-400">
+                          {task.assigned_to ? profileMap.get(task.assigned_to)?.full_name || 'Assigned' : 'Unassigned'}{task.due_date ? ` · due ${formatDate(task.due_date)}` : ''}
+                        </span>
                       </span>
                       <Badge variant={
                         task.priority === 'urgent' ? 'danger' :
@@ -2021,6 +2210,36 @@ function MiniStatus({ label, value }: { label: string; value: string }) {
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
       <p className="mt-1 text-sm font-semibold text-surface-900">{value}</p>
     </div>
+  )
+}
+
+function FunnelRow({
+  label,
+  values,
+  onClick,
+  unavailableLabel,
+}: {
+  label: string
+  values: Array<[string, number]>
+  onClick: () => void
+  unavailableLabel?: string
+}) {
+  return (
+    <button type="button" onClick={onClick} className="w-full rounded-xl border border-surface-200 bg-white p-4 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/40">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-semibold text-surface-900">{label}</p>
+        <ArrowRight className="h-4 w-4 text-surface-300" />
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {values.map(([name, value]) => (
+          <div key={name} className="rounded-lg bg-surface-50 px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wide text-surface-500">{name}</p>
+            <p className="mt-1 text-lg font-bold text-surface-900">{value}</p>
+          </div>
+        ))}
+      </div>
+      {unavailableLabel ? <p className="mt-2 text-[11px] text-surface-400">{unavailableLabel}</p> : null}
+    </button>
   )
 }
 
