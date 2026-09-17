@@ -701,14 +701,6 @@ export default function CauseDetailPage() {
     { key: 'activity', label: 'Activity', icon: <MessageSquare className="h-4 w-4" />, count: outreach.length },
     { key: 'tasks', label: 'Tasks & Notes', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter(t => t.status !== 'completed').length },
   ]
-  const workspaceGroups: Array<{ key: string; label: string; tabs: DashboardTab[] }> = [
-    { key: 'overview', label: 'Overview', tabs: ['mission', 'setup', 'launch', 'report'] },
-    { key: 'network', label: 'Network & growth', tabs: ['businesses', 'community', 'leadership'] },
-    { key: 'marketing', label: 'Marketing', tabs: ['materials', 'codes'] },
-    { key: 'history', label: 'History', tabs: ['activity', 'tasks'] },
-  ]
-  const activeWorkspaceGroup = workspaceGroups.find(group => group.tabs.includes(activeTab)) || workspaceGroups[0]
-
   return (
     <div className="space-y-6">
       {causeError && (
@@ -864,37 +856,23 @@ export default function CauseDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Four task-oriented workspaces replace nine competing primary tabs.
-          The second row keeps the existing specialist views close at hand. */}
-      <div className="space-y-2">
-        <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1">
-        {workspaceGroups.map(group => (
+      {/* One navigation bar controls the whole cause record. */}
+      <nav className="flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1" aria-label={`${entityLabel} record sections`}>
+        {tabs.map(tab => (
           <button
-            key={group.key}
-            onClick={() => setActiveTab(group.tabs[0])}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-              activeWorkspaceGroup.key === group.key
+              activeTab === tab.key
                 ? 'bg-white text-surface-900 shadow-sm'
                 : 'text-surface-500 hover:text-surface-700 hover:bg-surface-50'
             }`}
           >
-            {group.label}
+            {tab.icon}{tab.label}
+            {typeof tab.count === 'number' && tab.count > 0 && <span className="rounded-full bg-surface-100 px-1.5 py-0.5 text-[10px]">{tab.count}</span>}
           </button>
         ))}
-        </div>
-        <div className="flex flex-wrap gap-2 px-1" aria-label={`${activeWorkspaceGroup.label} sections`}>
-          {tabs.filter(tab => activeWorkspaceGroup.tabs.includes(tab.key)).map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === tab.key ? 'bg-brand-100 text-brand-800' : 'text-surface-500 hover:bg-surface-100 hover:text-surface-800'}`}
-            >
-              {tab.icon}{tab.label}
-              {typeof tab.count === 'number' && tab.count > 0 && <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px]">{tab.count}</span>}
-            </button>
-          ))}
-        </div>
-      </div>
+      </nav>
 
       {/* ══════════════════════════════════════════════════════════
           TAB: MISSION CONTROL
