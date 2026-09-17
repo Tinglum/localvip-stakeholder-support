@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { compareNames, onboardingLocation, onboardingLocations, sortOnboarding, ONBOARDING_SORT_LABELS, type OnboardingSort } from '@/lib/onboarding-list'
 import Link from 'next/link'
 import {
   ArrowRight,
@@ -391,6 +392,8 @@ export default function CauseOnboardingPage() {
 
   // Filter state
   const [cityFilter, setCityFilter] = React.useState('all')
+  const [stateFilter, setStateFilter] = React.useState('all')
+  const [sortOrder, setSortOrder] = React.useState<OnboardingSort>('alphabetical')
   const [campaignFilter, setCampaignFilter] = React.useState('all')
   const [searchQuery, setSearchQuery] = React.useState('')
   const [selectedCauseId, setSelectedCauseId] = React.useState<string | null>(null)
@@ -517,21 +520,17 @@ export default function CauseOnboardingPage() {
       causes.filter(c => c.owner_id === profile.id).forEach(c => myIds.add(c.id))
       items = items.filter(c => myIds.has(c.id))
     }
-    if (cityFilter !== 'all') items = items.filter(c => c.city_id === cityFilter)
-    if (campaignFilter !== 'all') items = items.filter(c => c.campaign_id === campaignFilter)
+    if (cityFilter !== 'all') items = items.filter(c => onboardingLocation(c, cities).key === cityFilter)
+    if (stateFilter !== 'all') items = items.filter(c => onboardingLocation(c, cities).stateKey === stateFilter)
+    if (campaignFilter !== 'all') items = items.filter(c => (campaignFilter === 'none' ? !c.campaign_id : c.campaign_id === campaignFilter))
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
       items = items.filter(c => c.name.toLowerCase().includes(q))
     }
     return items
-  }, [causes, isFieldUser, assignments, profile.id, cityFilter, campaignFilter, searchQuery])
+  }, [causes, isFieldUser, assignments, profile.id, cities, cityFilter, stateFilter, campaignFilter, searchQuery])
 
-  const groupedCauses = React.useMemo(() => {
-    return STAGE_ORDER.map((stage) => ({
-      stage,
-      items: filteredCauses.filter((cause) => cause.stage === stage),
-    })).filter((group) => group.items.length > 0)
-  }, [filteredCauses])
+
 
   const selectedCause =
     selectedCauseId
@@ -561,20 +560,15 @@ export default function CauseOnboardingPage() {
     return { live, onboarding, followUps, assigned, linkedBusinesses, materialReady }
   }, [assignmentsByCause, businesses, causes, generatedByCause, outreach, qaAccountIdByCause])
 
-  const cityOptions = React.useMemo(() => {
-    const ids = new Set(causes.map((cause) => cause.city_id).filter(Boolean) as string[])
-    return Array.from(ids)
-      .map((id) => cityMap.get(id))
-      .filter(Boolean)
-      .sort((left, right) => (left!.name > right!.name ? 1 : -1)) as typeof cities
-  }, [causes, cityMap])
+  const cityOptions = React.useMemo(() => onboardingLocations(causes, cities), [causes, cities])
+  const stateOptions = React.useMemo(() => [...new Set(causes.map(item => onboardingLocation(item, cities).state).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [causes, cities])
 
   const campaignOptions = React.useMemo(() => {
     const ids = new Set(causes.map((cause) => cause.campaign_id).filter(Boolean) as string[])
     return Array.from(ids)
       .map((id) => campaignMap.get(id))
       .filter(Boolean)
-      .sort((left, right) => (left!.name > right!.name ? 1 : -1)) as typeof campaigns
+      .sort((left, right) => compareNames(left!, right!)) as typeof campaigns
   }, [causes, campaignMap])
 
   const nextBestActionCause = React.useMemo(() => {
@@ -684,6 +678,8 @@ export default function CauseOnboardingPage() {
       checklist,
     }
   }
+
+  const groupedCauses = [{ label: ONBOARDING_SORT_LABELS[sortOrder], items: sortOnboarding(filteredCauses, sortOrder, item => getCauseDetail(item).checklist.percent) }]
 
   // TODO: this used to create a `stakeholders` row for the cause (via
   // ensureStakeholderSetup), then an empty `stakeholder_codes` row, then a
@@ -887,16 +883,18 @@ export default function CauseOnboardingPage() {
               onChange={(e) => setCityFilter(e.target.value)}
             >
               <option value="all">All Cities</option>
+              <option value="missing">No City</option>
               {cityOptions.map((city) => (
                 <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
               ))}
             </select>
             <select
               className="h-11 rounded-xl border border-surface-200 bg-surface-0 px-3 text-sm text-surface-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-              value={campaignFilter}
+              aria-label="Campaign" value={campaignFilter}
               onChange={(e) => setCampaignFilter(e.target.value)}
             >
               <option value="all">All Campaigns</option>
+              <option value="none">No Campaign</option>
               {campaignOptions.map((campaign) => (
                 <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
               ))}
@@ -970,16 +968,18 @@ export default function CauseOnboardingPage() {
           onChange={(e) => setCityFilter(e.target.value)}
         >
           <option value="all">All Cities</option>
+              <option value="missing">No City</option>
           {cities.map((city) => (
             <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
           ))}
         </select>
         <select
           className="h-9 rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700"
-          value={campaignFilter}
+          aria-label="Campaign" value={campaignFilter}
           onChange={(e) => setCampaignFilter(e.target.value)}
         >
           <option value="all">All Campaigns</option>
+              <option value="none">No Campaign</option>
           {campaigns.map((campaign) => (
             <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
           ))}
@@ -994,11 +994,11 @@ export default function CauseOnboardingPage() {
       {/* ─── Grouped cards ────────────────────────────────────── */}
       <div className="space-y-8">
         {groupedCauses.map((group) => (
-          <section key={group.stage} className="space-y-4">
+          <section key={group.label} className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <Badge variant={getStageBadgeVariant(group.stage)} dot>
-                  {ONBOARDING_STAGES[group.stage]?.label}
+                <Badge variant="default">
+                  {group.label}
                 </Badge>
                 <span className="text-sm text-surface-500">{group.items.length} causes</span>
               </div>

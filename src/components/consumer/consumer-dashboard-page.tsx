@@ -18,7 +18,6 @@ import {
   Mail,
   MapPin,
   Phone,
-  Printer,
   QrCode,
   RefreshCw,
   Search,
@@ -435,10 +434,6 @@ export function ConsumerDashboardPage() {
             <Button variant="outline" size="sm" onClick={() => void loadDashboard(true)} disabled={refreshing}>
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Refresh QA
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => window.print()}>
-              <Printer className="h-4 w-4" />
-              Print
             </Button>
           </div>
         }

@@ -44,6 +44,7 @@ export interface QaDashboardAccountSummary {
 
 export interface QaDashboardAccountDetail extends QaDashboardAccountSummary {
   description: string | null
+  website?: string | null
   ownerPhone: string | null
   address1: string | null
   address2: string | null

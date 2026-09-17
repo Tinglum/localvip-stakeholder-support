@@ -622,6 +622,7 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           owner_id: null,
           owner_user_id: null,
           city_id: null,
+          campaign_id: c.crmCampaignId == null ? null : String(c.crmCampaignId),
           brand: 'localvip',
           stage: 'lead',
           status: c.active ? 'active' : 'inactive',

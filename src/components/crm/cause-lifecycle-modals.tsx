@@ -89,7 +89,7 @@ function SuccessBanner({ text }: { text: string }) {
 export interface CauseInitialConnectionModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  cause: Cause
+  cause: Cause & { city_name?: string | null; state?: string | null }
   city: { id: string; name: string; state: string } | null
   linkedBusinessCount: number
   helperCount: number
@@ -98,7 +98,7 @@ export interface CauseInitialConnectionModalProps {
    * backend stores instead of the dashboard's city id.
    */
   onSave: (changes: Partial<Cause> & Record<string, unknown>) => Promise<void>
-  onCompleteStep?: () => void
+  onCompleteStep?: () => void | Promise<void>
   readyToComplete: boolean
   saving: boolean
   blocker: string | null
@@ -130,29 +130,34 @@ export function CauseInitialConnectionModal({
   const [email, setEmail] = React.useState(cause.email || '')
   const [phone, setPhone] = React.useState(cause.phone || '')
   const [website, setWebsite] = React.useState(cause.website || '')
-  const [cityId, setCityId] = React.useState(cause.city_id || '')
+  const [cityId, setCityId] = React.useState(city?.id || cause.city_id || '')
   const [causeType, setCauseType] = React.useState<Cause['type']>(cause.type)
   const [localSaving, setLocalSaving] = React.useState(false)
   const [saved, setSaved] = React.useState(false)
+  const [saveError, setSaveError] = React.useState<string | null>(null)
+  const wasOpen = React.useRef(false)
 
   React.useEffect(() => {
-    if (open) {
+    if (open && !wasOpen.current) {
       setEmail(cause.email || '')
       setPhone(cause.phone || '')
       setWebsite(cause.website || '')
-      setCityId(cause.city_id || '')
+      setCityId(city?.id || cause.city_id || (cause.city_name ? '__saved_city' : ''))
       setCauseType(cause.type)
       setSaved(false)
+      setSaveError(null)
     }
-  }, [open, cause])
+    wasOpen.current = open
+  }, [open, cause, city])
 
   const hasCity = !!cityId
   const hasContact = !!(email.trim() || phone.trim() || website.trim())
   const allReady = hasCity && hasContact
 
-  async function handleSave() {
+  async function handleSave(complete = false) {
     setLocalSaving(true)
     setSaved(false)
+    setSaveError(null)
     try {
       // The QA backend stores a city NAME and STATE on the account, not the
       // dashboard's city id, so resolve it here where the full record is already
@@ -162,12 +167,15 @@ export function CauseInitialConnectionModal({
         email: email.trim() || null,
         phone: phone.trim() || null,
         website: website.trim() || null,
-        city_id: cityId || null,
-        city_name: selectedCity?.name || null,
-        city_state: selectedCity?.state || null,
+        city_id: cityId === '__saved_city' ? null : cityId || null,
+        city_name: cityId === '__saved_city' ? cause.city_name : selectedCity?.name || null,
+        city_state: cityId === '__saved_city' ? cause.state : selectedCity?.state || null,
         type: causeType,
       })
       setSaved(true)
+      if (complete) await onCompleteStep?.()
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Organization info could not be saved.')
     } finally {
       setLocalSaving(false)
     }
@@ -185,7 +193,7 @@ export function CauseInitialConnectionModal({
 
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-3">
-            <Stat label="City linked" value={city?.name || 'Not set'} ok={hasCity} />
+            <Stat label="City linked" value={cities.find(c => String(c.id) === cityId)?.name || (cityId === '__saved_city' ? cause.city_name : null) || 'Not set'} ok={hasCity} />
             <Stat label="Contact path" value={hasContact ? 'Set' : 'Missing'} ok={hasContact} />
             <Stat label="Linked businesses" value={`${linkedBusinessCount}`} />
             <Stat label="Helpers" value={`${helperCount} assigned`} />
@@ -217,6 +225,7 @@ export function CauseInitialConnectionModal({
               className="h-9 w-full rounded-lg border border-surface-300 bg-surface-0 px-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-pink-500"
             >
               <option value="">Select a city...</option>
+              {cause.city_name && <option value="__saved_city">{cause.city_name}{cause.state ? `, ${cause.state}` : ''}</option>}
               {cities.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}, {c.state}</option>
               ))}
@@ -245,17 +254,18 @@ export function CauseInitialConnectionModal({
             </div>
           </div>
 
+          {saveError && <div role="alert"><Blocker text={saveError} /></div>}
           {saved && <SuccessBanner text="Organization info saved." />}
 
           <div className="flex items-center justify-between gap-3 border-t border-surface-100 pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleSave} disabled={localSaving || saving}>
+              <Button variant="outline" onClick={() => void handleSave()} disabled={localSaving || saving}>
                 {localSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Save info
               </Button>
               {readyToComplete && onCompleteStep && (
-                <Button onClick={onCompleteStep} disabled={saving}>
+                <Button onClick={() => void handleSave(true)} disabled={saving || localSaving || !allReady}>
                   <CheckCircle2 className="h-4 w-4" /> Complete step
                 </Button>
               )}
@@ -282,7 +292,7 @@ export interface LeaderConversationModalProps {
   outreach: OutreachActivity[]
   profileMap: Map<string, Profile>
   onLogOutreach: (data: { type: string; subject: string; body: string; outcome: string; nextStep: string; nextStepDate: string }) => Promise<void>
-  onCompleteStep?: () => void
+  onCompleteStep?: () => void | Promise<void>
   readyToComplete: boolean
   saving: boolean
   blocker: string | null

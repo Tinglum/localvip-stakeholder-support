@@ -267,14 +267,18 @@ export default function CityDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`${city.name}, ${city.state}`}
+        title={[city.name, city.state].filter(Boolean).join(', ')}
         description="Business growth, school and cause progress, campaigns, and local team coverage in one view."
         breadcrumb={[
           { label: 'CRM', href: '/crm/cities' },
           { label: 'Cities', href: '/crm/cities' },
           { label: city.name },
         ]}
-        actions={<Button onClick={() => setEditing(true)}>Edit city</Button>}
+        actions={<Button onClick={() => {
+          setDraft({ name: city.name, state: city.state || '', country: city.country || 'US', status: city.status })
+          setMessage('')
+          setEditing(true)
+        }}>Edit city</Button>}
       />
 
       {message && <p role="status" className="text-sm text-surface-700">{message}</p>}
