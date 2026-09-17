@@ -86,6 +86,8 @@ interface BusinessExecutionOverviewProps {
   refetchWorkspace?: () => void
   /** Switch the parent page's tab (activity, tasks, notes, qr, overview). */
   onNavigateTab?: (tab: string) => void
+  activeSection?: 'summary' | 'setup' | 'growth' | 'manage'
+  onSectionChange?: (section: 'summary' | 'setup' | 'growth' | 'manage') => void
 }
 
 interface GenerationTemplateSummary {
@@ -144,6 +146,8 @@ export function BusinessExecutionOverview({
   refetchBusiness,
   refetchWorkspace,
   onNavigateTab,
+  activeSection,
+  onSectionChange,
 }: BusinessExecutionOverviewProps) {
   const { profile } = useAuth()
   const localProfileId = asUuid(profile.id)
@@ -224,7 +228,12 @@ export function BusinessExecutionOverview({
   const [outreachBody, setOutreachBody] = React.useState('')
   const [outreachOutcome, setOutreachOutcome] = React.useState('')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = React.useState<'materials' | 'offers' | 'deal' | 'outreach' | 'branding'>('materials')
-  const [activeCommandTab, setActiveCommandTab] = React.useState<'summary' | 'setup' | 'growth' | 'manage'>('summary')
+  const [localCommandTab, setLocalCommandTab] = React.useState<'summary' | 'setup' | 'growth' | 'manage'>('summary')
+  const activeCommandTab = activeSection ?? localCommandTab
+  const setActiveCommandTab = React.useCallback((section: 'summary' | 'setup' | 'growth' | 'manage') => {
+    if (onSectionChange) onSectionChange(section)
+    else setLocalCommandTab(section)
+  }, [onSectionChange])
   const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'owner_conversation' | 'materials_qr' | 'launch_decision' | null>(null)
   const { data: hookCities } = useCities({ enabled: localStateEnabled })
   const allCities = localState?.cities ?? hookCities
@@ -744,24 +753,6 @@ export function BusinessExecutionOverview({
 
   return (
     <div className="flex flex-col gap-6">
-      <nav className="order-1 flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1" aria-label="Business overview sections">
-        {([
-          ['summary', 'Summary'],
-          ['setup', 'Setup'],
-          ['growth', 'Growth'],
-          ['manage', 'Listing & offers'],
-        ] as const).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setActiveCommandTab(key)}
-            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeCommandTab === key ? 'bg-white text-surface-900 shadow-sm' : 'text-surface-500 hover:bg-white/60 hover:text-surface-800'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-
       <Card className={`${activeCommandTab === 'summary' ? '' : 'hidden'} order-1 overflow-hidden border-surface-200`}>
         <div className="grid lg:grid-cols-[0.8fr,1.2fr]">
           <div className="bg-surface-950 p-6 text-white">

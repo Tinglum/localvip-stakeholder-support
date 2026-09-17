@@ -133,6 +133,7 @@ export default function BusinessDetailPage() {
   const { profile, isAdmin } = useAuth()
   const localProfileId = asUuid(profile.id)
   const [activeTab, setActiveTab] = React.useState<'overview' | 'activity' | 'tasks' | 'notes' | 'qr' | 'materials'>('overview')
+  const [overviewSection, setOverviewSection] = React.useState<'summary' | 'setup' | 'growth' | 'manage'>('summary')
 
   // ── Data hooks ──
   const { data: businessResponse, loading: bizLoading, error: bizError, refetch: refetchBusiness } = useCrmBusiness(id, qaBusinessId)
@@ -391,24 +392,19 @@ export default function BusinessDetailPage() {
     )
   }
 
-  const tabs = readOnly
-    ? [{ key: 'overview' as const, label: 'Overview' }]
+  const unifiedTabs = readOnly
+    ? [{ key: 'summary', label: 'Summary', parent: 'overview' as const }]
     : [
-        { key: 'overview' as const, label: 'Overview' },
-        { key: 'activity' as const, label: 'Activity' },
-        { key: 'tasks' as const, label: 'Tasks' },
-        { key: 'notes' as const, label: 'Notes' },
-        { key: 'qr' as const, label: 'QR Codes' },
-        { key: 'materials' as const, label: 'Materials' },
+        { key: 'summary', label: 'Summary', parent: 'overview' as const },
+        { key: 'setup', label: 'Setup', parent: 'overview' as const },
+        { key: 'growth', label: 'Growth', parent: 'overview' as const },
+        { key: 'manage', label: 'Listing & offers', parent: 'overview' as const },
+        { key: 'materials', label: 'Materials', parent: 'materials' as const },
+        { key: 'qr', label: 'QR codes', parent: 'qr' as const },
+        { key: 'activity', label: 'Activity', parent: 'activity' as const },
+        { key: 'tasks', label: 'Tasks', parent: 'tasks' as const },
+        { key: 'notes', label: 'Notes', parent: 'notes' as const },
       ]
-  const workspaceGroups = readOnly
-    ? [{ key: 'overview', label: 'Overview', tabs: ['overview'] as Array<(typeof tabs)[number]['key']> }]
-    : [
-        { key: 'overview', label: 'Overview & growth', tabs: ['overview'] as Array<(typeof tabs)[number]['key']> },
-        { key: 'marketing', label: 'Marketing', tabs: ['materials', 'qr'] as Array<(typeof tabs)[number]['key']> },
-        { key: 'history', label: 'History', tabs: ['activity', 'tasks', 'notes'] as Array<(typeof tabs)[number]['key']> },
-      ]
-  const activeWorkspaceGroup = workspaceGroups.find(group => group.tabs.includes(activeTab)) || workspaceGroups[0]
   const qrGeneratorHref = qaLinkedBusinessId
     ? `/qr/generator?businessId=${qaLinkedBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
     : '/qr/generator'
@@ -608,24 +604,6 @@ export default function BusinessDetailPage() {
       <div className="flex flex-wrap items-center gap-2">
         {!readOnly ? (
           <>
-            <Link href={adminOnboardingHref}>
-              <Button variant="outline" size="sm">
-                <ExternalLink className="h-3.5 w-3.5" /> Onboarding workspace
-              </Button>
-            </Link>
-            {customerPreviewHref ? (
-              <a href={customerPreviewHref} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm">
-                  <ExternalLink className="h-3.5 w-3.5" /> Customer Preview
-                </Button>
-              </a>
-            ) : (
-              <Link href={qrGeneratorHref}>
-                <Button variant="outline" size="sm" title="Create referral/QR links before previewing the customer page">
-                  <QrCodeIcon className="h-3.5 w-3.5" /> Create Preview Link
-                </Button>
-              </Link>
-            )}
             <Button size="sm" onClick={() => setActiveTab('activity')}>
               <Send className="h-3.5 w-3.5" /> Log contact
             </Button>
@@ -636,6 +614,12 @@ export default function BusinessDetailPage() {
               <div className="absolute right-0 z-30 mt-2 w-72 space-y-2 rounded-xl border border-surface-200 bg-white p-3 shadow-xl">
                 <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-400">Record actions</p>
                 <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" asChild><Link href={adminOnboardingHref}><ExternalLink className="h-3.5 w-3.5" /> Onboarding</Link></Button>
+                  {customerPreviewHref ? (
+                    <Button variant="outline" size="sm" asChild><a href={customerPreviewHref} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3.5 w-3.5" /> Preview</a></Button>
+                  ) : (
+                    <Button variant="outline" size="sm" asChild><Link href={qrGeneratorHref}><QrCodeIcon className="h-3.5 w-3.5" /> Create preview</Link></Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => setActiveTab('tasks')}><CheckSquare className="h-3.5 w-3.5" /> Add task</Button>
                   <Button variant="outline" size="sm" onClick={() => setActiveTab('notes')}><StickyNote className="h-3.5 w-3.5" /> Add note</Button>
                   <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}><QrCodeIcon className="h-3.5 w-3.5" /> QR codes</Button>
@@ -767,38 +751,30 @@ export default function BusinessDetailPage() {
         </CardContent>
       </Card>
 
-      {/* A small number of task-oriented sections is easier to scan than one
-          top-level tab for every data type. The secondary row preserves every
-          existing workspace. */}
-      <div id="business-page-tabs" className="space-y-2">
-        <nav className="flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1">
-          {workspaceGroups.map((group) => (
+      {/* One navigation bar controls the whole record. */}
+      <div id="business-page-tabs">
+        <nav className="flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1" aria-label="Business record sections">
+          {unifiedTabs.map((tab) => {
+            const selected = tab.parent === 'overview'
+              ? activeTab === 'overview' && overviewSection === tab.key
+              : activeTab === tab.parent
+            return (
             <button
-              key={group.key}
-              onClick={() => setActiveTab(group.tabs[0])}
+              key={tab.key}
+              onClick={() => {
+                if (tab.parent === 'overview') setOverviewSection(tab.key as typeof overviewSection)
+                setActiveTab(tab.parent)
+              }}
               className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                activeWorkspaceGroup.key === group.key
+                selected
                   ? 'bg-white text-surface-900 shadow-sm'
                   : 'text-surface-500 hover:bg-white/60 hover:text-surface-800'
               }`}
             >
-              {group.label}
+              {tab.label}
             </button>
-          ))}
+          )})}
         </nav>
-        {activeWorkspaceGroup.tabs.length > 1 && (
-          <nav className="flex flex-wrap gap-2 px-1" aria-label={`${activeWorkspaceGroup.label} sections`}>
-            {tabs.filter(tab => activeWorkspaceGroup.tabs.includes(tab.key)).map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === tab.key ? 'bg-brand-100 text-brand-800' : 'text-surface-500 hover:bg-surface-100 hover:text-surface-800'}`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        )}
       </div>
 
       {/* Tab Content */}
@@ -815,7 +791,7 @@ export default function BusinessDetailPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            <StripeAdminCard businessId={crmWriteId || id} isAdmin={isAdmin} />
+            {overviewSection === 'setup' ? <StripeAdminCard businessId={crmWriteId || id} isAdmin={isAdmin} /> : null}
             <BusinessExecutionOverview
               biz={biz}
               localBusinessId={localBusinessId}
@@ -830,6 +806,8 @@ export default function BusinessDetailPage() {
               refetchBusiness={refetchBusinessDetail}
               refetchWorkspace={refetchLocalState}
               onNavigateTab={(tab) => setActiveTab(tab as typeof activeTab)}
+              activeSection={overviewSection}
+              onSectionChange={setOverviewSection}
             />
             <details className="rounded-xl border border-surface-200 bg-surface-50">
               <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-surface-600 hover:text-surface-900">
