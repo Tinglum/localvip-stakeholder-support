@@ -401,6 +401,14 @@ export default function BusinessDetailPage() {
         { key: 'qr' as const, label: 'QR Codes' },
         { key: 'materials' as const, label: 'Materials' },
       ]
+  const workspaceGroups = readOnly
+    ? [{ key: 'overview', label: 'Overview', tabs: ['overview'] as Array<(typeof tabs)[number]['key']> }]
+    : [
+        { key: 'overview', label: 'Overview & growth', tabs: ['overview'] as Array<(typeof tabs)[number]['key']> },
+        { key: 'marketing', label: 'Marketing', tabs: ['materials', 'qr'] as Array<(typeof tabs)[number]['key']> },
+        { key: 'history', label: 'History', tabs: ['activity', 'tasks', 'notes'] as Array<(typeof tabs)[number]['key']> },
+      ]
+  const activeWorkspaceGroup = workspaceGroups.find(group => group.tabs.includes(activeTab)) || workspaceGroups[0]
   const qrGeneratorHref = qaLinkedBusinessId
     ? `/qr/generator?businessId=${qaLinkedBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
     : '/qr/generator'
@@ -595,7 +603,8 @@ export default function BusinessDetailPage() {
         }
       />
 
-      {/* Quick Action Buttons */}
+      {/* Keep the two actions used on most support calls visible. Everything
+          else remains available without turning the header into a toolbar. */}
       <div className="flex flex-wrap items-center gap-2">
         {!readOnly ? (
           <>
@@ -618,21 +627,23 @@ export default function BusinessDetailPage() {
               </Link>
             )}
             <Button size="sm" onClick={() => setActiveTab('activity')}>
-              <Send className="h-3.5 w-3.5" /> Log Activity
+              <Send className="h-3.5 w-3.5" /> Log contact
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setActiveTab('tasks')}>
-              <CheckSquare className="h-3.5 w-3.5" /> Add Task
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setActiveTab('notes')}>
-              <StickyNote className="h-3.5 w-3.5" /> Add Note
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}>
-              <QrCodeIcon className="h-3.5 w-3.5" /> Generate QR Code
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setActiveTab('materials')}>
-              <FileText className="h-3.5 w-3.5" /> Materials
-            </Button>
-            <div className="ml-auto flex items-center gap-2">
+            <details className="group relative ml-auto">
+              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-700 shadow-sm transition-colors hover:bg-surface-50">
+                <MoreHorizontal className="h-4 w-4" /> More actions
+              </summary>
+              <div className="absolute right-0 z-30 mt-2 w-72 space-y-2 rounded-xl border border-surface-200 bg-white p-3 shadow-xl">
+                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-400">Record actions</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab('tasks')}><CheckSquare className="h-3.5 w-3.5" /> Add task</Button>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab('notes')}><StickyNote className="h-3.5 w-3.5" /> Add note</Button>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab('qr')}><QrCodeIcon className="h-3.5 w-3.5" /> QR codes</Button>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab('materials')}><FileText className="h-3.5 w-3.5" /> Materials</Button>
+                </div>
+                <div className="border-t border-surface-100 pt-2">
+                  <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-400">Admin access</p>
+                  <div className="flex flex-wrap gap-2">
               {/* `businessAccountId` pins the portal to THIS business. Without it
                   the portal resolved the business from the owner alone, so an owner
                   of several businesses always landed in the same one — clicking
@@ -658,7 +669,10 @@ export default function BusinessDetailPage() {
                 stakeholderType="Business"
                 businessAccountId={qaLinkedBusinessId}
               />
-            </div>
+                  </div>
+                </div>
+              </div>
+            </details>
           </>
         ) : (
           <p className="text-sm text-surface-500">
@@ -759,23 +773,38 @@ export default function BusinessDetailPage() {
         </Card>
       </div>
 
-      {/* Tabs */}
-      <div id="business-page-tabs" className="border-b border-surface-200">
-        <nav className="flex gap-6">
-          {tabs.map((tab) => (
+      {/* A small number of task-oriented sections is easier to scan than one
+          top-level tab for every data type. The secondary row preserves every
+          existing workspace. */}
+      <div id="business-page-tabs" className="space-y-2">
+        <nav className="flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1">
+          {workspaceGroups.map((group) => (
             <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`border-b-2 pb-2 text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? 'border-brand-600 text-brand-700'
-                  : 'border-transparent text-surface-500 hover:text-surface-700'
+              key={group.key}
+              onClick={() => setActiveTab(group.tabs[0])}
+              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                activeWorkspaceGroup.key === group.key
+                  ? 'bg-white text-surface-900 shadow-sm'
+                  : 'text-surface-500 hover:bg-white/60 hover:text-surface-800'
               }`}
             >
-              {tab.label}
+              {group.label}
             </button>
           ))}
         </nav>
+        {activeWorkspaceGroup.tabs.length > 1 && (
+          <nav className="flex flex-wrap gap-2 px-1" aria-label={`${activeWorkspaceGroup.label} sections`}>
+            {tabs.filter(tab => activeWorkspaceGroup.tabs.includes(tab.key)).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === tab.key ? 'bg-brand-100 text-brand-800' : 'text-surface-500 hover:bg-surface-100 hover:text-surface-800'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        )}
       </div>
 
       {/* Tab Content */}
@@ -808,12 +837,20 @@ export default function BusinessDetailPage() {
               refetchWorkspace={refetchLocalState}
               onNavigateTab={(tab) => setActiveTab(tab as typeof activeTab)}
             />
-            <QaUniversalBacklogTable
-              title="Add To QA"
-              description="This is the shared backlog of dashboard functionality that still needs QA fields, write support, or new APIs before the dashboard can run fully server-side."
-              rows={QA_DASHBOARD_BACKLOG_ROWS}
-              actionHref="/qa-backlog"
-            />
+            <details className="rounded-xl border border-surface-200 bg-surface-50">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-surface-600 hover:text-surface-900">
+                Technical and QA details
+                <span className="ml-2 text-xs font-normal text-surface-400">For system administrators</span>
+              </summary>
+              <div className="border-t border-surface-200 p-4">
+                <QaUniversalBacklogTable
+                  title="QA integration backlog"
+                  description="Fields and write APIs that still require backend integration."
+                  rows={QA_DASHBOARD_BACKLOG_ROWS}
+                  actionHref="/qa-backlog"
+                />
+              </div>
+            </details>
           </div>
         )
       )}

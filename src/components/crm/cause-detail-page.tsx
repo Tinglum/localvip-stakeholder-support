@@ -20,6 +20,7 @@ import {
   Mail,
   MapPin,
   MessageSquare,
+  MoreHorizontal,
   Pencil,
   Phone,
   Plus,
@@ -678,6 +679,13 @@ export default function CauseDetailPage() {
     { key: 'activity', label: 'Activity', icon: <MessageSquare className="h-4 w-4" />, count: outreach.length },
     { key: 'tasks', label: 'Tasks & Notes', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter(t => t.status !== 'completed').length },
   ]
+  const workspaceGroups: Array<{ key: string; label: string; tabs: DashboardTab[] }> = [
+    { key: 'overview', label: 'Overview', tabs: ['mission', 'launch'] },
+    { key: 'network', label: 'Network & growth', tabs: ['businesses', 'community', 'leadership'] },
+    { key: 'marketing', label: 'Marketing', tabs: ['materials', 'codes'] },
+    { key: 'history', label: 'History', tabs: ['activity', 'tasks'] },
+  ]
+  const activeWorkspaceGroup = workspaceGroups.find(group => group.tabs.includes(activeTab)) || workspaceGroups[0]
 
   return (
     <div className="space-y-6">
@@ -753,36 +761,42 @@ export default function CauseDetailPage() {
               )}
             </div>
             <Button size="sm" onClick={() => setLifecycleModal('leader_conversation')}>
-              <Send className="h-3.5 w-3.5" /> Log Activity
+              <Send className="h-3.5 w-3.5" /> Log contact
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setActiveTab('tasks')}>
-              <Plus className="h-3.5 w-3.5" /> Add Task
-            </Button>
-            <LogInAsButton
-              // Use the QA owner first. The CRM owner can be a Supabase UUID,
-              // which cannot start a QA cause session and made this action
-              // disappear or open the wrong account.
-              userId={causeResponse?.qaCause?.ownerUserId
-                ? String(causeResponse.qaCause.ownerUserId)
-                : owner?.id || null}
-              userName={owner?.full_name || causeResponse?.qaCause?.ownerName || cause.name}
-              stakeholderType={isSchool ? 'School' : 'Cause'}
-              causeAccountId={causeResponse?.qaCauseId || causeResponse?.qaCause?.id || null}
-            />
-            <RealLogInAsButton
-              userId={causeResponse?.qaCause?.ownerUserId || null}
-              userName={owner?.full_name || cause.name}
-              stakeholderType={isSchool ? 'School' : 'Cause'}
-              // Without this the session opens on whichever account the by-user
-              // lookup returns first, which for an owner who also has a business
-              // is the business.
-              causeAccountId={causeResponse?.qaCauseId || causeResponse?.qaCause?.id || null}
-            />
-            <OpenInWebappButton
-              userId={causeResponse?.qaCause?.ownerUserId || null}
-              userName={owner?.full_name || cause.name}
-              stakeholderType="Cause"
-            />
+            <details className="group relative">
+              <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-700 shadow-sm transition-colors hover:bg-surface-50">
+                <MoreHorizontal className="h-4 w-4" /> More actions
+              </summary>
+              <div className="absolute right-0 z-30 mt-2 w-72 space-y-3 rounded-xl border border-surface-200 bg-white p-3 text-left shadow-xl">
+                <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => setActiveTab('tasks')}>
+                  <Plus className="h-3.5 w-3.5" /> Add task or note
+                </Button>
+                <div className="border-t border-surface-100 pt-3">
+                  <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-400">Admin access</p>
+                  <div className="flex flex-wrap gap-2">
+                    <LogInAsButton
+                      userId={causeResponse?.qaCause?.ownerUserId
+                        ? String(causeResponse.qaCause.ownerUserId)
+                        : owner?.id || null}
+                      userName={owner?.full_name || causeResponse?.qaCause?.ownerName || cause.name}
+                      stakeholderType={isSchool ? 'School' : 'Cause'}
+                      causeAccountId={causeResponse?.qaCauseId || causeResponse?.qaCause?.id || null}
+                    />
+                    <RealLogInAsButton
+                      userId={causeResponse?.qaCause?.ownerUserId || null}
+                      userName={owner?.full_name || cause.name}
+                      stakeholderType={isSchool ? 'School' : 'Cause'}
+                      causeAccountId={causeResponse?.qaCauseId || causeResponse?.qaCause?.id || null}
+                    />
+                    <OpenInWebappButton
+                      userId={causeResponse?.qaCause?.ownerUserId || null}
+                      userName={owner?.full_name || cause.name}
+                      stakeholderType="Cause"
+                    />
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
         )}
       />
@@ -834,29 +848,36 @@ export default function CauseDetailPage() {
         </Card>
       </div>
 
-      {/* ── Tab navigation ── */}
-      <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1">
-        {tabs.map(tab => (
+      {/* Four task-oriented workspaces replace nine competing primary tabs.
+          The second row keeps the existing specialist views close at hand. */}
+      <div className="space-y-2">
+        <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-100 p-1">
+        {workspaceGroups.map(group => (
           <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            key={group.key}
+            onClick={() => setActiveTab(group.tabs[0])}
             className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-              activeTab === tab.key
+              activeWorkspaceGroup.key === group.key
                 ? 'bg-white text-surface-900 shadow-sm'
                 : 'text-surface-500 hover:text-surface-700 hover:bg-surface-50'
             }`}
           >
-            {tab.icon}
-            <span className="hidden sm:inline">{tab.label}</span>
-            {typeof tab.count === 'number' && tab.count > 0 && (
-              <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                activeTab === tab.key ? 'bg-brand-100 text-brand-700' : 'bg-surface-200 text-surface-600'
-              }`}>
-                {tab.count}
-              </span>
-            )}
+            {group.label}
           </button>
         ))}
+        </div>
+        <div className="flex flex-wrap gap-2 px-1" aria-label={`${activeWorkspaceGroup.label} sections`}>
+          {tabs.filter(tab => activeWorkspaceGroup.tabs.includes(tab.key)).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === tab.key ? 'bg-brand-100 text-brand-800' : 'text-surface-500 hover:bg-surface-100 hover:text-surface-800'}`}
+            >
+              {tab.icon}{tab.label}
+              {typeof tab.count === 'number' && tab.count > 0 && <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px]">{tab.count}</span>}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════
@@ -1806,11 +1827,19 @@ export default function CauseDetailPage() {
         </div>
       )}
 
-      <QaWritebackWishlistTable
-        title="Dashboard Info To Add To QA Later"
-        description="This is the dashboard-only launch and follow-up data already attached to this record that still needs QA fields and write APIs."
-        rows={writebackRows}
-      />
+      <details className="rounded-xl border border-surface-200 bg-surface-50">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-surface-600 hover:text-surface-900">
+          Technical and QA details
+          <span className="ml-2 text-xs font-normal text-surface-400">For system administrators</span>
+        </summary>
+        <div className="border-t border-surface-200 p-4">
+          <QaWritebackWishlistTable
+            title="QA integration backlog"
+            description="Launch and follow-up fields that still require backend integration."
+            rows={writebackRows}
+          />
+        </div>
+      </details>
 
       {/* ══════════════════════════════════════════════════════════
           LIFECYCLE MODALS
