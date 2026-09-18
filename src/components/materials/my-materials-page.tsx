@@ -580,7 +580,7 @@ function StandardMaterialsPage({ embedded = false }: { embedded?: boolean }) {
         || (material.description || '').toLowerCase().includes(query)
         || (material.file_name || '').toLowerCase().includes(query)
         || getMaterialCustomTags(material).join(' ').toLowerCase().includes(query)
-    })
+    }).sort((a, b) => a.title.localeCompare(b.title))
   }, [materials, search])
 
   const loading = materialsLoading || assignmentsLoading || generatedLoading || templatesLoading
