@@ -151,9 +151,13 @@ export default function StakeholdersPage() {
     return result
   }, [profiles, filters])
 
-  // Gather unique brands for filter options
+  // Gather unique brands for filter options. Team members often have an empty
+  // brand_context, which used to produce a single blank option — drop those so
+  // the list falls back to the real brand choices instead of a blank row.
   const brandOptions = React.useMemo(() => {
-    const brands = new Set(profiles.map((p) => p.brand_context))
+    const brands = new Set(
+      profiles.map((p) => p.brand_context).filter((b): b is Brand => !!b),
+    )
     return Array.from(brands).map((b) => ({
       value: b,
       label: BRANDS[b]?.label ?? b,
