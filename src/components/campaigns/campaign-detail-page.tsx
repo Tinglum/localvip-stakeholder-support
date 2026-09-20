@@ -16,29 +16,73 @@ import {
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import {
   useBusinesses,
   useCampaigns,
+  useCampaignUpdate,
   useCauses,
   useCities,
   useOutreach,
   useProfiles,
 } from '@/lib/supabase/hooks'
+import type { EntityStatus } from '@/lib/types/database'
 
 export default function CampaignDetailPage() {
   const params = useParams()
   const campaignId = params.id as string
-  const { data: campaigns, loading } = useCampaigns()
+  const { data: campaigns, loading, refetch: refetchCampaigns } = useCampaigns()
   const { data: cities } = useCities()
   const { data: profiles } = useProfiles()
   const { data: businesses } = useBusinesses()
   const { data: causes } = useCauses()
   const { data: outreach } = useOutreach()
+  const { update: updateCampaign } = useCampaignUpdate()
 
   const campaign = campaigns.find(item => item.id === campaignId)
+
+  const [editOpen, setEditOpen] = React.useState(false)
+  const [draft, setDraft] = React.useState({ name: '', description: '', status: 'active' as EntityStatus, start_date: '', end_date: '' })
+  const [savingEdit, setSavingEdit] = React.useState(false)
+  const [editError, setEditError] = React.useState('')
+
+  const openEdit = React.useCallback(() => {
+    if (!campaign) return
+    setEditError('')
+    setDraft({
+      name: campaign.name,
+      description: campaign.description || '',
+      status: campaign.status,
+      start_date: campaign.start_date ? campaign.start_date.slice(0, 10) : '',
+      end_date: campaign.end_date ? campaign.end_date.slice(0, 10) : '',
+    })
+    setEditOpen(true)
+  }, [campaign])
+
+  const handleSaveEdit = React.useCallback(async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!campaign) return
+    if (!draft.name.trim()) { setEditError('Add a campaign name.'); return }
+    setSavingEdit(true); setEditError('')
+    const result = await updateCampaign(campaign.id, {
+      name: draft.name.trim(),
+      description: draft.description.trim() || null,
+      status: draft.status,
+      start_date: draft.start_date || null,
+      end_date: draft.end_date || null,
+    })
+    setSavingEdit(false)
+    if (result) { setEditOpen(false); refetchCampaigns() }
+    else setEditError('Could not save changes. Try again.')
+  }, [campaign, draft, updateCampaign, refetchCampaigns])
   const city = cities.find(item => item.id === campaign?.city_id)
   const owner = profiles.find(item => item.id === campaign?.owner_id)
   const campaignBusinesses = businesses.filter(item => item.campaign_id === campaignId)
@@ -73,6 +117,7 @@ export default function CampaignDetailPage() {
           { label: 'Campaigns', href: '/campaigns' },
           { label: campaign.name },
         ]}
+        actions={<Button variant="outline" onClick={openEdit}>Edit campaign</Button>}
       />
 
       <Card className="overflow-hidden border-surface-200">
@@ -194,6 +239,55 @@ export default function CampaignDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <form onSubmit={handleSaveEdit}>
+            <DialogHeader>
+              <DialogTitle>Edit campaign</DialogTitle>
+              <DialogDescription>Update the campaign name, status, dates, and description.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-surface-800" htmlFor="camp-name">Name</label>
+                <Input id="camp-name" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-surface-800" htmlFor="camp-desc">Description</label>
+                <Textarea id="camp-desc" rows={3} value={draft.description} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-surface-800" htmlFor="camp-status">Status</label>
+                  <select
+                    id="camp-status"
+                    value={draft.status}
+                    onChange={e => setDraft(d => ({ ...d, status: e.target.value as EntityStatus }))}
+                    className="h-10 w-full rounded-md border border-surface-200 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-surface-800" htmlFor="camp-start">Start</label>
+                  <Input id="camp-start" type="date" value={draft.start_date} onChange={e => setDraft(d => ({ ...d, start_date: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-surface-800" htmlFor="camp-end">End</label>
+                  <Input id="camp-end" type="date" value={draft.end_date} onChange={e => setDraft(d => ({ ...d, end_date: e.target.value }))} />
+                </div>
+              </div>
+              {editError && <p className="text-sm text-danger-600">{editError}</p>}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={savingEdit}>{savingEdit ? 'Saving…' : 'Save changes'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

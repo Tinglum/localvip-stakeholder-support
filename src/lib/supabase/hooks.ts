@@ -740,6 +740,7 @@ export function useCampaigns(filters?: Record<string, string>, options?: UseQuer
   return useQaQuery<Campaign>('campaigns', { filters, enabled: options?.enabled })
 }
 export function useCampaignInsert() { return useQaInsert<Campaign>('campaigns') }
+export function useCampaignUpdate() { return useQaUpdate<Campaign>('campaigns') }
 
 export function useOffers(filters?: Record<string, string>, options?: UseQueryOptions) {
   return useQaQuery<Offer>('offers', { filters, enabled: options?.enabled })
