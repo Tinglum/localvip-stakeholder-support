@@ -776,6 +776,7 @@ export function useTasks(filters?: Record<string, string>, options?: UseQueryOpt
 }
 export function useTaskInsert() { return useQaInsert<Task>('tasks') }
 export function useTaskUpdate() { return useQaUpdate<Task>('tasks') }
+export function useTaskDelete() { return useQaDelete('tasks') }
 
 export function useOutreach(filters?: Record<string, string>, options?: UseQueryOptions) {
   return useQaQuery<OutreachActivity>('outreach_activities', { filters, enabled: options?.enabled })

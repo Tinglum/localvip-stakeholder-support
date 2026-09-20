@@ -58,12 +58,70 @@ function InviteStakeholderDialog({
   )
 }
 
+// ─── Team Member Detail Dialog ───────────────────────────────
+
+function StakeholderDetailDialog({
+  profile,
+  onOpenChange,
+}: {
+  profile: Profile | null
+  onOpenChange: (open: boolean) => void
+}) {
+  return (
+    <Dialog open={!!profile} onOpenChange={onOpenChange}>
+      <DialogContent>
+        {profile && (
+          <>
+            <DialogHeader>
+              <DialogTitle>{profile.full_name || 'Team member'}</DialogTitle>
+              <DialogDescription>{profile.email}</DialogDescription>
+            </DialogHeader>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-surface-400">Role</dt>
+                <dd className="mt-0.5 text-surface-900">{ROLES[profile.role]?.label ?? profile.role}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-surface-400">Brand</dt>
+                <dd className="mt-0.5 text-surface-900">{BRANDS[profile.brand_context]?.label ?? profile.brand_context}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-surface-400">Status</dt>
+                <dd className="mt-0.5 text-surface-900 capitalize">{profile.status}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-surface-400">Phone</dt>
+                <dd className="mt-0.5 text-surface-900">{profile.phone || '—'}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-xs uppercase tracking-wide text-surface-400">Referral Code</dt>
+                <dd className="mt-0.5">
+                  {profile.referral_code ? (
+                    <code className="rounded bg-surface-100 px-1.5 py-0.5 text-xs">{profile.referral_code}</code>
+                  ) : '—'}
+                </dd>
+              </div>
+            </dl>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+              <Button asChild>
+                <a href={`/admin/users?userId=${encodeURIComponent(profile.id)}`}>Edit details</a>
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────
 
 export default function StakeholdersPage() {
   const { data: profiles, loading, error } = useProfiles()
   const [filters, setFilters] = React.useState<Record<string, string>>({})
   const [inviteOpen, setInviteOpen] = React.useState(false)
+  const [selected, setSelected] = React.useState<Profile | null>(null)
 
   // Client-side filtering since useProfiles doesn't accept filters for role/brand
   // STAKEHOLDER DEFINITION:
@@ -200,6 +258,7 @@ export default function StakeholdersPage() {
         columns={columns}
         data={filtered}
         keyField="id"
+        onRowClick={setSelected}
         searchPlaceholder="Search by name, role, or email..."
         filters={[
           {
@@ -230,6 +289,7 @@ export default function StakeholdersPage() {
       />
 
       <InviteStakeholderDialog open={inviteOpen} onOpenChange={setInviteOpen} />
+      <StakeholderDetailDialog profile={selected} onOpenChange={(open) => { if (!open) setSelected(null) }} />
     </div>
   )
 }
