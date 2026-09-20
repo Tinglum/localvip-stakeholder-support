@@ -36,6 +36,15 @@ export default function MyQrCodesPage() {
         b.name || b.short_code || '', undefined, { sensitivity: 'base' })),
     [qrCodes],
   )
+  // Optional collection filter, arrived at from a QR Collections card.
+  const [collectionId, setCollectionId] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    setCollectionId(new URLSearchParams(window.location.search).get('collection'))
+  }, [])
+  const visibleQrCodes = React.useMemo(
+    () => collectionId ? sortedQrCodes.filter(qr => qr.collection_id === collectionId) : sortedQrCodes,
+    [sortedQrCodes, collectionId],
+  )
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid')
   const [qrPreviews, setQrPreviews] = React.useState<Record<string, string>>({})
   const [deleting, setDeleting] = React.useState<string | null>(null)
@@ -128,16 +137,23 @@ export default function MyQrCodesPage() {
         }
       />
 
-      {sortedQrCodes.length === 0 ? (
+      {collectionId && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-brand-900">
+          <span>Showing QR codes in this collection.</span>
+          <Link href="/qr/mine" className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900">Show all</Link>
+        </div>
+      )}
+
+      {visibleQrCodes.length === 0 ? (
         <EmptyState
           icon={<QrCode className="h-8 w-8" />}
-          title="You haven't created any QR codes yet"
+          title={collectionId ? 'No QR codes in this collection yet' : "You haven't created any QR codes yet"}
           description="Generate your first QR code to start tracking scans and conversions."
           action={{ label: 'Generate QR Code', onClick: () => {} }}
         />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sortedQrCodes.map(qr => (
+          {visibleQrCodes.map(qr => (
             <Card key={qr.id} className="group transition-shadow hover:shadow-card-hover">
               <div className="flex items-center justify-center border-b border-surface-100 bg-surface-50 p-6">
                 {qrPreviews[qr.id] ? (
@@ -201,7 +217,7 @@ export default function MyQrCodesPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {sortedQrCodes.map(qr => (
+          {visibleQrCodes.map(qr => (
             <Card key={qr.id} className="transition-shadow hover:shadow-card-hover">
               <CardContent className="flex flex-wrap items-center gap-4 py-3">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-50 border border-surface-100">

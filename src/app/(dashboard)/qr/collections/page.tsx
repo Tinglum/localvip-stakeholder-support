@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { FolderOpen, Plus, QrCode, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -111,7 +112,8 @@ export default function QrCollectionsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {collections.map(col => (
-            <Card key={col.id} className="group cursor-pointer transition-shadow hover:shadow-card-hover">
+            <Link key={col.id} href={`/qr/mine?collection=${encodeURIComponent(col.id)}`} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 rounded-xl">
+            <Card className="group cursor-pointer transition-shadow hover:shadow-card-hover">
               <CardContent className="p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="rounded-lg bg-surface-100 p-2 text-surface-400 group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
@@ -133,6 +135,7 @@ export default function QrCollectionsPage() {
                 </div>
               </CardContent>
             </Card>
+            </Link>
           ))}
         </div>
       )}
