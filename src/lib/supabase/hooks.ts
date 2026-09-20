@@ -621,7 +621,10 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           type: 'nonprofit',
           owner_id: null,
           owner_user_id: null,
-          city_id: null,
+          // QA nonprofits store city/state as account text, not a numeric city
+          // FK. Mirror the business mapping so a cause can be matched to (and
+          // shown on) a city page by the same `City, State` label.
+          city_id: c.city ? [c.city, c.state].filter(Boolean).join(', ') : null,
           campaign_id: c.crmCampaignId == null ? null : String(c.crmCampaignId),
           brand: 'localvip',
           stage: 'lead',

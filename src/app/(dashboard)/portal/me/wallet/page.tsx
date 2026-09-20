@@ -46,7 +46,12 @@ interface CauseImpactPayload {
 
 interface WalletResponse {
   available: AmountPayload
+  total?: number | null
+  pendingCashback?: number | null
+  pendingBankVerification?: number | null
+  pendingReleaseAt?: string | null
   cashback: AmountPayload
+  lifetimeCashback?: number | null
   bonusCash: AmountPayload
   causeImpact: CauseImpactPayload | null
 }
@@ -181,7 +186,13 @@ export default function MyWalletPage() {
 
 
   const available = normalizeAmount(data?.available ?? null, ['availableAmount', 'amount', 'Amount'])
-  const cashback = normalizeAmount(data?.cashback ?? null)
+  const totalBalance = typeof data?.total === 'number' ? data.total : available
+  const pendingCashback = typeof data?.pendingCashback === 'number' ? data.pendingCashback : null
+  const pendingReleaseAt = data?.pendingReleaseAt ?? null
+  const cashback =
+    typeof data?.lifetimeCashback === 'number'
+      ? data.lifetimeCashback
+      : normalizeAmount(data?.cashback ?? null)
   const bonusCash = normalizeAmount(data?.bonusCash ?? null)
   const usCauseContribution = pickCauseImpactNumber(data?.causeImpact, [
     'usCauseContributionLifetime',
@@ -255,11 +266,19 @@ export default function MyWalletPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <WalletTile
-          label="Cashback Available"
-          value={available}
+          label="Wallet Balance"
+          value={totalBalance}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption="Cashback ready to transfer in your LocalVIP wallet"
+          caption={
+            pendingCashback && pendingCashback > 0
+              ? `${formatUsd(available)} available now · ${formatUsd(pendingCashback)} pending${
+                  pendingReleaseAt
+                    ? ` (releases ${new Date(pendingReleaseAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`
+                    : ''
+                }`
+              : `${formatUsd(available)} available now to transfer in your LocalVIP wallet`
+          }
           loading={loading}
           emphasize
         />

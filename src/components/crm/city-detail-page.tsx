@@ -19,6 +19,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ONBOARDING_STAGES, ROLES } from '@/lib/constants'
 import { getEntityTheme } from '@/lib/entity-themes'
@@ -28,13 +33,14 @@ import {
   useBusinessUpdate,
   useCampaigns,
   useCauses,
-  useCauseUpdate,
   useOutreach,
   useProfiles,
   useRecord,
   useTasks,
+  useTaskInsert,
 } from '@/lib/supabase/hooks'
-import type { Business, Cause, City, OnboardingStage } from '@/lib/types/database'
+import { useAuth } from '@/lib/auth/context'
+import type { Business, Cause, City, OnboardingStage, TaskPriority } from '@/lib/types/database'
 import { CityLinkEntityDialog } from '@/components/crm/city-link-entity-dialog'
 
 const businessTheme = getEntityTheme('business')
@@ -148,14 +154,27 @@ export default function CityDetailPage() {
   const { data: campaigns } = useCampaigns()
   const { data: profiles } = useProfiles()
   const { data: outreach } = useOutreach()
-  const { data: tasks } = useTasks()
+  const { data: tasks, refetch: refetchTasks } = useTasks()
   const { update: updateBusiness } = useBusinessUpdate()
-  const { update: updateCause } = useCauseUpdate()
+  const { insert: insertTask } = useTaskInsert()
+  const { profile } = useAuth()
   const [linkBusinessOpen, setLinkBusinessOpen] = React.useState(false)
   const [linkCauseOpen, setLinkCauseOpen] = React.useState(false)
+  const [addTaskOpen, setAddTaskOpen] = React.useState(false)
+  const [taskDraft, setTaskDraft] = React.useState<{ title: string; description: string; priority: TaskPriority; due_date: string }>({ title: '', description: '', priority: 'medium', due_date: '' })
+  const [taskSaving, setTaskSaving] = React.useState(false)
+  const [taskError, setTaskError] = React.useState('')
 
-  const cityBusinesses = React.useMemo(() => businesses.filter(business => business.city_id === cityId), [businesses, cityId])
-  const cityCauses = React.useMemo(() => causes.filter(cause => cause.city_id === cityId), [causes, cityId])
+  // QA stores a city on a business/cause as `City, State` account text (see the
+  // useBusinesses/useCauses mappers) rather than a numeric FK — so records must
+  // be matched to this city by that same label, not the numeric route id.
+  const cityLabel = React.useMemo(
+    () => (city ? [city.name, city.state].filter(Boolean).join(', ') : ''),
+    [city],
+  )
+
+  const cityBusinesses = React.useMemo(() => cityLabel ? businesses.filter(business => business.city_id === cityLabel) : [], [businesses, cityLabel])
+  const cityCauses = React.useMemo(() => cityLabel ? causes.filter(cause => cause.city_id === cityLabel) : [], [causes, cityLabel])
   const cityCampaigns = React.useMemo(() => campaigns.filter(campaign => campaign.city_id === cityId), [campaigns, cityId])
   const cityProfiles = React.useMemo(() => profiles.filter(profile => profile.city_id === cityId), [profiles, cityId])
   const businessMap = React.useMemo(() => new Map(cityBusinesses.map(business => [business.id, business])), [cityBusinesses])
@@ -175,7 +194,8 @@ export default function CityDetailPage() {
     .slice(0, 8), [businessIds, causeIds, cityCampaigns, outreach])
 
   const cityTasks = React.useMemo(() => tasks.filter(task =>
-    (task.entity_type === 'business' && businessIds.has(task.entity_id || ''))
+    (task.entity_type === 'city' && task.entity_id === cityId)
+    || (task.entity_type === 'business' && businessIds.has(task.entity_id || ''))
     || (task.entity_type === 'cause' && causeIds.has(task.entity_id || ''))
   )
     .slice()
@@ -184,7 +204,7 @@ export default function CityDetailPage() {
       const rightTime = right.due_date ? new Date(right.due_date).getTime() : Number.MAX_SAFE_INTEGER
       return leftTime - rightTime
     })
-    .slice(0, 8), [businessIds, causeIds, tasks])
+    .slice(0, 8), [businessIds, causeIds, tasks, cityId])
 
   const businessStageCounts = React.useMemo(() => {
     return STAGE_ORDER.map(stage => ({
@@ -214,28 +234,66 @@ export default function CityDetailPage() {
 
   const unlinkedBusinessOptions = React.useMemo(
     () => businesses
-      .filter(business => business.city_id !== cityId)
+      .filter(business => business.city_id !== cityLabel)
       .map(business => ({ value: business.id, label: business.name })),
-    [businesses, cityId],
+    [businesses, cityLabel],
   )
   const unlinkedCauseOptions = React.useMemo(
     () => causes
-      .filter(cause => cause.city_id !== cityId)
+      .filter(cause => cause.city_id !== cityLabel)
       .map(cause => ({ value: cause.id, label: cause.name })),
-    [causes, cityId],
+    [causes, cityLabel],
   )
 
+  // Businesses accept the numeric QA city id directly (the QA route resolves it).
   const handleLinkBusiness = React.useCallback(async (businessId: string) => {
     const result = await updateBusiness(businessId, { city_id: cityId })
     if (result) { refetchBusinesses(); return true }
     return false
   }, [cityId, updateBusiness, refetchBusinesses])
 
+  // Causes are QA nonprofits: the backend keys off a city NAME + STATE, not the
+  // dashboard's numeric city id — the nonprofits route only persists city_name/
+  // city_state (see /api/qa/nonprofits/[id]).
   const handleLinkCause = React.useCallback(async (causeId: string) => {
-    const result = await updateCause(causeId, { city_id: cityId })
-    if (result) { refetchCauses(); return true }
-    return false
-  }, [cityId, updateCause, refetchCauses])
+    if (!city) return false
+    try {
+      const res = await fetch(`/api/qa/nonprofits/${encodeURIComponent(causeId)}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ city_name: city.name, city_state: city.state || '' }),
+      })
+      if (!res.ok) return false
+      refetchCauses()
+      return true
+    } catch {
+      return false
+    }
+  }, [city, refetchCauses])
+
+  const handleAddTask = React.useCallback(async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!taskDraft.title.trim()) { setTaskError('Add a task title.'); return }
+    setTaskSaving(true); setTaskError('')
+    const created = await insertTask({
+      title: taskDraft.title.trim(),
+      description: taskDraft.description.trim() || null,
+      priority: taskDraft.priority,
+      status: 'pending',
+      entity_type: 'city',
+      entity_id: cityId,
+      assigned_to: profile?.id ?? null,
+      due_date: taskDraft.due_date || null,
+    })
+    setTaskSaving(false)
+    if (created) {
+      setAddTaskOpen(false)
+      setTaskDraft({ title: '', description: '', priority: 'medium', due_date: '' })
+      refetchTasks()
+    } else {
+      setTaskError('Could not create this task. Try again.')
+    }
+  }, [taskDraft, insertTask, cityId, profile, refetchTasks])
 
   const roleCounts = React.useMemo(() => {
     const counts = new Map<string, number>()
@@ -453,6 +511,69 @@ export default function CityDetailPage() {
         onLink={handleLinkCause}
       />
 
+      <Dialog open={addTaskOpen} onOpenChange={setAddTaskOpen}>
+        <DialogContent>
+          <form onSubmit={handleAddTask}>
+            <DialogHeader>
+              <DialogTitle>Add a task for {city.name}</DialogTitle>
+              <DialogDescription>This task is linked to the city and appears in Open Tasks.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-surface-800" htmlFor="city-task-title">Title</label>
+                <Input
+                  id="city-task-title"
+                  value={taskDraft.title}
+                  onChange={event => setTaskDraft(draft => ({ ...draft, title: event.target.value }))}
+                  placeholder="e.g. Follow up with the school district"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-surface-800" htmlFor="city-task-desc">Description</label>
+                <Textarea
+                  id="city-task-desc"
+                  value={taskDraft.description}
+                  onChange={event => setTaskDraft(draft => ({ ...draft, description: event.target.value }))}
+                  rows={3}
+                  placeholder="Optional details"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-surface-800" htmlFor="city-task-priority">Priority</label>
+                  <select
+                    id="city-task-priority"
+                    value={taskDraft.priority}
+                    onChange={event => setTaskDraft(draft => ({ ...draft, priority: event.target.value as TaskPriority }))}
+                    className="h-10 w-full rounded-md border border-surface-200 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-surface-800" htmlFor="city-task-due">Due date</label>
+                  <Input
+                    id="city-task-due"
+                    type="date"
+                    value={taskDraft.due_date}
+                    onChange={event => setTaskDraft(draft => ({ ...draft, due_date: event.target.value }))}
+                  />
+                </div>
+              </div>
+              {taskError && <p className="text-sm text-danger-600">{taskError}</p>}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setAddTaskOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={taskSaving}>{taskSaving ? 'Adding…' : 'Add task'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid gap-4 xl:grid-cols-[1.1fr,0.9fr]">
         <Card>
           <CardContent className="space-y-4 p-5">
@@ -579,9 +700,14 @@ export default function CityDetailPage() {
 
         <Card>
           <CardContent className="space-y-4 p-5">
-            <div className="flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-surface-500" />
-              <p className="text-sm font-semibold text-surface-900">Open Tasks</p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-surface-500" />
+                <p className="text-sm font-semibold text-surface-900">Open Tasks</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => { setTaskError(''); setAddTaskOpen(true) }}>
+                Add task
+              </Button>
             </div>
             {cityTasks.length > 0 ? (
               <div className="space-y-3">
