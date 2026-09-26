@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { generateCauseLaunchMaterials, getCauseLaunchStatus } from '../src/lib/server/cause-launch-materials'
+import { renderCauseCampaignFlyer } from '../src/lib/server/cause-campaign-flyers'
+import { createCanvas } from '@napi-rs/canvas'
 
 test('new school creates a landing draft and only school/cause flyers', async () => {
   const calls: Array<{ path: string; method: string; body?: Record<string, unknown> }> = []
@@ -48,4 +50,24 @@ test('missing assets show a waiting video status', async () => {
   const status = await getCauseLaunchStatus(42, request)
   assert.equal(status.video, 'waiting for images')
   assert.equal(status.flyers, 'missing')
+})
+
+test('three audience PDFs use the cause assets and contain a PDF document', async () => {
+  const originalFetch = globalThis.fetch
+  const fixture = createCanvas(300, 180)
+  const context = fixture.getContext('2d')
+  context.fillStyle = '#163b70'
+  context.fillRect(0, 0, 300, 180)
+  const image = await fixture.encode('png')
+  globalThis.fetch = async () => new Response(new Uint8Array(image), { status: 200 })
+  try {
+    for (const audience of ['business', 'families', 'schools'] as const) {
+      const pdf = await renderCauseCampaignFlyer({ name: 'Test School', locality: 'Olathe, KS',
+        logoUrl: 'https://qa.localvip.com/uploads/logos/logo.png',
+        coverUrl: 'https://qa.localvip.com/uploads/covers/cover.png',
+        joinUrl: `https://my.localvip.com/landing/test-school-42/${audience}?ref=TEST`, audience })
+      assert.equal(Buffer.from(pdf).subarray(0, 5).toString(), '%PDF-')
+      assert.ok(pdf.length > 10000)
+    }
+  } finally { globalThis.fetch = originalFetch }
 })
