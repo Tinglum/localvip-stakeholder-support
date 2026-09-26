@@ -19,6 +19,7 @@ import {
   LayoutTemplate,
   Library,
   ListChecks,
+  Mail,
   MapPin,
   Megaphone,
   Network,
@@ -74,6 +75,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Briefcase,
   FolderKanban,
   ListChecks,
+  Mail,
   LayoutTemplate,
   Bug,
 }

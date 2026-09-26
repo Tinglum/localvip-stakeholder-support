@@ -257,6 +257,46 @@ export default function CauseDetailPage() {
     ? 'generated'
     : setupTask?.status || 'idle'
   const qaLinkedCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
+  const [launchStatus, setLaunchStatus] = React.useState<{
+    flyers: string; flyerCount: number; landingPages: string; landingSlug: string | null; video: string; videoUrl: string | null
+  } | null>(null)
+  const [launchBusy, setLaunchBusy] = React.useState(false)
+  const [launchMessage, setLaunchMessage] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    if (!qaLinkedCauseId) return
+    let cancelled = false
+    fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials`)
+      .then(async response => {
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(body.error || 'Could not load launch materials.')
+        return body
+      })
+      .then(status => { if (!cancelled) setLaunchStatus(status) })
+      .catch(error => { if (!cancelled) setLaunchMessage(error instanceof Error ? error.message : 'Could not load launch materials.') })
+    return () => { cancelled = true }
+  }, [qaLinkedCauseId])
+  async function handleLaunchMaterials() {
+    if (!qaLinkedCauseId) return
+    setLaunchBusy(true)
+    setLaunchMessage(null)
+    try {
+      const response = await fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials`, { method: 'POST' })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || 'Could not generate launch materials.')
+      const statuses = Object.entries(body.steps || {}).map(([name, value]) => {
+        const step = value as { status: string; detail?: string }
+        return `${name}: ${step.status}${step.detail ? ` — ${step.detail}` : ''}`
+      })
+      setLaunchMessage(statuses.join(' · '))
+      const statusResponse = await fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials`)
+      if (statusResponse.ok) setLaunchStatus(await statusResponse.json())
+      await refetchExecution()
+    } catch (error) {
+      setLaunchMessage(error instanceof Error ? error.message : 'Could not generate launch materials.')
+    } finally {
+      setLaunchBusy(false)
+    }
+  }
   const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
     if (!cause || !qaLinkedCauseId) return []
 
@@ -1481,6 +1521,30 @@ export default function CauseDetailPage() {
          ══════════════════════════════════════════════════════════ */}
       {activeTab === 'materials' && (
         <div className="space-y-6">
+          {qaLinkedCauseId && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Launch materials</CardTitle>
+                <p className="text-sm text-surface-500">Create this cause&apos;s flyers and landing page draft from its account details and uploaded assets. Review the pages before publishing.</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <MiniStatus label="Flyers" value={launchStatus ? `${launchStatus.flyers} (${launchStatus.flyerCount})` : 'Checking'} />
+                  <MiniStatus label="Landing pages" value={launchStatus?.landingPages || 'Checking'} />
+                  <MiniStatus label="Video" value={launchStatus?.video || 'Checking'} />
+                </div>
+                {launchMessage && <p className="whitespace-pre-wrap text-sm text-surface-600">{launchMessage}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void handleLaunchMaterials()} disabled={launchBusy}>
+                    {launchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    Generate launch materials
+                  </Button>
+                  {launchStatus?.landingSlug && launchStatus.landingPages.startsWith('published') && <a href={`https://my.localvip.com/landing/${launchStatus.landingSlug}`} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open landing page</Button></a>}
+                  {launchStatus?.videoUrl && <a href={launchStatus.videoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open video</Button></a>}
+                </div>
+              </CardContent>
+            </Card>
+          )}
           {generatedMaterialPairs.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">

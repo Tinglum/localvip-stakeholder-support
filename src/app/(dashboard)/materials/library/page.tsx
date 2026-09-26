@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import {
   FileText, Download, Eye, Grid, List, Search,
   Upload, FolderOpen, File, Image as ImageIcon, Mail,
@@ -20,6 +21,7 @@ import { MaterialPreviewFrame } from '@/components/ui/material-preview-frame'
 import { MaterialPreviewDialog } from '@/components/materials/material-preview-dialog'
 import { QrPlacementPicker } from '@/components/materials/qr-placement-picker'
 import { useAuth } from '@/lib/auth/context'
+import { isSuperAdminRole } from '@/lib/auth/display-name'
 import { deleteMaterial } from '@/lib/materials/delete-material'
 import {
   AUTOMATION_TEMPLATE_STAKEHOLDER_TYPES,
@@ -1047,6 +1049,8 @@ export default function MaterialsLibraryPage() {
           ) : undefined
         }
       />
+
+      {profile && isSuperAdminRole(profile.role, profile.role_subtype) && !showGenerated && <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-brand-200 bg-brand-50 p-4"><div><p className="font-semibold text-surface-900">School & cause meeting invitation</p><p className="mt-1 text-sm text-surface-600">Create the reference-style flyer and matching email from a newly onboarded cause&apos;s logo, photo and meeting details. QR artwork is optional.</p></div><div className="flex flex-wrap gap-2"><a href="/invitations/olathe-northwest/reference-invitation.pdf" target="_blank" rel="noopener noreferrer" className="rounded-lg border border-brand-300 bg-white px-4 py-2 text-sm font-semibold text-brand-700">View Northwest example</a><Link href="/admin/invitations" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white">Create invitation</Link></div></div>}
 
       <UploadMaterialDialog
         open={uploadOpen}
