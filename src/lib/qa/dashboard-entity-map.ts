@@ -6,6 +6,16 @@
  * running against the .NET QA server.
  */
 
+import { mapQaRoleFromSignals } from '@/lib/auth/qa-auth'
+
+/** Backend `Data.Enums.AccountType` values, as the role mapper's signal names. */
+const QA_ACCOUNT_TYPE_NAMES: Record<number, string> = {
+  1: 'system',
+  2: 'business',
+  3: 'nonprofit',
+  4: 'consumer',
+}
+
 export type QaEntityKey =
   | 'contacts'
   | 'tasks'
@@ -598,8 +608,24 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     if (typeof row.is_enabled === 'boolean') {
       row.status = row.is_enabled ? 'active' : 'inactive'
     }
-    // Expose the QA account/consumer types in metadata
+    // Backend sends PhoneNumber; pages read `phone`.
+    if (row.phone == null && row.phone_number != null) row.phone = row.phone_number
+    // Derive the dashboard role from the Identity roles (plus account type),
+    // the same way the single-user route does. The list used to carry no role
+    // at all, so every team member showed blank and the role filter never hit.
     const acct = (row.account_type ?? row.accountType) as unknown
+    if (!row.role) {
+      const acctName = typeof acct === 'number' ? QA_ACCOUNT_TYPE_NAMES[acct] ?? null : (acct as string | null) ?? null
+      const roles = Array.isArray(row.roles) ? (row.roles as unknown[]).filter((r): r is string => typeof r === 'string') : []
+      const mapped = mapQaRoleFromSignals({
+        accountType: acctName,
+        claims: { sub: String(row.id ?? ''), email: null, name: null, given_name: null, family_name: null, preferred_username: null, roles, scopes: [], exp: null, raw: {} },
+      })
+      row.role = mapped.role
+      row.role_subtype = mapped.roleSubtype ?? null
+    }
+    if (!row.brand_context) row.brand_context = 'localvip'
+    // Expose the QA account/consumer types in metadata
     const ctype = (row.consumer_type ?? row.consumerType) as unknown
     row.metadata = {
       ...(row.metadata as object || {}),
