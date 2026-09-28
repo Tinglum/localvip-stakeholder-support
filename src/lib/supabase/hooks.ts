@@ -619,8 +619,10 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           state: (c.state as string) || null,
           country: (c.country as string) || null,
           type: 'nonprofit',
-          owner_id: null,
-          owner_user_id: null,
+          // The nonprofit list carries the owning user; it was dropped here, so
+          // cause owners never showed up in city team coverage or owner counts.
+          owner_id: c.ownerUserId == null ? null : String(c.ownerUserId),
+          owner_user_id: c.ownerUserId == null ? null : String(c.ownerUserId),
           // QA nonprofits store city/state as account text, not a numeric city
           // FK. Mirror the business mapping so a cause can be matched to (and
           // shown on) a city page by the same `City, State` label.
