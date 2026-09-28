@@ -5,15 +5,24 @@ import NextImage from 'next/image'
 import Link from 'next/link'
 import {
   QrCode, Download, Copy, Grid, List,
-  BarChart3, ExternalLink, Key, Plus, Trash2,
+  BarChart3, ExternalLink, Key, Plus, Trash2, FolderInput, FolderOpen, Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import { useAuth } from '@/lib/auth/context'
-import { useQrCodes, useQrCodeDelete } from '@/lib/supabase/hooks'
+import { useQrCodes, useQrCodeDelete, useQrCodeUpdate, useQrCodeCollections } from '@/lib/supabase/hooks'
+import type { QrCode as QrCodeRow } from '@/lib/types/database'
+
+const NO_COLLECTION = '__none__'
 import { BRANDS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
 import { generateQRDataURL } from '@/lib/qr/generate'
@@ -26,6 +35,42 @@ export default function MyQrCodesPage() {
     localProfileId ? { created_by: localProfileId } : undefined,
   )
   const { remove } = useQrCodeDelete()
+  const { update: updateQr } = useQrCodeUpdate()
+  const { data: collections } = useQrCodeCollections()
+  const collectionName = React.useMemo(() => {
+    const map = new Map(collections.map(c => [String(c.id), c.name]))
+    return (id: string | null | undefined) => (id ? map.get(String(id)) ?? null : null)
+  }, [collections])
+
+  const [moveTarget, setMoveTarget] = React.useState<QrCodeRow | null>(null)
+  const [moveChoice, setMoveChoice] = React.useState<string>(NO_COLLECTION)
+  const [moving, setMoving] = React.useState(false)
+  const [moveError, setMoveError] = React.useState<string | null>(null)
+
+  function openMove(qr: QrCodeRow) {
+    setMoveTarget(qr)
+    setMoveChoice(qr.collection_id && collectionName(qr.collection_id) ? String(qr.collection_id) : NO_COLLECTION)
+    setMoveError(null)
+  }
+
+  async function handleMove() {
+    if (!moveTarget) return
+    setMoving(true)
+    setMoveError(null)
+    // Send the existing metadata so the backend's whole-object Metadata
+    // replace keeps name/colors/etc.; only collection_id changes.
+    const result = await updateQr(moveTarget.id, {
+      metadata: moveTarget.metadata,
+      collection_id: moveChoice === NO_COLLECTION ? null : moveChoice,
+    } as Partial<QrCodeRow>)
+    setMoving(false)
+    if (!result) {
+      setMoveError('Could not move this QR code. Please try again.')
+      return
+    }
+    setMoveTarget(null)
+    refetch()
+  }
 
   // Sorted by name, falling back to the short code for rows that never got one.
   // Both grid and list read from this so the two views cannot disagree about
@@ -173,6 +218,9 @@ export default function MyQrCodesPage() {
                 <div className="mb-2 flex items-center gap-2">
                   <Badge variant={qr.brand === 'hato' ? 'hato' : 'info'}>{BRANDS[qr.brand]?.label ?? qr.brand}</Badge>
                   <Badge variant="outline">{qr.status}</Badge>
+                  {collectionName(qr.collection_id) && (
+                    <Badge variant="outline" className="gap-1"><FolderOpen className="h-3 w-3" />{collectionName(qr.collection_id)}</Badge>
+                  )}
                 </div>
                 <h3 className="text-sm font-semibold text-surface-800">{qr.name}</h3>
                 <p className="mt-0.5 text-xs text-surface-400 truncate">{qr.destination_url}</p>
@@ -187,6 +235,15 @@ export default function MyQrCodesPage() {
                 <div className="mt-3 flex gap-1">
                   <Button variant="ghost" size="icon-sm" title="Copy link" onClick={() => copyToClipboard(qr.redirect_url || qr.destination_url)}>
                     <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Move to collection"
+                    aria-label="Move to collection"
+                    onClick={() => openMove(qr)}
+                  >
+                    <FolderInput className="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     variant="ghost"
@@ -250,6 +307,15 @@ export default function MyQrCodesPage() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
+                    title="Move to collection"
+                    aria-label="Move to collection"
+                    onClick={() => openMove(qr)}
+                  >
+                    <FolderInput className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     title="Delete"
                     onClick={() => handleDelete(qr.id)}
                     disabled={deleting === qr.id}
@@ -273,6 +339,43 @@ export default function MyQrCodesPage() {
           ))}
         </div>
       )}
+      <Dialog open={!!moveTarget} onOpenChange={open => { if (!open) setMoveTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move to collection</DialogTitle>
+            <DialogDescription>
+              Choose a collection for {moveTarget?.name || 'this QR code'}, or None to leave it uncollected.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-surface-700">Collection</label>
+            <Select value={moveChoice} onValueChange={setMoveChoice}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_COLLECTION}>None</SelectItem>
+                {collections.map(c => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {collections.length === 0 && (
+              <p className="mt-2 text-xs text-surface-500">
+                No collections yet. <Link href="/qr/collections" className="rounded text-brand-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Create one</Link>.
+              </p>
+            )}
+          </div>
+          {moveError && (
+            <p className="rounded-md border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700">{moveError}</p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setMoveTarget(null)}>Cancel</Button>
+            <Button type="button" onClick={handleMove} disabled={moving}>
+              {moving ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderInput className="h-4 w-4" />}
+              {moving ? 'Moving...' : 'Move'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

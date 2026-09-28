@@ -839,6 +839,8 @@ export function useQrCodeCollections(_filters?: Record<string, string>) {
 }
 export function useQrCodeCollectionInsert() { return useQaInsert<QrCodeCollection>('qr_code_collections') }
 export function useQrCodeCollectionUpdate() { return useQaUpdate<QrCodeCollection>('qr_code_collections') }
+export function useQrCodeCollectionDelete() { return useQaDelete('qr_code_collections') }
+export function useQrCodeUpdate() { return useQaUpdate<QrCode>('qr_codes') }
 export function useQrCodeInsert() { return useQaInsert<QrCode>('qr_codes') }
 export function useQrCodeDelete() { return useQaDelete('qr_codes') }
 
