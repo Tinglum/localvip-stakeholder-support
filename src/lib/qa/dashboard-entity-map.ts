@@ -433,7 +433,11 @@ export function toBackendShape(
         business_id: payload.business_id ?? existingMetadata.business_id ?? null,
         cause_id: payload.cause_id ?? existingMetadata.cause_id ?? null,
         contact_id: payload.contact_id ?? existingMetadata.contact_id ?? null,
-        collection_id: payload.collection_id ?? existingMetadata.collection_id ?? null,
+        // An explicit collection_id (including null = "remove from collection")
+        // must win; `??` would silently keep the old collection on a null.
+        collection_id: 'collection_id' in payload
+          ? payload.collection_id ?? null
+          : existingMetadata.collection_id ?? null,
         destination_preset: payload.destination_preset ?? existingMetadata.destination_preset ?? null,
         version: payload.version ?? existingMetadata.version ?? 1,
       },

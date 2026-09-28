@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { FolderOpen, Plus, QrCode, Loader2 } from 'lucide-react'
+import { FolderOpen, Plus, QrCode, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { useQrCodeCollectionUpdate, useQrCodeCollectionDelete } from '@/lib/supabase/hooks'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -89,6 +90,57 @@ export default function QrCollectionsPage() {
     }
   }
 
+  const { update: updateCollection } = useQrCodeCollectionUpdate()
+  const { remove: removeCollection } = useQrCodeCollectionDelete()
+  const [editTarget, setEditTarget] = React.useState<QrCodeCollection | null>(null)
+  const [editName, setEditName] = React.useState('')
+  const [editDescription, setEditDescription] = React.useState('')
+  const [editSaving, setEditSaving] = React.useState(false)
+  const [editError, setEditError] = React.useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = React.useState<QrCodeCollection | null>(null)
+  const [deleting, setDeleting] = React.useState(false)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
+
+  function openEdit(col: QrCodeCollection) {
+    setEditTarget(col)
+    setEditName(col.name)
+    setEditDescription(col.description || '')
+    setEditError(null)
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editTarget || !editName.trim()) return
+    setEditSaving(true)
+    setEditError(null)
+    const result = await updateCollection(editTarget.id, {
+      name: editName.trim(),
+      // Empty string (not null) so the backend actually clears it.
+      description: editDescription.trim(),
+    } as Partial<QrCodeCollection>)
+    setEditSaving(false)
+    if (!result) {
+      setEditError('Could not save changes. Please try again.')
+      return
+    }
+    setEditTarget(null)
+    refetch()
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
+    const ok = await removeCollection(deleteTarget.id)
+    setDeleting(false)
+    if (!ok) {
+      setDeleteError('Could not delete this collection. Please try again.')
+      return
+    }
+    setDeleteTarget(null)
+    refetch()
+  }
+
   return (
     <div>
       <PageHeader
@@ -129,7 +181,28 @@ export default function QrCollectionsPage() {
                   <div className="flex items-center gap-1 text-xs text-surface-500">
                     <QrCode className="h-3.5 w-3.5" />
                   </div>
-                  <span className="text-xs text-surface-400">{formatDate(col.created_at)}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="mr-1 text-xs text-surface-400">{formatDate(col.created_at)}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Edit collection"
+                      aria-label={`Edit ${col.name}`}
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); openEdit(col) }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Delete collection"
+                      aria-label={`Delete ${col.name}`}
+                      className="text-danger-500 hover:text-danger-700"
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); setDeleteTarget(col); setDeleteError(null) }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -176,6 +249,56 @@ export default function QrCollectionsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editTarget} onOpenChange={open => { if (!open) setEditTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Collection</DialogTitle>
+            <DialogDescription>Rename this collection or update its description.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-surface-700">Collection Name *</label>
+              <Input value={editName} onChange={e => setEditName(e.target.value)} required />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-surface-700">Description</label>
+              <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={3} />
+            </div>
+            {editError && (
+              <p className="rounded-md border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700">{editError}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button type="submit" disabled={editSaving || !editName.trim()}>
+                {editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+                {editSaving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete collection?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget?.name} will be removed. QR codes in it are kept and become uncollected.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && (
+            <p className="rounded-md border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700">{deleteError}</p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {deleting ? 'Deleting...' : 'Delete Collection'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
