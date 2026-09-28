@@ -263,7 +263,9 @@ export default function StakeholdersPage() {
         ?? (p as { ConsumerType?: string }).ConsumerType
 
       // If this is a Consumer account, only include them if ConsumerType !== Normal
-      const isConsumerByRole = p.role === 'community'
+      // Cause/school owners are `community` WITH a subtype; only a subtype-less
+      // `community` is a plain consumer.
+      const isConsumerByRole = p.role === 'community' && !p.role_subtype
       const isConsumerByAccountType = qaAccountType === 4 || qaAccountType === 'Consumer'
       if (isConsumerByRole || isConsumerByAccountType) {
         if (!consumerType || consumerType === 'Normal' || consumerType === '0') return false
