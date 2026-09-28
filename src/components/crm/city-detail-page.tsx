@@ -12,7 +12,6 @@ import {
   Megaphone,
   Store,
   TrendingUp,
-  Users,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -25,7 +24,7 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
-import { ONBOARDING_STAGES, ROLES } from '@/lib/constants'
+import { ONBOARDING_STAGES } from '@/lib/constants'
 import { getEntityTheme } from '@/lib/entity-themes'
 import { formatDate } from '@/lib/utils'
 import {
@@ -42,6 +41,7 @@ import {
 import { useAuth } from '@/lib/auth/context'
 import type { Business, Cause, City, OnboardingStage, TaskPriority } from '@/lib/types/database'
 import { CityLinkEntityDialog } from '@/components/crm/city-link-entity-dialog'
+import { CityTeamCoverageCard, useCityTeamCoverage } from '@/components/crm/city-team-coverage'
 
 const businessTheme = getEntityTheme('business')
 const causeTheme = getEntityTheme('cause')
@@ -176,7 +176,7 @@ export default function CityDetailPage() {
   const cityBusinesses = React.useMemo(() => cityLabel ? businesses.filter(business => business.city_id === cityLabel) : [], [businesses, cityLabel])
   const cityCauses = React.useMemo(() => cityLabel ? causes.filter(cause => cause.city_id === cityLabel) : [], [causes, cityLabel])
   const cityCampaigns = React.useMemo(() => campaigns.filter(campaign => campaign.city_id === cityId), [campaigns, cityId])
-  const cityProfiles = React.useMemo(() => profiles.filter(profile => profile.city_id === cityId), [profiles, cityId])
+  const teamCoverage = useCityTeamCoverage(cityBusinesses, cityCauses, profiles)
   const businessMap = React.useMemo(() => new Map(cityBusinesses.map(business => [business.id, business])), [cityBusinesses])
   const causeMap = React.useMemo(() => new Map(cityCauses.map(cause => [cause.id, cause])), [cityCauses])
   const campaignMap = React.useMemo(() => new Map(cityCampaigns.map(campaign => [campaign.id, campaign])), [cityCampaigns])
@@ -295,13 +295,6 @@ export default function CityDetailPage() {
     }
   }, [taskDraft, insertTask, cityId, profile, refetchTasks])
 
-  const roleCounts = React.useMemo(() => {
-    const counts = new Map<string, number>()
-    cityProfiles.forEach(profile => {
-      counts.set(profile.role, (counts.get(profile.role) || 0) + 1)
-    })
-    return Array.from(counts.entries()).sort((left, right) => right[1] - left[1])
-  }, [cityProfiles])
 
   if (loading) {
     return (
@@ -381,7 +374,7 @@ export default function CityDetailPage() {
               </div>
               <div className="rounded-2xl bg-white px-4 py-3 ring-1 ring-surface-200">
                 <p className="text-xs uppercase tracking-[0.16em] text-surface-500">Team</p>
-                <p className="mt-1 text-2xl font-semibold text-surface-900">{cityProfiles.length}</p>
+                <p className="mt-1 text-2xl font-semibold text-surface-900">{teamCoverage.members.length}</p>
               </div>
             </div>
           </div>
@@ -610,46 +603,13 @@ export default function CityDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="space-y-4 p-5">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-surface-500" />
-              <p id="city-team" className="text-sm font-semibold text-surface-900">Team Coverage</p>
-            </div>
-            {cityProfiles.length > 0 ? (
-              <div className="space-y-3">
-                {roleCounts.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {roleCounts.map(([role, count]) => (
-                      <span key={role} className="rounded-full border border-surface-200 bg-white px-2.5 py-1 text-xs font-medium text-surface-600">
-                        {ROLES[role as keyof typeof ROLES]?.label || role}: {count}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {cityProfiles.map(profile => (
-                  <Link key={profile.id} href={`/admin/users/${profile.id}`} className="flex items-center justify-between rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors hover:border-surface-300 hover:bg-white">
-                    <div>
-                      <p className="font-medium text-surface-900">{profile.full_name}</p>
-                      <p className="text-sm text-surface-500">
-                        {ROLES[profile.role]?.label || profile.role}
-                        {' - '}
-                        {businesses.filter(business => business.owner_id === profile.id).length} businesses
-                        {', '}
-                        {causes.filter(cause => cause.owner_id === profile.id).length} causes
-                      </p>
-                    </div>
-                    <Badge variant={profile.status === 'active' ? 'success' : 'default'} dot>
-                      {profile.status}
-                    </Badge>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-surface-400">No businesses or causes assigned to this city yet.</p>
-            )}
-          </CardContent>
-        </Card>
+        <CityTeamCoverageCard
+          cityName={city.name}
+          businesses={cityBusinesses}
+          causes={cityCauses}
+          profiles={profiles}
+          coverage={teamCoverage}
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
