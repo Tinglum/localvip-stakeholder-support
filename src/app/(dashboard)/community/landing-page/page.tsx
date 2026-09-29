@@ -235,8 +235,8 @@ export default function CauseLandingPageEditor() {
         </CardContent></Card>
 
         <Card><CardHeader><CardTitle>Audience pages</CardTitle></CardHeader><CardContent className="space-y-2">
-          {[['Everyone', ''], ['Families and supporters', '/families'], ['Local businesses', '/business'], ['Your organization', '/causes']].map(([label, path]) => <Link key={label} href={`${baseUrl}${path}`} target="_blank" className={`flex items-center justify-between rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium ${live ? 'hover:border-brand-300 hover:bg-brand-50' : 'pointer-events-none opacity-50'}`}><span>{label}</span><ExternalLink className="h-4 w-4" /></Link>)}
-          {!live && <p className="pt-1 text-xs text-surface-500">Publish once to activate all four links.</p>}
+          {[['Everyone', ''], ['Families and supporters', '/families'], ['Local businesses', '/business'], ['School leaders', '/schools'], ['Your organization', '/causes']].map(([label, path]) => <Link key={label} href={`${baseUrl}${path}`} target="_blank" className={`flex items-center justify-between rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium ${live ? 'hover:border-brand-300 hover:bg-brand-50' : 'pointer-events-none opacity-50'}`}><span>{label}</span><ExternalLink className="h-4 w-4" /></Link>)}
+          {!live && <p className="pt-1 text-xs text-surface-500">Publish once to activate all five links.</p>}
         </CardContent></Card>
       </div>
     </div>
