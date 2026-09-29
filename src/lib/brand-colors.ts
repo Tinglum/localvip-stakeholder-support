@@ -95,8 +95,12 @@ export async function extractBrandColorsFromImage(src: string): Promise<BrandTri
     .sort((a, b) => b.count - a.count)
   if (ranked.length === 0) return null
 
+  // Ignore minor buckets: anti-aliased edges between two brand colours
+  // produce in-between shades that are not part of the brand.
+  const minCount = ranked[0].count * 0.04
   const picked: Rgb[] = []
   for (const candidate of ranked) {
+    if (candidate.count < minCount) break
     if (picked.every((p) => distance(p, candidate.rgb) > 70)) picked.push(candidate.rgb)
     if (picked.length === 4) break
   }
@@ -104,8 +108,9 @@ export async function extractBrandColorsFromImage(src: string): Promise<BrandTri
   const primary = picked[0]
   const others = picked.slice(1)
   // Accent: the most saturated remaining colour reads best on buttons/highlights.
+  // A two-colour logo uses its second colour for both.
   const accent = [...others].sort((a, b) => saturation(b) - saturation(a))[0]
-  const secondary = others.find((c) => c !== accent)
+  const secondary = others.find((c) => c !== accent) ?? accent
 
   const primaryHex = toHex(primary)
   return {
