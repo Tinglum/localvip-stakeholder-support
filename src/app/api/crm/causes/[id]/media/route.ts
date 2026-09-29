@@ -1,4 +1,3 @@
-import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
