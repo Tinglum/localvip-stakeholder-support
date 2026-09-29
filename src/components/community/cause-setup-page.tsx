@@ -177,6 +177,12 @@ export function CauseSetupPage() {
     }).then((r) => readJson(r, 'Your brand settings could not be saved.'))
   }
 
+  const refreshLaunchMaterials = async () => {
+    if (!causeId) return
+    await fetch(`/api/crm/causes/${causeId}/launch-materials`, { method: 'POST' })
+      .then((r) => readJson(r, 'Your updated flyers could not be generated.'))
+  }
+
   const upload = (kind: 'logo' | 'cover_photo', file: File) => run(async () => {
     const data = new FormData()
     data.append('file', file)
@@ -254,6 +260,7 @@ export function CauseSetupPage() {
                 onSave={(patch) => void run(async () => {
                   await putProfile(patch)
                   await saveLanding({ parentOrganization: patch.parentOrganization, mission: patch.headline })
+                  await refreshLaunchMaterials()
                 }, 'Profile saved.', 'profile')} />
             )}
             {activeKey === 'contact' && (
@@ -271,7 +278,10 @@ export function CauseSetupPage() {
                 initial={brandFromPalette(landingConfig.colors)} confirmed={signals.colorsConfirmed}
                 onExtract={() => extractBrandColorsFromImage(logoSrc)}
                 onSave={(colors: BrandTriple) => void run(
-                  () => saveLanding({ colors: expandBrandPalette(colors, landingConfig.colors), brandColorsConfirmed: true }),
+                  async () => {
+                    await saveLanding({ colors: expandBrandPalette(colors, landingConfig.colors), brandColorsConfirmed: true })
+                    await refreshLaunchMaterials()
+                  },
                   'Brand colors saved. Your flyers and landing page will use them.', 'colors')} />
             )}
             {activeKey === 'materials' && <MaterialsStep count={signals.generatedCount} busy={busy} progress={genProgress} error={genError} onGenerate={() => void generate()} />}
