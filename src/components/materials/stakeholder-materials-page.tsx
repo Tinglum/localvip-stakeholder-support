@@ -168,19 +168,22 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
 
   const generatedMaterials = React.useMemo(() => {
     const seenCampaignAudiences = new Set<string>()
-    return generated.filter(row => {
+    const scoped = generated.filter(row => {
     if (row.generation_status !== 'generated' || row.is_active === false || row.is_outdated || !row.generated_file_url) return false
     const ids = [row.business_id, row.cause_id, row.stakeholder_id].filter(Boolean).map(String)
     return ids.some(id => accountIds.has(id))
-    }).sort((a, b) => String(b.updated_at || b.generated_at || '').localeCompare(String(a.updated_at || a.generated_at || '')))
+    })
+    const hasAudienceFlyers = Boolean(causeAccountId) && scoped.some(row => row.metadata?.generator === 'cause-campaign-v1')
+    return scoped.sort((a, b) => String(b.updated_at || b.generated_at || '').localeCompare(String(a.updated_at || a.generated_at || '')))
       .filter(row => {
         const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {}
+        if (hasAudienceFlyers && metadata.generator === 'cause-template-v1') return false
         if (metadata.generator !== 'cause-campaign-v1' || typeof metadata.audience !== 'string') return true
         if (seenCampaignAudiences.has(metadata.audience)) return false
         seenCampaignAudiences.add(metadata.audience)
         return true
       }).map(row => generatedToMaterial(row, templateMap.get(String(row.template_id))))
-  }, [accountIds, generated, templateMap])
+  }, [accountIds, causeAccountId, generated, templateMap])
 
   const eligible = React.useMemo(
     () => allMaterials.filter(material => materialIsAvailableToProfile(material, profile, { causeAccountId, businessAccountId })),

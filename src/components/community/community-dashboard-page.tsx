@@ -322,8 +322,10 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
     })
   }, [scopedCause, steps, codes, generatedMaterials, qrCodes, supportingBusinesses.length])
 
-  const generatedCount = new Set(generatedMaterials
-    .filter(m => m.generation_status === 'generated' && !!m.generated_file_url)
+  const readyGenerated = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url)
+  const hasAudienceFlyers = readyGenerated.some(m => m.metadata?.generator === 'cause-campaign-v1')
+  const generatedCount = new Set(readyGenerated
+    .filter(m => !hasAudienceFlyers || m.metadata?.generator !== 'cause-template-v1')
     .map(m => m.metadata?.generator === 'cause-campaign-v1'
       ? `audience:${String(m.metadata.audience || '')}`
       : `template:${m.template_id || m.material_id || m.generated_file_name || m.id}`)).size
