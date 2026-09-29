@@ -155,6 +155,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 0 },
       { label: 'Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
+      { label: 'Cause Sign-ups', href: '/crm/cause-leads', icon: 'Inbox', minLevel: 0 },
       { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
       { label: 'Contacts', href: '/crm/people', icon: 'Contact', minLevel: 0 },
       { label: 'Team', href: '/crm/stakeholders', icon: 'UserCheck', minLevel: 0 },
@@ -435,6 +436,9 @@ export function canAccessPath(profile: Profile, pathname: string) {
   const operatorCrmPrefixes = [
     '/crm/businesses',
     '/crm/causes',
+    // Admin-only in practice (the proxy route is gated to the admin shell), but
+    // listed here so the operator CRM prefix set stays in step with the nav.
+    '/crm/cause-leads',
     '/crm/contacts',
     // The contacts section is an operator surface like the rest of CRM; without
     // it here an operator following the nav item is bounced to /dashboard.

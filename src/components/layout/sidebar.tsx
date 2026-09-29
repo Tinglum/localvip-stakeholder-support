@@ -39,6 +39,7 @@ import {
   Users,
   Bug,
   Contact,
+  Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type NavItem, BRANDS, ROLES } from '@/lib/constants'
@@ -48,6 +49,7 @@ import type { Brand, Profile } from '@/lib/types/database'
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard,
   Contact,
+  Inbox,
   Building2,
   Store,
   Heart,
