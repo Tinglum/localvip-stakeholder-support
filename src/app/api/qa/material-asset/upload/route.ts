@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchQaApi, parseQaResponse, QaApiError } from '@/lib/auth/qa-api'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 
-// Material template assets are PDFs or raster/vector images. SVG is explicitly
-// excluded because stored SVGs are a stored-XSS vector (they can carry inline
-// script) and are served back from the QA asset host.
+// Material template assets are PDFs, raster images, or SVG designs. SVG can
+// carry script, so the backend screens every SVG before writing it
+// (SvgUploadScreening: no script/foreignObject/iframe/animation, no on*
+// handlers, no remote references). SVG designs are needed for templates
+// that fill {{brand_*}} colour slots per cause.
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024 // 15MB
 const ALLOWED_CONTENT_TYPES = new Set([
   'application/pdf',
@@ -13,6 +15,7 @@ const ALLOWED_CONTENT_TYPES = new Set([
   'image/jpg',
   'image/gif',
   'image/webp',
+  'image/svg+xml',
 ])
 const ALLOWED_EXTENSIONS = new Set([
   '.pdf',
@@ -21,6 +24,7 @@ const ALLOWED_EXTENSIONS = new Set([
   '.jpeg',
   '.gif',
   '.webp',
+  '.svg',
 ])
 
 function getExtension(name: string): string {
