@@ -126,7 +126,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
       let customGenerated = 0
       const existing = await request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${cause.id}&pageSize=100`)
       if (logoUrl && coverUrl) {
-        const version = `${logoUrl}|${coverUrl}|${cause.referralCode}`
+        const version = `olathe-west-layout-v2|${logoUrl}|${coverUrl}|${cause.referralCode}`
         for (const audience of audiences) {
           const alreadySaved = existing?.items?.some(item => {
             const metadata = materialMetadata(item.metadata)

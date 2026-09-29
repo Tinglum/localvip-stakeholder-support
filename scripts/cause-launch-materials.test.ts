@@ -76,7 +76,7 @@ test('three audience PDFs use the cause assets and contain a PDF document', asyn
 test('repeat launch keeps the saved audience flyers, template and video', async () => {
   const logoUrl = 'https://qa.localvip.com/uploads/logos/logo.png'
   const coverUrl = 'https://qa.localvip.com/uploads/covers/cover.png'
-  const version = `${logoUrl}|${coverUrl}|TEST`
+  const version = `olathe-west-layout-v2|${logoUrl}|${coverUrl}|TEST`
   const calls: string[] = []
   const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     calls.push(`${init?.method || 'GET'} ${path}`)
