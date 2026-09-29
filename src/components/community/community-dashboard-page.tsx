@@ -64,6 +64,7 @@ import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constan
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { CauseSetupPrompt } from '@/components/community/cause-setup-prompt'
 import { clearOnboardingDraft, readOnboardingDraft, writeOnboardingDraft } from '@/lib/onboarding-draft'
 import { StakeholderMaterialsPage } from '@/components/materials/stakeholder-materials-page'
 
@@ -538,6 +539,8 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
 
   return (
     <div className="space-y-6">
+      <CauseSetupPrompt causeId={causeQaAccountId} />
+
       {/* ── Hero / Header ── */}
       <div className="rounded-2xl border border-surface-200 bg-gradient-to-r from-brand-50 to-surface-50 p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

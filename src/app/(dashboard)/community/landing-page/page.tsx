@@ -14,70 +14,14 @@ import { useAuth } from '@/lib/auth/context'
 import { useCauses } from '@/lib/supabase/hooks'
 import { resolveCommunityCause } from '@/lib/community-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
-import type { Cause } from '@/lib/types/database'
-
-type ImageAsset = { src: string; alt: string }
-type LandingConfig = {
-  slug: string
-  revision: string
-  schoolName: string
-  organizationName: string
-  causeAccountId: number
-  locality: string
-  routeBase: string
-  colors: { navy: string; navyDeep: string; royal: string; silver: string; silverLight: string; gold: string }
-  assets: { mark: ImageAsset; crowd: ImageAsset; team?: ImageAsset; community?: ImageAsset; people?: ImageAsset }
-  scheduleCallUrl: string
-  disclaimer: string
-  assetsArePlaceholder: boolean
-}
-
-type LandingRecord = {
-  landingPageSlug?: string | null
-  status: string
-  draft?: LandingConfig | null
-  published?: LandingConfig | null
-  revision: number
-  landingPageUpdatedDate?: string | null
-  landingPagePublishedDate?: string | null
-}
-
-const palette = {
-  navy: '#071A3D', navyDeep: '#031126', royal: '#153E78',
-  silver: '#C8CBD1', silverLight: '#EEF0F3', gold: '#D0A323',
-}
-
-function slugify(value: string) {
-  return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80)
-}
-
-function qaCauseId(cause: Cause) {
-  const metadata = cause.metadata || {}
-  const candidates = [cause.external_id, metadata.qaAccountId, metadata.qaCauseId]
-  for (const value of candidates) if (/^\d+$/.test(String(value || ''))) return Number(value)
-  return null
-}
-
-function defaultConfig(cause: Cause, id: number): LandingConfig {
-  const slug = slugify(cause.name) || `cause-${id}`
-  return {
-    slug,
-    revision: 'draft',
-    schoolName: cause.name,
-    organizationName: cause.name,
-    causeAccountId: id,
-    locality: cause.address || 'your community',
-    routeBase: `/landing/${slug}`,
-    colors: palette,
-    assets: {
-      mark: { src: cause.logo_url || '', alt: `${cause.name} logo` },
-      crowd: { src: cause.cover_photo_url || '', alt: `${cause.name} community` },
-    },
-    scheduleCallUrl: '',
-    disclaimer: '',
-    assetsArePlaceholder: false,
-  }
-}
+import {
+  defaultLandingConfig as defaultConfig,
+  qaCauseId,
+  slugify,
+  type ImageAsset,
+  type LandingConfig,
+  type LandingRecord,
+} from '@/lib/cause-landing-config'
 
 function blockers(config: LandingConfig) {
   const items: string[] = []

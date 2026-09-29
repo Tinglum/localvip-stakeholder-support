@@ -132,7 +132,9 @@ const LAUNCH_PARTNER_NAV_ITEMS: NavItem[] = [
 
 const COMMUNITY_NAV_ITEMS: NavItem[] = [
   { label: 'Home', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
-  { label: 'Onboarding', href: '/onboarding/cause', icon: 'CheckSquare', minLevel: 0 },
+  // Guided two-track setup (account, then brand & materials), like the
+  // business portal's /portal/setup.
+  { label: 'Setup', href: '/community/setup', icon: 'CheckSquare', minLevel: 0 },
   { label: 'Businesses', href: '/community/businesses', icon: 'Store', minLevel: 0 },
   { label: 'Supporters', href: '/community/supporters', icon: 'Users', minLevel: 0 },
   { label: 'Campaign Materials', href: '/community/materials', icon: 'FileDown', minLevel: 0 },
@@ -495,6 +497,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
   if (shell === 'community') {
     return [
       '/dashboard',
+      '/community/setup',
       '/onboarding/cause',
       '/community/supporters',
       '/community/businesses',
