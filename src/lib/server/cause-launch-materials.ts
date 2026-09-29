@@ -11,10 +11,12 @@ type LaunchCause = {
   coverPhotoUrl?: string | null
   category?: string | null
   referralCode?: string | null
+  headline?: string | null
 }
 
 type LandingRecord = { status?: string; draft?: unknown; published?: unknown }
 type GeneratedList = { items?: Array<{ generatedFileUrl?: string | null; generationStatus?: string | null; metadata?: unknown }> }
+const DEFAULT_SETUP_CALL_URL = process.env.LOCALVIP_SETUP_CALL_URL || 'https://calendly.com/ktinglum/localvip-internship'
 
 function materialMetadata(value: unknown): Record<string, unknown> | null {
   if (typeof value === 'string') {
@@ -45,7 +47,7 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
   const flyerCount = generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed').length || 0
   const audienceCount = new Set(generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed')
     .map(item => materialMetadata(item.metadata))
-    .filter(metadata => metadata?.generator === 'cause-campaign-v1')
+    .filter(metadata => metadata?.generator === 'cause-campaign-v1' && String(metadata.version || '').startsWith('olathe-west-layout-v3|'))
     .map(metadata => metadata?.audience)).size
   const draft = landing?.draft as { slug?: string; video?: { src?: string }; assets?: { mark?: { src?: string }; crowd?: { src?: string } } } | null
   const videoUrl = draft?.video?.src || null
@@ -68,10 +70,16 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   let campaignSlug = `${slugify(cause.name) || 'cause'}-${cause.id}`
   let logoUrl = assetUrl(cause.imageUrl, 'logos')
   let coverUrl = assetUrl(cause.coverPhotoUrl, 'covers')
+  let flyerColors: { navy?: string; gold?: string } | undefined
+  let flyerMission = cause.headline || ''
+  let parentOrganization = ''
   try {
     const record = await request<LandingRecord>(landingPath)
     campaignSlug = String((record?.draft as { slug?: string } | null)?.slug || campaignSlug)
     const draftAssets = (record?.draft as { assets?: { mark?: { src?: string }; crowd?: { src?: string } } } | null)?.assets
+    flyerColors = (record?.draft as { colors?: { navy?: string; gold?: string } } | null)?.colors
+    flyerMission = String((record?.draft as { mission?: string } | null)?.mission || cause.headline || '')
+    parentOrganization = String((record?.draft as { parentOrganization?: string } | null)?.parentOrganization || '')
     logoUrl ||= draftAssets?.mark?.src || ''
     coverUrl ||= draftAssets?.crowd?.src || ''
     if (record?.draft || record?.published) {
@@ -79,8 +87,8 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
       const assets = draft?.assets as Record<string, { src?: string; alt?: string }> | undefined
       const logo = logoUrl
       const cover = coverUrl
-      if (draft && assets && ((logo && assets.mark?.src !== logo) || (cover && assets.crowd?.src !== cover))) {
-        const config = { ...draft, assets: {
+      if (draft && assets && ((logo && assets.mark?.src !== logo) || (cover && assets.crowd?.src !== cover) || !draft.scheduleCallUrl || (!draft.mission && cause.headline))) {
+        const config = { ...draft, mission: draft.mission || cause.headline || '', scheduleCallUrl: draft.scheduleCallUrl || DEFAULT_SETUP_CALL_URL, assets: {
           ...assets,
           mark: logo ? { src: logo, alt: `${cause.name} logo` } : assets.mark,
           crowd: cover ? { src: cover, alt: `${cause.name} community` } : assets.crowd,
@@ -96,7 +104,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
     } else {
       const slug = `${slugify(cause.name) || 'cause'}-${cause.id}`
       const config = {
-        slug, revision: 'draft', schoolName: cause.name, organizationName: cause.name,
+        slug, revision: 'draft', schoolName: cause.name, organizationName: cause.name, mission: cause.headline || '',
         causeAccountId: cause.id, locality: [cause.city, cause.state].filter(Boolean).join(', ') || 'your community',
         routeBase: `/landing/${slug}`,
         colors: { navy: '#071A3D', navyDeep: '#031126', royal: '#153E78', silver: '#C8CBD1', silverLight: '#EEF0F3', gold: '#D0A323' },
@@ -104,7 +112,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
           mark: { src: logoUrl, alt: `${cause.name} logo` },
           crowd: { src: coverUrl, alt: `${cause.name} community` },
         },
-        scheduleCallUrl: '', disclaimer: '', assetsArePlaceholder: false,
+        scheduleCallUrl: DEFAULT_SETUP_CALL_URL, disclaimer: '', assetsArePlaceholder: false,
       }
       const saved = await request<{ blockers?: string[] }>(landingPath, {
         method: 'PUT', headers: { 'content-type': 'application/json' },
@@ -120,13 +128,12 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
     if (!cause.referralCode) {
       steps.flyers = { status: 'waiting', detail: 'The cause needs a referral code before its QR flyers can be generated.' }
     } else {
-      const campaignUrl = `https://my.localvip.com/landing/${encodeURIComponent(campaignSlug)}`
       const audiences: FlyerAudience[] = ['business', 'families', 'schools']
       const flyerErrors: string[] = []
       let customGenerated = 0
       const existing = await request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${cause.id}&pageSize=100`)
       if (logoUrl && coverUrl) {
-        const version = `olathe-west-layout-v2|${logoUrl}|${coverUrl}|${cause.referralCode}`
+        const version = `olathe-west-layout-v3|${logoUrl}|${coverUrl}|${cause.referralCode}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}`
         for (const audience of audiences) {
           const alreadySaved = existing?.items?.some(item => {
             const metadata = materialMetadata(item.metadata)
@@ -134,10 +141,10 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
           })
           if (alreadySaved) { customGenerated += 1; continue }
           try {
-            const joinUrl = `${campaignUrl}/${audience}?ref=${encodeURIComponent(cause.referralCode)}`
+            const joinUrl = `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/${audience}?ref=${encodeURIComponent(cause.referralCode)}`
             const bytes = await renderCauseCampaignFlyer({ name: cause.name,
               locality: [cause.city, cause.state].filter(Boolean).join(', ') || 'Your community',
-              logoUrl, coverUrl, joinUrl, audience })
+              logoUrl, coverUrl, joinUrl, audience, mission: flyerMission, parentOrganization, colors: flyerColors })
             const filename = `${slugify(cause.name) || 'cause'}-${audience}-flyer.pdf`
             const form = new FormData()
             form.append('file', new File([new Uint8Array(bytes)], filename, { type: 'application/pdf' }))

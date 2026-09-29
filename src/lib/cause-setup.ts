@@ -13,7 +13,7 @@
 
 export type CauseSetupTrack = 'account' | 'brand'
 export type CauseAccountStepKey = 'profile' | 'contact' | 'golive'
-export type CauseBrandStepKey = 'images' | 'colors' | 'qr' | 'materials' | 'landing'
+export type CauseBrandStepKey = 'images' | 'colors' | 'materials' | 'landing'
 export type CauseSetupStepKey = CauseAccountStepKey | CauseBrandStepKey
 
 export interface CauseSetupStep {
@@ -32,7 +32,6 @@ export const CAUSE_ACCOUNT_STEPS: CauseSetupStep[] = [
 export const CAUSE_BRAND_STEPS: CauseSetupStep[] = [
   { key: 'images', track: 'brand', label: 'Logo & cover photo', description: 'Your logo and one wide photo of your real community.' },
   { key: 'colors', track: 'brand', label: 'Brand colors', description: 'The colors your flyers and landing page use, pulled from your logo if you do not have set colors.' },
-  { key: 'qr', track: 'brand', label: 'QR code', description: 'The code supporters scan to sign up and choose you.' },
   { key: 'materials', track: 'brand', label: 'Flyers & materials', description: 'Print-ready flyers for families and local businesses, in your colors.' },
   { key: 'landing', track: 'brand', label: 'Landing page', description: 'Your own page that explains LocalVIP to your families and businesses.' },
 ]
@@ -74,7 +73,6 @@ export function isCauseSetupStepComplete(key: CauseSetupStepKey, s: CauseSetupSi
     case 'golive': return isCauseLive(s)
     case 'images': return filled(s.logoUrl) && filled(s.coverUrl)
     case 'colors': return s.colorsConfirmed
-    case 'qr': return s.qrCount > 0
     case 'materials': return s.generatedCount > 0
     case 'landing': return s.landingPublished
     default: return false

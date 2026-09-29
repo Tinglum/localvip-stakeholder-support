@@ -52,14 +52,15 @@ const selectClass = 'h-10 w-full rounded-lg border border-surface-300 bg-white p
 /* ─── Account track ───────────────────────────────────────────── */
 
 export function ProfileStep({ initial, busy, onSave }: {
-  initial: { name: string; category: string; headline: string; description: string }
+  initial: { name: string; category: string; headline: string; description: string; parentOrganization: string }
   busy: boolean
-  onSave: (patch: { name: string; type: string; headline: string; description: string }) => void
+  onSave: (patch: { name: string; type: string; headline: string; description: string; parentOrganization: string }) => void
 }) {
   const [name, setName] = React.useState(initial.name)
   const [type, setType] = React.useState(initial.category)
   const [headline, setHeadline] = React.useState(initial.headline)
   const [description, setDescription] = React.useState(initial.description)
+  const [parentOrganization, setParentOrganization] = React.useState(initial.parentOrganization)
   const knownType = CAUSE_ORGANIZATION_TYPES.some((t) => t.toLowerCase() === type.toLowerCase())
   const ready = name.trim() && type.trim() && headline.trim()
 
@@ -81,7 +82,10 @@ export function ProfileStep({ initial, busy, onSave }: {
       <Field label="About your organization" hint="Optional. A few sentences for your landing page.">
         <Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
       </Field>
-      <StepFooter busy={busy} disabled={!ready} onSave={() => onSave({ name: name.trim(), type, headline: headline.trim(), description: description.trim() })} />
+      <Field label="School district or parent organization" hint="Optional. Identifies the school or organization your club supports.">
+        <Input value={parentOrganization} onChange={(e) => setParentOrganization(e.target.value)} placeholder="Olathe Public Schools" />
+      </Field>
+      <StepFooter busy={busy} disabled={!ready} onSave={() => onSave({ name: name.trim(), type, headline: headline.trim(), description: description.trim(), parentOrganization: parentOrganization.trim() })} />
     </div>
   )
 }
@@ -352,14 +356,14 @@ export function MaterialsStep({ count, busy, progress, error, onGenerate }: {
         </span>
         <p className={`text-sm ${count > 0 ? 'text-success-900' : 'text-surface-700'}`}>
           {count > 0
-            ? `${count} material${count === 1 ? ' is' : 's are'} ready. Regenerate after you change your logo or colors.`
+            ? `${count} of 3 audience flyers are ready. Regenerate after you change your logo, photo or colors.`
             : 'Create your flyers for families and local businesses. They use your logo, your colors and your QR code.'}
         </p>
       </div>
       {progress ? <p role="status" className="text-sm text-surface-600">{progress}</p> : null}
       {error ? <p role="alert" className="text-sm text-danger-600">{error}</p> : null}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-surface-100 pt-5">
-        {count > 0 ? <Button asChild variant="outline"><Link href="/materials/mine">See my materials</Link></Button> : null}
+        {count > 0 ? <Button asChild variant="outline"><Link href="/community/materials">See my materials</Link></Button> : null}
         <Button onClick={onGenerate} disabled={busy}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
           {count > 0 ? 'Regenerate materials' : 'Generate my materials'}

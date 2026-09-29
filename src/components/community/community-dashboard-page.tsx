@@ -322,7 +322,11 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
     })
   }, [scopedCause, steps, codes, generatedMaterials, qrCodes, supportingBusinesses.length])
 
-  const generatedCount = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url).length
+  const generatedCount = new Set(generatedMaterials
+    .filter(m => m.generation_status === 'generated' && !!m.generated_file_url)
+    .map(m => m.metadata?.generator === 'cause-campaign-v1'
+      ? `audience:${String(m.metadata.audience || '')}`
+      : `template:${m.template_id || m.material_id || m.generated_file_name || m.id}`)).size
   const materialMap = React.useMemo(() => new Map(allMaterials.map(m => [m.id, m])), [allMaterials])
   const activeMaterialPairs = React.useMemo(() =>
     generatedMaterials
@@ -333,7 +337,8 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   const hasLinkedQr = typeof causeMetadata.linked_qr_code_id === 'string' && causeMetadata.linked_qr_code_id.length > 0
   const hasLinkedGeneratedMaterial = typeof causeMetadata.linked_generated_material_id === 'string'
     && causeMetadata.linked_generated_material_id.length > 0
-  const hasSupporterQr = qrCodes.length > 0 || hasLinkedQr
+  const hasSupporterQr = qrCodes.length > 0 || hasLinkedQr || generatedMaterials.some(m =>
+    m.generation_status === 'generated' && !!m.generated_file_url && m.metadata?.generator === 'cause-campaign-v1')
   const hasReadyMaterials = generatedCount > 0 || activeMaterialPairs.length > 0 || hasLinkedGeneratedMaterial
 
   const displayReadiness = React.useMemo(() => {

@@ -76,11 +76,12 @@ test('three audience PDFs use the cause assets and contain a PDF document', asyn
 test('repeat launch keeps the saved audience flyers, template and video', async () => {
   const logoUrl = 'https://qa.localvip.com/uploads/logos/logo.png'
   const coverUrl = 'https://qa.localvip.com/uploads/covers/cover.png'
-  const version = `olathe-west-layout-v2|${logoUrl}|${coverUrl}|TEST`
+  const version = `olathe-west-layout-v3|${logoUrl}|${coverUrl}|TEST||||`
   const calls: string[] = []
   const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     calls.push(`${init?.method || 'GET'} ${path}`)
     if (path.endsWith('/landing-page')) return { status: 'draft', draft: { slug: 'test-school-42',
+      scheduleCallUrl: 'https://calendly.com/ktinglum/localvip-internship',
       assets: { mark: { src: logoUrl }, crowd: { src: coverUrl } }, video: { src: 'https://example.org/video.mp4' } } } as T
     if (path.includes('/GeneratedMaterial?')) return { items: [
       ...(['business', 'families', 'schools'] as const).map(audience => ({ generatedFileUrl: `${audience}.pdf`, metadata: { generator: 'cause-campaign-v1', audience, version } })),

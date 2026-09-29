@@ -3,14 +3,14 @@
 import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Building2, CheckCircle2, Globe2, ImageIcon, MapPin, Palette, QrCode,
+  Building2, CheckCircle2, Globe2, ImageIcon, MapPin, Palette,
   FileText, Rocket, Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
-import { useCauses, useGeneratedMaterials, useQrCodes } from '@/lib/supabase/hooks'
+import { useCauses } from '@/lib/supabase/hooks'
 import { resolveCommunityCause } from '@/lib/community-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
 import {
@@ -53,7 +53,6 @@ const STEP_ICONS: Record<CauseSetupStepKey, React.ReactNode> = {
   golive: <Rocket className="h-5 w-5" />,
   images: <ImageIcon className="h-5 w-5" />,
   colors: <Palette className="h-5 w-5" />,
-  qr: <QrCode className="h-5 w-5" />,
   materials: <FileText className="h-5 w-5" />,
   landing: <Globe2 className="h-5 w-5" />,
 }
@@ -74,12 +73,10 @@ export function CauseSetupPage() {
   const { data: causes, loading: causesLoading, error: causesError, refetch: refetchCauses } = useCauses()
   const cause = React.useMemo(() => resolveCommunityCause(profile, causes), [profile, causes])
   const causeId = cause ? qaCauseId(cause) : null
-  const idFilter = React.useMemo(() => ({ cause_id: String(causeId ?? '__none__') }), [causeId])
-  const { data: qrCodes, refetch: refetchQr } = useQrCodes(idFilter, { enabled: causeId != null })
-  const { data: generated, refetch: refetchGenerated } = useGeneratedMaterials(idFilter, { enabled: causeId != null })
 
   const [detail, setDetail] = React.useState<CauseDetail | null>(null)
   const [landing, setLanding] = React.useState<LandingRecord | null>(null)
+  const [flyerCount, setFlyerCount] = React.useState(0)
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [message, setMessage] = React.useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
@@ -88,12 +85,14 @@ export function CauseSetupPage() {
 
   const loadDetail = React.useCallback(async () => {
     if (!causeId) return
-    const [d, l] = await Promise.all([
+    const [d, l, launch] = await Promise.all([
       fetch(`/api/qa/nonprofits/${causeId}`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your organization.')),
       fetch(`/api/crm/causes/${causeId}/landing-page`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your landing page.')).catch(() => null),
+      fetch(`/api/crm/causes/${causeId}/launch-materials`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your flyers.')).catch(() => null),
     ])
     setDetail(d as CauseDetail)
     setLanding(l as LandingRecord | null)
+    setFlyerCount(Number((launch as { flyerCount?: number } | null)?.flyerCount || 0))
   }, [causeId])
 
   React.useEffect(() => {
@@ -128,8 +127,8 @@ export function CauseSetupPage() {
     logoUrl: logoSrc,
     coverUrl: coverSrc,
     colorsConfirmed: !!landingConfig?.brandColorsConfirmed,
-    qrCount: qrCodes.length,
-    generatedCount: generated.filter((m) => !!m.generated_file_url).length,
+    qrCount: 0,
+    generatedCount: flyerCount,
     landingPublished: isLandingPublished(landing),
   }
   const progress = getCauseSetupProgress(signals)
@@ -193,22 +192,14 @@ export function CauseSetupPage() {
   }, kind === 'logo' ? 'Logo uploaded.' : 'Cover photo uploaded.')
 
   const generate = async () => {
-    setBusy(true); setGenError(null); setGenProgress('Finding your templates...')
-    const call = (payload: Record<string, unknown>) => fetch(`/api/crm/causes/${causeId}/execution`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
-    }).then((r) => readJson(r, 'Materials could not be generated.'))
+    setBusy(true); setGenError(null); setGenProgress('Creating your audience flyers and landing page...')
     try {
-      const list = await call({ action: 'list_generation_templates' }) as { templates?: Array<{ id: string; name: string }> }
-      const templates = Array.isArray(list.templates) ? list.templates : []
-      if (templates.length === 0) { setGenProgress(null); setGenError('No flyer templates are switched on for causes yet. Ask your LocalVIP representative.'); return }
-      let failed = 0
-      for (const [i, t] of templates.entries()) {
-        setGenProgress(`Creating ${i + 1} of ${templates.length}: ${t.name}`)
-        try { await call({ action: 'generate_template', templateId: t.id }) } catch { failed += 1 }
-      }
-      refetchGenerated()
-      setGenProgress(failed ? `${templates.length - failed} of ${templates.length} materials created.` : 'Your materials are ready.')
-      if (failed === templates.length) setGenError('None of the materials could be created. Try again, or contact LocalVIP.')
+      const result = await fetch(`/api/crm/causes/${causeId}/launch-materials`, { method: 'POST' })
+        .then((r) => readJson(r, 'Materials could not be generated.')) as { steps?: { flyers?: { status?: string; detail?: string } } }
+      await loadDetail()
+      const flyers = result.steps?.flyers
+      setGenProgress(flyers?.detail || 'Your flyers are ready.')
+      if (flyers?.status === 'failed' || flyers?.status === 'partial') setGenError(flyers.detail || 'Some flyers could not be created.')
     } catch (e) {
       setGenProgress(null); setGenError(e instanceof Error ? e.message : 'Materials could not be generated.')
     } finally { setBusy(false) }
@@ -259,8 +250,11 @@ export function CauseSetupPage() {
 
             {activeKey === 'profile' && (
               <ProfileStep key={`p-${text(detail, 'updatedDate')}`} busy={busy}
-                initial={{ name, category: signals.category, headline: signals.headline, description: text(detail, 'description') }}
-                onSave={(patch) => void run(() => putProfile(patch), 'Profile saved.', 'profile')} />
+                initial={{ name, category: signals.category, headline: signals.headline, description: text(detail, 'description'), parentOrganization: landingConfig.parentOrganization || '' }}
+                onSave={(patch) => void run(async () => {
+                  await putProfile(patch)
+                  await saveLanding({ parentOrganization: patch.parentOrganization, mission: patch.headline })
+                }, 'Profile saved.', 'profile')} />
             )}
             {activeKey === 'contact' && (
               <ContactStep key={`c-${text(detail, 'updatedDate')}`} busy={busy} email={signals.email}
@@ -279,13 +273,6 @@ export function CauseSetupPage() {
                 onSave={(colors: BrandTriple) => void run(
                   () => saveLanding({ colors: expandBrandPalette(colors, landingConfig.colors), brandColorsConfirmed: true }),
                   'Brand colors saved. Your flyers and landing page will use them.', 'colors')} />
-            )}
-            {activeKey === 'qr' && (
-              <LinkStep icon={<QrCode className="h-5 w-5" />} done={signals.qrCount > 0}
-                doneText={`You have ${signals.qrCount} QR code${signals.qrCount === 1 ? '' : 's'}. Every scan signs someone up with your code.`}
-                todoText="Create your QR code. It points to your sign-up link, so every scan is credited to you."
-                actionHref="/community/qr" actionLabel={signals.qrCount > 0 ? 'Manage QR codes' : 'Create my QR code'}
-                secondary={<button type="button" onClick={() => refetchQr()} className="text-sm font-medium text-brand-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">I made one, refresh</button>} />
             )}
             {activeKey === 'materials' && <MaterialsStep count={signals.generatedCount} busy={busy} progress={genProgress} error={genError} onGenerate={() => void generate()} />}
             {activeKey === 'landing' && (

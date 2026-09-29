@@ -13,6 +13,8 @@ export type LandingConfig = {
   revision: string
   schoolName: string
   organizationName: string
+  mission?: string
+  parentOrganization?: string
   causeAccountId: number
   locality: string
   routeBase: string
@@ -58,6 +60,7 @@ export function defaultLandingConfig(cause: Cause, id: number): LandingConfig {
     revision: 'draft',
     schoolName: cause.name,
     organizationName: cause.name,
+    mission: String(cause.metadata?.headline || ''),
     causeAccountId: id,
     locality: cause.address || 'your community',
     routeBase: `/landing/${slug}`,
@@ -66,7 +69,7 @@ export function defaultLandingConfig(cause: Cause, id: number): LandingConfig {
       mark: { src: cause.logo_url || '', alt: `${cause.name} logo` },
       crowd: { src: cause.cover_photo_url || '', alt: `${cause.name} community` },
     },
-    scheduleCallUrl: '',
+    scheduleCallUrl: 'https://calendly.com/ktinglum/localvip-internship',
     disclaimer: '',
     assetsArePlaceholder: false,
   }

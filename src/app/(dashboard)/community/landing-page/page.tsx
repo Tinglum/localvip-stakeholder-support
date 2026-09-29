@@ -185,6 +185,8 @@ export default function CauseLandingPageEditor() {
         <Card><CardHeader><CardTitle>Names and page address</CardTitle></CardHeader><CardContent className="grid gap-4 md:grid-cols-2">
           <Field label="School or community name"><Input value={config.schoolName} onChange={(e) => update({ schoolName: e.target.value })} /></Field>
           <Field label="Organization name"><Input value={config.organizationName} onChange={(e) => update({ organizationName: e.target.value })} /></Field>
+          <div className="md:col-span-2"><Field label="What this campaign supports" hint="Shown on the landing page and flyers."><Input value={config.mission || ''} onChange={(e) => update({ mission: e.target.value })} placeholder="Field trips, classroom supplies, and student programs" /></Field></div>
+          <div className="md:col-span-2"><Field label="School district or parent organization" hint="Optional. Identify the organization accurately on school materials."><Input value={config.parentOrganization || ''} onChange={(e) => update({ parentOrganization: e.target.value })} placeholder="Olathe Public Schools" /></Field></div>
           <Field label="City or community"><Input value={config.locality} onChange={(e) => update({ locality: e.target.value })} /></Field>
           <Field label="Page address" hint={`my.localvip.com/landing/${config.slug}`}><Input value={config.slug} onChange={(e) => update({ slug: slugify(e.target.value), routeBase: `/landing/${slugify(e.target.value)}` })} /></Field>
           <Field label="Setup call link" hint="Optional"><Input type="url" value={config.scheduleCallUrl} onChange={(e) => update({ scheduleCallUrl: e.target.value })} placeholder="https://..." /></Field>

@@ -48,10 +48,20 @@ export async function GET(request: NextRequest) {
       // first so an archived-but-present QR still renders.
       const qr = rows.find((row) => (read(row, 'status', 'Status') || '').toLowerCase() === 'active') || rows[0]
       if (!qr) {
-        return NextResponse.json(
-          { error: 'This cause does not have a supporter QR code yet.' },
-          { status: 404 },
-        )
+        const detailRes = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${encodeURIComponent(causeId)}`)
+        const detail = await parseQaResponse<Record<string, unknown>>(detailRes, 'Could not load this cause.')
+        const code = typeof detail?.referralCode === 'string' ? detail.referralCode.trim() : ''
+        if (!code) return NextResponse.json({ error: 'LocalVIP is preparing your supporter link.' }, { status: 409 })
+        const landingRes = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${encodeURIComponent(causeId)}/landing-page`)
+        const landing = await parseQaResponse<{ status?: string; published?: { slug?: string } }>(landingRes, 'Could not load this cause landing page.').catch(() => null)
+        const slug = landing?.published?.slug
+        const targetUrl = slug && ['published', 'published_with_changes'].includes(landing?.status || '')
+          ? `https://my.localvip.com/landing/${encodeURIComponent(slug)}?ref=${encodeURIComponent(code)}`
+          : `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(code)}`
+        return NextResponse.json({ causeId, causeName: String(detail?.name || ''), brand: 'localvip',
+          supportSlug: `cause-${causeId}`, supportUrl: targetUrl, displayUrl: targetUrl.replace(/^https?:\/\//, ''),
+          redirectUrl: targetUrl, shortCode: code, frameText: 'Scan to support',
+          headline: 'Support this cause', description: 'Scan to join and support this cause through LocalVIP.' })
       }
 
       const targetUrl = read(qr, 'targetUrl', 'TargetUrl', 'destinationUrl')

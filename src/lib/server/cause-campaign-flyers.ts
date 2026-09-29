@@ -78,13 +78,16 @@ function centeredLines(ctx: Context, value: string, x: number, y: number, width:
 
 export async function renderCauseCampaignFlyer(input: {
   name: string; locality: string; logoUrl: string; coverUrl: string; joinUrl: string; audience: FlyerAudience
+  mission?: string; parentOrganization?: string; colors?: { navy?: string; gold?: string }
 }) {
   const [logoBytes, coverBytes] = await Promise.all([imageBytes(input.logoUrl), imageBytes(input.coverUrl)])
   const [logo, cover] = await Promise.all([loadImage(logoBytes), loadImage(coverBytes)])
   const canvas = createCanvas(1275, 1650)
   const ctx = canvas.getContext('2d')
-  const navy = '#061b3e'
-  const gold = '#e1aa2b'
+  const validColor = (value: string | undefined, fallback: string) => value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback
+  const navy = validColor(input.colors?.navy, '#061b3e')
+  const gold = validColor(input.colors?.gold, '#e1aa2b')
+  const navyRgb = [1, 3, 5].map(index => parseInt(navy.slice(index, index + 2), 16)).join(',')
   const white = '#ffffff'
   const copy = flyers[input.audience]
 
@@ -93,14 +96,14 @@ export async function renderCauseCampaignFlyer(input: {
   ctx.drawImage(cover, (1275 - cover.width * imageScale) / 2, (heroHeight - cover.height * imageScale) / 2,
     cover.width * imageScale, cover.height * imageScale)
   const shade = ctx.createLinearGradient(0, 0, 1150, 0)
-  shade.addColorStop(0, 'rgba(2,16,39,.98)')
-  shade.addColorStop(.48, 'rgba(2,16,39,.85)')
-  shade.addColorStop(1, 'rgba(2,16,39,.24)')
+  shade.addColorStop(0, `rgba(${navyRgb},.98)`)
+  shade.addColorStop(.48, `rgba(${navyRgb},.85)`)
+  shade.addColorStop(1, `rgba(${navyRgb},.24)`)
   ctx.fillStyle = shade
   ctx.fillRect(0, 0, 1275, heroHeight)
   const topShade = ctx.createLinearGradient(0, 0, 0, 165)
-  topShade.addColorStop(0, 'rgba(2,13,33,.95)')
-  topShade.addColorStop(1, 'rgba(2,13,33,.3)')
+  topShade.addColorStop(0, `rgba(${navyRgb},.95)`)
+  topShade.addColorStop(1, `rgba(${navyRgb},.3)`)
   ctx.fillStyle = topShade
   ctx.fillRect(0, 0, 1275, 165)
 
@@ -116,6 +119,10 @@ export async function renderCauseCampaignFlyer(input: {
   ctx.fillStyle = '#ced7e7'
   ctx.font = 'bold 23px Arial'
   ctx.fillText(copy.kicker, 228, 131)
+  if (input.parentOrganization?.trim()) {
+    ctx.fillStyle = gold
+    fittedText(ctx, input.parentOrganization.trim().toUpperCase(), 228, 158, 735, 18, 14)
+  }
   ctx.textAlign = 'right'
   ctx.fillStyle = white
   ctx.font = '900 36px Arial'
@@ -135,7 +142,8 @@ export async function renderCauseCampaignFlyer(input: {
   ctx.fillRect(65, 655, 460, 5)
   ctx.fillStyle = white
   ctx.font = '27px Arial'
-  wrap(ctx, copy.intro, 690).slice(0, 4).forEach((line, index) => ctx.fillText(line, 65, 700 + index * 34))
+  const intro = input.mission?.trim() ? `Our goal: ${input.mission.trim().slice(0, 140)}` : copy.intro
+  wrap(ctx, intro, 690).slice(0, 4).forEach((line, index) => ctx.fillText(line, 65, 700 + index * 34))
 
   ctx.fillStyle = '#f4f5f7'
   ctx.fillRect(0, 785, 1275, 370)
