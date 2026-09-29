@@ -640,7 +640,7 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           brand: 'localvip',
           stage: 'lead',
           status: c.active ? 'active' : 'inactive',
-          metadata: { qaId: c.id, ownerUserId: c.ownerUserId, headline: c.headline },
+          metadata: { qaId: c.id, ownerUserId: c.ownerUserId, headline: c.headline, crmStage: c.crmStage ?? null, crmStatus: c.crmStatus ?? null },
           logo_url: causeAssetUrl(c.logoUrl || c.imageUrl, 'logos'),
           cover_photo_url: causeAssetUrl(c.coverPhotoUrl, 'covers'),
           external_id: String(c.id),

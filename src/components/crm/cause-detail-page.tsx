@@ -460,6 +460,21 @@ export default function CauseDetailPage() {
     }
   }, [causeResponse?.qaCauseId, localCauseId, updateCause])
 
+  const [goLiveBusy, setGoLiveBusy] = React.useState(false)
+  const [goLiveError, setGoLiveError] = React.useState<string | null>(null)
+  const reviewGoLive = React.useCallback(async (decision: 'approve' | 'send_back') => {
+    if (!canEditCrm) return
+    setGoLiveBusy(true); setGoLiveError(null)
+    try {
+      await saveCauseCrm(decision === 'approve' ? { stage: 'live', status: 'active' } : { status: 'active' })
+      refetchCause()
+    } catch (error) {
+      setGoLiveError(error instanceof Error ? error.message : 'That decision could not be saved.')
+    } finally {
+      setGoLiveBusy(false)
+    }
+  }, [canEditCrm, saveCauseCrm, refetchCause])
+
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
     if (!cause || !canEditCrm) return
     await saveCauseCrm({ stage: newStage })
@@ -814,6 +829,24 @@ export default function CauseDetailPage() {
           current: cause.stage === stage,
         }))}
       />
+
+      {/* ── Go-live review (cause submitted from /community/setup) ── */}
+      {canEditCrm && String(cause.status) === 'pending_live_review' && cause.stage !== 'live' && (
+        <div className="flex flex-col gap-4 rounded-2xl border border-brand-200 bg-gradient-to-r from-brand-50 via-white to-white p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold text-surface-950">{cause.name} asked to go live</p>
+            <p className="mt-1 text-sm text-surface-600">They finished account setup. Check the profile, then approve to make them selectable by supporters.</p>
+            {goLiveError ? <p role="alert" className="mt-2 text-sm text-danger-600">{goLiveError}</p> : null}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" disabled={goLiveBusy} onClick={() => void reviewGoLive('send_back')}>Send back</Button>
+            <Button disabled={goLiveBusy} onClick={() => void reviewGoLive('approve')}>
+              {goLiveBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Approve and go live
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <PageHeader

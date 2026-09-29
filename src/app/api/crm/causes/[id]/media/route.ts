@@ -1,3 +1,4 @@
+import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
@@ -83,21 +84,23 @@ export async function POST(
       })
       const json = await parseQaResponse<unknown>(res, `Failed to upload ${mediaType}.`)
       const row = (json && typeof json === 'object' ? json : {}) as Record<string, unknown>
-      const rawFileUrl = (row.imageUrl as string | undefined)
+      const stored = (row.imageUrl as string | undefined)
         || (row.logoUrl as string | undefined)
         || (row.coverPhotoUrl as string | undefined)
         || (row.CoverPhotoUrl as string | undefined)
         || null
-      const fileUrl = rawFileUrl && !/^https?:\/\//i.test(rawFileUrl)
-        ? `${QA_AUTH_CONFIG.baseUrl}/uploads/${mediaType === 'logo' ? 'logos' : 'covers'}/${encodeURIComponent(rawFileUrl)}`
-        : rawFileUrl
+      // Landing pages and PDFs need a public URL; the authenticated image proxy
+      // cannot be used by visitors on my.localvip.com.
+      const fileUrl = stored && !/^https?:\/\//i.test(stored)
+        ? new URL(stored.startsWith('/uploads/') ? stored : `/uploads/${mediaType === 'logo' ? 'logos' : 'covers'}/${encodeURIComponent(stored)}`, QA_AUTH_CONFIG.baseUrl).toString()
+        : stored
       // The asset is already stored in QA. Flyer and video rendering can take minutes,
       // so finish the upload response before refreshing launch materials.
       void fetchQaCauseDetail(Number(params.id))
         .then(cause => generateCauseLaunchMaterials({
           ...cause,
-          imageUrl: mediaType === 'logo' ? rawFileUrl : cause.imageUrl,
-          coverPhotoUrl: mediaType === 'cover_photo' ? rawFileUrl : cause.coverPhotoUrl,
+          imageUrl: mediaType === 'logo' ? stored : cause.imageUrl,
+          coverPhotoUrl: mediaType === 'cover_photo' ? stored : cause.coverPhotoUrl,
         }))
         .catch(error => console.error('[cause-media] launch generation failed', error))
       return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true, launchMaterials: 'preparing' })
