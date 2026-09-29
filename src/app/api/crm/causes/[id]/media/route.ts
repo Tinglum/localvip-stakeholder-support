@@ -10,6 +10,7 @@ import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import type { Cause } from '@/lib/types/database'
 
 export const maxDuration = 300
+export const runtime = 'nodejs'
 
 /**
  * QaApiError carries the raw upstream body (parseQaResponse's createQaApiError already
@@ -90,14 +91,16 @@ export async function POST(
       const fileUrl = rawFileUrl && !/^https?:\/\//i.test(rawFileUrl)
         ? `${QA_AUTH_CONFIG.baseUrl}/uploads/${mediaType === 'logo' ? 'logos' : 'covers'}/${encodeURIComponent(rawFileUrl)}`
         : rawFileUrl
-      const launchMaterials = await fetchQaCauseDetail(Number(params.id))
+      // The asset is already stored in QA. Flyer and video rendering can take minutes,
+      // so finish the upload response before refreshing launch materials.
+      void fetchQaCauseDetail(Number(params.id))
         .then(cause => generateCauseLaunchMaterials({
           ...cause,
           imageUrl: mediaType === 'logo' ? rawFileUrl : cause.imageUrl,
           coverPhotoUrl: mediaType === 'cover_photo' ? rawFileUrl : cause.coverPhotoUrl,
         }))
-        .catch(error => ({ error: error instanceof Error ? error.message : 'Launch materials could not be refreshed.' }))
-      return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true, launchMaterials })
+        .catch(error => console.error('[cause-media] launch generation failed', error))
+      return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true, launchMaterials: 'preparing' })
     } catch (err) {
       const { message, status } = extractQaErrorMessage(err)
       return NextResponse.json({ error: message }, { status })

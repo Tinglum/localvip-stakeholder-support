@@ -768,6 +768,9 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
                       if (file) void uploadCauseAsset('logo', file)
                     }}
                   />
+                  {profileDraft.logoUrl && (
+                    <img src={profileDraft.logoUrl} alt={`${profileDraft.name} logo`} className="h-24 w-full rounded-lg border border-surface-200 bg-white object-contain p-2" />
+                  )}
                   <div className="flex items-center gap-1.5 text-xs font-normal">
                     {logoAssetState.status === 'uploading' && (
                       <span className="inline-flex items-center gap-1 text-surface-500"><Loader2 className="h-3 w-3 animate-spin" />Uploading...</span>
@@ -791,6 +794,9 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
                       if (file) void uploadCauseAsset('cover_photo', file)
                     }}
                   />
+                  {profileDraft.coverPhotoUrl && (
+                    <img src={profileDraft.coverPhotoUrl} alt={`${profileDraft.name} cover`} className="h-24 w-full rounded-lg border border-surface-200 object-cover" />
+                  )}
                   <div className="flex items-center gap-1.5 text-xs font-normal">
                     {coverAssetState.status === 'uploading' && (
                       <span className="inline-flex items-center gap-1 text-surface-500"><Loader2 className="h-3 w-3 animate-spin" />Uploading...</span>
