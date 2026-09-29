@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowRight,
@@ -104,6 +105,12 @@ function getCauseQaAccountId(cause: { external_id?: string | null; metadata?: Re
 export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab?: DashboardTab }) {
   const { profile, roleLabel } = useAuth()
   const [activeTab, setActiveTab] = React.useState<DashboardTab>(initialTab)
+  // Setup moved to its own guided page (/community/setup); the old inline
+  // "6-step setup" tab is gone, so send any old deep link there.
+  const router = useRouter()
+  React.useEffect(() => {
+    if (activeTab === 'onboarding') router.replace('/community/setup')
+  }, [activeTab, router])
   const { data: causes, loading: causesLoading } = useCauses()
   const { data: contacts } = useContacts()
   const { data: businesses } = useBusinesses()
@@ -528,7 +535,6 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   // ─── Tab config ───
   const tabs: Array<{ key: DashboardTab; label: string; icon: React.ReactNode; count?: number }> = [
     { key: 'overview', label: 'Overview', icon: <Rocket className="h-4 w-4" /> },
-    { key: 'onboarding', label: '6-step setup', icon: <CheckSquare className="h-4 w-4" /> },
     { key: 'businesses', label: 'Businesses', icon: <Store className="h-4 w-4" />, count: supportingBusinesses.length },
     { key: 'network', label: 'Network', icon: <Network className="h-4 w-4" /> },
     { key: 'materials', label: 'Materials', icon: <FileText className="h-4 w-4" />, count: generatedCount },

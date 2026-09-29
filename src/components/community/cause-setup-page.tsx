@@ -347,7 +347,7 @@ function StepRail({ steps, activeKey, onOpen }: {
               ) : null}
               <button type="button" onClick={() => onOpen(item.key)} aria-current={isActive ? 'step' : undefined} aria-label={`${item.label}: ${status}. Open this step.`}
                 className={`relative z-10 flex w-full flex-col items-center gap-2 rounded-xl px-2 py-1 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${isActive ? 'bg-brand-50 text-brand-800' : item.complete ? 'text-success-800 hover:bg-success-50' : 'text-surface-500 hover:bg-surface-50'}`}>
-                <span className={`flex h-12 w-12 items-center justify-center rounded-full border-2 bg-white shadow-sm ${item.complete ? 'border-success-600 bg-success-600 text-white' : isActive ? 'border-brand-600 bg-brand-600 text-white ring-4 ring-brand-100' : 'border-surface-300 text-surface-500'}`}>
+                <span className={`flex h-12 w-12 items-center justify-center rounded-full border-2 shadow-sm ${item.complete ? 'border-success-600 bg-success-600 text-white' : isActive ? 'border-brand-600 bg-brand-600 text-white ring-4 ring-brand-100' : 'border-surface-300 bg-white text-surface-500'}`}>
                   {item.complete ? <CheckCircle2 className="h-5 w-5" /> : isActive ? STEP_ICONS[item.key] : <span className="text-sm font-bold">{index + 1}</span>}
                 </span>
                 <span className="max-w-[120px] text-xs font-bold leading-4 sm:text-sm">{item.label}</span>
