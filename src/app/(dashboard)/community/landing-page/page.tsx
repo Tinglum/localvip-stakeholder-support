@@ -7,7 +7,6 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth/context'
@@ -30,7 +29,6 @@ function blockers(config: LandingConfig) {
   if (!config.locality.trim()) items.push('Add the city or community.')
   if (!config.assets.mark.src) items.push('Upload a logo.')
   if (!config.assets.crowd.src) items.push('Upload a cover photo.')
-  if (!config.disclaimer.trim()) items.push('Add the required relationship disclaimer.')
   return items
 }
 
@@ -190,7 +188,6 @@ export default function CauseLandingPageEditor() {
           <Field label="City or community"><Input value={config.locality} onChange={(e) => update({ locality: e.target.value })} /></Field>
           <Field label="Page address" hint={`my.localvip.com/landing/${config.slug}`}><Input value={config.slug} onChange={(e) => update({ slug: slugify(e.target.value), routeBase: `/landing/${slugify(e.target.value)}` })} /></Field>
           <Field label="Setup call link" hint="Optional"><Input type="url" value={config.scheduleCallUrl} onChange={(e) => update({ scheduleCallUrl: e.target.value })} placeholder="https://..." /></Field>
-          <div className="md:col-span-2"><Field label="Relationship disclaimer" hint="Use the exact wording approved by your school, district or organization."><Textarea value={config.disclaimer} onChange={(e) => update({ disclaimer: e.target.value })} rows={3} /></Field></div>
         </CardContent></Card>
 
         <Card><CardHeader><CardTitle>Logo and photography</CardTitle></CardHeader><CardContent className="space-y-5">

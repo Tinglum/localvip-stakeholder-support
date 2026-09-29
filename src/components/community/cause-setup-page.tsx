@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Building2, CheckCircle2, Globe2, ImageIcon, MapPin, Palette, QrCode,
-  FileText, Rocket, Share2, Sparkles,
+  FileText, Rocket, Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -13,7 +13,6 @@ import { useAuth } from '@/lib/auth/context'
 import { useCauses, useGeneratedMaterials, useQrCodes } from '@/lib/supabase/hooks'
 import { resolveCommunityCause } from '@/lib/community-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
-import { buildConsumerReferralUrl } from '@/lib/material-engine'
 import {
   defaultLandingConfig,
   isLandingPublished,
@@ -38,7 +37,7 @@ import {
 } from '@/lib/cause-setup'
 import {
   ColorsStep, ContactStep, GoLiveStep, ImagesStep, LinkStep,
-  MaterialsStep, ProfileStep, SharingStep,
+  MaterialsStep, ProfileStep,
 } from '@/components/community/cause-setup-steps'
 
 /** Raw /api/qa/nonprofits/{id} detail (backend camelCase, passed through). */
@@ -51,7 +50,6 @@ const text = (detail: CauseDetail | null, key: string) => {
 const STEP_ICONS: Record<CauseSetupStepKey, React.ReactNode> = {
   profile: <Building2 className="h-5 w-5" />,
   contact: <MapPin className="h-5 w-5" />,
-  sharing: <Share2 className="h-5 w-5" />,
   golive: <Rocket className="h-5 w-5" />,
   images: <ImageIcon className="h-5 w-5" />,
   colors: <Palette className="h-5 w-5" />,
@@ -224,7 +222,6 @@ export function CauseSetupPage() {
   if (!detail || !landingConfig) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your setup...</div>
 
   const name = signals.name
-  const joinUrl = referralCode ? buildConsumerReferralUrl(referralCode) : ''
 
   return (
     <div className="space-y-6 pb-16">
@@ -270,7 +267,6 @@ export function CauseSetupPage() {
                 initial={{ city: signals.city, state: text(detail, 'state'), phone: signals.phone, website: text(detail, 'website') }}
                 onSave={(patch) => void run(() => putProfile(patch), 'Location and contact saved.', 'contact')} />
             )}
-            {activeKey === 'sharing' && <SharingStep referralCode={referralCode} joinUrl={joinUrl} onContinue={() => nextAfter('sharing')} />}
             {activeKey === 'golive' && (
               <GoLiveStep name={name} signals={signals} busy={busy} onOpenStep={openStep}
                 onSubmit={() => void run(() => putProfile({ status: 'pending_live_review' }), 'Submitted. LocalVIP will review your account.')} />

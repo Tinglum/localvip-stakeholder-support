@@ -12,7 +12,7 @@
  */
 
 export type CauseSetupTrack = 'account' | 'brand'
-export type CauseAccountStepKey = 'profile' | 'contact' | 'sharing' | 'golive'
+export type CauseAccountStepKey = 'profile' | 'contact' | 'golive'
 export type CauseBrandStepKey = 'images' | 'colors' | 'qr' | 'materials' | 'landing'
 export type CauseSetupStepKey = CauseAccountStepKey | CauseBrandStepKey
 
@@ -26,7 +26,6 @@ export interface CauseSetupStep {
 export const CAUSE_ACCOUNT_STEPS: CauseSetupStep[] = [
   { key: 'profile', track: 'account', label: 'Organization profile', description: 'Your name, what kind of organization you are, and one line about your mission.' },
   { key: 'contact', track: 'account', label: 'Location & contact', description: 'Where you are and how supporters and LocalVIP can reach you.' },
-  { key: 'sharing', track: 'account', label: 'Your sharing link', description: 'The code and link that credit every supporter and purchase to you.' },
   { key: 'golive', track: 'account', label: 'Go live', description: 'Send your account to LocalVIP for a final check before supporters can choose you.' },
 ]
 
@@ -72,7 +71,6 @@ export function isCauseSetupStepComplete(key: CauseSetupStepKey, s: CauseSetupSi
   switch (key) {
     case 'profile': return filled(s.name) && filled(s.category) && filled(s.headline)
     case 'contact': return filled(s.city) && (filled(s.phone) || filled(s.email))
-    case 'sharing': return filled(s.referralCode)
     case 'golive': return isCauseLive(s)
     case 'images': return filled(s.logoUrl) && filled(s.coverUrl)
     case 'colors': return s.colorsConfirmed

@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
-  CheckCircle2, Clock3, Copy, ExternalLink, FileText, ImageIcon, Loader2,
+  CheckCircle2, Clock3, ExternalLink, FileText, ImageIcon, Loader2,
   Palette, QrCode, Rocket, Upload, Wand2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -112,41 +112,6 @@ export function ContactStep({ initial, email, busy, onSave }: {
         <span className="block text-xs text-surface-500">This is how you sign in. To change it, contact your LocalVIP representative.</span>
       </div>
       <StepFooter busy={busy} disabled={!city.trim()} onSave={() => onSave({ city_name: city.trim(), city_state: state.trim(), phone: phone.trim(), website: website.trim() })} />
-    </div>
-  )
-}
-
-export function SharingStep({ referralCode, joinUrl, onContinue }: { referralCode: string; joinUrl: string; onContinue: () => void }) {
-  const [copied, setCopied] = React.useState<string | null>(null)
-  const copy = (value: string, key: string) => {
-    void navigator.clipboard.writeText(value).then(() => { setCopied(key); window.setTimeout(() => setCopied(null), 1600) })
-  }
-
-  if (!referralCode) {
-    return (
-      <div className="flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 px-4 py-4 text-sm text-warning-800">
-        <Clock3 className="mt-0.5 h-4 w-4 shrink-0" />
-        <p>Your sharing code is being created by LocalVIP. It appears here automatically, with nothing for you to do.</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-5">
-      <p className="text-sm text-surface-600">Everyone who signs up with your code or link is linked to you, and their everyday purchases support you. Your QR code and flyers use this same link.</p>
-      {[['Your code', referralCode, 'code'], ['Your sign-up link', joinUrl, 'link']].map(([label, value, key]) => (
-        <div key={key} className="flex items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">{label}</p>
-            <p className="truncate font-mono text-sm text-surface-900">{value}</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => copy(value, key)}>
-            {copied === key ? <CheckCircle2 className="h-4 w-4 text-success-600" /> : <Copy className="h-4 w-4" />}
-            {copied === key ? 'Copied' : 'Copy'}
-          </Button>
-        </div>
-      ))}
-      <StepFooter busy={false} saveLabel="Looks good, continue" onSave={onContinue} />
     </div>
   )
 }
