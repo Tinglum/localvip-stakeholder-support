@@ -53,10 +53,10 @@ export async function GET(request: NextRequest) {
         const code = typeof detail?.referralCode === 'string' ? detail.referralCode.trim() : ''
         if (!code) return NextResponse.json({ error: 'LocalVIP is preparing your supporter link.' }, { status: 409 })
         const landingRes = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${encodeURIComponent(causeId)}/landing-page`)
-        const landing = await parseQaResponse<{ status?: string; published?: { slug?: string } }>(landingRes, 'Could not load this cause landing page.').catch(() => null)
-        const slug = landing?.published?.slug
-        const targetUrl = slug && ['published', 'published_with_changes'].includes(landing?.status || '')
-          ? `https://my.localvip.com/landing/${encodeURIComponent(slug)}?ref=${encodeURIComponent(code)}`
+        const landing = await parseQaResponse<{ draft?: { slug?: string }; published?: { slug?: string } }>(landingRes, 'Could not load this cause landing page.').catch(() => null)
+        const slug = landing?.published?.slug || landing?.draft?.slug
+        const targetUrl = slug
+          ? `https://my.localvip.com/go/campaign/${encodeURIComponent(slug)}/families?ref=${encodeURIComponent(code)}`
           : `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(code)}`
         return NextResponse.json({ causeId, causeName: String(detail?.name || ''), brand: 'localvip',
           supportSlug: `cause-${causeId}`, supportUrl: targetUrl, displayUrl: targetUrl.replace(/^https?:\/\//, ''),

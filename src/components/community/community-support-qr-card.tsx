@@ -132,10 +132,10 @@ export function CommunitySupportQrCard({ cause, totalSupporters }: CommunitySupp
               Supporter QR
             </CardTitle>
             <p className="mt-2 text-sm text-surface-600">
-              Give your community a simple page they can open in seconds and share again just as easily.
+              Give your community a link that opens the campaign when it is live and sign-up while it is being prepared.
             </p>
           </div>
-          <Badge variant="info">Public supporter page</Badge>
+          <Badge variant="info">Supporter link</Badge>
         </div>
       </CardHeader>
       <CardContent className="grid gap-6 xl:grid-cols-[240px,1fr]">
@@ -194,7 +194,7 @@ export function CommunitySupportQrCard({ cause, totalSupporters }: CommunitySupp
             <p className="text-sm font-semibold text-surface-900">What happens next</p>
             <div className="mt-3 space-y-2 text-sm text-surface-600">
               <p>1. A supporter scans the QR.</p>
-              <p>2. They land on your public supporter page.</p>
+              <p>2. They reach your campaign or sign-up page.</p>
               <p>3. Their signup shows up in your supporter list.</p>
             </div>
           </div>
