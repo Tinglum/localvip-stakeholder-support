@@ -1,3 +1,4 @@
+import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
@@ -78,11 +79,20 @@ export async function POST(
       })
       const json = await parseQaResponse<unknown>(res, `Failed to upload ${mediaType}.`)
       const row = (json && typeof json === 'object' ? json : {}) as Record<string, unknown>
-      const fileUrl = (row.imageUrl as string | undefined)
+      const stored = (row.imageUrl as string | undefined)
         || (row.logoUrl as string | undefined)
         || (row.coverPhotoUrl as string | undefined)
         || (row.CoverPhotoUrl as string | undefined)
         || null
+      // The backend returns a bare file name. Callers put fileUrl straight into
+      // <img src> and the landing-page config, so hand back a real URL: logos
+      // via the same-origin proxy (readable by canvas for colour extraction),
+      // covers from the backend's public uploads folder.
+      const fileUrl = !stored || /^(https?:)?\/\//i.test(stored) || stored.startsWith('/')
+        ? stored
+        : mediaType === 'logo'
+          ? `/api/qa/nonprofits/${encodeURIComponent(params.id)}/logo?v=${encodeURIComponent(stored)}`
+          : new URL(`/uploads/covers/${encodeURIComponent(stored)}`, QA_AUTH_CONFIG.baseUrl).toString()
       return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true })
     } catch (err) {
       const { message, status } = extractQaErrorMessage(err)

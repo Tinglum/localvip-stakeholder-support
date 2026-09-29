@@ -110,7 +110,11 @@ export function CauseSetupPage() {
   const logoSrc = causeId && (text(detail, 'imageUrl') || text(detail, 'logoUrl') || cause?.logo_url)
     ? `/api/qa/nonprofits/${causeId}/logo?v=${encodeURIComponent(text(detail, 'imageUrl') || text(detail, 'logoUrl'))}`
     : ''
-  const coverSrc = landingConfig?.assets.crowd.src || text(detail, 'coverPhotoUrl') || cause?.cover_photo_url || ''
+  // The account stores a bare file name; the backend serves it from /uploads/covers.
+  const rawCover = landingConfig?.assets.crowd.src || text(detail, 'coverPhotoUrl') || cause?.cover_photo_url || ''
+  const coverSrc = !rawCover || /^(https?:)?\/\//i.test(rawCover) || rawCover.startsWith('/')
+    ? rawCover
+    : `${(process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').replace(/\/+$/, '')}/uploads/covers/${encodeURIComponent(rawCover)}`
   const referralCode = text(detail, 'referralCode')
 
   const signals: CauseSetupSignals = {
