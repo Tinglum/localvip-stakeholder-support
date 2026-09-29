@@ -589,6 +589,15 @@ export function useBusinessUpdate() {
   return { update, loading, error }
 }
 
+function causeAssetUrl(value: unknown, folder: 'logos' | 'covers') {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const trimmed = value.trim()
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  const base = (process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').replace(/\/$/, '')
+  if (trimmed.startsWith('/uploads/')) return `${base}${trimmed}`
+  return `${base}/uploads/${folder}/${encodeURIComponent(trimmed)}`
+}
+
 export function useCauses(filters?: Record<string, string>, options?: UseQueryOptions) {
   const [data, setData] = React.useState<Cause[]>([])
   const [loading, setLoading] = React.useState(options?.enabled ?? true)
@@ -630,8 +639,8 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           stage: 'lead',
           status: c.active ? 'active' : 'inactive',
           metadata: { qaId: c.id, ownerUserId: c.ownerUserId, headline: c.headline },
-          logo_url: (c.logoUrl as string) || (c.imageUrl as string) || null,
-          cover_photo_url: (c.coverPhotoUrl as string) || null,
+          logo_url: causeAssetUrl(c.logoUrl || c.imageUrl, 'logos'),
+          cover_photo_url: causeAssetUrl(c.coverPhotoUrl, 'covers'),
           external_id: String(c.id),
           created_at: (c.createdDate as string) || new Date().toISOString(),
           updated_at: (c.updatedDate as string) || new Date().toISOString(),

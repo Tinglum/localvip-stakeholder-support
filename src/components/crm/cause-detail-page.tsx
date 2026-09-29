@@ -258,7 +258,7 @@ export default function CauseDetailPage() {
     : setupTask?.status || 'idle'
   const qaLinkedCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
   const [launchStatus, setLaunchStatus] = React.useState<{
-    flyers: string; flyerCount: number; landingPages: string; landingSlug: string | null; video: string; videoUrl: string | null
+    flyers: string; flyerCount: number; totalMaterialCount: number; landingPages: string; landingSlug: string | null; video: string; videoUrl: string | null
   } | null>(null)
   const [launchBusy, setLaunchBusy] = React.useState(false)
   const [launchMessage, setLaunchMessage] = React.useState<string | null>(null)
@@ -1529,7 +1529,7 @@ export default function CauseDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <MiniStatus label="Flyers" value={launchStatus ? `${launchStatus.flyers} (${launchStatus.flyerCount})` : 'Checking'} />
+                  <MiniStatus label="Audience flyers" value={launchStatus ? `${launchStatus.flyerCount}/3 ${launchStatus.flyers}` : 'Checking'} />
                   <MiniStatus label="Landing pages" value={launchStatus?.landingPages || 'Checking'} />
                   <MiniStatus label="Video" value={launchStatus?.video || 'Checking'} />
                 </div>
@@ -1545,7 +1545,12 @@ export default function CauseDetailPage() {
               </CardContent>
             </Card>
           )}
-          {generatedMaterialPairs.length === 0 ? (
+          {generatedMaterialPairs.length === 0 && (launchStatus?.totalMaterialCount || 0) > 0 ? (
+            <Card><CardContent className="py-6">
+              <p className="text-sm font-semibold text-surface-700">{launchStatus?.totalMaterialCount} files saved in the QA materials library</p>
+              <a href="/materials/library" className="mt-2 inline-block text-sm text-brand-700 underline">Open materials library</a>
+            </CardContent></Card>
+          ) : generatedMaterialPairs.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <FileText className="mx-auto mb-3 h-10 w-10 text-surface-300" />

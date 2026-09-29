@@ -16,6 +16,13 @@ type LaunchCause = {
 type LandingRecord = { status?: string; draft?: unknown; published?: unknown }
 type GeneratedList = { items?: Array<{ generatedFileUrl?: string | null; generationStatus?: string | null; metadata?: unknown }> }
 
+function materialMetadata(value: unknown): Record<string, unknown> | null {
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value) } catch { return null }
+  }
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
 const slugify = (value: string) => value.toLowerCase().normalize('NFKD')
   .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')
   .replace(/^-|-$/g, '').slice(0, 70)
@@ -36,11 +43,16 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
     request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${causeId}`),
   ])
   const flyerCount = generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed').length || 0
+  const audienceCount = new Set(generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed')
+    .map(item => materialMetadata(item.metadata))
+    .filter(metadata => metadata?.generator === 'cause-campaign-v1')
+    .map(metadata => metadata?.audience)).size
   const draft = landing?.draft as { slug?: string; video?: { src?: string }; assets?: { mark?: { src?: string }; crowd?: { src?: string } } } | null
   const videoUrl = draft?.video?.src || null
   return {
-    flyers: flyerCount > 0 ? 'generated' : 'missing',
-    flyerCount,
+    flyers: audienceCount === 3 ? 'generated' : audienceCount > 0 ? 'partial' : 'waiting for assets',
+    flyerCount: audienceCount,
+    totalMaterialCount: flyerCount,
     landingPages: landing?.status || 'not_started',
     landingSlug: draft?.slug || null,
     video: videoUrl ? 'generated'
@@ -50,7 +62,7 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
   }
 }
 
-export async function generateCauseLaunchMaterials(cause: LaunchCause, request: typeof qaJson = qaJson) {
+async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: typeof qaJson) {
   const steps: Record<string, { status: string; detail?: string }> = {}
   const landingPath = `/api/dashboard/v1/Nonprofit/${cause.id}/landing-page`
   let campaignSlug = `${slugify(cause.name) || 'cause'}-${cause.id}`
@@ -67,11 +79,11 @@ export async function generateCauseLaunchMaterials(cause: LaunchCause, request: 
       const assets = draft?.assets as Record<string, { src?: string; alt?: string }> | undefined
       const logo = logoUrl
       const cover = coverUrl
-      if (draft && assets && ((!assets.mark?.src && logo) || (!assets.crowd?.src && cover))) {
+      if (draft && assets && ((logo && assets.mark?.src !== logo) || (cover && assets.crowd?.src !== cover))) {
         const config = { ...draft, assets: {
           ...assets,
-          mark: assets.mark?.src ? assets.mark : { src: logo, alt: `${cause.name} logo` },
-          crowd: assets.crowd?.src ? assets.crowd : { src: cover, alt: `${cause.name} community` },
+          mark: logo ? { src: logo, alt: `${cause.name} logo` } : assets.mark,
+          crowd: cover ? { src: cover, alt: `${cause.name} community` } : assets.crowd,
         } }
         const slug = String(draft.slug || `${slugify(cause.name) || 'cause'}-${cause.id}`)
         await request(landingPath, {
@@ -112,12 +124,12 @@ export async function generateCauseLaunchMaterials(cause: LaunchCause, request: 
       const audiences: FlyerAudience[] = ['business', 'families', 'schools']
       const flyerErrors: string[] = []
       let customGenerated = 0
+      const existing = await request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${cause.id}&pageSize=100`)
       if (logoUrl && coverUrl) {
-        const existing = await request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${cause.id}&pageSize=100`)
         const version = `${logoUrl}|${coverUrl}|${cause.referralCode}`
         for (const audience of audiences) {
           const alreadySaved = existing?.items?.some(item => {
-            const metadata = typeof item.metadata === 'string' ? JSON.parse(item.metadata) as Record<string, unknown> : item.metadata as Record<string, unknown> | null
+            const metadata = materialMetadata(item.metadata)
             return item.generatedFileUrl && metadata?.generator === 'cause-campaign-v1' && metadata?.audience === audience && metadata?.version === version
           })
           if (alreadySaved) { customGenerated += 1; continue }
@@ -174,10 +186,16 @@ export async function generateCauseLaunchMaterials(cause: LaunchCause, request: 
         const errors: string[] = []
         let generated = 0
         for (const template of templates) {
+          const version = `${template.id}|${cause.referralCode}`
+          if (existing?.items?.some(item => {
+            const metadata = materialMetadata(item.metadata)
+            return item.generatedFileUrl && metadata?.generator === 'cause-template-v1' && metadata?.version === version
+          })) { generated += 1; continue }
           try {
             await request<unknown>('/api/dashboard/v1/GeneratedMaterial', {
               method: 'POST', headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ causeAccountId: cause.id, templateId: template.id }),
+              body: JSON.stringify({ causeAccountId: cause.id, templateId: template.id,
+                templateSource: 'material_template', metadata: { generator: 'cause-template-v1', version } }),
             }, `Could not generate ${template.name || 'a flyer'}.`)
             generated += 1
           } catch (error) {
@@ -196,8 +214,20 @@ export async function generateCauseLaunchMaterials(cause: LaunchCause, request: 
 
   const renderUrl = process.env.CAUSE_VIDEO_RENDER_URL
   const renderToken = process.env.CAUSE_VIDEO_RENDER_TOKEN
+  const videoVersion = `${logoUrl}|${coverUrl}|${cause.referralCode || ''}`
+  let savedVideoUrl: string | null = null
+  if (logoUrl && coverUrl) {
+    try {
+      const beforeRender = await request<LandingRecord>(landingPath)
+      const draft = beforeRender?.draft as Record<string, unknown> | null
+      const video = draft?.video as { src?: string } | undefined
+      if (video?.src && (!draft?.videoSource || draft.videoSource === videoVersion)) savedVideoUrl = video.src
+    } catch { /* The render path reports landing-page failures below. */ }
+  }
   if (!logoUrl || !coverUrl) {
     steps.video = { status: 'waiting', detail: 'Upload the cause logo and cover photo to render the video.' }
+  } else if (savedVideoUrl) {
+    steps.video = { status: 'generated', detail: savedVideoUrl }
   } else if (!renderUrl || !renderToken) {
     steps.video = { status: 'not_configured', detail: 'Set CAUSE_VIDEO_RENDER_URL and CAUSE_VIDEO_RENDER_TOKEN to connect the renderer.' }
   } else {
@@ -219,7 +249,7 @@ export async function generateCauseLaunchMaterials(cause: LaunchCause, request: 
       if (!draft?.slug) throw new Error('Landing draft is missing; video could not be attached.')
       await request(landingPath, {
         method: 'PUT', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slug: draft.slug, config: { ...draft, video: { src: rendered.src, poster: rendered.poster } } }),
+        body: JSON.stringify({ slug: draft.slug, config: { ...draft, video: { src: rendered.src, poster: rendered.poster }, videoSource: videoVersion } }),
       })
       steps.video = { status: 'generated', detail: rendered.src }
     } catch (error) {
@@ -227,4 +257,14 @@ export async function generateCauseLaunchMaterials(cause: LaunchCause, request: 
     }
   }
   return { causeId: cause.id, steps }
+}
+
+const launchQueue = new Map<number, Promise<unknown>>()
+
+export async function generateCauseLaunchMaterials(cause: LaunchCause, request: typeof qaJson = qaJson) {
+  const previous = launchQueue.get(cause.id)
+  const run = (previous ? previous.catch(() => undefined) : Promise.resolve())
+    .then(() => generateCauseLaunchMaterialsInner(cause, request))
+  launchQueue.set(cause.id, run)
+  try { return await run } finally { if (launchQueue.get(cause.id) === run) launchQueue.delete(cause.id) }
 }

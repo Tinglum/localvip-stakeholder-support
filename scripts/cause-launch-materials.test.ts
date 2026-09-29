@@ -12,6 +12,7 @@ test('new school creates a landing draft and only school/cause flyers', async ()
     calls.push({ path, method, body })
     if (path.endsWith('/landing-page') && method === 'GET') return { status: 'not_started' } as T
     if (path.endsWith('/landing-page') && method === 'PUT') return { blockers: ['Upload a cover photo.'] } as T
+    if (path.includes('/GeneratedMaterial?') && method === 'GET') return { items: [] } as T
     if (path.includes('/MaterialTemplate')) return [
       { id: 1, name: 'School flyer', stakeholderTypes: '["school"]' },
       { id: 2, name: 'Cause flyer', stakeholderTypes: 'cause,community' },
@@ -38,7 +39,7 @@ test('status is based on saved files and the campaign draft', async () => {
     ? { status: 'draft', draft: { video: { src: 'https://example.org/video.mp4' } } } as T
     : { items: [{ generatedFileUrl: 'https://example.org/flyer.pdf', generationStatus: 'generated' }] } as T
   assert.deepEqual(await getCauseLaunchStatus(42, request), {
-    flyers: 'generated', flyerCount: 1, landingPages: 'draft', landingSlug: null,
+    flyers: 'waiting for assets', flyerCount: 0, totalMaterialCount: 1, landingPages: 'draft', landingSlug: null,
     video: 'generated', videoUrl: 'https://example.org/video.mp4',
   })
 })
@@ -49,7 +50,7 @@ test('missing assets show a waiting video status', async () => {
     : { items: [] } as T
   const status = await getCauseLaunchStatus(42, request)
   assert.equal(status.video, 'waiting for images')
-  assert.equal(status.flyers, 'missing')
+  assert.equal(status.flyers, 'waiting for assets')
 })
 
 test('three audience PDFs use the cause assets and contain a PDF document', async () => {
@@ -70,4 +71,27 @@ test('three audience PDFs use the cause assets and contain a PDF document', asyn
       assert.ok(pdf.length > 10000)
     }
   } finally { globalThis.fetch = originalFetch }
+})
+
+test('repeat launch keeps the saved audience flyers, template and video', async () => {
+  const logoUrl = 'https://qa.localvip.com/uploads/logos/logo.png'
+  const coverUrl = 'https://qa.localvip.com/uploads/covers/cover.png'
+  const version = `${logoUrl}|${coverUrl}|TEST`
+  const calls: string[] = []
+  const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+    calls.push(`${init?.method || 'GET'} ${path}`)
+    if (path.endsWith('/landing-page')) return { status: 'draft', draft: { slug: 'test-school-42',
+      assets: { mark: { src: logoUrl }, crowd: { src: coverUrl } }, video: { src: 'https://example.org/video.mp4' } } } as T
+    if (path.includes('/GeneratedMaterial?')) return { items: [
+      ...(['business', 'families', 'schools'] as const).map(audience => ({ generatedFileUrl: `${audience}.pdf`, metadata: { generator: 'cause-campaign-v1', audience, version } })),
+      { generatedFileUrl: 'template.pdf', metadata: { generator: 'cause-template-v1', version: '1|TEST' } },
+    ] } as T
+    if (path.includes('/MaterialTemplate?')) return [{ id: 1, name: 'School flyer', stakeholderTypes: 'school' }] as T
+    throw new Error(`Unexpected request: ${path}`)
+  }
+  const result = await generateCauseLaunchMaterials({ id: 42, name: 'Test School', referralCode: 'TEST',
+    imageUrl: logoUrl, coverPhotoUrl: coverUrl }, request)
+  assert.equal(result.steps.flyers.status, 'generated')
+  assert.equal(result.steps.video.status, 'generated')
+  assert.ok(calls.every(call => call.startsWith('GET ')))
 })
