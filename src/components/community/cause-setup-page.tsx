@@ -192,10 +192,13 @@ export function CauseSetupPage() {
     // Keep the landing page's copy of the image in step with the account's.
     if (body.fileUrl && landingConfig) {
       const asset = kind === 'logo' ? 'mark' : 'crowd'
-      await saveLanding({ assets: { ...landingConfig.assets, [asset]: { src: body.fileUrl, alt: landingConfig.assets[asset].alt } } })
+      await saveLanding({
+        assets: { ...landingConfig.assets, [asset]: { src: body.fileUrl, alt: landingConfig.assets[asset].alt } },
+        ...(kind === 'logo' ? { brandColorsConfirmed: false } : {}),
+      })
     }
     refetchCauses()
-  }, kind === 'logo' ? 'Logo uploaded.' : 'Cover photo uploaded.')
+  }, kind === 'logo' ? 'Logo uploaded. Review colors from your new logo, then publish the updated landing page.' : 'Cover photo uploaded. Publish the updated landing page when ready.')
 
   const generate = async () => {
     setBusy(true); setGenError(null); setGenProgress('Creating your audience flyers and landing page...')

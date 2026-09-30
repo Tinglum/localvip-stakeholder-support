@@ -2,13 +2,14 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { CheckCircle2, ExternalLink, Globe2, ImageIcon, Loader2, Save, Send, Upload } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Globe2, ImageIcon, Loader2, Save, Send, Upload, Wand2 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Badge } from '@/components/ui/badge'
+import { expandBrandPalette, extractBrandColorsFromImage } from '@/lib/brand-colors'
 import { useAuth } from '@/lib/auth/context'
 import { useCauses } from '@/lib/supabase/hooks'
 import { resolveCommunityCause } from '@/lib/community-cause'
@@ -45,6 +46,7 @@ export default function CauseLandingPageEditor() {
   const [record, setRecord] = React.useState<LandingRecord | null>(null)
   const [saving, setSaving] = React.useState(false)
   const [publishing, setPublishing] = React.useState(false)
+  const [extractingColors, setExtractingColors] = React.useState(false)
   const [message, setMessage] = React.useState('')
   const [dirty, setDirty] = React.useState(false)
   const loadedId = React.useRef<number | null>(null)
@@ -132,11 +134,33 @@ export default function CauseLandingPageEditor() {
       const body = await response.json()
       if (!response.ok || !body.fileUrl) throw new Error(body.error || 'Upload failed.')
       const asset = uploadKind.current === 'logo' ? 'mark' : uploadKind.current === 'cover_photo' ? 'crowd' : uploadKind.current
-      updateAsset(asset, { src: body.fileUrl, alt: config?.assets[asset]?.alt || `${cause.name} ${asset}` })
-      setMessage('Image uploaded. The page draft will save automatically.')
+      if (asset === 'mark') {
+        update({
+          assets: { ...config!.assets, mark: { src: body.fileUrl, alt: config?.assets.mark.alt || `${cause.name} logo` } },
+          brandColorsConfirmed: false,
+        })
+        setMessage('Logo uploaded. Pull colors from it below, review the preview, then publish the updated page.')
+      } else {
+        updateAsset(asset, { src: body.fileUrl, alt: config?.assets[asset]?.alt || `${cause.name} ${asset}` })
+        setMessage('Image uploaded. Review the preview, then publish the updated page.')
+      }
     } catch (uploadError) {
       setMessage(uploadError instanceof Error ? uploadError.message : 'Upload failed.')
     } finally { setSaving(false) }
+  }
+
+  async function pullLogoColors() {
+    if (!config?.assets.mark.src) return
+    setExtractingColors(true)
+    setMessage('Reading colors from your logo...')
+    try {
+      const found = await extractBrandColorsFromImage(config.assets.mark.src)
+      if (!found) throw new Error('We could not read colors from this logo. Choose them below.')
+      update({ colors: expandBrandPalette(found, config.colors), brandColorsConfirmed: true })
+      setMessage('Colors updated in your draft. Review the preview, then publish to update the live landing page.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'We could not read colors from this logo.')
+    } finally { setExtractingColors(false) }
   }
 
   async function publish(action: 'publish' | 'unpublish') {
@@ -169,7 +193,7 @@ export default function CauseLandingPageEditor() {
     <PageHeader title="Your Landing Pages" description="Add your identity once, preview the result, then publish pages for families, businesses and your organization." />
 
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-surface-200 bg-white p-3">
-      <Badge variant={live ? 'success' : 'default'}>{live ? 'Live' : 'Draft'}</Badge>
+      <Badge variant={live ? 'success' : 'default'}>{record?.status === 'published_with_changes' ? 'Live · draft changes' : live ? 'Live' : 'Draft'}</Badge>
       <span className="text-sm text-surface-500">{saving ? 'Saving...' : dirty ? 'Waiting to save' : 'All changes saved'}</span>
       <div className="ml-auto flex gap-2">
         <Button variant="outline" onClick={() => void save()} disabled={saving}><Save className="h-4 w-4" />Save now</Button>
@@ -216,8 +240,16 @@ export default function CauseLandingPageEditor() {
           </div>
         </CardContent></Card>
 
-        <Card><CardHeader><CardTitle>Brand colors</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        <Card><CardHeader><CardTitle>Brand colors</CardTitle></CardHeader><CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={() => void pullLogoColors()} disabled={!config.assets.mark.src || extractingColors}>
+              {extractingColors ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}Use colors from my logo
+            </Button>
+            {!config.brandColorsConfirmed && config.assets.mark.src && <span className="text-sm text-surface-600">Review colors after changing your logo.</span>}
+          </div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           {(Object.keys(config.colors) as Array<keyof LandingConfig['colors']>).map((key) => <Field key={key} label={key.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase())}><div className="flex gap-2"><input aria-label={`${key} color picker`} type="color" value={config.colors[key]} onChange={(e) => update({ colors: { ...config.colors, [key]: e.target.value } })} className="h-9 w-12 rounded border border-surface-300" /><Input value={config.colors[key]} onChange={(e) => update({ colors: { ...config.colors, [key]: e.target.value } })} /></div></Field>)}
+          </div>
         </CardContent></Card>
       </div>
 
