@@ -13,7 +13,7 @@ async function context(id: string) {
   if (!operator.session.qaSession) return { error: NextResponse.json({ error: 'A QA session is required.' }, { status: 401 }) }
   if (!/^[1-9]\d*$/.test(id)) return { error: NextResponse.json({ error: 'A linked cause account is required.' }, { status: 400 }) }
   if (operator.shell === 'community') {
-    const userId = Number(operator.session.localProfileId)
+    const userId = operator.session.viewingAs?.targetUserId ?? Number(operator.session.localProfileId)
     const accounts = Number.isInteger(userId) && userId > 0 ? await fetchPortalCauseAccounts(userId) : null
     if (!accounts?.some(account => account.accountId === Number(id))) {
       return { error: NextResponse.json({ error: 'This cause is not linked to your account.' }, { status: 403 }) }
