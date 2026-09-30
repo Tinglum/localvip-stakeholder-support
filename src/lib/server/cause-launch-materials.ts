@@ -221,7 +221,10 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
 
   const renderUrl = process.env.CAUSE_VIDEO_RENDER_URL
   const renderToken = process.env.CAUSE_VIDEO_RENDER_TOKEN
-  const videoVersion = `${logoUrl}|${coverUrl}|${cause.referralCode || ''}`
+  const videoJoinUrl = cause.referralCode
+    ? `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/families?ref=${encodeURIComponent(cause.referralCode)}`
+    : ''
+  const videoVersion = `${logoUrl}|${coverUrl}|${videoJoinUrl}`
   let savedVideoUrl: string | null = null
   if (logoUrl && coverUrl) {
     try {
@@ -245,7 +248,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
           kind: /school|pta|booster/i.test(cause.category || '') ? 'school' : 'cause',
           locality: [cause.city, cause.state].filter(Boolean).join(', '),
           logoUrl, coverPhotoUrl: coverUrl,
-          joinUrl: cause.referralCode ? `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(cause.referralCode)}` : '',
+          joinUrl: videoJoinUrl,
         }),
         signal: AbortSignal.timeout(240000),
       })
