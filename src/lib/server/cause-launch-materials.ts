@@ -224,7 +224,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   const videoJoinUrl = cause.referralCode
     ? `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/families?ref=${encodeURIComponent(cause.referralCode)}`
     : ''
-  const videoVersion = `${logoUrl}|${coverUrl}|${videoJoinUrl}`
+  const videoVersion = `qr-v2|${logoUrl}|${coverUrl}|${videoJoinUrl}`
   let savedVideoUrl: string | null = null
   if (logoUrl && coverUrl) {
     try {
