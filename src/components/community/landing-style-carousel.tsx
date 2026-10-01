@@ -39,16 +39,23 @@ export function LandingStyleCarousel({ config, live, baseUrl, onSelect }: {
       <div ref={rail} aria-label="Landing page styles" className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3">
         {STYLES.map((style) => {
           const active = selected === style.id
+          const light = style.id === 'editorial' || style.id === 'v4' || style.id === 'classic'
+          const photoPosition = style.id === 'classic' || style.id === 'editorial' || style.id === 'v4'
+            ? 'inset-y-3 right-3 w-[45%] rounded-lg'
+            : style.id === 'flyer' ? 'inset-y-3 right-3 w-[42%] -rotate-3 rounded-sm' : 'inset-0'
           return (
             <button key={style.id} type="button" aria-pressed={active} onClick={() => onSelect(style.id)}
               className={`w-60 shrink-0 snap-start overflow-hidden rounded-2xl border-2 bg-white text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${active ? 'border-brand-600 ring-2 ring-brand-100' : 'border-surface-200 hover:border-brand-300'}`}>
-              <div className="relative h-36 overflow-hidden" style={{ backgroundColor: style.id === 'classic' || style.id === 'editorial' ? '#F7F7F2' : config.colors.navyDeep }}>
-                {config.assets.crowd.src && <div className={`absolute bg-cover bg-center ${style.id === 'classic' ? 'inset-y-3 right-3 w-[45%] rounded-lg' : style.id === 'editorial' ? 'inset-y-3 right-3 w-[43%] rounded-lg' : 'inset-0'}`} style={{ backgroundImage: `url(${config.assets.crowd.src})`, opacity: style.id === 'flyer' ? .55 : .85 }} />}
-                {!['classic', 'editorial'].includes(style.id) && <div className="absolute inset-0" style={{ background: `linear-gradient(90deg, ${config.colors.navyDeep} 2%, transparent 100%)` }} />}
-                <div className={`relative z-10 flex h-full flex-col justify-center p-4 ${style.id === 'classic' || style.id === 'editorial' ? 'max-w-[58%]' : 'max-w-[80%]'}`}>
+              <div className="relative h-36 overflow-hidden" style={{ backgroundColor: light ? style.id === 'v4' ? '#EEF2F8' : '#F7F7F2' : style.id === 'flyer' ? config.colors.navy : config.colors.navyDeep }}>
+                {config.assets.crowd.src && <div className={`absolute bg-cover bg-center ${photoPosition}`} style={{ backgroundImage: `url(${config.assets.crowd.src})`, opacity: style.id === 'stadium' ? .5 : .9 }} />}
+                {!light && <div className="absolute inset-0" style={{ background: style.id === 'flyer' ? `linear-gradient(90deg, ${config.colors.navyDeep} 0%, ${config.colors.navyDeep} 48%, transparent 85%)` : `linear-gradient(90deg, ${config.colors.navyDeep} 2%, transparent 100%)` }} />}
+                {style.id === 'cc3' && <div className="absolute bottom-4 right-4 z-10 h-12 w-16 rounded-lg bg-white p-2 shadow-lg"><div className="h-1 w-10 rounded bg-surface-300" /><div className="mt-2 h-2 w-12 rounded bg-surface-100" /><div className="mt-1 h-2 w-12 rounded bg-surface-100" /></div>}
+                {style.id === 'v4' && <div className="absolute inset-x-0 top-0 h-3" style={{ backgroundColor: config.colors.navyDeep }} />}
+                {style.id === 'flyer' && <div className="absolute inset-x-0 bottom-0 h-2" style={{ backgroundColor: config.colors.gold }} />}
+                <div className={`relative z-10 flex h-full flex-col justify-center p-4 ${light || style.id === 'flyer' ? 'max-w-[58%]' : 'max-w-[80%]'}`}>
                   {config.assets.mark.src && <img src={config.assets.mark.src} alt="" className="mb-2 h-6 w-12 rounded bg-white/90 object-contain p-0.5" />}
-                  <span className={`text-[8px] font-bold uppercase tracking-[0.12em] ${style.id === 'classic' || style.id === 'editorial' ? 'text-surface-600' : 'text-white/80'}`}>Your community</span>
-                  <span className={`mt-1 text-sm font-extrabold leading-tight ${style.id === 'classic' || style.id === 'editorial' ? 'text-surface-950' : 'text-white'} ${style.id === 'flyer' ? 'uppercase' : ''}`}>Support {config.schoolName || 'your school'}</span>
+                  <span className={`text-[8px] font-bold uppercase tracking-[0.12em] ${light ? 'text-surface-600' : 'text-white/80'}`}>Your community</span>
+                  <span className={`mt-1 text-sm font-extrabold leading-tight ${light ? 'text-surface-950' : 'text-white'} ${style.id === 'flyer' || style.id === 'stadium' ? 'uppercase' : ''}`}>Support {config.schoolName || 'your school'}</span>
                   <span className="mt-2 h-2.5 w-16 rounded-full" style={{ backgroundColor: config.colors.gold }} />
                 </div>
               </div>
