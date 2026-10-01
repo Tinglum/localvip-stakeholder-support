@@ -8,6 +8,7 @@ import type { Cause } from '@/lib/types/database'
  */
 export type ImageAsset = { src: string; alt: string }
 export type LandingColors = { navy: string; navyDeep: string; royal: string; silver: string; silverLight: string; gold: string }
+export type LandingDesign = 'stadium' | 'editorial' | 'flyer' | 'v4' | 'cc3' | 'classic'
 export type LandingConfig = {
   slug: string
   revision: string
@@ -18,6 +19,8 @@ export type LandingConfig = {
   causeAccountId: number
   locality: string
   routeBase: string
+  /** Visual style shared by every published audience page. */
+  design?: LandingDesign
   colors: LandingColors
   assets: { mark: ImageAsset; crowd: ImageAsset; team?: ImageAsset; community?: ImageAsset; people?: ImageAsset }
   scheduleCallUrl: string
@@ -64,6 +67,7 @@ export function defaultLandingConfig(cause: Cause, id: number): LandingConfig {
     causeAccountId: id,
     locality: cause.address || 'your community',
     routeBase: `/landing/${slug}`,
+    design: 'stadium',
     colors: DEFAULT_LANDING_PALETTE,
     assets: {
       mark: { src: cause.logo_url || '', alt: `${cause.name} logo` },
