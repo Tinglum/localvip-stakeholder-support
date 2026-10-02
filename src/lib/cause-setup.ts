@@ -38,8 +38,10 @@ export const CAUSE_ACCOUNT_STEPS: CauseSetupStep[] = [
  * they already uploaded and are never asked to redo it.
  *
  * Only `crowd` is required to finish setup and go live — registering is pitched
- * as "about a minute". All four are required to PUBLISH, so a page or a video
- * never ships as four game photos that sell a team instead of a community.
+ * as "about a minute". All four are required for a FIRST publication, so a new
+ * page or video never ships built on a single photo. Once a cause is published,
+ * missing photos only warn: see `landingPublishBlockers`, which keeps an
+ * already-live cause able to fix a typo, a name or its disclaimer.
  */
 export type CausePhotoSlot = 'crowd' | 'team' | 'people' | 'community'
 
@@ -80,7 +82,7 @@ export const CAUSE_PHOTO_PROMPTS: CausePhotoPrompt[] = [
 ]
 
 export const CAUSE_BRAND_STEPS: CauseSetupStep[] = [
-  { key: 'images', track: 'brand', label: 'Logo & photos', description: 'Your logo and four photos of your real community. One photo gets you live; all four are needed before you can publish.' },
+  { key: 'images', track: 'brand', label: 'Logo & photos', description: 'Your logo and four photos of your real community. One photo gets you live; all four are needed the first time you publish.' },
   { key: 'colors', track: 'brand', label: 'Brand colors', description: 'The colors your flyers and landing page use, pulled from your logo if you do not have set colors.' },
   { key: 'materials', track: 'brand', label: 'Flyers & materials', description: 'Print-ready flyers for families and local businesses, in your colors.' },
   { key: 'landing', track: 'brand', label: 'Landing page', description: 'Your own page that explains LocalVIP to your families and businesses.' },
@@ -133,9 +135,9 @@ export function isCauseSetupStepComplete(key: CauseSetupStepKey, s: CauseSetupSi
 }
 
 /**
- * The photo slots still empty. Publishing the landing page (and so the printed
- * flyers and the shared link) is blocked while this is non-empty; go-live is
- * not. Keep this the single source of truth for "which photos are missing".
+ * The photo slots still empty. Go-live is never blocked on these; a FIRST
+ * publication is (`landingPublishBlockers`), and after that they warn. Keep
+ * this the single source of truth for "which photos are missing".
  */
 export function missingCausePhotos(s: CauseSetupSignals): CausePhotoPrompt[] {
   return CAUSE_PHOTO_PROMPTS.filter((prompt) => !filled(s.photoUrls[prompt.slot]))

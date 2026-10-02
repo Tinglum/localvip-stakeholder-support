@@ -85,27 +85,45 @@ export function defaultLandingConfig(cause: Cause, id: number): LandingConfig {
 }
 
 /**
+ * Photo slots the page has not filled yet, as sentences. Always worth showing;
+ * only sometimes worth blocking on — see `landingPublishBlockers`.
+ */
+export function landingPhotoWarnings(config: LandingConfig) {
+  return CAUSE_PHOTO_PROMPTS
+    .filter((prompt) => !config.assets[prompt.slot]?.src)
+    .map((prompt) => `Upload the "${prompt.label}" photo.`)
+}
+
+/** True once a revision of this page has been made public. */
+export function hasEverBeenPublished(record: LandingRecord | null) {
+  return !!record?.published || record?.status === 'published' || record?.status === 'published_with_changes'
+}
+
+/**
  * Everything that must be filled in before a landing page may be published.
  *
- * This is the dashboard-side publish gate, shared by the landing-page editor
- * (which disables Publish) and cause setup (which shows what is still missing).
- * The backend has the final say — `/landing-page/publish` answers 409 with its
- * own `blockers` list, which the editor surfaces — but this list is what stops
- * a half-finished page from being sent in the first place.
+ * This is the dashboard-side publish gate, used by the landing-page editor to
+ * disable Publish. The backend has the final say — `/landing-page/publish`
+ * answers 409 with its own `blockers` list, which the editor surfaces — but
+ * this list is what stops a half-finished page from being sent in the first
+ * place.
  *
- * All four photos are required here, on purpose: a published page becomes a
- * printed flyer, a shared link and a rendered video, and a page built from one
- * photo sells a team rather than a community.
+ * The four photos are deliberately a FIRST-publication rule only. A new page is
+ * about to become a printed flyer, a shared link and a rendered video, and
+ * holding it back until it is properly illustrated costs nobody anything. But a
+ * cause that went live months ago on one photo must stay able to fix a typo in
+ * its mission, correct its name or update its disclaimer: blocking that would
+ * trap a wrong page in public and would punish exactly the person trying to put
+ * it right. For an already-published page the missing photos are a warning
+ * (`landingPhotoWarnings`), shown prominently and persistently, never a block.
  */
-export function landingPublishBlockers(config: LandingConfig) {
+export function landingPublishBlockers(config: LandingConfig, record: LandingRecord | null = null) {
   const items: string[] = []
   if (!config.schoolName.trim()) items.push('Add the school or community name.')
   if (!config.organizationName.trim()) items.push('Add the organization name.')
   if (!config.locality.trim()) items.push('Add the city or community.')
   if (!config.assets.mark.src) items.push('Upload a logo.')
-  for (const prompt of CAUSE_PHOTO_PROMPTS) {
-    if (!config.assets[prompt.slot]?.src) items.push(`Upload the "${prompt.label}" photo.`)
-  }
+  if (!hasEverBeenPublished(record)) items.push(...landingPhotoWarnings(config))
   return items
 }
 

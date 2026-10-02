@@ -19,6 +19,7 @@ import { CAUSE_PHOTO_PROMPTS } from '@/lib/cause-setup'
 import {
   defaultLandingConfig as defaultConfig,
   isLandingOutOfDate,
+  landingPhotoWarnings,
   landingPublishBlockers,
   qaCauseId,
   slugify,
@@ -179,7 +180,9 @@ export default function CauseLandingPageEditor() {
   if (!causeId) return <EmptyState icon={<Globe2 className="h-8 w-8" />} title="Finish linking this cause" description="This cause needs its LocalVIP account link before its landing page can be published." />
   if (!config) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Building your landing page workspace...</div>
 
-  const missing = landingPublishBlockers(config)
+  // Missing photos block the FIRST publication only; after that they warn.
+  const missing = landingPublishBlockers(config, record)
+  const photoWarnings = landingPhotoWarnings(config)
   const baseUrl = `${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/landing/${config.slug}`
   const live = record?.status === 'published' || record?.status === 'published_with_changes'
   const outOfDate = isLandingOutOfDate(record)
@@ -278,6 +281,11 @@ export default function CauseLandingPageEditor() {
 
         <Card><CardHeader><CardTitle>Ready to publish</CardTitle></CardHeader><CardContent className="space-y-3">
           {missing.length === 0 ? <div className="flex items-center gap-2 text-sm text-success-700"><CheckCircle2 className="h-4 w-4" />Everything required is ready.</div> : missing.map((item) => <div key={item} className="text-sm text-surface-600">• {item}</div>)}
+          {photoWarnings.length > 0 && missing.length === 0 ? <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-sm text-warning-800">
+            <p className="font-semibold">{photoWarnings.length} of your 4 photos are still missing</p>
+            {photoWarnings.map((item) => <p key={item} className="mt-0.5">• {item}</p>)}
+            <p className="mt-1">You can still publish your changes. Your pages and your cause video stay thinner until these are in.</p>
+          </div> : null}
         </CardContent></Card>
 
         <Card><CardHeader><CardTitle>Audience pages</CardTitle></CardHeader><CardContent className="space-y-2">

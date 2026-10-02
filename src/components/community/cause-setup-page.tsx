@@ -16,6 +16,7 @@ import { resolveCommunityCause } from '@/lib/community-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
 import {
   defaultLandingConfig,
+  hasEverBeenPublished,
   isLandingOutOfDate,
   isLandingPublished,
   qaCauseId,
@@ -149,6 +150,10 @@ export function CauseSetupPage() {
   // The launch-materials job writes new photos and the rendered video into the
   // DRAFT only; an already-live page keeps serving its published revision.
   const landingOutOfDate = isLandingOutOfDate(landing)
+  // Missing photos block the first publication only. A cause that is already
+  // published keeps the right to fix a typo or its disclaimer.
+  const everPublished = hasEverBeenPublished(landing)
+  const publishBlocked = missingPhotos.length > 0 && !everPublished
 
   // Active step: ?step= deep link, else the first unfinished step.
   const requested = searchParams.get('step')
@@ -297,13 +302,15 @@ export function CauseSetupPage() {
           <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-warning-600" />
           <span>
             <span className="block font-semibold">
-              {isCauseLive(signals)
-                ? `${name} is live, but cannot publish pages or flyers yet`
+              {publishBlocked && isCauseLive(signals)
+                ? `${name} is live, but cannot publish its pages yet`
                 : `${missingPhotos.length} of your 4 photos are still missing`}
             </span>
             <span className="mt-0.5 block">
-              Still needed: {missingPhotos.map((prompt) => prompt.label).join(', ')}. Publishing a landing page, a flyer
-              or a shareable link needs all four, so nothing goes out built on a single photo.
+              Still needed: {missingPhotos.map((prompt) => prompt.label).join(', ')}.{' '}
+              {publishBlocked
+                ? 'Publishing your landing page, flyers and shareable link needs all four, so nothing goes out built on a single photo.'
+                : 'Your pages are already published, so you can keep updating them. Adding these fills out your pages and your cause video.'}
             </span>
           </span>
         </button>
@@ -345,7 +352,7 @@ export function CauseSetupPage() {
               <GoLiveStep name={name} signals={signals} busy={busy} onOpenStep={openStep}
                 onSubmit={() => void run(() => putProfile({ status: 'pending_live_review' }), 'Submitted. LocalVIP will review your account.')} />
             )}
-            {activeKey === 'images' && <ImagesStep logoSrc={logoSrc} photoUrls={photoUrls} busy={busy} onUpload={(target, file) => void upload(target, file)} onContinue={() => nextAfter('images')} />}
+            {activeKey === 'images' && <ImagesStep logoSrc={logoSrc} photoUrls={photoUrls} publishBlocked={publishBlocked} busy={busy} onUpload={(target, file) => void upload(target, file)} onContinue={() => nextAfter('images')} />}
             {activeKey === 'colors' && (
               <ColorsStep key={`k-${landingConfig.brandColorsConfirmed ? 'y' : 'n'}`} busy={busy} name={name} logoSrc={logoSrc}
                 initial={brandFromPalette(landingConfig.colors)} confirmed={signals.colorsConfirmed}
@@ -361,8 +368,8 @@ export function CauseSetupPage() {
             {activeKey === 'landing' && (
               <LinkStep icon={<Globe2 className="h-5 w-5" />} done={signals.landingPublished}
                 doneText="Your landing page is live. Share it anywhere, and your flyers point to it."
-                todoText={missingPhotos.length > 0
-                  ? `Preview your page any time. Publishing needs all four photos first — still missing: ${missingPhotos.map((prompt) => prompt.label).join(', ')}.`
+                todoText={publishBlocked
+                  ? `Preview your page any time. Your first publish needs all four photos — still missing: ${missingPhotos.map((prompt) => prompt.label).join(', ')}.`
                   : 'Preview your landing page with your logo, photos and colors, then publish it.'}
                 actionHref="/community/landing-page" actionLabel={signals.landingPublished ? 'Edit landing page' : 'Open landing page editor'} />
             )}

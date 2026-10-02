@@ -185,9 +185,11 @@ export function GoLiveStep({ name, signals, busy, onSubmit, onOpenStep }: {
 
 /* ─── Brand track ─────────────────────────────────────────────── */
 
-export function ImagesStep({ logoSrc, photoUrls, busy, onUpload, onContinue }: {
+export function ImagesStep({ logoSrc, photoUrls, publishBlocked, busy, onUpload, onContinue }: {
   logoSrc: string
   photoUrls: Record<CausePhotoSlot, string>
+  /** True while missing photos are still stopping a first publication. */
+  publishBlocked: boolean
   busy: boolean
   onUpload: (target: 'logo' | CausePhotoSlot, file: File) => void
   onContinue: () => void
@@ -209,7 +211,8 @@ export function ImagesStep({ logoSrc, photoUrls, busy, onUpload, onContinue }: {
           <p className="font-semibold text-surface-900">Four photos, four different jobs</p>
           <p className="mt-1">
             Your pages and your 60-second cause video are built from these four. One photo of supporters is enough to
-            get live; all four are needed before you can publish a page, a flyer or a shareable link.
+            get live; all four are needed the first time you publish a page, a flyer or a shareable link. Once you are
+            published you can keep updating your pages whether or not every photo is in.
           </p>
           <p className="mt-2">Use real photos of your own community, and keep them different from each other.</p>
         </div>
@@ -225,7 +228,7 @@ export function ImagesStep({ logoSrc, photoUrls, busy, onUpload, onContinue }: {
       {missing.length > 0 ? (
         <div className={`rounded-2xl border px-4 py-3 text-sm ${goLiveReady ? 'border-warning-200 bg-warning-50 text-warning-800' : 'border-surface-200 bg-surface-50 text-surface-700'}`}>
           <p className="font-semibold">
-            {missing.length} of 4 photos still missing{goLiveReady ? ' — you can go live, but not publish yet' : ''}
+            {missing.length} of 4 photos still missing{goLiveReady && publishBlocked ? ' — you can go live, but not publish yet' : ''}
           </p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5">
             {missing.map((prompt) => <li key={prompt.slot}>{prompt.label}</li>)}
