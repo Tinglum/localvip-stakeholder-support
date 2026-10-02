@@ -1,3 +1,4 @@
+import { CAUSE_PHOTO_PROMPTS } from '@/lib/cause-setup'
 import type { Cause } from '@/lib/types/database'
 
 /**
@@ -23,6 +24,10 @@ export type LandingConfig = {
   design?: LandingDesign
   colors: LandingColors
   assets: { mark: ImageAsset; crowd: ImageAsset; team?: ImageAsset; community?: ImageAsset; people?: ImageAsset }
+  /** Written by the launch-materials renderer, not edited by hand. */
+  video?: { src: string; poster: string }
+  /** The asset fingerprint the current `video` was rendered from. */
+  videoSource?: string
   scheduleCallUrl: string
   disclaimer: string
   assetsArePlaceholder: boolean
@@ -77,6 +82,47 @@ export function defaultLandingConfig(cause: Cause, id: number): LandingConfig {
     disclaimer: '',
     assetsArePlaceholder: false,
   }
+}
+
+/**
+ * Everything that must be filled in before a landing page may be published.
+ *
+ * This is the dashboard-side publish gate, shared by the landing-page editor
+ * (which disables Publish) and cause setup (which shows what is still missing).
+ * The backend has the final say — `/landing-page/publish` answers 409 with its
+ * own `blockers` list, which the editor surfaces — but this list is what stops
+ * a half-finished page from being sent in the first place.
+ *
+ * All four photos are required here, on purpose: a published page becomes a
+ * printed flyer, a shared link and a rendered video, and a page built from one
+ * photo sells a team rather than a community.
+ */
+export function landingPublishBlockers(config: LandingConfig) {
+  const items: string[] = []
+  if (!config.schoolName.trim()) items.push('Add the school or community name.')
+  if (!config.organizationName.trim()) items.push('Add the organization name.')
+  if (!config.locality.trim()) items.push('Add the city or community.')
+  if (!config.assets.mark.src) items.push('Upload a logo.')
+  for (const prompt of CAUSE_PHOTO_PROMPTS) {
+    if (!config.assets[prompt.slot]?.src) items.push(`Upload the "${prompt.label}" photo.`)
+  }
+  return items
+}
+
+/**
+ * True when the page is live but the draft has moved on, so the public is still
+ * being served the older revision. This happens without anyone editing: the
+ * launch-materials job writes the rendered video and newly uploaded photos into
+ * the DRAFT, and only Publish copies the draft over the published revision.
+ *
+ * We do not republish automatically. Publish is a review gate (the backend
+ * refuses it while blockers remain, and the relationship disclaimer is part of
+ * what goes public), and draft/published are whole JSON blobs, so republishing
+ * to ship a video would also ship every other unreviewed draft edit. Instead
+ * this is surfaced loudly and the cause presses Publish once.
+ */
+export function isLandingOutOfDate(record: LandingRecord | null) {
+  return record?.status === 'published_with_changes'
 }
 
 /** True when the landing page is live (fully or with unpublished edits). */
