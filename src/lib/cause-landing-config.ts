@@ -1,3 +1,4 @@
+import { CAUSE_PHOTO_PROMPTS } from '@/lib/cause-setup'
 import type { Cause } from '@/lib/types/database'
 
 /**
@@ -23,6 +24,24 @@ export type LandingConfig = {
   design?: LandingDesign
   colors: LandingColors
   assets: { mark: ImageAsset; crowd: ImageAsset; team?: ImageAsset; community?: ImageAsset; people?: ImageAsset }
+  /**
+   * The 60-second giveback film. Written by the launch-materials renderer, not
+   * edited by hand. This is the field the webapp maps onto `Campaign.video`, so
+   * this is the cut the public cause page plays.
+   */
+  video?: { src: string; poster: string }
+  /** The asset fingerprint the current `video` was rendered from. */
+  videoSource?: string
+  /**
+   * The 15-second cut. It used to live in `video` (and still does on causes
+   * rendered before the 60-second film existed — the renderer migrates those
+   * forward on its next run). It is not on the public page any more: it is the
+   * short, forwardable asset an operator sends to a business owner, so it keeps
+   * its own field and its own fingerprint rather than competing for `video`.
+   */
+  shortVideo?: { src: string; poster: string }
+  /** The asset fingerprint the current `shortVideo` was rendered from. */
+  shortVideoSource?: string
   scheduleCallUrl: string
   disclaimer: string
   assetsArePlaceholder: boolean
@@ -77,6 +96,65 @@ export function defaultLandingConfig(cause: Cause, id: number): LandingConfig {
     disclaimer: '',
     assetsArePlaceholder: false,
   }
+}
+
+/**
+ * Photo slots the page has not filled yet, as sentences. Always worth showing;
+ * only sometimes worth blocking on — see `landingPublishBlockers`.
+ */
+export function landingPhotoWarnings(config: LandingConfig) {
+  return CAUSE_PHOTO_PROMPTS
+    .filter((prompt) => !config.assets[prompt.slot]?.src)
+    .map((prompt) => `Upload the "${prompt.label}" photo.`)
+}
+
+/** True once a revision of this page has been made public. */
+export function hasEverBeenPublished(record: LandingRecord | null) {
+  return !!record?.published || record?.status === 'published' || record?.status === 'published_with_changes'
+}
+
+/**
+ * Everything that must be filled in before a landing page may be published.
+ *
+ * This is the dashboard-side publish gate, used by the landing-page editor to
+ * disable Publish. The backend has the final say — `/landing-page/publish`
+ * answers 409 with its own `blockers` list, which the editor surfaces — but
+ * this list is what stops a half-finished page from being sent in the first
+ * place.
+ *
+ * The four photos are deliberately a FIRST-publication rule only. A new page is
+ * about to become a printed flyer, a shared link and a rendered video, and
+ * holding it back until it is properly illustrated costs nobody anything. But a
+ * cause that went live months ago on one photo must stay able to fix a typo in
+ * its mission, correct its name or update its disclaimer: blocking that would
+ * trap a wrong page in public and would punish exactly the person trying to put
+ * it right. For an already-published page the missing photos are a warning
+ * (`landingPhotoWarnings`), shown prominently and persistently, never a block.
+ */
+export function landingPublishBlockers(config: LandingConfig, record: LandingRecord | null = null) {
+  const items: string[] = []
+  if (!config.schoolName.trim()) items.push('Add the school or community name.')
+  if (!config.organizationName.trim()) items.push('Add the organization name.')
+  if (!config.locality.trim()) items.push('Add the city or community.')
+  if (!config.assets.mark.src) items.push('Upload a logo.')
+  if (!hasEverBeenPublished(record)) items.push(...landingPhotoWarnings(config))
+  return items
+}
+
+/**
+ * True when the page is live but the draft has moved on, so the public is still
+ * being served the older revision. This happens without anyone editing: the
+ * launch-materials job writes the rendered video and newly uploaded photos into
+ * the DRAFT, and only Publish copies the draft over the published revision.
+ *
+ * We do not republish automatically. Publish is a review gate (the backend
+ * refuses it while blockers remain, and the relationship disclaimer is part of
+ * what goes public), and draft/published are whole JSON blobs, so republishing
+ * to ship a video would also ship every other unreviewed draft edit. Instead
+ * this is surfaced loudly and the cause presses Publish once.
+ */
+export function isLandingOutOfDate(record: LandingRecord | null) {
+  return record?.status === 'published_with_changes'
 }
 
 /** True when the landing page is live (fully or with unpublished edits). */

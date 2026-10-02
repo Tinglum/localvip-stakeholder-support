@@ -258,14 +258,22 @@ export default function CauseDetailPage() {
     : setupTask?.status || 'idle'
   const qaLinkedCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
   const [launchStatus, setLaunchStatus] = React.useState<{
-    flyers: string; flyerCount: number; totalMaterialCount: number; landingPages: string; landingSlug: string | null; video: string; videoUrl: string | null
+    flyers: string; flyerCount: number; totalMaterialCount: number; landingPages: string; landingSlug: string | null
+    /** The 60-second film, the cut the public landing page plays. */
+    video: string; videoUrl: string | null
+    /** The 15-second cut, the one an operator forwards to a business owner. */
+    shortVideo: string; shortVideoUrl: string | null
   } | null>(null)
   const [launchBusy, setLaunchBusy] = React.useState(false)
   const [launchMessage, setLaunchMessage] = React.useState<string | null>(null)
+  // The 60-second film takes minutes and renders in the background, so the
+  // status is not final when the page loads. Poll while a cut is rendering and
+  // stop as soon as nothing is.
+  const videoRendering = launchStatus?.video === 'rendering' || launchStatus?.shortVideo === 'rendering'
   React.useEffect(() => {
     if (!qaLinkedCauseId) return
     let cancelled = false
-    fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials`)
+    const load = () => fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials`)
       .then(async response => {
         const body = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(body.error || 'Could not load launch materials.')
@@ -273,8 +281,10 @@ export default function CauseDetailPage() {
       })
       .then(status => { if (!cancelled) setLaunchStatus(status) })
       .catch(error => { if (!cancelled) setLaunchMessage(error instanceof Error ? error.message : 'Could not load launch materials.') })
-    return () => { cancelled = true }
-  }, [qaLinkedCauseId])
+    void load()
+    const timer = videoRendering ? setInterval(() => void load(), 20000) : null
+    return () => { cancelled = true; if (timer) clearInterval(timer) }
+  }, [qaLinkedCauseId, videoRendering])
   async function handleLaunchMaterials() {
     if (!qaLinkedCauseId) return
     setLaunchBusy(true)
@@ -1561,11 +1571,17 @@ export default function CauseDetailPage() {
                 <p className="text-sm text-surface-500">Create this cause&apos;s flyers and landing page draft from its account details and uploaded assets. Review the pages before publishing.</p>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <MiniStatus label="Audience flyers" value={launchStatus ? `${launchStatus.flyerCount}/3 ${launchStatus.flyers}` : 'Checking'} />
                   <MiniStatus label="Landing pages" value={launchStatus?.landingPages || 'Checking'} />
-                  <MiniStatus label="Video" value={launchStatus?.video || 'Checking'} />
+                  <MiniStatus label="60-second film (on the page)" value={launchStatus?.video || 'Checking'} />
+                  <MiniStatus label="15-second cut (to forward)" value={launchStatus?.shortVideo || 'Checking'} />
                 </div>
+                {videoRendering && (
+                  <p className="text-sm text-surface-600">
+                    A video is rendering on the render box. It takes a few minutes for the 60-second film; this page is checking every 20 seconds, and you can leave and come back.
+                  </p>
+                )}
                 {launchMessage && <p className="whitespace-pre-wrap text-sm text-surface-600">{launchMessage}</p>}
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={() => void handleLaunchMaterials()} disabled={launchBusy}>
@@ -1573,7 +1589,8 @@ export default function CauseDetailPage() {
                     Generate launch materials
                   </Button>
                   {launchStatus?.landingSlug && launchStatus.landingPages.startsWith('published') && <a href={`https://my.localvip.com/landing/${launchStatus.landingSlug}`} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open landing page</Button></a>}
-                  {launchStatus?.videoUrl && <a href={launchStatus.videoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open video</Button></a>}
+                  {launchStatus?.videoUrl && <a href={launchStatus.videoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open 60-second film</Button></a>}
+                  {launchStatus?.shortVideoUrl && <a href={launchStatus.shortVideoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open 15-second cut</Button></a>}
                 </div>
               </CardContent>
             </Card>

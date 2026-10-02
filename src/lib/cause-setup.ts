@@ -29,8 +29,60 @@ export const CAUSE_ACCOUNT_STEPS: CauseSetupStep[] = [
   { key: 'golive', track: 'account', label: 'Go live', description: 'Send your account to LocalVIP for a final check before supporters can choose you.' },
 ]
 
+/**
+ * The four photo slots, in the order they are collected. The names are the
+ * webapp's own `Campaign.assets` slot names, so one upload set feeds both the
+ * landing page and the 60-second cause video (which has four image beats).
+ *
+ * `crowd` is the original single "cover photo": existing causes keep whatever
+ * they already uploaded and are never asked to redo it.
+ *
+ * Only `crowd` is required to finish setup and go live — registering is pitched
+ * as "about a minute". All four are required for a FIRST publication, so a new
+ * page or video never ships built on a single photo. Once a cause is published,
+ * missing photos only warn: see `landingPublishBlockers`, which keeps an
+ * already-live cause able to fix a typo, a name or its disclaimer.
+ */
+export type CausePhotoSlot = 'crowd' | 'team' | 'people' | 'community'
+
+export interface CausePhotoPrompt {
+  slot: CausePhotoSlot
+  label: string
+  /** One line telling the user what this specific photo is for. */
+  description: string
+  /** Required to finish setup and go live (as opposed to only to publish). */
+  requiredForGoLive: boolean
+}
+
+export const CAUSE_PHOTO_PROMPTS: CausePhotoPrompt[] = [
+  {
+    slot: 'crowd',
+    label: 'Supporters together',
+    description: 'A crowd, a stand, a game. A local business owner should look at this and see their customers.',
+    requiredForGoLive: true,
+  },
+  {
+    slot: 'team',
+    label: 'Who you are funding',
+    description: 'The team, squad, class or group the money goes to.',
+    requiredForGoLive: false,
+  },
+  {
+    slot: 'people',
+    label: 'Families and volunteers',
+    description: 'People, not sport. If every photo is game day, your page sells a team instead of a community.',
+    requiredForGoLive: false,
+  },
+  {
+    slot: 'community',
+    label: 'Your wider community',
+    description: 'A main street, a fundraiser, a local business. Where your supporters actually live and shop.',
+    requiredForGoLive: false,
+  },
+]
+
 export const CAUSE_BRAND_STEPS: CauseSetupStep[] = [
-  { key: 'images', track: 'brand', label: 'Logo & cover photo', description: 'Your logo and one wide photo of your real community.' },
+  { key: 'images', track: 'brand', label: 'Logo & photos', description: 'Your logo and four photos of your real community. One photo gets you live; all four are needed the first time you publish.' },
   { key: 'colors', track: 'brand', label: 'Brand colors', description: 'The colors your flyers and landing page use, pulled from your logo if you do not have set colors.' },
   { key: 'materials', track: 'brand', label: 'Flyers & materials', description: 'Print-ready flyers for families and local businesses, in your colors.' },
   { key: 'landing', track: 'brand', label: 'Landing page', description: 'Your own page that explains LocalVIP to your families and businesses.' },
@@ -49,7 +101,8 @@ export interface CauseSetupSignals {
   crmStage: string
   crmStatus: string
   logoUrl: string
-  coverUrl: string
+  /** One entry per photo slot; `crowd` carries the old single cover photo. */
+  photoUrls: Record<CausePhotoSlot, string>
   colorsConfirmed: boolean
   qrCount: number
   generatedCount: number
@@ -71,12 +124,28 @@ export function isCauseSetupStepComplete(key: CauseSetupStepKey, s: CauseSetupSi
     case 'profile': return filled(s.name) && filled(s.category) && filled(s.headline)
     case 'contact': return filled(s.city) && (filled(s.phone) || filled(s.email))
     case 'golive': return isCauseLive(s)
-    case 'images': return filled(s.logoUrl) && filled(s.coverUrl)
+    // Go-live threshold: logo plus the one `crowd` photo. The other three are
+    // prompted for here but only gate publishing (see missingCausePhotos).
+    case 'images': return filled(s.logoUrl) && filled(s.photoUrls.crowd)
     case 'colors': return s.colorsConfirmed
     case 'materials': return s.generatedCount > 0
     case 'landing': return s.landingPublished
     default: return false
   }
+}
+
+/**
+ * The photo slots still empty. Go-live is never blocked on these; a FIRST
+ * publication is (`landingPublishBlockers`), and after that they warn. Keep
+ * this the single source of truth for "which photos are missing".
+ */
+export function missingCausePhotos(s: CauseSetupSignals): CausePhotoPrompt[] {
+  return CAUSE_PHOTO_PROMPTS.filter((prompt) => !filled(s.photoUrls[prompt.slot]))
+}
+
+/** True once all four photos are in, i.e. the page is publishable. */
+export function hasAllCausePhotos(s: CauseSetupSignals) {
+  return missingCausePhotos(s).length === 0
 }
 
 /** Everything the go-live review needs, i.e. every account step before "Go live". */
