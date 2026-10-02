@@ -244,11 +244,17 @@ export function CauseSetupPage() {
     setGenerating(true); setGenError(null); setGenProgress('Creating your audience flyers and cause video. You can continue setup in this tab while they generate...')
     try {
       const result = await fetch(`/api/crm/causes/${causeId}/launch-materials`, { method: 'POST' })
-        .then((r) => readJson(r, 'Materials could not be generated.')) as { steps?: { flyers?: { status?: string; detail?: string } } }
+        .then((r) => readJson(r, 'Materials could not be generated.')) as {
+          steps?: { flyers?: { status?: string; detail?: string }; video?: { status?: string; detail?: string } }
+        }
       await loadDetail()
       const flyers = result.steps?.flyers
-      setGenProgress(flyers?.detail || 'Your flyers are ready.')
+      const video = result.steps?.video
+      // The videos render on a separate box and the 60-second film takes a few
+      // minutes, so say where it got to rather than implying it is done.
+      setGenProgress([flyers?.detail || 'Your flyers are ready.', video?.detail].filter(Boolean).join(' '))
       if (flyers?.status === 'failed' || flyers?.status === 'partial') setGenError(flyers.detail || 'Some flyers could not be created.')
+      else if (video?.status === 'failed') setGenError(video.detail || 'Your video could not be created.')
     } catch (e) {
       setGenProgress(null); setGenError(e instanceof Error ? e.message : 'Materials could not be generated.')
     } finally { generatingRef.current = false; setGenerating(false) }
