@@ -1,6 +1,31 @@
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { renderCauseCampaignFlyer, type FlyerAudience } from './cause-campaign-flyers'
+import { CAUSE_PHOTO_PROMPTS, type CausePhotoSlot } from '@/lib/cause-setup'
+
+/**
+ * The landing draft's named image slots. These are the webapp's own
+ * `Campaign.assets` names, and the cause video has one image beat per photo
+ * slot, so a single upload set feeds the page and the render.
+ */
+type DraftAssets = Partial<Record<'mark' | CausePhotoSlot, { src?: string; alt?: string }>>
+const PHOTO_SLOTS = CAUSE_PHOTO_PROMPTS.map((prompt) => prompt.slot)
+
+/**
+ * A landing page that is already live keeps serving its PUBLISHED blob; writing
+ * the draft (new photos, a freshly rendered video) does not change what the
+ * public sees. The backend moves such a record to `published_with_changes`, and
+ * the cause has to press Publish for the live page to catch up.
+ *
+ * We deliberately do not republish for them. Publishing is a review gate (the
+ * backend refuses it while blockers remain, and a relationship disclaimer is
+ * part of what gets published), and draft and published are single JSON blobs:
+ * republishing to ship a video would also ship every other unreviewed draft
+ * edit — names, slug, colours, disclaimer. So this reports the staleness and
+ * the UI asks for one click instead.
+ */
+const STALE_LIVE_NOTE = 'Your live page still shows the previous version. Open your landing page and press Publish to update it.'
+const isLandingLive = (status?: string) => status === 'published' || status === 'published_with_changes'
 
 type LaunchCause = {
   id: number
@@ -49,9 +74,15 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
     .map(item => materialMetadata(item.metadata))
     .filter(metadata => metadata?.generator === 'cause-campaign-v1' && String(metadata.version || '').startsWith('olathe-west-layout-v3|'))
     .map(metadata => metadata?.audience)).size
-  const draft = landing?.draft as { slug?: string; video?: { src?: string }; assets?: { mark?: { src?: string }; crowd?: { src?: string } } } | null
+  const draft = landing?.draft as { slug?: string; video?: { src?: string }; assets?: DraftAssets } | null
+  const published = landing?.published as { video?: { src?: string } } | null
   const videoUrl = draft?.video?.src || null
+  const missingPhotos = PHOTO_SLOTS.filter((slot) => !draft?.assets?.[slot]?.src)
   return {
+    missingPhotos,
+    /** True when the live page is serving an older revision than the draft. */
+    landingNeedsRepublish: landing?.status === 'published_with_changes'
+      || (isLandingLive(landing?.status) && !!videoUrl && published?.video?.src !== videoUrl),
     flyers: audienceCount === 3 ? 'generated' : audienceCount > 0 ? 'partial' : 'waiting for assets',
     flyerCount: audienceCount,
     totalMaterialCount: flyerCount,
@@ -69,35 +100,39 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   const landingPath = `/api/dashboard/v1/Nonprofit/${cause.id}/landing-page`
   let campaignSlug = `${slugify(cause.name) || 'cause'}-${cause.id}`
   let logoUrl = assetUrl(cause.imageUrl, 'logos')
-  let coverUrl = assetUrl(cause.coverPhotoUrl, 'covers')
+  // `crowd` is the original single cover photo, so an existing cause's upload
+  // carries straight over into the four-slot model.
+  const photoUrls: Record<CausePhotoSlot, string> = { crowd: assetUrl(cause.coverPhotoUrl, 'covers'), team: '', people: '', community: '' }
   let flyerColors: { navy?: string; gold?: string } | undefined
   let flyerMission = cause.headline || ''
   let parentOrganization = ''
   try {
     const record = await request<LandingRecord>(landingPath)
     campaignSlug = String((record?.draft as { slug?: string } | null)?.slug || campaignSlug)
-    const draftAssets = (record?.draft as { assets?: { mark?: { src?: string }; crowd?: { src?: string } } } | null)?.assets
+    const draftAssets = (record?.draft as { assets?: DraftAssets } | null)?.assets
     flyerColors = (record?.draft as { colors?: { navy?: string; gold?: string } } | null)?.colors
     flyerMission = String((record?.draft as { mission?: string } | null)?.mission || cause.headline || '')
     parentOrganization = String((record?.draft as { parentOrganization?: string } | null)?.parentOrganization || '')
     logoUrl ||= draftAssets?.mark?.src || ''
-    coverUrl ||= draftAssets?.crowd?.src || ''
+    for (const slot of PHOTO_SLOTS) photoUrls[slot] ||= draftAssets?.[slot]?.src || ''
     if (record?.draft || record?.published) {
       const draft = record.draft as Record<string, unknown> | null
-      const assets = draft?.assets as Record<string, { src?: string; alt?: string }> | undefined
+      const assets = draft?.assets as DraftAssets | undefined
       const logo = logoUrl
-      const cover = coverUrl
-      if (draft && assets && ((logo && assets.mark?.src !== logo) || (cover && assets.crowd?.src !== cover) || !draft.scheduleCallUrl || (!draft.mission && cause.headline))) {
-        const config = { ...draft, mission: draft.mission || cause.headline || '', scheduleCallUrl: draft.scheduleCallUrl || DEFAULT_SETUP_CALL_URL, assets: {
-          ...assets,
-          mark: logo ? { src: logo, alt: `${cause.name} logo` } : assets.mark,
-          crowd: cover ? { src: cover, alt: `${cause.name} community` } : assets.crowd,
-        } }
+      const photosChanged = PHOTO_SLOTS.some((slot) => photoUrls[slot] && assets?.[slot]?.src !== photoUrls[slot])
+      if (draft && assets && ((logo && assets.mark?.src !== logo) || photosChanged || !draft.scheduleCallUrl || (!draft.mission && cause.headline))) {
+        const nextAssets: DraftAssets = { ...assets, mark: logo ? { src: logo, alt: `${cause.name} logo` } : assets.mark }
+        for (const prompt of CAUSE_PHOTO_PROMPTS) {
+          const src = photoUrls[prompt.slot]
+          if (src) nextAssets[prompt.slot] = { src, alt: assets[prompt.slot]?.alt || `${cause.name}: ${prompt.label.toLowerCase()}` }
+        }
+        const config = { ...draft, mission: draft.mission || cause.headline || '', scheduleCallUrl: draft.scheduleCallUrl || DEFAULT_SETUP_CALL_URL, assets: nextAssets }
         const slug = String(draft.slug || `${slugify(cause.name) || 'cause'}-${cause.id}`)
         await request(landingPath, {
           method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug, config }),
         })
-        steps.landingPages = { status: 'draft', detail: 'Newly uploaded assets added to the campaign draft.' }
+        steps.landingPages = { status: 'draft',
+          detail: `Newly uploaded assets added to the campaign draft.${isLandingLive(record.status) ? ` ${STALE_LIVE_NOTE}` : ''}` }
       } else {
         steps.landingPages = { status: record.status || 'draft', detail: 'Existing campaign preserved.' }
       }
@@ -110,7 +145,9 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
         colors: { navy: '#071A3D', navyDeep: '#031126', royal: '#153E78', silver: '#C8CBD1', silverLight: '#EEF0F3', gold: '#D0A323' },
         assets: {
           mark: { src: logoUrl, alt: `${cause.name} logo` },
-          crowd: { src: coverUrl, alt: `${cause.name} community` },
+          ...Object.fromEntries(CAUSE_PHOTO_PROMPTS.map((prompt) => [
+            prompt.slot, { src: photoUrls[prompt.slot], alt: `${cause.name}: ${prompt.label.toLowerCase()}` },
+          ])),
         },
         scheduleCallUrl: DEFAULT_SETUP_CALL_URL, disclaimer: '', assetsArePlaceholder: false,
       }
@@ -123,6 +160,10 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   } catch (error) {
     steps.landingPages = { status: 'failed', detail: error instanceof Error ? error.message : String(error) }
   }
+
+  /** The flyers use the one wide supporters photo, as they always have. */
+  const coverUrl = photoUrls.crowd
+  const missingPhotos = CAUSE_PHOTO_PROMPTS.filter((prompt) => !photoUrls[prompt.slot])
 
   try {
     if (!cause.referralCode) {
@@ -224,7 +265,9 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   const videoJoinUrl = cause.referralCode
     ? `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/families?ref=${encodeURIComponent(cause.referralCode)}`
     : ''
-  const videoVersion = `qr-v2|${logoUrl}|${coverUrl}|${videoJoinUrl}`
+  // Every photo is in the version key: when a cause adds the three newer
+  // photos later, the video re-renders with its remaining beats filled in.
+  const videoVersion = `qr-v3|${logoUrl}|${PHOTO_SLOTS.map((slot) => photoUrls[slot]).join('|')}|${videoJoinUrl}`
   let savedVideoUrl: string | null = null
   if (logoUrl && coverUrl) {
     try {
@@ -235,9 +278,12 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
     } catch { /* The render path reports landing-page failures below. */ }
   }
   if (!logoUrl || !coverUrl) {
-    steps.video = { status: 'waiting', detail: 'Upload the cause logo and cover photo to render the video.' }
+    steps.video = { status: 'waiting', detail: 'Upload the cause logo and the supporters photo to render the video.' }
   } else if (savedVideoUrl) {
-    steps.video = { status: 'generated', detail: savedVideoUrl }
+    steps.video = { status: 'generated',
+      detail: missingPhotos.length
+        ? `${savedVideoUrl} Add the ${missingPhotos.map((prompt) => prompt.label.toLowerCase()).join(', ')} photo${missingPhotos.length > 1 ? 's' : ''} and the video re-renders with those beats filled in.`
+        : savedVideoUrl }
   } else if (!renderUrl || !renderToken) {
     steps.video = { status: 'not_configured', detail: 'Set CAUSE_VIDEO_RENDER_URL and CAUSE_VIDEO_RENDER_TOKEN to connect the renderer.' }
   } else {
@@ -248,6 +294,9 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
           kind: /school|pta|booster/i.test(cause.category || '') ? 'school' : 'cause',
           locality: [cause.city, cause.state].filter(Boolean).join(', '),
           logoUrl, coverPhotoUrl: coverUrl,
+          // Named slots for the renderer's four image beats. `coverPhotoUrl`
+          // stays for compatibility; `photos.crowd` is the same image.
+          photos: Object.fromEntries(PHOTO_SLOTS.filter((slot) => photoUrls[slot]).map((slot) => [slot, photoUrls[slot]])),
           joinUrl: videoJoinUrl,
         }),
         signal: AbortSignal.timeout(240000),
@@ -261,7 +310,11 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
         method: 'PUT', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ slug: draft.slug, config: { ...draft, video: { src: rendered.src, poster: rendered.poster }, videoSource: videoVersion } }),
       })
-      steps.video = { status: 'generated', detail: rendered.src }
+      // The render landed in the DRAFT. An already-live page keeps serving its
+      // published revision until the cause publishes again, so say so instead
+      // of reporting a video the public cannot see.
+      steps.video = { status: 'generated',
+        detail: isLandingLive(record?.status) ? `${rendered.src} ${STALE_LIVE_NOTE}` : rendered.src }
     } catch (error) {
       steps.video = { status: 'failed', detail: error instanceof Error ? error.message : String(error) }
     }
