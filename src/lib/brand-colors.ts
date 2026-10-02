@@ -35,6 +35,21 @@ function saturation([r, g, b]: Rgb) {
   return max === 0 ? 0 : (max - min) / max
 }
 
+function hue([r, g, b]: Rgb) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  if (max === min) return null
+  const delta = max - min
+  const value = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4
+  return (value * 60 + 360) % 360
+}
+
+function hueDistance(a: Rgb, b: Rgb) {
+  const first = hue(a), second = hue(b)
+  if (first === null || second === null) return 180
+  const difference = Math.abs(first - second)
+  return Math.min(difference, 360 - difference)
+}
+
 /** The three chosen colours → the six-slot palette the landing page and materials read. */
 export function expandBrandPalette(brand: BrandTriple, current?: LandingColors): LandingColors {
   return {
@@ -66,7 +81,7 @@ export async function extractBrandColorsFromImage(src: string): Promise<BrandTri
     img.src = src
   })
 
-  const size = 72
+  const size = 144
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
@@ -78,6 +93,11 @@ export async function extractBrandColorsFromImage(src: string): Promise<BrandTri
   ctx.drawImage(image, 0, 0, w, h)
   const { data } = ctx.getImageData(0, 0, w, h)
 
+  return pickBrandColors(data)
+}
+
+/** Keep small, vivid logo details as possible accents even when text dominates. */
+export function pickBrandColors(data: Uint8ClampedArray): BrandTriple | null {
   const buckets = new Map<string, { sum: Rgb; count: number }>()
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 160) continue
@@ -106,16 +126,31 @@ export async function extractBrandColorsFromImage(src: string): Promise<BrandTri
   }
 
   const primary = picked[0]
-  const others = picked.slice(1)
-  // Accent: the most saturated remaining colour reads best on buttons/highlights.
-  // A two-colour logo uses its second colour for both.
-  const accent = [...others].sort((a, b) => saturation(b) - saturation(a))[0]
-  const secondary = others.find((c) => c !== accent) ?? accent
+  const vivid = ranked.find(({ rgb, count }) => count >= Math.max(2, ranked[0].count * 0.01)
+    && saturation(rgb) > 0.5 && Math.max(...rgb) > 110 && distance(rgb, primary) > 70)?.rgb
+  const secondary = saturation(primary) < 0.2 ? (vivid || picked[1] || null) : (picked[1] || null)
+  // Tiny symbols often span several adjacent buckets because of anti-aliasing.
+  // Combine vivid pixels by hue before deciding whether an accent exists.
+  const accentGroups = new Map<number, { sum: Rgb; count: number }>()
+  for (const { rgb, count } of ranked) {
+    if (saturation(rgb) < 0.35 || Math.max(...rgb) < 120 || distance(rgb, primary) < 70
+      || (secondary && (distance(rgb, secondary) < 70 || hueDistance(rgb, secondary) < 35))) continue
+    const angle = hue(rgb)
+    if (angle === null) continue
+    const key = Math.round(angle / 30) % 12
+    const group = accentGroups.get(key) || { sum: [0, 0, 0] as Rgb, count: 0 }
+    group.sum = [group.sum[0] + rgb[0] * count, group.sum[1] + rgb[1] * count, group.sum[2] + rgb[2] * count]
+    group.count += count
+    accentGroups.set(key, group)
+  }
+  const accentGroup = [...accentGroups.values()].filter((group) => group.count >= 3).sort((a, b) => b.count - a.count)[0]
+  const accent = accentGroup ? accentGroup.sum.map((value) => value / accentGroup.count) as Rgb : null
 
   const primaryHex = toHex(primary)
+  const secondaryHex = secondary ? toHex(secondary) : mix(primaryHex, [255, 255, 255], 0.35)
   return {
     primary: primaryHex,
-    secondary: secondary ? toHex(secondary) : mix(primaryHex, [255, 255, 255], 0.35),
-    accent: accent ? toHex(accent) : '#F59E0B',
+    secondary: secondaryHex,
+    accent: accent ? toHex(accent) : mix(secondaryHex, [0, 0, 0], 0.45),
   }
 }
