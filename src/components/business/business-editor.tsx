@@ -17,6 +17,7 @@
  */
 
 import * as React from 'react'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -1088,6 +1089,7 @@ export function BrandingFields({ editor, showValidation = false }: { editor: Bus
           aria-label="Upload business logo"
           onChange={(event) => editor.setLogoFile(event.target.files?.[0] || null)}
         />
+        <LogoImageTools file={editor.logoFile} onChange={editor.setLogoFile} />
         {showValidation && logoMissing ? <RequiredFieldHint /> : null}
         <div
           className={`flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-surface-50 ${

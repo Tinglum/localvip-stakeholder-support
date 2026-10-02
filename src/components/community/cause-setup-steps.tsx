@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import Link from 'next/link'
 import {
   CheckCircle2, Clock3, ExternalLink, FileText, ImageIcon, Loader2,
@@ -185,21 +186,23 @@ export function GoLiveStep({ name, signals, busy, onSubmit, onOpenStep }: {
 
 export function ImagesStep({ logoSrc, coverSrc, busy, onUpload, onContinue }: {
   logoSrc: string; coverSrc: string; busy: boolean
-  onUpload: (kind: 'logo' | 'cover_photo', file: File) => void
+  onUpload: (kind: 'logo' | 'cover_photo', file: File) => Promise<boolean>
   onContinue: () => void
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const [pendingLogo, setPendingLogo] = React.useState<File | null>(null)
   const kindRef = React.useRef<'logo' | 'cover_photo'>('logo')
   const pick = (kind: 'logo' | 'cover_photo') => { kindRef.current = kind; inputRef.current?.click() }
 
   return (
     <div className="space-y-5">
       <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
-        onChange={(e) => { const file = e.target.files?.[0]; if (file) onUpload(kindRef.current, file); e.target.value = '' }} />
+        onChange={(e) => { const file = e.target.files?.[0]; if (file) { if (kindRef.current === 'logo') setPendingLogo(file); else void onUpload(kindRef.current, file) } e.target.value = '' }} />
       <div className="grid gap-4 md:grid-cols-[220px_1fr]">
         <ImageSlot label="Logo" hint="Transparent PNG or SVG works best." src={logoSrc} fit="contain" busy={busy} onPick={() => pick('logo')} />
         <ImageSlot label="Cover photo" hint="A wide photo of your real students, families or volunteers." src={coverSrc} fit="cover" busy={busy} onPick={() => pick('cover_photo')} />
       </div>
+      {pendingLogo && <div className="space-y-2"><LogoImageTools file={pendingLogo} onChange={setPendingLogo} /><div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => void onUpload('logo', pendingLogo).then((saved) => { if (saved) setPendingLogo(null) })}>Upload this logo</Button><Button variant="outline" size="sm" onClick={() => setPendingLogo(null)}>Cancel</Button></div></div>}
       <StepFooter busy={busy} disabled={!logoSrc || !coverSrc} saveLabel="Continue" onSave={onContinue} />
     </div>
   )
