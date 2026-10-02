@@ -86,6 +86,8 @@ export function CauseSetupPage() {
   const [flyerCount, setFlyerCount] = React.useState(0)
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
+  const [generating, setGenerating] = React.useState(false)
+  const generatingRef = React.useRef(false)
   const [message, setMessage] = React.useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [genProgress, setGenProgress] = React.useState<string | null>(null)
   const [genError, setGenError] = React.useState<string | null>(null)
@@ -182,8 +184,10 @@ export function CauseSetupPage() {
       await loadDetail()
       setMessage({ tone: 'ok', text: ok })
       if (then) nextAfter(then)
+      return true
     } catch (e) {
       setMessage({ tone: 'error', text: e instanceof Error ? e.message : 'That could not be saved. Try again.' })
+      return false
     } finally { setBusy(false) }
   }
 
@@ -197,12 +201,6 @@ export function CauseSetupPage() {
     await fetch(`/api/crm/causes/${causeId}/landing-page`, {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: config.slug, config }),
     }).then((r) => readJson(r, 'Your brand settings could not be saved.'))
-  }
-
-  const refreshLaunchMaterials = async () => {
-    if (!causeId) return
-    await fetch(`/api/crm/causes/${causeId}/launch-materials`, { method: 'POST' })
-      .then((r) => readJson(r, 'Your updated flyers could not be generated.'))
   }
 
   /**
@@ -241,7 +239,9 @@ export function CauseSetupPage() {
   }
 
   const generate = async () => {
-    setBusy(true); setGenError(null); setGenProgress('Creating your audience flyers and landing page...')
+    if (generatingRef.current) return
+    generatingRef.current = true
+    setGenerating(true); setGenError(null); setGenProgress('Creating your audience flyers and cause video. You can continue setup in this tab while they generate...')
     try {
       const result = await fetch(`/api/crm/causes/${causeId}/launch-materials`, { method: 'POST' })
         .then((r) => readJson(r, 'Materials could not be generated.')) as { steps?: { flyers?: { status?: string; detail?: string } } }
@@ -251,7 +251,7 @@ export function CauseSetupPage() {
       if (flyers?.status === 'failed' || flyers?.status === 'partial') setGenError(flyers.detail || 'Some flyers could not be created.')
     } catch (e) {
       setGenProgress(null); setGenError(e instanceof Error ? e.message : 'Materials could not be generated.')
-    } finally { setBusy(false) }
+    } finally { generatingRef.current = false; setGenerating(false) }
   }
 
   /* ── Render ── */
@@ -337,11 +337,13 @@ export function CauseSetupPage() {
             {activeKey === 'profile' && (
               <ProfileStep key={`p-${text(detail, 'updatedDate')}`} busy={busy}
                 initial={{ name, category: signals.category, headline: signals.headline, description: text(detail, 'description'), parentOrganization: landingConfig.parentOrganization || '' }}
-                onSave={(patch) => void run(async () => {
-                  await putProfile(patch)
-                  await saveLanding({ parentOrganization: patch.parentOrganization, mission: patch.headline })
-                  await refreshLaunchMaterials()
-                }, 'Profile saved.', 'profile')} />
+                onSave={(patch) => void (async () => {
+                  const saved = await run(async () => {
+                    await putProfile(patch)
+                    await saveLanding({ parentOrganization: patch.parentOrganization, mission: patch.headline })
+                  }, 'Profile saved.', 'profile')
+                  if (saved && flyerCount > 0) void generate()
+                })()} />
             )}
             {activeKey === 'contact' && (
               <ContactStep key={`c-${text(detail, 'updatedDate')}`} busy={busy} email={signals.email}
@@ -357,14 +359,14 @@ export function CauseSetupPage() {
               <ColorsStep key={`k-${landingConfig.brandColorsConfirmed ? 'y' : 'n'}`} busy={busy} name={name} logoSrc={logoSrc}
                 initial={brandFromPalette(landingConfig.colors)} confirmed={signals.colorsConfirmed}
                 onExtract={() => extractBrandColorsFromImage(logoSrc)}
-                onSave={(colors: BrandTriple) => void run(
-                  async () => {
-                    await saveLanding({ colors: expandBrandPalette(colors, landingConfig.colors), brandColorsConfirmed: true })
-                    await refreshLaunchMaterials()
-                  },
-                  'Brand colors saved. Your flyers and landing page will use them.', 'colors')} />
+                onSave={(colors: BrandTriple) => void (async () => {
+                  const saved = await run(
+                    () => saveLanding({ colors: expandBrandPalette(colors, landingConfig.colors), brandColorsConfirmed: true }),
+                    'Brand colors saved. Your materials are generating on the next step.', 'colors')
+                  if (saved) void generate()
+                })()} />
             )}
-            {activeKey === 'materials' && <MaterialsStep count={signals.generatedCount} busy={busy} progress={genProgress} error={genError} onGenerate={() => void generate()} />}
+            {activeKey === 'materials' && <MaterialsStep count={signals.generatedCount} busy={busy || generating} progress={genProgress} error={genError} onGenerate={() => void generate()} />}
             {activeKey === 'landing' && (
               <LinkStep icon={<Globe2 className="h-5 w-5" />} done={signals.landingPublished}
                 doneText="Your landing page is live. Share it anywhere, and your flyers point to it."
