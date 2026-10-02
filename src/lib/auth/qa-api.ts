@@ -198,6 +198,32 @@ export async function fetchQaApi(path: string, init?: RequestInit) {
   }
 }
 
+/**
+ * A QA requester that outlives the request it was created in.
+ *
+ * `fetchQaApi` reads `cookies()`, which only works while a request's async
+ * context is on the stack. Work that deliberately continues after the response
+ * has been sent — the cause video render takes minutes — cannot rely on that.
+ * So resolve the bearer token NOW, while the request context is live, and hand
+ * back a plain fetch bound to it.
+ *
+ * The trade-off is no 401-refresh-and-retry: the captured token is whatever was
+ * valid at detach time, and a job running longer than the token's lifetime will
+ * get a 401 it cannot recover from. That is reported as a render failure and the
+ * next operator action retries with a fresh token, which is honest; silently
+ * refreshing from a cookie jar that no longer exists is not possible.
+ */
+export async function createDetachedQaRequester() {
+  const session = getQaSessionFromCookieStore(cookies(), { allowExpired: true })
+  const accessToken = (await getQaAccessToken()) || session?.accessToken || null
+  if (!accessToken) throw new Error('No QA access token available.')
+  return async (path: string, init?: RequestInit) => {
+    const headers = new Headers(init?.headers || {})
+    headers.set('authorization', `Bearer ${accessToken}`)
+    return fetch(buildQaApiUrl(path), { ...init, headers, cache: 'no-store' })
+  }
+}
+
 export async function fetchQaPublicApi(path: string, init?: RequestInit) {
   const url = buildQaApiUrl(path)
 

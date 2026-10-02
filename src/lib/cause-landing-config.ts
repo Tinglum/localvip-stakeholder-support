@@ -24,10 +24,24 @@ export type LandingConfig = {
   design?: LandingDesign
   colors: LandingColors
   assets: { mark: ImageAsset; crowd: ImageAsset; team?: ImageAsset; community?: ImageAsset; people?: ImageAsset }
-  /** Written by the launch-materials renderer, not edited by hand. */
+  /**
+   * The 60-second giveback film. Written by the launch-materials renderer, not
+   * edited by hand. This is the field the webapp maps onto `Campaign.video`, so
+   * this is the cut the public cause page plays.
+   */
   video?: { src: string; poster: string }
   /** The asset fingerprint the current `video` was rendered from. */
   videoSource?: string
+  /**
+   * The 15-second cut. It used to live in `video` (and still does on causes
+   * rendered before the 60-second film existed — the renderer migrates those
+   * forward on its next run). It is not on the public page any more: it is the
+   * short, forwardable asset an operator sends to a business owner, so it keeps
+   * its own field and its own fingerprint rather than competing for `video`.
+   */
+  shortVideo?: { src: string; poster: string }
+  /** The asset fingerprint the current `shortVideo` was rendered from. */
+  shortVideoSource?: string
   scheduleCallUrl: string
   disclaimer: string
   assetsArePlaceholder: boolean
