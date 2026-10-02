@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { CheckCircle2, ExternalLink, Globe2, ImageIcon, Loader2, Save, Send, Upload, Wand2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ExternalLink, Globe2, ImageIcon, Loader2, Save, Send, Upload, Wand2 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,24 +15,17 @@ import { useAuth } from '@/lib/auth/context'
 import { useCauses } from '@/lib/supabase/hooks'
 import { resolveCommunityCause } from '@/lib/community-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
+import { CAUSE_PHOTO_PROMPTS } from '@/lib/cause-setup'
 import {
   defaultLandingConfig as defaultConfig,
+  isLandingOutOfDate,
+  landingPublishBlockers,
   qaCauseId,
   slugify,
   type ImageAsset,
   type LandingConfig,
   type LandingRecord,
 } from '@/lib/cause-landing-config'
-
-function blockers(config: LandingConfig) {
-  const items: string[] = []
-  if (!config.schoolName.trim()) items.push('Add the school or community name.')
-  if (!config.organizationName.trim()) items.push('Add the organization name.')
-  if (!config.locality.trim()) items.push('Add the city or community.')
-  if (!config.assets.mark.src) items.push('Upload a logo.')
-  if (!config.assets.crowd.src) items.push('Upload a cover photo.')
-  return items
-}
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return <label className="block space-y-1.5"><span className="text-sm font-medium text-surface-800">{label}</span>{children}{hint && <span className="block text-xs text-surface-500">{hint}</span>}</label>
@@ -186,9 +179,10 @@ export default function CauseLandingPageEditor() {
   if (!causeId) return <EmptyState icon={<Globe2 className="h-8 w-8" />} title="Finish linking this cause" description="This cause needs its LocalVIP account link before its landing page can be published." />
   if (!config) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Building your landing page workspace...</div>
 
-  const missing = blockers(config)
+  const missing = landingPublishBlockers(config)
   const baseUrl = `${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/landing/${config.slug}`
   const live = record?.status === 'published' || record?.status === 'published_with_changes'
+  const outOfDate = isLandingOutOfDate(record)
 
   return <div className="space-y-6 pb-20">
     <PageHeader title="Your Landing Pages" description="Add your identity once, preview the result, then publish pages for families, businesses and your organization." />
@@ -202,6 +196,20 @@ export default function CauseLandingPageEditor() {
         <Button onClick={() => void publish('publish')} disabled={publishing || missing.length > 0}>{publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Publish</Button>
       </div>
     </div>
+
+    {outOfDate && <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-warning-300 bg-warning-50 px-4 py-4 text-sm text-warning-800">
+      <AlertTriangle className="h-5 w-5 shrink-0 text-warning-600" />
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold">Your live page is out of date</span>
+        <span className="block">
+          Newer photos{config.video?.src ? ' and your cause video' : ''} are saved in your draft, but visitors still see
+          the version you published last. Press Republish to update it.
+        </span>
+      </span>
+      <Button className="ml-auto" onClick={() => void publish('publish')} disabled={publishing || missing.length > 0}>
+        {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Republish
+      </Button>
+    </div>}
 
     {message && <div role="status" className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">{message}</div>}
 
@@ -223,22 +231,23 @@ export default function CauseLandingPageEditor() {
 
         <Card><CardHeader><CardTitle>Logo and photography</CardTitle></CardHeader><CardContent className="space-y-5">
           <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); e.target.value = '' }} />
-          {([['mark', 'Logo', 'logo'], ['crowd', 'Cover photo', 'cover_photo']] as const).map(([asset, label, mediaType]) => <div key={asset} className="grid gap-3 rounded-xl border border-surface-200 p-4 sm:grid-cols-[120px_1fr_auto] sm:items-center">
-            <div className="flex h-20 items-center justify-center overflow-hidden rounded-lg bg-surface-100">{config.assets[asset].src ? <img src={config.assets[asset].src} alt="" className="h-full w-full object-contain" /> : <ImageIcon className="h-6 w-6 text-surface-400" />}</div>
-            <Field label={`${label} description`} hint="This helps people using screen readers."><Input value={config.assets[asset].alt} onChange={(e) => updateAsset(asset, { alt: e.target.value })} /></Field>
-            <Button variant="outline" onClick={() => { uploadKind.current = mediaType; uploadRef.current?.click() }}><Upload className="h-4 w-4" />Upload</Button>
-          </div>)}
-          <p className="text-sm text-surface-500">Use a transparent logo and a wide, high resolution cover photo featuring your real community.</p>
+          <div className="grid gap-3 rounded-xl border border-surface-200 p-4 sm:grid-cols-[120px_1fr_auto] sm:items-center">
+            <div className="flex h-20 items-center justify-center overflow-hidden rounded-lg bg-surface-100">{config.assets.mark.src ? <img src={config.assets.mark.src} alt="" className="h-full w-full object-contain" /> : <ImageIcon className="h-6 w-6 text-surface-400" />}</div>
+            <Field label="Logo description" hint="This helps people using screen readers."><Input value={config.assets.mark.alt} onChange={(e) => updateAsset('mark', { alt: e.target.value })} /></Field>
+            <Button variant="outline" onClick={() => { uploadKind.current = 'logo'; uploadRef.current?.click() }}><Upload className="h-4 w-4" />{config.assets.mark.src ? 'Replace' : 'Upload'}</Button>
+          </div>
+          <p className="text-sm text-surface-500">Use a transparent logo, and high resolution photos of your real community.</p>
           <div className="border-t border-surface-200 pt-5">
-            <h3 className="text-sm font-semibold text-surface-900">Story photos</h3>
-            <p className="mt-1 text-sm text-surface-500">Optional photos help each audience page tell a richer story.</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {([['team', 'Who you support'], ['community', 'Your community'], ['people', 'Families and volunteers']] as const).map(([asset, label]) => <div key={asset} className="overflow-hidden rounded-xl border border-surface-200 bg-surface-50">
-                <div className="flex h-28 items-center justify-center overflow-hidden bg-surface-100">{config.assets[asset]?.src ? <img src={config.assets[asset]?.src} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-surface-400" />}</div>
+            <h3 className="text-sm font-semibold text-surface-900">Your four photos</h3>
+            <p className="mt-1 text-sm text-surface-500">All four appear on your pages and in your cause video, and all four are needed before you can publish.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {CAUSE_PHOTO_PROMPTS.map(({ slot, label, description }) => <div key={slot} className="overflow-hidden rounded-xl border border-surface-200 bg-surface-50">
+                <div className="flex h-28 items-center justify-center overflow-hidden bg-surface-100">{config.assets[slot]?.src ? <img src={config.assets[slot]?.src} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-surface-400" />}</div>
                 <div className="space-y-2 p-3">
                   <p className="text-sm font-medium text-surface-800">{label}</p>
-                  <Input aria-label={`${label} image description`} value={config.assets[asset]?.alt || ''} onChange={(e) => updateAsset(asset, { alt: e.target.value })} placeholder="Image description" />
-                  <Button className="w-full" variant="outline" onClick={() => { uploadKind.current = asset; uploadRef.current?.click() }}><Upload className="h-4 w-4" />Upload</Button>
+                  <p className="text-xs leading-5 text-surface-500">{description}</p>
+                  <Input aria-label={`${label} image description`} value={config.assets[slot]?.alt || ''} onChange={(e) => updateAsset(slot, { alt: e.target.value })} placeholder="Image description" />
+                  <Button className="w-full" variant="outline" onClick={() => { uploadKind.current = slot === 'crowd' ? 'cover_photo' : slot; uploadRef.current?.click() }}><Upload className="h-4 w-4" />{config.assets[slot]?.src ? 'Replace' : 'Upload'}</Button>
                 </div>
               </div>)}
             </div>

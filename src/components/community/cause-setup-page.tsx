@@ -1,9 +1,10 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Building2, CheckCircle2, Globe2, ImageIcon, MapPin, Palette,
+  AlertTriangle, Building2, CheckCircle2, Globe2, ImageIcon, MapPin, Palette,
   FileText, Rocket, Sparkles,
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
@@ -15,6 +16,7 @@ import { resolveCommunityCause } from '@/lib/community-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
 import {
   defaultLandingConfig,
+  isLandingOutOfDate,
   isLandingPublished,
   qaCauseId,
   type LandingConfig,
@@ -29,7 +31,11 @@ import {
 import {
   CAUSE_ACCOUNT_STEPS,
   CAUSE_BRAND_STEPS,
+  CAUSE_PHOTO_PROMPTS,
   getCauseSetupProgress,
+  isCauseLive,
+  missingCausePhotos,
+  type CausePhotoSlot,
   type CauseSetupSignals,
   type CauseSetupStep,
   type CauseSetupStepKey,
@@ -108,10 +114,17 @@ export function CauseSetupPage() {
     ? `/api/qa/nonprofits/${causeId}/logo?v=${encodeURIComponent(text(detail, 'imageUrl') || text(detail, 'logoUrl'))}`
     : ''
   // The account stores a bare file name; the backend serves it from /uploads/covers.
-  const rawCover = landingConfig?.assets.crowd.src || text(detail, 'coverPhotoUrl') || cause?.cover_photo_url || ''
-  const coverSrc = !rawCover || /^(https?:)?\/\//i.test(rawCover) || rawCover.startsWith('/')
-    ? rawCover
-    : `${(process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').replace(/\/+$/, '')}/uploads/covers/${encodeURIComponent(rawCover)}`
+  const photoSrc = React.useCallback((raw: string) => (
+    !raw || /^(https?:)?\/\//i.test(raw) || raw.startsWith('/')
+      ? raw
+      : `${(process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').replace(/\/+$/, '')}/uploads/covers/${encodeURIComponent(raw)}`
+  ), [])
+  // `crowd` falls back to the account's old single cover photo, so a cause that
+  // uploaded one before the four slots existed keeps it and is not asked again.
+  const photoUrls = React.useMemo(() => Object.fromEntries(CAUSE_PHOTO_PROMPTS.map(({ slot }) => [
+    slot,
+    photoSrc(landingConfig?.assets[slot]?.src || (slot === 'crowd' ? text(detail, 'coverPhotoUrl') || cause?.cover_photo_url || '' : '')),
+  ])) as Record<CausePhotoSlot, string>, [cause, detail, landingConfig, photoSrc])
   const referralCode = text(detail, 'referralCode')
 
   const signals: CauseSetupSignals = {
@@ -125,13 +138,17 @@ export function CauseSetupPage() {
     crmStage: text(detail, 'crmStage'),
     crmStatus: text(detail, 'crmStatus'),
     logoUrl: logoSrc,
-    coverUrl: coverSrc,
+    photoUrls,
     colorsConfirmed: !!landingConfig?.brandColorsConfirmed,
     qrCount: 0,
     generatedCount: flyerCount,
     landingPublished: isLandingPublished(landing),
   }
   const progress = getCauseSetupProgress(signals)
+  const missingPhotos = missingCausePhotos(signals)
+  // The launch-materials job writes new photos and the rendered video into the
+  // DRAFT only; an already-live page keeps serving its published revision.
+  const landingOutOfDate = isLandingOutOfDate(landing)
 
   // Active step: ?step= deep link, else the first unfinished step.
   const requested = searchParams.get('step')
@@ -183,22 +200,40 @@ export function CauseSetupPage() {
       .then((r) => readJson(r, 'Your updated flyers could not be generated.'))
   }
 
-  const upload = (kind: 'logo' | 'cover_photo', file: File) => run(async () => {
-    const data = new FormData()
-    data.append('file', file)
-    data.append('mediaType', kind)
-    const body = await fetch(`/api/crm/causes/${causeId}/media`, { method: 'POST', body: data })
-      .then((r) => readJson(r, 'The image could not be uploaded.')) as { fileUrl?: string }
-    // Keep the landing page's copy of the image in step with the account's.
-    if (body.fileUrl && landingConfig) {
-      const asset = kind === 'logo' ? 'mark' : 'crowd'
-      await saveLanding({
-        assets: { ...landingConfig.assets, [asset]: { src: body.fileUrl, alt: landingConfig.assets[asset].alt } },
-        ...(kind === 'logo' ? { brandColorsConfirmed: false } : {}),
-      })
-    }
-    refetchCauses()
-  }, kind === 'logo' ? 'Logo uploaded. Review colors from your new logo, then publish the updated landing page.' : 'Cover photo uploaded. Publish the updated landing page when ready.')
+  /**
+   * `logo` and `crowd` go through the account media endpoint, so the account's
+   * own logo/cover columns stay in step. The three newer slots have no account
+   * column and use the landing-page asset endpoint. Either way the landing
+   * draft is only updated once the upload actually returned a file URL, so a
+   * failed upload can never read as success.
+   */
+  const upload = (target: 'logo' | CausePhotoSlot, file: File) => {
+    const prompt = CAUSE_PHOTO_PROMPTS.find((p) => p.slot === target)
+    const okMessage = target === 'logo'
+      ? 'Logo uploaded. Review colors from your new logo, then publish the updated landing page.'
+      : `${prompt?.label || 'Photo'} uploaded. Publish the updated landing page when ready.`
+    return run(async () => {
+      const data = new FormData()
+      data.append('file', file)
+      const viaAccount = target === 'logo' || target === 'crowd'
+      if (viaAccount) data.append('mediaType', target === 'logo' ? 'logo' : 'cover_photo')
+      else data.append('slot', target)
+      const body = await fetch(
+        viaAccount ? `/api/crm/causes/${causeId}/media` : `/api/crm/causes/${causeId}/landing-page/assets`,
+        { method: 'POST', body: data },
+      ).then((r) => readJson(r, 'The image could not be uploaded.')) as { fileUrl?: string }
+      if (!body.fileUrl) throw new Error('The image upload did not return a file. Try again.')
+      // Keep the landing page's copy of the image in step with the account's.
+      if (landingConfig) {
+        const asset = target === 'logo' ? 'mark' : target
+        await saveLanding({
+          assets: { ...landingConfig.assets, [asset]: { src: body.fileUrl, alt: landingConfig.assets[asset]?.alt || `${signals.name} ${prompt?.label.toLowerCase() || 'logo'}` } },
+          ...(target === 'logo' ? { brandColorsConfirmed: false } : {}),
+        })
+      }
+      refetchCauses()
+    }, okMessage)
+  }
 
   const generate = async () => {
     setBusy(true); setGenError(null); setGenProgress('Creating your audience flyers and landing page...')
@@ -239,6 +274,41 @@ export function CauseSetupPage() {
           onOpen={() => openStep(progress.brand.find((s) => !s.complete)?.key ?? 'images')} />
       </div>
 
+      {landingOutOfDate ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border-2 border-warning-300 bg-warning-50 px-5 py-4 text-sm text-warning-800">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-warning-600" />
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">Your live landing page is out of date</span>
+            <span className="block">
+              Your newest photos{landingConfig.video?.src ? ' and your cause video are' : ' are'} saved in your draft,
+              but visitors still see the version you published last.
+            </span>
+          </span>
+          <Link href="/community/landing-page"
+            className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-warning-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-warning-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning-400">
+            Review and republish
+          </Link>
+        </div>
+      ) : null}
+
+      {missingPhotos.length > 0 ? (
+        <button type="button" onClick={() => openStep('images')}
+          className="flex w-full items-start gap-3 rounded-2xl border border-warning-200 bg-warning-50 px-5 py-4 text-left text-sm text-warning-800 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning-400">
+          <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-warning-600" />
+          <span>
+            <span className="block font-semibold">
+              {isCauseLive(signals)
+                ? `${name} is live, but cannot publish pages or flyers yet`
+                : `${missingPhotos.length} of your 4 photos are still missing`}
+            </span>
+            <span className="mt-0.5 block">
+              Still needed: {missingPhotos.map((prompt) => prompt.label).join(', ')}. Publishing a landing page, a flyer
+              or a shareable link needs all four, so nothing goes out built on a single photo.
+            </span>
+          </span>
+        </button>
+      ) : null}
+
       <Card className="overflow-hidden border-surface-200">
         <CardContent className="p-0">
           <StepRail steps={activeStep.track === 'account' ? progress.account : progress.brand} activeKey={activeKey} onOpen={openStep} />
@@ -275,7 +345,7 @@ export function CauseSetupPage() {
               <GoLiveStep name={name} signals={signals} busy={busy} onOpenStep={openStep}
                 onSubmit={() => void run(() => putProfile({ status: 'pending_live_review' }), 'Submitted. LocalVIP will review your account.')} />
             )}
-            {activeKey === 'images' && <ImagesStep logoSrc={logoSrc} coverSrc={coverSrc} busy={busy} onUpload={(kind, file) => void upload(kind, file)} onContinue={() => nextAfter('images')} />}
+            {activeKey === 'images' && <ImagesStep logoSrc={logoSrc} photoUrls={photoUrls} busy={busy} onUpload={(target, file) => void upload(target, file)} onContinue={() => nextAfter('images')} />}
             {activeKey === 'colors' && (
               <ColorsStep key={`k-${landingConfig.brandColorsConfirmed ? 'y' : 'n'}`} busy={busy} name={name} logoSrc={logoSrc}
                 initial={brandFromPalette(landingConfig.colors)} confirmed={signals.colorsConfirmed}
@@ -291,7 +361,9 @@ export function CauseSetupPage() {
             {activeKey === 'landing' && (
               <LinkStep icon={<Globe2 className="h-5 w-5" />} done={signals.landingPublished}
                 doneText="Your landing page is live. Share it anywhere, and your flyers point to it."
-                todoText="Preview your landing page with your logo, photo and colors, then publish it."
+                todoText={missingPhotos.length > 0
+                  ? `Preview your page any time. Publishing needs all four photos first — still missing: ${missingPhotos.map((prompt) => prompt.label).join(', ')}.`
+                  : 'Preview your landing page with your logo, photos and colors, then publish it.'}
                 actionHref="/community/landing-page" actionLabel={signals.landingPublished ? 'Edit landing page' : 'Open landing page editor'} />
             )}
           </div>

@@ -12,10 +12,12 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   CAUSE_ACCOUNT_STEPS,
   CAUSE_ORGANIZATION_TYPES,
+  CAUSE_PHOTO_PROMPTS,
   canSubmitCauseForReview,
   isCauseAwaitingReview,
   isCauseLive,
   isCauseSetupStepComplete,
+  type CausePhotoSlot,
   type CauseSetupSignals,
   type CauseSetupStepKey,
 } from '@/lib/cause-setup'
@@ -183,29 +185,64 @@ export function GoLiveStep({ name, signals, busy, onSubmit, onOpenStep }: {
 
 /* ─── Brand track ─────────────────────────────────────────────── */
 
-export function ImagesStep({ logoSrc, coverSrc, busy, onUpload, onContinue }: {
-  logoSrc: string; coverSrc: string; busy: boolean
-  onUpload: (kind: 'logo' | 'cover_photo', file: File) => void
+export function ImagesStep({ logoSrc, photoUrls, busy, onUpload, onContinue }: {
+  logoSrc: string
+  photoUrls: Record<CausePhotoSlot, string>
+  busy: boolean
+  onUpload: (target: 'logo' | CausePhotoSlot, file: File) => void
   onContinue: () => void
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
-  const kindRef = React.useRef<'logo' | 'cover_photo'>('logo')
-  const pick = (kind: 'logo' | 'cover_photo') => { kindRef.current = kind; inputRef.current?.click() }
+  const targetRef = React.useRef<'logo' | CausePhotoSlot>('logo')
+  const pick = (target: 'logo' | CausePhotoSlot) => { targetRef.current = target; inputRef.current?.click() }
+  const missing = CAUSE_PHOTO_PROMPTS.filter((prompt) => !photoUrls[prompt.slot].trim())
+  const goLiveReady = !!logoSrc && !!photoUrls.crowd.trim()
 
   return (
     <div className="space-y-5">
       <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
-        onChange={(e) => { const file = e.target.files?.[0]; if (file) onUpload(kindRef.current, file); e.target.value = '' }} />
+        onChange={(e) => { const file = e.target.files?.[0]; if (file) onUpload(targetRef.current, file); e.target.value = '' }} />
+
       <div className="grid gap-4 md:grid-cols-[220px_1fr]">
         <ImageSlot label="Logo" hint="Transparent PNG or SVG works best." src={logoSrc} fit="contain" busy={busy} onPick={() => pick('logo')} />
-        <ImageSlot label="Cover photo" hint="A wide photo of your real students, families or volunteers." src={coverSrc} fit="cover" busy={busy} onPick={() => pick('cover_photo')} />
+        <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4 text-sm leading-6 text-surface-600">
+          <p className="font-semibold text-surface-900">Four photos, four different jobs</p>
+          <p className="mt-1">
+            Your pages and your 60-second cause video are built from these four. One photo of supporters is enough to
+            get live; all four are needed before you can publish a page, a flyer or a shareable link.
+          </p>
+          <p className="mt-2">Use real photos of your own community, and keep them different from each other.</p>
+        </div>
       </div>
-      <StepFooter busy={busy} disabled={!logoSrc || !coverSrc} saveLabel="Continue" onSave={onContinue} />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {CAUSE_PHOTO_PROMPTS.map((prompt) => (
+          <ImageSlot key={prompt.slot} label={prompt.label} hint={prompt.description} src={photoUrls[prompt.slot]}
+            fit="cover" busy={busy} required={prompt.requiredForGoLive} onPick={() => pick(prompt.slot)} />
+        ))}
+      </div>
+
+      {missing.length > 0 ? (
+        <div className={`rounded-2xl border px-4 py-3 text-sm ${goLiveReady ? 'border-warning-200 bg-warning-50 text-warning-800' : 'border-surface-200 bg-surface-50 text-surface-700'}`}>
+          <p className="font-semibold">
+            {missing.length} of 4 photos still missing{goLiveReady ? ' — you can go live, but not publish yet' : ''}
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {missing.map((prompt) => <li key={prompt.slot}>{prompt.label}</li>)}
+          </ul>
+        </div>
+      ) : (
+        <p className="flex items-center gap-2 rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-900">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-success-600" />All four photos are in. Your pages and video can be published.
+        </p>
+      )}
+
+      <StepFooter busy={busy} disabled={!goLiveReady} saveLabel="Continue" onSave={onContinue} />
     </div>
   )
 }
 
-function ImageSlot({ label, hint, src, fit, busy, onPick }: { label: string; hint: string; src: string; fit: 'contain' | 'cover'; busy: boolean; onPick: () => void }) {
+function ImageSlot({ label, hint, src, fit, busy, required, onPick }: { label: string; hint: string; src: string; fit: 'contain' | 'cover'; busy: boolean; required?: boolean; onPick: () => void }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-surface-200 bg-white">
       <div className="flex h-40 items-center justify-center bg-surface-50">
@@ -216,8 +253,11 @@ function ImageSlot({ label, hint, src, fit, busy, onPick }: { label: string; hin
       </div>
       <div className="flex items-center justify-between gap-3 p-4">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-surface-900">{label}</p>
-          <p className="text-xs text-surface-500">{hint}</p>
+          <p className="text-sm font-semibold text-surface-900">
+            {label}
+            {required ? <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-brand-700">Needed to go live</span> : null}
+          </p>
+          <p className="text-xs leading-5 text-surface-500">{hint}</p>
         </div>
         <Button variant="outline" size="sm" onClick={onPick} disabled={busy}><Upload className="h-4 w-4" />{src ? 'Replace' : 'Upload'}</Button>
       </div>
