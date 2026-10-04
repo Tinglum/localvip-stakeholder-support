@@ -497,8 +497,17 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
         if (!res.ok) throw new Error('Failed to load businesses.')
         const json = await res.json()
         const arr = Array.isArray(json) ? json : (json ? [json] : [])
-        // QA list shape → Supabase Business shape (best effort)
-        const mapped: Business[] = arr.map((b: Record<string, unknown>) => mapQaBusinessRecordToBusiness(b))
+        // Owner-scoped queries commonly start from the list response. Fetch the
+        // account detail before seeding the editor: the list may omit the saved
+        // category, description, average ticket and keywords.
+        const records: Record<string, unknown>[] = parsedFilters.owner_id && !scopedId && arr.length === 1
+          ? [await (async () => {
+              const detailRes = await withTimeout(fetch(`/api/qa/businesses/${arr[0].id}`, { cache: 'no-store' }), 'business detail load')
+              if (!detailRes.ok) throw new Error('Failed to load your business profile.')
+              return detailRes.json() as Promise<Record<string, unknown>>
+            })()]
+          : arr
+        const mapped: Business[] = records.map(mapQaBusinessRecordToBusiness)
         if (!cancelled) setData(mapped)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed.')

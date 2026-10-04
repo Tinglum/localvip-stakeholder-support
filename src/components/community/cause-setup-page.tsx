@@ -87,14 +87,18 @@ export function CauseSetupPage() {
 
   const loadDetail = React.useCallback(async () => {
     if (!causeId) return
-    const [d, l, launch] = await Promise.all([
-      fetch(`/api/qa/nonprofits/${causeId}`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your organization.')),
-      fetch(`/api/crm/causes/${causeId}/landing-page`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your landing page.')).catch(() => null),
-      fetch(`/api/crm/causes/${causeId}/launch-materials`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your flyers.')).catch(() => null),
+    const [d, l] = await Promise.all([
+      fetch(`/api/qa/nonprofits/${causeId}`, { cache: 'no-store', signal: AbortSignal.timeout(15000) }).then((r) => readJson(r, 'Could not load your organization.')),
+      fetch(`/api/crm/causes/${causeId}/landing-page`, { cache: 'no-store', signal: AbortSignal.timeout(15000) }).then((r) => readJson(r, 'Could not load your landing page.')).catch(() => null),
     ])
     setDetail(d as CauseDetail)
     setLanding(l as LandingRecord | null)
-    setFlyerCount(Number((launch as { flyerCount?: number } | null)?.flyerCount || 0))
+    // Flyer generation can take much longer than a profile/colour save. Do not
+    // keep its Save button spinning while an optional materials read is pending.
+    void fetch(`/api/crm/causes/${causeId}/launch-materials`, { cache: 'no-store', signal: AbortSignal.timeout(15000) })
+      .then((r) => readJson(r, 'Could not load your flyers.'))
+      .then((launch) => setFlyerCount(Number((launch as { flyerCount?: number } | null)?.flyerCount || 0)))
+      .catch(() => {})
   }, [causeId])
 
   React.useEffect(() => {
@@ -170,14 +174,14 @@ export function CauseSetupPage() {
   }
 
   const putProfile = (payload: Record<string, unknown>) => fetch(`/api/qa/nonprofits/${causeId}`, {
-    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(15000),
   }).then((r) => readJson(r, 'Your changes could not be saved.'))
 
   const saveLanding = async (patch: Partial<LandingConfig>) => {
     if (!landingConfig) return
     const config = { ...landingConfig, ...patch }
     await fetch(`/api/crm/causes/${causeId}/landing-page`, {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: config.slug, config }),
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: config.slug, config }), signal: AbortSignal.timeout(15000),
     }).then((r) => readJson(r, 'Your brand settings could not be saved.'))
   }
 
