@@ -38,13 +38,14 @@ import {
 import { useBusinesses, useContacts } from '@/lib/supabase/hooks'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 import type { Contact } from '@/lib/types/database'
+import type { QaNetworkNode } from '@/lib/auth/qa-api'
 
 const JOINED_SECTION_ID = 'joined-customers'
 const TREE_SECTION_ID = 'network-tree'
 
-function joinedThisMonth(contact: Contact) {
-  if (!contact.joined_at) return false
-  const joined = new Date(contact.joined_at)
+function joinedThisMonth(joinedAt: string | null | undefined) {
+  if (!joinedAt) return false
+  const joined = new Date(joinedAt)
   const now = new Date()
   return joined.getFullYear() === now.getFullYear() && joined.getMonth() === now.getMonth()
 }
@@ -69,6 +70,21 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
   const [openContactId, setOpenContactId] = React.useState<string | null>(null)
 
   const qaAccountId = getBusinessQaAccountId(business)
+  const [directMembers, setDirectMembers] = React.useState<QaNetworkNode[] | null>(null)
+  React.useEffect(() => {
+    if (!qaAccountId) { setDirectMembers(null); return }
+    let active = true
+    fetch(`/api/dashboard/network/tree?accountId=${encodeURIComponent(String(qaAccountId))}&depth=1`, { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Network could not be loaded.')
+        return response.json() as Promise<{ nodes?: QaNetworkNode[] }>
+      })
+      .then((tree) => {
+        if (active) setDirectMembers((tree.nodes || []).filter((node) => Number(node.level) === 1))
+      })
+      .catch(() => { if (active) setDirectMembers(null) })
+    return () => { active = false }
+  }, [qaAccountId])
   const buildNodeDetailUrl = React.useCallback(
     (nodeId: string) =>
       `/api/business-portal/network/node/${encodeURIComponent(nodeId)}?rootAccountId=${encodeURIComponent(String(qaAccountId))}`,
@@ -99,7 +115,10 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
   const joinedContacts = contacts
     .filter((contact) => getContactListStatus(contact) === 'joined')
     .sort((left, right) => new Date(right.joined_at || right.created_at).getTime() - new Date(left.joined_at || left.created_at).getTime())
-  const joinedThisMonthCount = joinedContacts.filter(joinedThisMonth).length
+  const joinedThisMonthCount = directMembers === null
+    ? joinedContacts.filter((contact) => joinedThisMonth(contact.joined_at)).length
+    : directMembers.filter((member) => joinedThisMonth(member.joinedAt)).length
+  const joinedCount = directMembers === null ? joinedContacts.length : directMembers.length
 
   return (
     <div className="space-y-8">
@@ -121,8 +140,8 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <StatTile
           href={`#${JOINED_SECTION_ID}`}
-          label="Customers who joined"
-          value={formatNumber(joinedContacts.length)}
+          label="Members who joined"
+          value={formatNumber(joinedCount)}
           hint="See each person who finished joining through your business"
         />
         <StatTile
@@ -147,9 +166,9 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle>Customers who joined your team</CardTitle>
+              <CardTitle>Members who joined your team</CardTitle>
               <p className="mt-1 text-sm leading-6 text-surface-500">
-                These are the people who finished joining through your business. Open a row to see how to reach them.
+                These members joined through your business referral link. Open the network below for more detail.
               </p>
             </div>
             <Button variant="ghost" size="sm" asChild>
@@ -161,7 +180,7 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
           </div>
         </CardHeader>
         <CardContent>
-          {joinedContacts.length === 0 ? (
+          {joinedCount === 0 ? (
             <div className="rounded-2xl border border-dashed border-surface-300 bg-surface-50 px-4 py-6 text-center">
               <p className="text-sm text-surface-600">
                 Nobody has finished joining yet. Invite the people already on your list and they will appear here.
@@ -172,6 +191,18 @@ export function BusinessNetworkPage({ embedded = false }: { embedded?: boolean }
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
+            </div>
+          ) : directMembers !== null ? (
+            <div className="space-y-2">
+              {directMembers.map((member) => (
+                <div key={member.id} className="flex items-center justify-between rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-surface-900">{member.name}</p>
+                    <p className="text-xs text-surface-500">{member.joinedAt ? `Joined ${formatDate(member.joinedAt)}` : 'Direct network member'}</p>
+                  </div>
+                  <Badge variant="success">Joined</Badge>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="space-y-2">

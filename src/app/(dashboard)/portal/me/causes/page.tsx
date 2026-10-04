@@ -50,7 +50,7 @@ interface CauseImpactPayload {
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
-const MAX_CAUSES = 5
+const MAX_CAUSES = 10
 
 function selectionPayload(selection: SelectedCause[]) {
   return selection
