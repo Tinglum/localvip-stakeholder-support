@@ -264,13 +264,10 @@ export function CauseSetupPage() {
             {activeKey === 'profile' && (
               <ProfileStep key={`p-${text(detail, 'updatedDate')}`} busy={busy}
                 initial={{ name, category: signals.category, headline: signals.headline, description: text(detail, 'description'), parentOrganization: landingConfig.parentOrganization || '' }}
-                onSave={(patch) => void (async () => {
-                  const saved = await run(async () => {
+                onSave={(patch) => void run(async () => {
                     await putProfile(patch)
                     await saveLanding({ parentOrganization: patch.parentOrganization, mission: patch.headline })
-                  }, 'Profile saved.', 'profile')
-                  if (saved && flyerCount > 0) void generate()
-                })()} />
+                  }, 'Profile saved.', 'profile')} />
             )}
             {activeKey === 'contact' && (
               <ContactStep key={`c-${text(detail, 'updatedDate')}`} busy={busy} email={signals.email}
@@ -286,12 +283,9 @@ export function CauseSetupPage() {
               <ColorsStep key={`k-${landingConfig.brandColorsConfirmed ? 'y' : 'n'}`} busy={busy} name={name} logoSrc={logoSrc}
                 initial={brandFromPalette(landingConfig.colors)} confirmed={signals.colorsConfirmed}
                 onExtract={() => extractBrandColorsFromImage(logoSrc)}
-                onSave={(colors: BrandTriple) => void (async () => {
-                  const saved = await run(
+                onSave={(colors: BrandTriple) => void run(
                     () => saveLanding({ colors: expandBrandPalette(colors, landingConfig.colors), brandColorsConfirmed: true }),
-                    'Brand colors saved. Your materials are generating on the next step.', 'colors')
-                  if (saved) void generate()
-                })()} />
+                    'Brand colors saved. Continue to materials when you are ready.', 'colors')} />
             )}
             {activeKey === 'materials' && <MaterialsStep count={signals.generatedCount} busy={busy || generating} progress={genProgress} error={genError} onGenerate={() => void generate()} />}
             {activeKey === 'landing' && (
