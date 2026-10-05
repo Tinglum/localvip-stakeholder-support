@@ -214,7 +214,7 @@ export default function MyWalletPage() {
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="My Wallet & Earnings"
-        description="See what money is ready to use, what you have earned over time, and how much support has gone to your causes."
+        description="See what money is ready to use, what you have earned over time, and how much support has gone to your cause."
         breadcrumb={[{ label: 'Portal', href: '/portal' }, { label: 'Wallet & Earnings' }]}
         actions={
           <Button
@@ -321,8 +321,8 @@ export default function MyWalletPage() {
         </div>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Your selected causes</CardTitle>
-            <CardDescription>Your settled support to each currently selected cause. Your lifetime total also includes causes you supported previously.</CardDescription>
+            <CardTitle className="text-base">Your cause</CardTitle>
+            <CardDescription>Your settled support for the cause you selected. Your lifetime total also includes causes you supported previously.</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             {loading ? (
@@ -339,7 +339,7 @@ export default function MyWalletPage() {
               <p className="text-sm text-surface-400">
                 No causes selected yet.{' '}
                 <Link href="/portal/me/causes" className="text-brand-600 underline">
-                  Choose your causes
+                  Choose your cause
                 </Link>
                 .
               </p>

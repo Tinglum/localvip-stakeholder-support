@@ -184,11 +184,11 @@ function getActionCenterContent(shell: string, pathname: string) {
   if (shell === 'consumer') {
     return {
       title: 'Your easiest next move',
-      description: 'Start with your money, then your people, then your causes.',
+      description: 'Start with your money, then your people, then choose a cause.',
       items: [
         { label: 'Check my money', href: '/portal/me/wallet' },
         { label: 'See my network', href: '/portal/me/network' },
-        { label: 'Choose my causes', href: '/portal/me/causes' },
+        { label: 'Choose my cause', href: '/portal/me/causes' },
       ],
     }
   }
