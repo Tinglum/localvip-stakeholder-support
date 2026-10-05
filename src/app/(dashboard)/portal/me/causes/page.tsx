@@ -431,7 +431,7 @@ export default function MyCausesPage() {
             <EmptyState
               icon={<Heart className="h-6 w-6" />}
               title="No causes selected yet"
-              description="Choose from the available causes below, add up to five, and then set how much of your support each should receive."
+              description={`Choose from the available causes below, add up to ${MAX_CAUSES}, and then set how much of your support each should receive.`}
             />
           ) : (
             <ul className="space-y-2.5">
