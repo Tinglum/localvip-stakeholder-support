@@ -83,6 +83,21 @@ test('four audiences across three designs use the cause assets and produce print
   } finally { globalThis.fetch = originalFetch }
 })
 
+test('flyer-only regeneration leaves the landing page and videos untouched', async () => {
+  const calls: string[] = []
+  const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+    calls.push(`${init?.method || 'GET'} ${path}`)
+    if (path.endsWith('/landing-page')) return { draft: { slug: 'test-school' } } as T
+    if (path.includes('/GeneratedMaterial?')) return { items: [] } as T
+    throw new Error(`Unexpected call: ${path}`)
+  }
+  const result = await generateCauseLaunchMaterials({ id: 42, name: 'Test School', referralCode: 'TEST' }, request, true)
+  assert.equal(result.steps.flyers.status, 'waiting')
+  assert.equal(result.steps.landingPages, undefined)
+  assert.equal(result.steps.video, undefined)
+  assert.ok(calls.every(call => call.startsWith('GET ')))
+})
+
 test('automatic launch saves all twelve audience and design combinations', async () => {
   const originalFetch = globalThis.fetch
   const canvas = createCanvas(300, 180)

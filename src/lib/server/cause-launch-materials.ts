@@ -164,7 +164,7 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
   }
 }
 
-async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: typeof qaJson) {
+async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: typeof qaJson, onlyFlyers = false) {
   const steps: Record<string, { status: string; detail?: string }> = {}
   const landingPath = `/api/dashboard/v1/Nonprofit/${cause.id}/landing-page`
   let campaignSlug = `${slugify(cause.name) || 'cause'}-${cause.id}`
@@ -177,14 +177,16 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   let parentOrganization = ''
   try {
     const record = await request<LandingRecord>(landingPath)
-    campaignSlug = String((record?.draft as { slug?: string } | null)?.slug || campaignSlug)
+    const publishedSlug = (record?.published as { slug?: string } | null)?.slug
+    const draftSlug = (record?.draft as { slug?: string } | null)?.slug
+    campaignSlug = String((isLandingLive(record?.status) && publishedSlug) || draftSlug || campaignSlug)
     const draftAssets = (record?.draft as { assets?: DraftAssets } | null)?.assets
     flyerColors = (record?.draft as { colors?: { navy?: string; gold?: string } } | null)?.colors
     flyerMission = String((record?.draft as { mission?: string } | null)?.mission || cause.headline || '')
     parentOrganization = String((record?.draft as { parentOrganization?: string } | null)?.parentOrganization || '')
     logoUrl ||= draftAssets?.mark?.src || ''
     for (const slot of PHOTO_SLOTS) photoUrls[slot] ||= draftAssets?.[slot]?.src || ''
-    if (record?.draft || record?.published) {
+    if (!onlyFlyers && (record?.draft || record?.published)) {
       const draft = record.draft as Record<string, unknown> | null
       const assets = draft?.assets as DraftAssets | undefined
       const logo = logoUrl
@@ -205,7 +207,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
       } else {
         steps.landingPages = { status: record.status || 'draft', detail: 'Existing campaign preserved.' }
       }
-    } else {
+    } else if (!onlyFlyers) {
       const slug = `${slugify(cause.name) || 'cause'}-${cause.id}`
       const config = {
         slug, revision: 'draft', schoolName: cause.name, organizationName: cause.name, mission: cause.headline || '',
@@ -276,6 +278,13 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
           }
         }
       }
+      if (onlyFlyers) {
+        steps.flyers = {
+          status: flyerErrors.length ? (customGenerated ? 'partial' : 'failed') : customGenerated === 12 ? 'generated' : 'waiting',
+          detail: `${customGenerated}/12 flyers.${!logoUrl || !coverUrl ? ' A logo and supporters photo are required.' : ''}${flyerErrors.length ? ` ${flyerErrors.join(' ')}` : ''}`,
+        }
+        return { causeId: cause.id, steps }
+      }
       const templatesResult = await request<unknown>('/api/dashboard/v1/MaterialTemplate?isActive=true')
       const raw = Array.isArray(templatesResult) ? templatesResult
         : (templatesResult && typeof templatesResult === 'object' && Array.isArray((templatesResult as { items?: unknown[] }).items))
@@ -330,6 +339,8 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   } catch (error) {
     steps.flyers = { status: 'failed', detail: error instanceof Error ? error.message : String(error) }
   }
+
+  if (onlyFlyers) return { causeId: cause.id, steps }
 
   const videoJoinUrl = cause.referralCode
     ? `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/families?ref=${encodeURIComponent(cause.referralCode)}`
@@ -413,10 +424,10 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
 
 const launchQueue = new Map<number, Promise<unknown>>()
 
-export async function generateCauseLaunchMaterials(cause: LaunchCause, request: typeof qaJson = qaJson) {
+export async function generateCauseLaunchMaterials(cause: LaunchCause, request: typeof qaJson = qaJson, onlyFlyers = false) {
   const previous = launchQueue.get(cause.id)
   const run = (previous ? previous.catch(() => undefined) : Promise.resolve())
-    .then(() => generateCauseLaunchMaterialsInner(cause, request))
+    .then(() => generateCauseLaunchMaterialsInner(cause, request, onlyFlyers))
   launchQueue.set(cause.id, run)
   try { return await run } finally { if (launchQueue.get(cause.id) === run) launchQueue.delete(cause.id) }
 }
