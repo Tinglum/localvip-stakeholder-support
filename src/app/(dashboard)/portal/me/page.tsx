@@ -38,8 +38,8 @@ const PORTAL_LINKS: PortalLink[] = [
   },
   {
     href: '/portal/me/causes',
-    title: 'Choose My Causes',
-    description: 'Pick the local causes you want your support to help.',
+    title: 'Choose My Cause',
+    description: 'Pick the local cause you want your support to help.',
     icon: Heart,
     helperLabel: 'Set this up once',
   },
@@ -88,9 +88,9 @@ export default function MyPortalPage() {
                 </p>
               </div>
               <div className="rounded-2xl bg-white/90 px-4 py-3">
-                <p className="text-sm font-semibold text-surface-900">3. Choose your causes</p>
+                <p className="text-sm font-semibold text-surface-900">3. Choose your cause</p>
                 <p className="mt-1 text-sm leading-6 text-surface-600">
-                  Make sure your support goes to the local causes you care about most.
+                  Make sure your support goes to the local cause you care about most.
                 </p>
               </div>
             </div>
@@ -156,7 +156,7 @@ export default function MyPortalPage() {
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-surface-400" />
         <p className="text-sm leading-6 text-surface-500">
           You cannot make payments or purchases on this page. This area is only for checking your rewards, your
-          activity, your people, and your causes.
+          activity, your people, and your cause.
         </p>
       </div>
     </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import { compareNames, onboardingLocation, onboardingLocations, sortOnboarding, ONBOARDING_SORT_LABELS, type OnboardingSort } from '@/lib/onboarding-list'
 import Link from 'next/link'
 import {
@@ -1250,6 +1251,7 @@ function CauseDetailModal({
   const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'leader_conversation' | 'materials_qr' | 'activation_decision' | null>(null)
   const [showChecklist, setShowChecklist] = React.useState(false)
   const [uploadBusy, setUploadBusy] = React.useState<'logo' | 'cover' | null>(null)
+  const [pendingLogo, setPendingLogo] = React.useState<File | null>(null)
   const [assetError, setAssetError] = React.useState<string | null>(null)
   const [assetMessage, setAssetMessage] = React.useState<string | null>(null)
   const [engineBusy, setEngineBusy] = React.useState<'generate' | null>(null)
@@ -1309,11 +1311,11 @@ function CauseDetailModal({
   async function handleUploadMedia(mediaType: 'logo' | 'cover_photo', file: File) {
     if (!file.type.startsWith('image/')) {
       setAssetError('Choose an image file.')
-      return
+      return false
     }
     if (file.size > 10 * 1024 * 1024) {
       setAssetError('Images must be smaller than 10 MB.')
-      return
+      return false
     }
     setUploadBusy(mediaType === 'logo' ? 'logo' : 'cover')
     setAssetError(null)
@@ -1334,8 +1336,10 @@ function CauseDetailModal({
       else setLocalCoverUrl(previewUrl)
       setAssetMessage(`${mediaType === 'logo' ? 'Logo' : 'Cover photo'} uploaded.`)
       onStageChanged()
+      return true
     } catch (error) {
       setAssetError(error instanceof Error ? error.message : 'The image could not be uploaded.')
+      return false
     } finally {
       setUploadBusy(null)
     }
@@ -1510,8 +1514,9 @@ function CauseDetailModal({
                 </div>
               </button>
             </div>
-            <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleUploadMedia('logo', file); event.target.value = '' }} />
+            <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(event) => { setPendingLogo(event.target.files?.[0] || null); event.target.value = '' }} />
             <input ref={coverInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleUploadMedia('cover_photo', file); event.target.value = '' }} />
+            {pendingLogo && <div className="space-y-2 sm:col-span-2"><LogoImageTools file={pendingLogo} onChange={setPendingLogo} /><div className="flex gap-2"><Button size="sm" disabled={uploadBusy !== null} onClick={() => void handleUploadMedia('logo', pendingLogo).then((saved) => { if (saved) setPendingLogo(null) })}>Save logo</Button><Button variant="outline" size="sm" onClick={() => setPendingLogo(null)}>Cancel</Button></div></div>}
             {assetError ? <p className="text-xs font-medium text-danger-600">{assetError}</p> : null}
             {assetMessage ? <p className="text-xs font-medium text-success-700">{assetMessage}</p> : null}
             <div className="flex flex-wrap gap-2">

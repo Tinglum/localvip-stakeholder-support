@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import { compareNames, onboardingLocation, onboardingLocations, sortOnboarding, ONBOARDING_SORT_LABELS, type OnboardingSort } from '@/lib/onboarding-list'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -1573,11 +1574,14 @@ function ChecklistEditorDialog({
 
         {mode === 'brand' ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-1.5 rounded-xl border border-surface-200 bg-surface-50 p-4">
-              <span className="block text-sm font-semibold text-surface-800">Logo *</span>
-              <span className="block text-xs text-surface-500">{business.logo_url ? 'A logo is already uploaded. Choose a file to replace it.' : 'PNG, JPG, or WebP.'}</span>
-              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setLogo(event.target.files?.[0] || null)} className="block w-full text-xs text-surface-600" />
-            </label>
+            <div className="space-y-1.5 rounded-xl border border-surface-200 bg-surface-50 p-4">
+              <label className="block space-y-1.5">
+                <span className="block text-sm font-semibold text-surface-800">Logo *</span>
+                <span className="block text-xs text-surface-500">{business.logo_url ? 'A logo is already uploaded. Choose a file to replace it.' : 'PNG, JPG, or WebP.'}</span>
+                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setLogo(event.target.files?.[0] || null)} className="block w-full text-xs text-surface-600" />
+              </label>
+              <LogoImageTools file={logo} onChange={setLogo} />
+            </div>
             <label className="space-y-1.5 rounded-xl border border-surface-200 bg-surface-50 p-4">
               <span className="block text-sm font-semibold text-surface-800">Cover image *</span>
               <span className="block text-xs text-surface-500">{business.cover_photo_url ? 'A cover is already uploaded. Choose a file to replace it.' : 'Use a wide landscape image.'}</span>
