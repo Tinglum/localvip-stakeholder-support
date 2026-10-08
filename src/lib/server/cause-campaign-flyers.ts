@@ -43,6 +43,12 @@ async function imageData(url: string) {
   if (!response.ok) throw new Error(`Could not load flyer image (${response.status}).`)
   const bytes = Buffer.from(await response.arrayBuffer())
   if (bytes.length > 12 * 1024 * 1024) throw new Error('Flyer image exceeds 12 MB.')
+  if (bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') {
+    const image = await loadImage(bytes)
+    const canvas = createCanvas(image.width, image.height)
+    canvas.getContext('2d').drawImage(image, 0, 0)
+    return `data:image/png;base64,${canvas.toBuffer('image/png').toString('base64')}`
+  }
   const mime = bytes[0] === 0x89 && bytes[1] === 0x50 ? 'image/png'
     : bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg'
     : bytes.toString('utf8', 0, 300).includes('<svg') ? 'image/svg+xml' : null
