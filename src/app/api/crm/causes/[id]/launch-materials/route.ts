@@ -32,12 +32,13 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   }
 }
 
-export async function POST(_: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: { id: string } }) {
   const authorized = await context(params.id)
   if ('error' in authorized) return authorized.error
   try {
     const cause = await fetchQaCauseDetail(authorized.id)
-    return NextResponse.json(await generateCauseLaunchMaterials(cause))
+    const onlyFlyers = new URL(request.url).searchParams.get('flyersOnly') === '1'
+    return NextResponse.json(await generateCauseLaunchMaterials(cause, undefined, onlyFlyers))
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not generate launch materials.' }, { status: 502 })
   }
