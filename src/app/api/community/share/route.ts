@@ -56,8 +56,8 @@ export async function GET(request: NextRequest) {
         const landing = await parseQaResponse<{ draft?: { slug?: string }; published?: { slug?: string } }>(landingRes, 'Could not load this cause landing page.').catch(() => null)
         const slug = landing?.published?.slug || landing?.draft?.slug
         const targetUrl = slug
-          ? `https://my.localvip.com/go/campaign/${encodeURIComponent(slug)}/families?ref=${encodeURIComponent(code)}`
-          : `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(code)}`
+          ? `${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/go/campaign/${encodeURIComponent(slug)}/families?ref=${encodeURIComponent(code)}`
+          : `${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/auth/signup?ref=${encodeURIComponent(code)}`
         return NextResponse.json({ causeId, causeName: String(detail?.name || ''), brand: 'localvip',
           supportSlug: `cause-${causeId}`, supportUrl: targetUrl, displayUrl: targetUrl.replace(/^https?:\/\//, ''),
           redirectUrl: targetUrl, shortCode: code, frameText: 'Scan to support',
