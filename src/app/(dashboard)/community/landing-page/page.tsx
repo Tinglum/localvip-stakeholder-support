@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import Link from 'next/link'
 import { AlertTriangle, CheckCircle2, ExternalLink, Globe2, ImageIcon, Loader2, Save, Send, Upload, Wand2 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
@@ -46,6 +47,7 @@ export default function CauseLandingPageEditor() {
   const [dirty, setDirty] = React.useState(false)
   const loadedId = React.useRef<number | null>(null)
   const uploadRef = React.useRef<HTMLInputElement | null>(null)
+  const [pendingLogo, setPendingLogo] = React.useState<File | null>(null)
   const uploadKind = React.useRef<'logo' | 'cover_photo' | 'team' | 'community' | 'people'>('logo')
 
   React.useEffect(() => {
@@ -139,8 +141,10 @@ export default function CauseLandingPageEditor() {
         updateAsset(asset, { src: body.fileUrl, alt: config?.assets[asset]?.alt || `${cause.name} ${asset}` })
         setMessage('Image uploaded. Review the preview, then publish the updated page.')
       }
+      return true
     } catch (uploadError) {
       setMessage(uploadError instanceof Error ? uploadError.message : 'Upload failed.')
+      return false
     } finally { setSaving(false) }
   }
 
@@ -233,12 +237,13 @@ export default function CauseLandingPageEditor() {
         </CardContent></Card>
 
         <Card><CardHeader><CardTitle>Logo and photography</CardTitle></CardHeader><CardContent className="space-y-5">
-          <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); e.target.value = '' }} />
+          <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) { if (uploadKind.current === 'logo') setPendingLogo(file); else void upload(file) } e.target.value = '' }} />
           <div className="grid gap-3 rounded-xl border border-surface-200 p-4 sm:grid-cols-[120px_1fr_auto] sm:items-center">
             <div className="flex h-20 items-center justify-center overflow-hidden rounded-lg bg-surface-100">{config.assets.mark.src ? <img src={config.assets.mark.src} alt="" className="h-full w-full object-contain" /> : <ImageIcon className="h-6 w-6 text-surface-400" />}</div>
             <Field label="Logo description" hint="This helps people using screen readers."><Input value={config.assets.mark.alt} onChange={(e) => updateAsset('mark', { alt: e.target.value })} /></Field>
             <Button variant="outline" onClick={() => { uploadKind.current = 'logo'; uploadRef.current?.click() }}><Upload className="h-4 w-4" />{config.assets.mark.src ? 'Replace' : 'Upload'}</Button>
           </div>
+          {pendingLogo && <div className="space-y-2"><LogoImageTools file={pendingLogo} onChange={setPendingLogo} /><div className="flex gap-2"><Button disabled={saving} onClick={() => { uploadKind.current = 'logo'; void upload(pendingLogo).then((saved) => { if (saved) setPendingLogo(null) }) }}>Upload this logo</Button><Button variant="outline" onClick={() => setPendingLogo(null)}>Cancel</Button></div></div>}
           <p className="text-sm text-surface-500">Use a transparent logo, and high resolution photos of your real community.</p>
           <div className="border-t border-surface-200 pt-5">
             <h3 className="text-sm font-semibold text-surface-900">Your four photos</h3>
