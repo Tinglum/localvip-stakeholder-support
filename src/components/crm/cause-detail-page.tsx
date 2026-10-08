@@ -473,17 +473,22 @@ export default function CauseDetailPage() {
   const [goLiveBusy, setGoLiveBusy] = React.useState(false)
   const [goLiveError, setGoLiveError] = React.useState<string | null>(null)
   const reviewGoLive = React.useCallback(async (decision: 'approve' | 'send_back') => {
-    if (!canEditCrm) return
+    if (!canEditCrm || !causeResponse?.qaCauseId) return
     setGoLiveBusy(true); setGoLiveError(null)
     try {
-      await saveCauseCrm(decision === 'approve' ? { stage: 'live', status: 'active' } : { status: 'active' })
+      const response = await fetch(`/api/qa/nonprofits/${causeResponse.qaCauseId}/${decision === 'approve' ? 'publish' : 'send-back'}`, { method: 'POST' })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'The review decision could not be saved.')
+      }
+      setLaunchStatus(current => current ? { ...current, landingPages: decision === 'approve' ? 'published' : 'draft' } : current)
       refetchCause()
     } catch (error) {
       setGoLiveError(error instanceof Error ? error.message : 'That decision could not be saved.')
     } finally {
       setGoLiveBusy(false)
     }
-  }, [canEditCrm, saveCauseCrm, refetchCause])
+  }, [canEditCrm, causeResponse?.qaCauseId, refetchCause])
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
     if (!cause || !canEditCrm) return
@@ -841,7 +846,7 @@ export default function CauseDetailPage() {
       />
 
       {/* ── Go-live review (cause submitted from /community/setup) ── */}
-      {canEditCrm && String(cause.status) === 'pending_live_review' && cause.stage !== 'live' && (
+      {isAdmin && canEditCrm && launchStatus?.landingPages === 'pending_review' && cause.stage !== 'live' && (
         <div className="flex flex-col gap-4 rounded-2xl border border-brand-200 bg-gradient-to-r from-brand-50 via-white to-white p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-semibold text-surface-950">{cause.name} asked to go live</p>
@@ -1568,15 +1573,16 @@ export default function CauseDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Launch materials</CardTitle>
-                <p className="text-sm text-surface-500">Create this cause&apos;s flyers and landing page draft from its account details and uploaded assets. Review the pages before publishing.</p>
+                <p className="text-sm text-surface-500">Create flyers and a landing page draft from this cause&apos;s assets. Flyers are for internal review until the landing page is published; then test both QR destinations before sharing.</p>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <MiniStatus label="Audience flyers" value={launchStatus ? `${launchStatus.flyerCount}/3 ${launchStatus.flyers}` : 'Checking'} />
+                  <MiniStatus label="Audience flyers" value={launchStatus ? `${launchStatus.flyerCount}/12 ${launchStatus.flyers}` : 'Checking'} />
                   <MiniStatus label="Landing pages" value={launchStatus?.landingPages || 'Checking'} />
                   <MiniStatus label="60-second film (on the page)" value={launchStatus?.video || 'Checking'} />
                   <MiniStatus label="15-second cut (to forward)" value={launchStatus?.shortVideo || 'Checking'} />
                 </div>
+                {launchStatus && !launchStatus.landingPages.startsWith('published') && <p role="status" className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm text-warning-800">Draft campaign: do not distribute these flyers yet. Publish the cause page first.</p>}
                 {videoRendering && (
                   <p className="text-sm text-surface-600">
                     A video is rendering on the render box. It takes a few minutes for the 60-second film; this page is checking every 20 seconds, and you can leave and come back.

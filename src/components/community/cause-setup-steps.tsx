@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import Link from 'next/link'
 import {
   CheckCircle2, Clock3, ExternalLink, FileText, ImageIcon, Loader2,
@@ -172,7 +173,7 @@ export function GoLiveStep({ name, signals, busy, onSubmit, onOpenStep }: {
           )
         })}
       </ul>
-      <p className="text-sm text-surface-600">No bank or tax details are needed now. LocalVIP asks for those when your first check is ready.</p>
+      <p className="text-sm text-surface-600">Finish your landing page, logo, photos and colors before submitting. LocalVIP reviews the completed page once before it goes live. Bank and tax details can wait until your first check.</p>
       <div className="flex justify-end border-t border-surface-100 pt-5">
         <Button onClick={onSubmit} disabled={busy || !ready}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
@@ -191,10 +192,11 @@ export function ImagesStep({ logoSrc, photoUrls, publishBlocked, busy, onUpload,
   /** True while missing photos are still stopping a first publication. */
   publishBlocked: boolean
   busy: boolean
-  onUpload: (target: 'logo' | CausePhotoSlot, file: File) => void
+  onUpload: (target: 'logo' | CausePhotoSlot, file: File) => Promise<boolean>
   onContinue: () => void
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const [pendingLogo, setPendingLogo] = React.useState<File | null>(null)
   const targetRef = React.useRef<'logo' | CausePhotoSlot>('logo')
   const pick = (target: 'logo' | CausePhotoSlot) => { targetRef.current = target; inputRef.current?.click() }
   const missing = CAUSE_PHOTO_PROMPTS.filter((prompt) => !photoUrls[prompt.slot].trim())
@@ -203,7 +205,7 @@ export function ImagesStep({ logoSrc, photoUrls, publishBlocked, busy, onUpload,
   return (
     <div className="space-y-5">
       <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
-        onChange={(e) => { const file = e.target.files?.[0]; if (file) onUpload(targetRef.current, file); e.target.value = '' }} />
+        onChange={(e) => { const file = e.target.files?.[0]; if (file) { if (targetRef.current === 'logo') setPendingLogo(file); else void onUpload(targetRef.current, file) } e.target.value = '' }} />
 
       <div className="grid gap-4 md:grid-cols-[220px_1fr]">
         <ImageSlot label="Logo" hint="Transparent PNG or SVG works best." src={logoSrc} fit="contain" busy={busy} onPick={() => pick('logo')} />
@@ -217,6 +219,8 @@ export function ImagesStep({ logoSrc, photoUrls, publishBlocked, busy, onUpload,
           <p className="mt-2">Use real photos of your own community, and keep them different from each other.</p>
         </div>
       </div>
+
+      {pendingLogo && <div className="space-y-2"><LogoImageTools file={pendingLogo} onChange={setPendingLogo} /><div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => void onUpload('logo', pendingLogo).then((saved) => { if (saved) setPendingLogo(null) })}>Upload this logo</Button><Button variant="outline" size="sm" onClick={() => setPendingLogo(null)}>Cancel</Button></div></div>}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {CAUSE_PHOTO_PROMPTS.map((prompt) => (
@@ -399,7 +403,7 @@ export function MaterialsStep({ count, busy, progress, error, onGenerate }: {
         </span>
         <p className={`text-sm ${count > 0 ? 'text-success-900' : 'text-surface-700'}`}>
           {count > 0
-            ? `${count} of 3 audience flyers are ready. Regenerate after you change your logo, photo or colors.`
+            ? `${count} of 12 flyers are ready across four audiences and three designs. Regenerate after you change your logo, photo or colors.`
             : 'Create your flyers for families and local businesses. They use your logo, your colors and your QR code.'}
         </p>
       </div>

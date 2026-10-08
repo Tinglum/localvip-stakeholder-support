@@ -360,7 +360,7 @@ export function CauseSetupPage() {
               <GoLiveStep name={name} signals={signals} busy={busy} onOpenStep={openStep}
                 onSubmit={() => void run(() => putProfile({ status: 'pending_live_review' }), 'Submitted. LocalVIP will review your account.')} />
             )}
-            {activeKey === 'images' && <ImagesStep logoSrc={logoSrc} photoUrls={photoUrls} publishBlocked={publishBlocked} busy={busy} onUpload={(target, file) => void upload(target, file)} onContinue={() => nextAfter('images')} />}
+            {activeKey === 'images' && <ImagesStep logoSrc={logoSrc} photoUrls={photoUrls} publishBlocked={publishBlocked} busy={busy} onUpload={upload} onContinue={() => nextAfter('images')} />}
             {activeKey === 'colors' && (
               <ColorsStep key={`k-${landingConfig.brandColorsConfirmed ? 'y' : 'n'}`} busy={busy} name={name} logoSrc={logoSrc}
                 initial={brandFromPalette(landingConfig.colors)} confirmed={signals.colorsConfirmed}

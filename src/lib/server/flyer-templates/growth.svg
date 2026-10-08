@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1050" height="1500" viewBox="0 0 1050 1500">
+ <defs>
+  <linearGradient id="shade"><stop offset="0" stop-color="{{NAVY}}"/><stop offset=".43" stop-color="{{NAVY}}" stop-opacity=".94"/><stop offset="1" stop-color="{{NAVY}}" stop-opacity=".12"/></linearGradient>
+  <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{{NAVY}}" stop-opacity="0"/><stop offset="1" stop-color="{{NAVY}}" stop-opacity=".85"/></linearGradient>
+  <clipPath id="markClip"><circle cx="525" cy="1078" r="42"/></clipPath>
+  <style>.display{font-family:'Arial Black',Arial,Helvetica,sans-serif;font-weight:900}.sans{font-family:Arial,Helvetica,sans-serif}.white{fill:#fff}.navy{fill:{{NAVY}}}.gold{fill:{{GOLD}}}</style>
+ </defs>
+ <rect width="1050" height="690" fill="{{NAVY}}"/>
+ <image href="{{PHOTO}}" x="280" y="0" width="770" height="690" preserveAspectRatio="xMidYMid slice"/>
+ <rect width="1050" height="690" fill="url(#shade)"/>
+ <rect y="500" width="1050" height="190" fill="url(#fade)"/>
+ <rect x="43" y="34" width="137" height="119" rx="8" fill="{{NAVY}}" opacity=".66"/>
+ <image href="{{LOGO}}" x="50" y="42" width="122" height="104" preserveAspectRatio="xMidYMid meet"/>
+ <rect x="191" y="43" width="4" height="107" fill="{{GOLD}}"/>
+ {{HEADER}}
+ <rect x="824" y="33" width="187" height="88" rx="8" fill="#fff" opacity=".96"/>
+ <text class="sans navy" x="917" y="52" font-size="10" text-anchor="middle" letter-spacing="1.4">POWERED BY</text>
+ <image href="{{BRAND}}" x="836" y="63" width="162" height="48" preserveAspectRatio="xMidYMid meet"/>
+ {{GROWTH_HERO}}
+ <line x1="59" y1="491" x2="253" y2="491" stroke="{{GOLD}}" stroke-width="4"/><circle cx="273" cy="491" r="8" fill="{{GOLD}}"/>
+ {{GROWTH_INTRO}}
+ <rect y="690" width="1050" height="290" fill="#fff"/>
+ <text class="display navy" x="525" y="727" font-size="27" text-anchor="middle">{{GROWTH_SECTION_TITLE}}</text>
+ {{GROWTH_CARDS}}
+ <rect y="980" width="1050" height="290" fill="#edf1f5"/>
+ <path d="M253 1072 Q360 1010 460 1055M590 1055 Q690 1010 797 1072M790 1243 Q525 1270 260 1243" fill="none" stroke="#88929c" stroke-width="3"/>
+ <circle cx="200" cy="1078" r="54" fill="#fff" stroke="{{NAVY}}" stroke-width="5"/>
+ {{SUPPORTER_ICON}}
+ <circle cx="525" cy="1078" r="54" fill="#fff" stroke="{{NAVY}}" stroke-width="5"/>
+ <image href="{{LOGO}}" x="482" y="1035" width="86" height="86" preserveAspectRatio="xMidYMid meet" clip-path="url(#markClip)"/>
+ <circle cx="850" cy="1078" r="54" fill="#fff" stroke="{{NAVY}}" stroke-width="5"/>
+ {{STORE_ICON}}
+ {{GROWTH_BENEFITS}}
+ <rect y="1270" width="1050" height="196" fill="{{NAVY}}"/>
+ <rect y="1270" width="1050" height="5" fill="{{GOLD}}"/>
+ <rect x="19" y="1280" width="174" height="174" rx="8" fill="#fff"/>
+ <image href="{{QR}}" x="24" y="1285" width="164" height="164"/>
+ <rect x="203" y="1295" width="4" height="145" fill="{{GOLD}}"/>
+ {{CTA}}
+ <text class="sans white" x="228" y="1437" font-size="17" font-weight="700">SCAN TO EXPLORE THE CAMPAIGN</text>
+ <rect y="1466" width="1050" height="34" fill="#e3e8ed"/>
+ <text class="sans navy" x="48" y="1489" font-size="12" font-weight="700" letter-spacing="1">LOCAL PEOPLE. LOCAL BUSINESSES. LOCAL IMPACT.</text>
+ <text class="sans navy" x="1002" y="1489" font-size="12" text-anchor="end" font-weight="700">{{LOCALITY}}</text>
+</svg>
