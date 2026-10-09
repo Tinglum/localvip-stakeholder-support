@@ -324,10 +324,12 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
 
   const readyGenerated = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url)
   const hasAudienceFlyers = readyGenerated.some(m => m.metadata?.generator === 'cause-campaign-v1')
+  const hasDesignedFlyers = readyGenerated.some(m => m.metadata?.generator === 'cause-campaign-v1' && m.metadata?.design)
   const generatedCount = new Set(readyGenerated
     .filter(m => !hasAudienceFlyers || m.metadata?.generator !== 'cause-template-v1')
+    .filter(m => !hasDesignedFlyers || m.metadata?.generator !== 'cause-campaign-v1' || m.metadata?.design)
     .map(m => m.metadata?.generator === 'cause-campaign-v1'
-      ? `audience:${String(m.metadata.audience || '')}`
+      ? `audience:${String(m.metadata.audience || '')}:${String(m.metadata.design || 'legacy')}`
       : `template:${m.template_id || m.material_id || m.generated_file_name || m.id}`)).size
   const materialMap = React.useMemo(() => new Map(allMaterials.map(m => [m.id, m])), [allMaterials])
   const activeMaterialPairs = React.useMemo(() =>
