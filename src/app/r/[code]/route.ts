@@ -57,6 +57,23 @@ export async function GET(
   { params }: { params: { code: string } },
 ) {
   const code = params.code
+  if (process.env.NEXT_PUBLIC_DEPLOY_ENV === 'qa') {
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(code)) return new NextResponse('Not found', { status: 404 })
+    const base = process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL
+    if (!base) return new NextResponse('QA backend unavailable', { status: 503 })
+    const result = await fetch(`${base}/api/dashboard/v1/Redirect/resolve/${encodeURIComponent(code)}`, { cache: 'no-store' })
+    if (!result.ok) return new NextResponse('Not found', { status: 404 })
+    const data = await result.json() as { destinationUrl?: string; DestinationUrl?: string }
+    const destination = data.destinationUrl || data.DestinationUrl
+    if (!destination) return new NextResponse('Not found', { status: 404 })
+    let target: URL
+    try { target = new URL(destination) } catch { return new NextResponse('Invalid destination', { status: 400 }) }
+    if (!['http:', 'https:'].includes(target.protocol)) return new NextResponse('Invalid destination', { status: 400 })
+    if (['my.localvip.com', 'dashboard.localvip.com', 'qa.localvip.com'].includes(target.hostname)) {
+      return new NextResponse('This QA code points to a live environment', { status: 409 })
+    }
+    return NextResponse.redirect(target)
+  }
   const supabase = createServiceClient()
 
   const { data: redirectRow } = await (supabase

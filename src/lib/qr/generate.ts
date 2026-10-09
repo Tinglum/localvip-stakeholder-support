@@ -60,7 +60,7 @@ export interface QRDestination {
 export function destinationToString(dest: QRDestination): string {
   switch (dest.type) {
     case 'url':
-      return dest.url || 'https://localvip.com'
+      return dest.url || process.env.NEXT_PUBLIC_APP_URL || 'https://localvip.com'
     case 'email': {
       const parts = [`mailto:${dest.emailTo || ''}`]
       const params: string[] = []
@@ -95,9 +95,9 @@ export function destinationToString(dest: QRDestination): string {
       return lines.join('\n')
     }
     case 'file':
-      return dest.fileUrl || 'https://localvip.com'
+      return dest.fileUrl || process.env.NEXT_PUBLIC_APP_URL || 'https://localvip.com'
     default:
-      return 'https://localvip.com'
+      return process.env.NEXT_PUBLIC_APP_URL || 'https://localvip.com'
   }
 }
 

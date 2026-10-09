@@ -667,7 +667,9 @@ export default function QRGeneratorPage() {
       setPreviewUrl(dataUrl)
 
       // Save to the QA dashboard QR API.
-      const redirectUrl = `https://localvip.com/q/${code}`
+      const redirectUrl = process.env.NEXT_PUBLIC_DEPLOY_ENV === 'qa'
+        ? `${window.location.origin}/r/${code}`
+        : `https://localvip.com/q/${code}`
       const selectedBusiness = resolvedBusinessId
       const selectedCause = resolvedCauseId
       const entityType = selectedBusiness ? 'business_custom' : selectedCause ? 'cause' : null

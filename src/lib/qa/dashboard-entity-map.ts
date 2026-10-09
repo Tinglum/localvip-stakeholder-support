@@ -656,7 +656,9 @@ const VALUE_NORMALIZERS: Partial<Record<QaEntityKey, (row: Record<string, unknow
     row.metadata = metadata || null
     if (typeof row.code === 'string' && !row.short_code) row.short_code = row.code
     if (typeof row.target_url === 'string' && !row.destination_url) row.destination_url = row.target_url
-    if (typeof metadata?.redirect_url === 'string' && metadata.redirect_url.trim()) {
+    if (process.env.NEXT_PUBLIC_DEPLOY_ENV === 'qa' && typeof row.short_code === 'string' && row.short_code.trim()) {
+      row.redirect_url = `${process.env.NEXT_PUBLIC_APP_URL}/r/${row.short_code}`
+    } else if (typeof metadata?.redirect_url === 'string' && metadata.redirect_url.trim()) {
       row.redirect_url = metadata.redirect_url
     } else if (typeof row.short_code === 'string' && row.short_code.trim() && !row.redirect_url) {
       row.redirect_url = `https://localvip.com/q/${row.short_code}`
