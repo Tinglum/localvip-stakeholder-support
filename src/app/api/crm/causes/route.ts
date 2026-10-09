@@ -96,15 +96,22 @@ export async function POST(request: NextRequest) {
     country,
   } satisfies QaCreateCauseInput
 
+  let result: Awaited<ReturnType<typeof createQaCause>>
   try {
-    const result = await createQaCause(payload)
+    result = await createQaCause(payload)
+  } catch (error) {
+    const normalized = qaCauseCreateError(error)
+    return NextResponse.json({ error: normalized.message }, { status: normalized.status })
+  }
+
+  try {
     const launchMaterials = await generateCauseLaunchMaterials({
       id: result.id, name: result.name, city, state, category: payload.category, referralCode: result.referralCode,
     })
     return NextResponse.json({ ...result, launchMaterials }, { status: 201 })
   } catch (error) {
-    const normalized = qaCauseCreateError(error)
-    return NextResponse.json({ error: normalized.message }, { status: normalized.status })
+    console.error('Cause created, but launch materials could not be generated:', error)
+    return NextResponse.json({ ...result, launchMaterialsWarning: 'Cause created. Launch materials need to be generated from the cause page.' }, { status: 201 })
   }
 }
 

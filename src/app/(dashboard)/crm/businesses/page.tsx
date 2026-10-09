@@ -98,7 +98,7 @@ export default function BusinessesPage() {
   const [formCity, setFormCity] = React.useState('')
   const [formState, setFormState] = React.useState('')
   const [formZipCode, setFormZipCode] = React.useState('')
-  const [formCountry, setFormCountry] = React.useState('US')
+  const [formCountry, setFormCountry] = React.useState('')
   const [formSendInvite, setFormSendInvite] = React.useState(false)
   const [formBrand, setFormBrand] = React.useState<'localvip' | 'hato'>('localvip')
   const [formStage, setFormStage] = React.useState<OnboardingStage>('lead')
@@ -191,7 +191,7 @@ export default function BusinessesPage() {
     setFormCity('')
     setFormState('')
     setFormZipCode('')
-    setFormCountry('US')
+    setFormCountry('')
     setFormSendInvite(false)
     setFormBrand('localvip')
     setFormStage('lead')
@@ -522,7 +522,7 @@ export default function BusinessesPage() {
               Register the business and its owner directly in the QA network.
             </DialogDescription>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit} autoComplete="off">
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Business Name *</label>
               <Input
@@ -637,30 +637,30 @@ export default function BusinessesPage() {
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Street Address *</label>
-              <Input required placeholder="123 Main Street" value={formAddress1} onChange={event => setFormAddress1(event.target.value)} />
+              <Input required autoComplete="off" placeholder="123 Main Street" value={formAddress1} onChange={event => setFormAddress1(event.target.value)} />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Address Line 2</label>
-              <Input placeholder="Suite, unit, or floor" value={formAddress2} onChange={event => setFormAddress2(event.target.value)} />
+              <Input autoComplete="off" placeholder="Suite, unit, or floor" value={formAddress2} onChange={event => setFormAddress2(event.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">City *</label>
-                <Input required value={formCity} onChange={event => setFormCity(event.target.value)} />
+                <Input required autoComplete="off" value={formCity} onChange={event => setFormCity(event.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">State *</label>
-                <Input required value={formState} onChange={event => setFormState(event.target.value)} />
+                <label className="text-sm font-medium text-surface-700">State / Region *</label>
+                <Input required autoComplete="off" value={formState} onChange={event => setFormState(event.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">ZIP Code *</label>
-                <Input required value={formZipCode} onChange={event => setFormZipCode(event.target.value)} />
+                <label className="text-sm font-medium text-surface-700">Postal Code *</label>
+                <Input required autoComplete="off" value={formZipCode} onChange={event => setFormZipCode(event.target.value)} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Country *</label>
-                <Input required value={formCountry} onChange={event => setFormCountry(event.target.value)} />
+                <Input required autoComplete="off" placeholder="e.g. US or NO" value={formCountry} onChange={event => setFormCountry(event.target.value)} />
               </div>
             </div>
             <div className="space-y-2">

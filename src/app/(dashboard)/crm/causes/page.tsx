@@ -103,7 +103,7 @@ const INITIAL_FORM: CauseForm = {
   city: '',
   state: '',
   zipCode: '',
-  country: 'US',
+  country: '',
   sendInvite: false,
   website: '',
   brand: 'localvip',
@@ -432,7 +432,7 @@ export default function CausesPage() {
             <DialogTitle>Add a New Cause</DialogTitle>
             <DialogDescription>Register a school, nonprofit, church, or community organization.</DialogDescription>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit} autoComplete="off">
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Organization Name *</label>
               <Input
@@ -548,30 +548,30 @@ export default function CausesPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">City *</label>
-                <Input required value={form.city} onChange={event => handleFormChange('city', event.target.value)} />
+                <Input required autoComplete="off" value={form.city} onChange={event => handleFormChange('city', event.target.value)} />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Street Address *</label>
-              <Input required placeholder="123 Main Street" value={form.address1} onChange={event => handleFormChange('address1', event.target.value)} />
+              <Input required autoComplete="off" placeholder="123 Main Street" value={form.address1} onChange={event => handleFormChange('address1', event.target.value)} />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Address Line 2</label>
-              <Input placeholder="Suite, unit, or floor" value={form.address2} onChange={event => handleFormChange('address2', event.target.value)} />
+              <Input autoComplete="off" placeholder="Suite, unit, or floor" value={form.address2} onChange={event => handleFormChange('address2', event.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">State *</label>
-                <Input required value={form.state} onChange={event => handleFormChange('state', event.target.value)} />
+                <label className="text-sm font-medium text-surface-700">State / Region *</label>
+                <Input required autoComplete="off" value={form.state} onChange={event => handleFormChange('state', event.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">ZIP Code *</label>
-                <Input required value={form.zipCode} onChange={event => handleFormChange('zipCode', event.target.value)} />
+                <label className="text-sm font-medium text-surface-700">Postal Code *</label>
+                <Input required autoComplete="off" value={form.zipCode} onChange={event => handleFormChange('zipCode', event.target.value)} />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Country *</label>
-              <Input required value={form.country} onChange={event => handleFormChange('country', event.target.value)} />
+              <Input required autoComplete="off" placeholder="e.g. US or NO" value={form.country} onChange={event => handleFormChange('country', event.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
