@@ -44,7 +44,7 @@ type LaunchCause = {
 }
 
 type LandingRecord = { status?: string; draft?: unknown; published?: unknown }
-type GeneratedList = { items?: Array<{ generatedFileUrl?: string | null; generationStatus?: string | null; metadata?: unknown }> }
+type GeneratedList = { items?: Array<{ generatedFileName?: string | null; generatedFileUrl?: string | null; generationStatus?: string | null; metadata?: unknown }> }
 const DEFAULT_SETUP_CALL_URL = process.env.LOCALVIP_SETUP_CALL_URL || 'https://calendly.com/ktinglum/localvip-internship'
 
 function materialMetadata(value: unknown): Record<string, unknown> | null {
@@ -120,6 +120,21 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
     .map(item => materialMetadata(item.metadata))
     .filter(metadata => metadata?.generator === 'cause-campaign-v1' && String(metadata.version || '').startsWith('campaign-template-v7|'))
     .map(metadata => `${metadata?.audience}:${metadata?.design}`)).size
+  const flyerFiles = new Map<string, { name: string; url: string; audience: string; design: string }>()
+  for (const item of generated?.items || []) {
+    const metadata = materialMetadata(item.metadata)
+    if (!item.generatedFileUrl || item.generationStatus === 'failed'
+      || metadata?.generator !== 'cause-campaign-v1'
+      || !String(metadata.version || '').startsWith('campaign-template-v7|')) continue
+    const audience = String(metadata.audience || '')
+    const design = String(metadata.design || '')
+    const key = `${audience}:${design}`
+    if (flyerFiles.has(key)) continue
+    const url = item.generatedFileUrl.startsWith('/uploads/')
+      ? `${QA_AUTH_CONFIG.baseUrl}${item.generatedFileUrl}` : item.generatedFileUrl
+    if (!url.startsWith(`${QA_AUTH_CONFIG.baseUrl}/uploads/`)) continue
+    flyerFiles.set(key, { name: item.generatedFileName || `${audience}-${design}-flyer.pdf`, url, audience, design })
+  }
   const draft = landing?.draft as (VideoFields & { slug?: string; assets?: DraftAssets }) | null
   const published = landing?.published as VideoFields | null
   // `video` is the 60-second film, which is the cut the public page plays.
@@ -153,6 +168,7 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
       || (isLandingLive(landing?.status) && !!videoUrl && published?.video?.src !== videoUrl),
     flyers: variantCount === 12 ? 'generated' : variantCount > 0 ? 'partial' : 'waiting for assets',
     flyerCount: variantCount,
+    flyerFiles: [...flyerFiles.values()],
     totalMaterialCount: flyerCount,
     landingPages: landing?.status || 'not_started',
     landingSlug: draft?.slug || null,

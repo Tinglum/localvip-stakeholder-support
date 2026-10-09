@@ -45,7 +45,7 @@ test('status is based on saved files and the campaign draft', async () => {
     ? { status: 'draft', draft: { video: { src: 'https://example.org/video.mp4' } } } as T
     : { items: [{ generatedFileUrl: 'https://example.org/flyer.pdf', generationStatus: 'generated' }] } as T
   assert.deepEqual(await getCauseLaunchStatus(42, request), {
-    flyers: 'waiting for assets', flyerCount: 0, totalMaterialCount: 1, landingPages: 'draft', landingSlug: null,
+    flyers: 'waiting for assets', flyerCount: 0, flyerFiles: [], totalMaterialCount: 1, landingPages: 'draft', landingSlug: null,
     video: 'generated', videoUrl: 'https://example.org/video.mp4', shortVideo: 'waiting for images', shortVideoUrl: null,
     missingPhotos: ['crowd', 'team', 'people', 'community'], landingNeedsRepublish: false,
   })
@@ -58,6 +58,18 @@ test('missing assets show a waiting video status', async () => {
   const status = await getCauseLaunchStatus(42, request)
   assert.equal(status.video, 'waiting for images')
   assert.equal(status.flyers, 'waiting for assets')
+})
+
+test('status exposes only current branded flyer downloads', async () => {
+  const request = async <T>(path: string): Promise<T> => path.endsWith('/landing-page')
+    ? { status: 'published', draft: {} } as T
+    : { items: [
+      { generatedFileName: 'families-growth.pdf', generatedFileUrl: '/uploads/materials/cause-launch/new.pdf', generationStatus: 'completed', metadata: { generator: 'cause-campaign-v1', audience: 'families', design: 'growth', version: 'campaign-template-v7|new' } },
+      { generatedFileName: 'old.pdf', generatedFileUrl: '/uploads/materials/cause-launch/old.pdf', generationStatus: 'completed', metadata: { generator: 'cause-campaign-v1', audience: 'families', version: 'olathe-west-layout-v3|old' } },
+    ] } as T
+  const status = await getCauseLaunchStatus(42, request)
+  assert.equal(status.flyerCount, 1)
+  assert.deepEqual(status.flyerFiles, [{ name: 'families-growth.pdf', url: 'https://qa.localvip.com/uploads/materials/cause-launch/new.pdf', audience: 'families', design: 'growth' }])
 })
 
 test('four audiences across three designs use the cause assets and produce print-resolution PDFs', async () => {

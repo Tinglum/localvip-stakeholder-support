@@ -259,6 +259,7 @@ export default function CauseDetailPage() {
   const qaLinkedCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
   const [launchStatus, setLaunchStatus] = React.useState<{
     flyers: string; flyerCount: number; totalMaterialCount: number; landingPages: string; landingSlug: string | null
+    flyerFiles: Array<{ name: string; url: string; audience: string; design: string }>
     /** The 60-second film, the cut the public landing page plays. */
     video: string; videoUrl: string | null
     /** The 15-second cut, the one an operator forwards to a business owner. */
@@ -1602,12 +1603,19 @@ export default function CauseDetailPage() {
               </CardContent>
             </Card>
           )}
-          {generatedMaterialPairs.length === 0 && (launchStatus?.totalMaterialCount || 0) > 0 ? (
+          {launchStatus?.flyerFiles?.length ? (
+            <Card><CardHeader><CardTitle>Campaign flyers</CardTitle></CardHeader><CardContent className="grid gap-2 sm:grid-cols-2">
+              {launchStatus.flyerFiles.map(file => <a key={`${file.audience}:${file.design}`} href={file.url} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-surface-200 px-3 py-2 text-sm text-brand-700 hover:border-brand-300 hover:bg-brand-50">
+                {file.audience.charAt(0).toUpperCase() + file.audience.slice(1)} · {file.design.charAt(0).toUpperCase() + file.design.slice(1)} <ExternalLink className="ml-1 inline h-3 w-3" />
+              </a>)}
+            </CardContent></Card>
+          ) : null}
+          {generatedMaterialPairs.length === 0 && !launchStatus?.flyerFiles?.length && (launchStatus?.totalMaterialCount || 0) > 0 ? (
             <Card><CardContent className="py-6">
               <p className="text-sm font-semibold text-surface-700">{launchStatus?.totalMaterialCount} files saved in the QA materials library</p>
               <a href="/materials/library" className="mt-2 inline-block text-sm text-brand-700 underline">Open materials library</a>
             </CardContent></Card>
-          ) : generatedMaterialPairs.length === 0 ? (
+          ) : generatedMaterialPairs.length === 0 && !launchStatus?.flyerFiles?.length ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <FileText className="mx-auto mb-3 h-10 w-10 text-surface-300" />
