@@ -278,62 +278,9 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
           }
         }
       }
-      if (onlyFlyers) {
-        steps.flyers = {
-          status: flyerErrors.length ? (customGenerated ? 'partial' : 'failed') : customGenerated === 12 ? 'generated' : 'waiting',
-          detail: `${customGenerated}/12 flyers.${!logoUrl || !coverUrl ? ' A logo and supporters photo are required.' : ''}${flyerErrors.length ? ` ${flyerErrors.join(' ')}` : ''}`,
-        }
-        return { causeId: cause.id, steps }
-      }
-      const templatesResult = await request<unknown>('/api/dashboard/v1/MaterialTemplate?isActive=true')
-      const raw = Array.isArray(templatesResult) ? templatesResult
-        : (templatesResult && typeof templatesResult === 'object' && Array.isArray((templatesResult as { items?: unknown[] }).items))
-          ? (templatesResult as { items: unknown[] }).items : []
-      const templates = raw.filter(item => {
-        if (!item || typeof item !== 'object') return false
-        const row = item as Record<string, unknown>
-        const value = row.stakeholderTypes ?? row.stakeholder_types
-        let types: unknown[]
-        if (Array.isArray(value)) types = value
-        else {
-          const text = String(value || '').trim()
-          if (text.startsWith('[')) {
-            try {
-              const parsed = JSON.parse(text) as unknown
-              types = Array.isArray(parsed) ? parsed : [text]
-            } catch { types = text.split(',') }
-          } else types = text.split(',')
-        }
-        return types.length === 0 || types.every(type => !String(type).trim())
-          || types.some(type => ['cause', 'school', 'community', 'nonprofit'].includes(String(type).trim().toLowerCase()))
-      }) as Array<{ id: number | string; name?: string }>
-      if (templates.length === 0) {
-        steps.flyers = { status: customGenerated === 12 ? 'generated' : 'waiting',
-          detail: customGenerated === 12 ? '12/12 flyers generated.' : 'Upload a logo and cover photo to generate twelve flyers.' }
-      } else {
-        const errors: string[] = []
-        let generated = 0
-        for (const template of templates) {
-          const version = `${template.id}|${cause.referralCode}`
-          if (existing?.items?.some(item => {
-            const metadata = materialMetadata(item.metadata)
-            return item.generatedFileUrl && metadata?.generator === 'cause-template-v1' && metadata?.version === version
-          })) { generated += 1; continue }
-          try {
-            await request<unknown>('/api/dashboard/v1/GeneratedMaterial', {
-              method: 'POST', headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ causeAccountId: cause.id, templateId: template.id,
-                templateSource: 'material_template', metadata: { generator: 'cause-template-v1', version } }),
-            }, `Could not generate ${template.name || 'a flyer'}.`)
-            generated += 1
-          } catch (error) {
-            errors.push(`${template.name || template.id}: ${error instanceof Error ? error.message : String(error)}`)
-          }
-        }
-        const allErrors = [...flyerErrors, ...errors]
-        steps.flyers = { status: allErrors.length ? (generated || customGenerated ? 'partial' : 'failed') :
-          customGenerated === 12 || (!logoUrl || !coverUrl) ? 'generated' : 'partial',
-          detail: `${customGenerated}/12 flyers, ${generated}/${templates.length} templates generated.${allErrors.length ? ` ${allErrors.join(' ')}` : ''}` }
+      steps.flyers = {
+        status: flyerErrors.length ? (customGenerated ? 'partial' : 'failed') : customGenerated === 12 ? 'generated' : 'waiting',
+        detail: `${customGenerated}/12 flyers.${!logoUrl || !coverUrl ? ' A logo and supporters photo are required.' : ''}${flyerErrors.length ? ` ${flyerErrors.join(' ')}` : ''}`,
       }
     }
   } catch (error) {

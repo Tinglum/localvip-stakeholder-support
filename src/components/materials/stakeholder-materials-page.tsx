@@ -174,13 +174,16 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
     return ids.some(id => accountIds.has(id))
     })
     const hasAudienceFlyers = Boolean(causeAccountId) && scoped.some(row => row.metadata?.generator === 'cause-campaign-v1')
+    const hasDesignedFlyers = scoped.some(row => row.metadata?.generator === 'cause-campaign-v1' && row.metadata?.design)
     return scoped.sort((a, b) => String(b.updated_at || b.generated_at || '').localeCompare(String(a.updated_at || a.generated_at || '')))
       .filter(row => {
         const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {}
         if (hasAudienceFlyers && metadata.generator === 'cause-template-v1') return false
+        if (hasDesignedFlyers && metadata.generator === 'cause-campaign-v1' && !metadata.design) return false
         if (metadata.generator !== 'cause-campaign-v1' || typeof metadata.audience !== 'string') return true
-        if (seenCampaignAudiences.has(metadata.audience)) return false
-        seenCampaignAudiences.add(metadata.audience)
+        const variant = `${metadata.audience}:${metadata.design || 'legacy'}`
+        if (seenCampaignAudiences.has(variant)) return false
+        seenCampaignAudiences.add(variant)
         return true
       }).map(row => generatedToMaterial(row, templateMap.get(String(row.template_id))))
   }, [accountIds, causeAccountId, generated, templateMap])

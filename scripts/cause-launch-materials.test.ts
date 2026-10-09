@@ -10,7 +10,7 @@ test('flyer identity follows schools, booster clubs and general causes', () => {
   assert.equal(flyerKind('community', 'Neighborhood Food Pantry'), 'cause')
 })
 
-test('new school creates a landing draft and only school/cause flyers', async () => {
+test('new school without a cover photo waits instead of generating generic flyers', async () => {
   const calls: Array<{ path: string; method: string; body?: Record<string, unknown> }> = []
   const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     const method = init?.method || 'GET'
@@ -32,10 +32,10 @@ test('new school creates a landing draft and only school/cause flyers', async ()
     category: 'school', referralCode: 'TEST', imageUrl: 'logo.png',
   }, request)
   assert.equal(result.steps.landingPages.status, 'draft')
-  assert.equal(result.steps.flyers.status, 'generated')
+  assert.equal(result.steps.flyers.status, 'waiting')
   assert.equal(result.steps.video.status, 'waiting')
   const flyerCalls = calls.filter(call => call.path.endsWith('/GeneratedMaterial'))
-  assert.deepEqual(flyerCalls.map(call => call.body?.templateId), [1, 2])
+  assert.equal(flyerCalls.length, 0)
   const draft = calls.find(call => call.path.endsWith('/landing-page') && call.method === 'PUT')?.body?.config as { assets: { mark: { src: string } } }
   assert.match(draft.assets.mark.src, /\/uploads\/logos\/logo\.png$/)
 })
