@@ -50,7 +50,7 @@ function buildClaudeMd(r: BugReport): string {
   const env = parseUA(r.userAgent)
   const NL = String.fromCharCode(10)
   const join = (raw: string | null | undefined) => safeParse(raw).map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(NL) || '(none)'
-  const shot = r.screenshotUrl ? `https://qa.localvip.com${r.screenshotUrl}` : '(none)'
+  const shot = r.screenshotUrl ? `${process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com'}${r.screenshotUrl}` : '(none)'
   return [
     `# Bug #${r.id} — ${(r.whatWrong || '').slice(0, 90)}`,
     '',

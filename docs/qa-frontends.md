@@ -15,6 +15,7 @@ Create each directory and a mode-600 `.env.production` first. Required dashboard
 NEXT_PUBLIC_APP_URL=https://dashboard-qa.localvip.com
 NEXT_PUBLIC_WEBAPP_URL=https://my-qa.localvip.com
 NEXT_PUBLIC_QA_AUTH_BASE_URL=https://qa-new.localvip.com
+NEXT_PUBLIC_DEPLOY_ENV=qa
 QA_AUTH_STATE_SECRET=<unique random secret>
 QA_AUTH_CLIENT_ID=<QA registered client>
 ```

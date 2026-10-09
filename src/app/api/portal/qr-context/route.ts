@@ -20,8 +20,8 @@ export async function GET() {
     const assets = await ensureQaBusinessEngagementAssets(String(businessId))
     const b = assets.business as unknown as Record<string, unknown>
     const code = assets.networkReferral.networkReferralCode || ''
-    const networkUrl = assets.networkReferral.networkReferralUrl
-      || (code ? `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(code)}` : '')
+    const networkUrl = (process.env.NEXT_PUBLIC_DEPLOY_ENV === 'qa' ? '' : assets.networkReferral.networkReferralUrl)
+      || (code ? `${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/auth/signup?ref=${encodeURIComponent(code)}` : '')
 
     // The logo lives on the QA host under /uploads; route it through the same-
     // origin proxy so the client can draw it onto a <canvas> without tainting it.

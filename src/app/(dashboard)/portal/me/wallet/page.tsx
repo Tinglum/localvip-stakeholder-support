@@ -239,7 +239,7 @@ export default function MyWalletPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm">
-              <a href="https://my.localvip.com/wallet" target="_blank" rel="noopener noreferrer">Manage withdrawals</a>
+              <a href={`${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/wallet`} target="_blank" rel="noopener noreferrer">Manage withdrawals</a>
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link href="/portal/me/network">See Community Cash</Link>

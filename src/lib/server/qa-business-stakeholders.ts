@@ -293,9 +293,9 @@ export function ensureQaBusinessEngagementAssets(businessId: string) {
     })
 
     const networkReferralCode = getQaBusinessNetworkReferralCode(qaBusiness)
-    const networkReferralUrl = qaBusiness.branchReferralUrl?.trim()
+    const networkReferralUrl = (process.env.NEXT_PUBLIC_DEPLOY_ENV === 'qa' ? '' : qaBusiness.branchReferralUrl?.trim())
       || (networkReferralCode
-        ? `https://my.localvip.com/auth/signup?ref=${encodeURIComponent(networkReferralCode)}`
+        ? `${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/auth/signup?ref=${encodeURIComponent(networkReferralCode)}`
         : null)
     const networkQr = networkReferralCode && networkReferralUrl
       ? await ensureQaBusinessQr(qaBusiness, {

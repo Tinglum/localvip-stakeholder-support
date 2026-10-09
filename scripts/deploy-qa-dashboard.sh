@@ -13,6 +13,7 @@ if tar -tzf "$ARCHIVE" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then echo 'Unsafe archi
 [ -f "$APP/.env.production" ] || { echo "Create $APP/.env.production first"; exit 1; }
 grep -Eq '^NEXT_PUBLIC_APP_URL=https://dashboard-qa\.localvip\.com/?$' "$APP/.env.production" || { echo 'QA dashboard URL missing'; exit 1; }
 grep -Eq '^NEXT_PUBLIC_QA_AUTH_BASE_URL=https://(qa-new|qa)\.localvip\.com/?$' "$APP/.env.production" || { echo 'QA backend URL missing'; exit 1; }
+grep -Eq '^NEXT_PUBLIC_DEPLOY_ENV=qa$' "$APP/.env.production" || { echo 'QA link isolation flag missing'; exit 1; }
 if grep -Eq '^(NEXT_PUBLIC_SUPABASE_URL|NEXT_PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY)=' "$APP/.env.production"; then
   echo 'Remove legacy Supabase credentials from QA config'; exit 1
 fi

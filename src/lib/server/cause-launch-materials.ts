@@ -251,7 +251,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
           })
           if (alreadySaved) { customGenerated += 1; continue }
           try {
-            const joinUrl = `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/${audience}?ref=${encodeURIComponent(cause.referralCode)}`
+            const joinUrl = `${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/go/campaign/${encodeURIComponent(campaignSlug)}/${audience}?ref=${encodeURIComponent(cause.referralCode)}`
             const bytes = await renderCauseCampaignFlyer({ name: cause.name,
               locality: [cause.city, cause.state].filter(Boolean).join(', ') || 'Your community',
               logoUrl, coverUrl, joinUrl, audience, mission: flyerMission, parentOrganization, colors: flyerColors })
@@ -330,7 +330,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   }
 
   const videoJoinUrl = cause.referralCode
-    ? `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/families?ref=${encodeURIComponent(cause.referralCode)}`
+    ? `${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/go/campaign/${encodeURIComponent(campaignSlug)}/families?ref=${encodeURIComponent(cause.referralCode)}`
     : ''
   const videoProps: CauseVideoProps = {
     accountId: cause.id, causeName: cause.name,

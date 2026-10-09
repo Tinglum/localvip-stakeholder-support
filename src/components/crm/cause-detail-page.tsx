@@ -1588,7 +1588,7 @@ export default function CauseDetailPage() {
                     {launchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     Generate launch materials
                   </Button>
-                  {launchStatus?.landingSlug && launchStatus.landingPages.startsWith('published') && <a href={`https://my.localvip.com/landing/${launchStatus.landingSlug}`} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open landing page</Button></a>}
+                  {launchStatus?.landingSlug && launchStatus.landingPages.startsWith('published') && <a href={`${process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com'}/landing/${launchStatus.landingSlug}`} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open landing page</Button></a>}
                   {launchStatus?.videoUrl && <a href={launchStatus.videoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open 60-second film</Button></a>}
                   {launchStatus?.shortVideoUrl && <a href={launchStatus.shortVideoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open 15-second cut</Button></a>}
                 </div>
