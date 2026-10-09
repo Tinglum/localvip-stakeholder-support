@@ -420,15 +420,15 @@ export function Topbar({
           'rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wider',
           IS_QA ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900',
         )}>
-          {IS_QA ? 'Test data' : 'Live data'}
+          {IS_QA ? 'Test data' : 'QA source data'}
         </span>
         {isAdminProfile(profile) ? (
           <a
             href={OTHER_DASHBOARD_URL}
             className="rounded-lg border border-surface-200 px-2 py-1 text-xs font-semibold text-surface-700 hover:bg-surface-100"
-            aria-label={`Switch to ${IS_QA ? 'live' : 'test'} dashboard`}
+            aria-label={`Switch to ${IS_QA ? 'production' : 'test'} dashboard`}
           >
-            Switch to {IS_QA ? 'live' : 'test'}
+            Switch to {IS_QA ? 'production' : 'test'}
           </a>
         ) : null}
 
