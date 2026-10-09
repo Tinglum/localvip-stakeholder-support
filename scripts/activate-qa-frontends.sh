@@ -5,13 +5,15 @@ QA=/etc/nginx/sites-available/localvip-qa-frontends
 DASH=/etc/nginx/sites-enabled/localvip-dashboard
 APP=/etc/nginx/sites-enabled/localvip-app
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-cp -p "$QA" "$QA.$STAMP.bak"
-cp -p "$DASH" "$DASH.$STAMP.bak"
-cp -p "$APP" "$APP.$STAMP.bak"
+BACKUP=/etc/nginx/localvip-backups/$STAMP
+mkdir -p "$BACKUP"
+cp -p "$QA" "$BACKUP/qa"
+cp -p "$DASH" "$BACKUP/dashboard"
+cp -p "$APP" "$BACKUP/app"
 restore() {
-  cp -p "$QA.$STAMP.bak" "$QA"
-  cp -p "$DASH.$STAMP.bak" "$DASH"
-  cp -p "$APP.$STAMP.bak" "$APP"
+  cp -p "$BACKUP/qa" "$QA"
+  cp -p "$BACKUP/dashboard" "$DASH"
+  cp -p "$BACKUP/app" "$APP"
   nginx -t && systemctl reload nginx
 }
 trap restore ERR
