@@ -285,13 +285,13 @@ export default function CauseDetailPage() {
     const timer = videoRendering ? setInterval(() => void load(), 20000) : null
     return () => { cancelled = true; if (timer) clearInterval(timer) }
   }, [qaLinkedCauseId, videoRendering])
-  async function handleLaunchMaterials() {
+  async function handleLaunchMaterials(flyersOnly = false) {
     if (!qaLinkedCauseId) return
     setLaunchBusy(true)
     setLaunchMessage(null)
     try {
-      const response = await fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials`, { method: 'POST' })
-      const body = await response.json()
+      const response = await fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials${flyersOnly ? '?flyersOnly=1' : ''}`, { method: 'POST' })
+      const body = await response.json().catch(() => ({ error: 'The request was interrupted. Refresh this page to check which files were saved.' }))
       if (!response.ok) throw new Error(body.error || 'Could not generate launch materials.')
       const statuses = Object.entries(body.steps || {}).map(([name, value]) => {
         const step = value as { status: string; detail?: string }
@@ -1590,10 +1590,11 @@ export default function CauseDetailPage() {
                 )}
                 {launchMessage && <p className="whitespace-pre-wrap text-sm text-surface-600">{launchMessage}</p>}
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void handleLaunchMaterials()} disabled={launchBusy}>
+                  <Button onClick={() => void handleLaunchMaterials(true)} disabled={launchBusy}>
                     {launchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    Generate launch materials
+                    Generate 12 flyers
                   </Button>
+                  <Button variant="outline" onClick={() => void handleLaunchMaterials()} disabled={launchBusy}>Generate landing page and videos</Button>
                   {launchStatus?.landingSlug && launchStatus.landingPages.startsWith('published') && <a href={`https://my.localvip.com/landing/${launchStatus.landingSlug}`} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open landing page</Button></a>}
                   {launchStatus?.videoUrl && <a href={launchStatus.videoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open 60-second film</Button></a>}
                   {launchStatus?.shortVideoUrl && <a href={launchStatus.shortVideoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open 15-second cut</Button></a>}
