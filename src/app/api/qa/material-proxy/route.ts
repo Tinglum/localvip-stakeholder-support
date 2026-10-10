@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic'
 // runs on a different host than the QA backend (qa.localvip.com), and browsers
 // refuse to render cross-origin PDFs inline — the preview comes up blank.
 //
-// Not an open proxy: it only forwards the configured QA host (and the known
-// production host as a hard fallback) under /uploads/, for an authenticated session.
+// Not an open proxy: it only forwards the configured QA host under /uploads/,
+// for an authenticated session.
 export async function GET(request: NextRequest) {
   const session = await getAuthenticatedSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
@@ -17,12 +17,11 @@ export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get('url')
   if (!raw) return NextResponse.json({ error: 'A url is required.' }, { status: 400 })
 
-  // Resolve the allowed QA host from env, but ALWAYS allow the known production
-  // host too, so an env/inlining quirk can never break previews.
+  // Resolve the allowed QA host from this deployment's environment.
   const qaBase = (process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').trim().replace(/\/$/, '')
   let qaHost = 'qa.localvip.com'
   try { qaHost = new URL(qaBase).hostname } catch { /* keep default */ }
-  const allowedHosts = new Set([qaHost, 'qa.localvip.com'])
+  const allowedHosts = new Set([qaHost])
 
   let target: URL
   try {
