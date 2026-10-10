@@ -89,6 +89,10 @@ const CORNER_STYLES: { value: CornerStyle; label: string }[] = [
   { value: 'extra-rounded', label: 'Extra Rounded' },
 ]
 
+const QR_FALLBACK_URL = process.env.NEXT_PUBLIC_DEPLOY_ENV === 'qa'
+  ? process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my-qa.5.252.52.243.sslip.io'
+  : 'https://localvip.com'
+
 const COLOR_PRESETS = [
   { fg: '#000000', bg: '#ffffff', label: 'Classic' },
   { fg: '#2563eb', bg: '#ffffff', label: 'LocalVIP Blue' },
@@ -598,7 +602,7 @@ export default function QRGeneratorPage() {
   React.useEffect(() => {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
 
-    const dataToEncode = encodedData || 'https://localvip.com'
+    const dataToEncode = encodedData || QR_FALLBACK_URL
 
     previewTimerRef.current = setTimeout(async () => {
       try {
@@ -648,7 +652,7 @@ export default function QRGeneratorPage() {
       const code = generateShortCode(8)
 
       const finalSize = parseInt(size)
-      const dataToEncode = encodedData || 'https://localvip.com'
+      const dataToEncode = encodedData || QR_FALLBACK_URL
 
       const dataUrl = await generateStyledQR({
         data: dataToEncode,
@@ -745,7 +749,7 @@ export default function QRGeneratorPage() {
   }
 
   function handleDownloadSVG() {
-    const dataToEncode = encodedData || 'https://localvip.com'
+    const dataToEncode = encodedData || QR_FALLBACK_URL
     const svg = generateQRSVG({
       data: dataToEncode,
       size: parseInt(size),
