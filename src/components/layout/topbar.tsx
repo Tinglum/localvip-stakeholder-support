@@ -530,6 +530,10 @@ export function Topbar({
               >
                 <Settings className="h-4 w-4" /> Dashboard home
               </DropdownMenu.Item>
+              {canAccessPath(profile, '/account-review') && <DropdownMenu.Item
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-surface-600 outline-none hover:bg-surface-100"
+                onClick={() => router.push('/account-review')}
+              ><User className="h-4 w-4" /> Review account setup</DropdownMenu.Item>}
               <DropdownMenu.Separator className="my-1 h-px bg-surface-100" />
               <DropdownMenu.Item
                 className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger-500 outline-none hover:bg-danger-50"

@@ -1,5 +1,6 @@
 'use client'
 import { StripeDashboardButton } from '@/components/business/stripe-dashboard-button'
+import { useUploadedImageStatus } from '@/lib/uploaded-image-status'
 
 /**
  * THE BUSINESS EDITOR — one implementation, two presentations.
@@ -686,12 +687,13 @@ export function useBusinessEditor(): BusinessEditor {
 
   // Completion is evaluated against the DRAFT values in these inputs, so every
   // rail, pill, and nav badge updates as the owner types.
+  const media = useUploadedImageStatus([logoUrl, coverUrl])
   const signals: BusinessSetupSignals = {
     name,
     category: getBusinessCategoryById(categoryId)?.label || '',
     description,
-    logoUrl: logoUrl || (logoFile ? logoFile.name : null),
-    coverUrl: coverUrl || (coverFile ? coverFile.name : null),
+    logoUrl: logoFile ? logoFile.name : media.image(logoUrl),
+    coverUrl: coverFile ? coverFile.name : media.image(coverUrl),
     captureHeadline,
     captureDescription,
     captureValue,

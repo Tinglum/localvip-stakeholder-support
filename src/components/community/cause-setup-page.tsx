@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
+import { useUploadedImageStatus } from '@/lib/uploaded-image-status'
 import { useCauses } from '@/lib/supabase/hooks'
 import { useSelectedCause } from '@/components/community/use-selected-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
@@ -129,6 +130,7 @@ export function CauseSetupPage() {
     photoSrc(landingConfig?.assets[slot]?.src || (slot === 'crowd' ? text(detail, 'coverPhotoUrl') || cause?.cover_photo_url || '' : '')),
   ])) as Record<CausePhotoSlot, string>, [cause, detail, landingConfig, photoSrc])
   const referralCode = text(detail, 'referralCode')
+  const media = useUploadedImageStatus([logoSrc, ...Object.values(photoUrls)])
 
   const signals: CauseSetupSignals = {
     name: text(detail, 'name') || cause?.name || '',
@@ -140,8 +142,8 @@ export function CauseSetupPage() {
     referralCode,
     crmStage: text(detail, 'crmStage'),
     crmStatus: text(detail, 'crmStatus'),
-    logoUrl: logoSrc,
-    photoUrls,
+    logoUrl: media.image(logoSrc) || '',
+    photoUrls: Object.fromEntries(Object.entries(photoUrls).map(([slot, url]) => [slot, media.image(url) || ''])) as Record<CausePhotoSlot, string>,
     colorsConfirmed: !!landingConfig?.brandColorsConfirmed,
     qrCount: 0,
     generatedCount: flyerCount,

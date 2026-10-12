@@ -11,6 +11,7 @@ import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-po
 import { getBusinessSetupSignals, getBusinessSetupState, type BusinessSetupState } from '@/lib/business-setup'
 import { parseStripeOnboardingStatus } from '@/lib/stripe-onboarding'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { useUploadedImageStatus } from '@/lib/uploaded-image-status'
 import { useBusinesses, useContacts, useDeals, useOffers } from '@/lib/supabase/hooks'
 import type { Business, Profile } from '@/lib/types/database'
 
@@ -75,14 +76,18 @@ export function useBusinessSetupStatus(profile: Profile): BusinessSetupStatus {
     return () => { cancelled = true }
   }, [business, isBusinessShell])
 
+  const savedSignals = getBusinessSetupSignals({ business, offers, contacts, deals })
+  const media = useUploadedImageStatus([savedSignals.logoUrl, savedSignals.coverUrl])
   const state = React.useMemo(
     () => getBusinessSetupState({
-      ...getBusinessSetupSignals({ business, offers, contacts, deals }),
+      ...savedSignals,
+      logoUrl: media.image(savedSignals.logoUrl),
+      coverUrl: media.image(savedSignals.coverUrl),
       // Cached account flags are display hints only. Readiness comes from the
       // current business-scoped Stripe status response above.
       stripeConnected: stripeConnected === true,
     }),
-    [business, contacts, deals, offers, stripeConnected],
+    [savedSignals, stripeConnected, media],
   )
 
   return {
