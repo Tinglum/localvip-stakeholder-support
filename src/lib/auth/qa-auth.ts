@@ -141,6 +141,8 @@ function getConfiguredAppOrigin(fallbackOrigin?: string) {
 }
 
 export function getRequestPublicOrigin(source: PublicOriginSource) {
+  const configuredOrigin = getConfiguredAppOrigin()
+  if (configuredOrigin) return configuredOrigin
   const forwardedHost = trimToNull(source.headers.get('x-forwarded-host'))?.split(',')[0]?.trim() || null
   const forwardedProto = trimToNull(source.headers.get('x-forwarded-proto'))?.split(',')[0]?.trim() || null
   const host = forwardedHost || trimToNull(source.headers.get('host'))
@@ -155,11 +157,6 @@ export function getRequestPublicOrigin(source: PublicOriginSource) {
 
   if (fallbackOrigin) {
     return trimTrailingSlash(fallbackOrigin)
-  }
-
-  const configuredOrigin = getConfiguredAppOrigin()
-  if (configuredOrigin) {
-    return configuredOrigin
   }
 
   throw new Error('No public dashboard origin is available for QA auth.')

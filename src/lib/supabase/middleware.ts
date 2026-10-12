@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { hasRefreshableQaSession } from '@/lib/auth/qa-auth'
+import { getRequestPublicOrigin, hasRefreshableQaSession } from '@/lib/auth/qa-auth'
 import { hasDemoSession } from '@/lib/auth/demo-auth'
 
 export async function updateSession(request: NextRequest) {
@@ -10,8 +10,8 @@ export async function updateSession(request: NextRequest) {
   const isBrowserOidcRoute = pathname === '/' || pathname.startsWith('/login')
 
   if (hasOauthResponse && !isQaCallbackRoute && !isBrowserOidcRoute) {
-    const callbackUrl = request.nextUrl.clone()
-    callbackUrl.pathname = '/api/auth/qa/callback'
+    const callbackUrl = new URL('/api/auth/qa/callback', getRequestPublicOrigin(request))
+    callbackUrl.search = request.nextUrl.search
     callbackUrl.searchParams.set('oauth_redirect_path', pathname)
     return NextResponse.redirect(callbackUrl)
   }
@@ -47,8 +47,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/api/auth/logout')
 
   if (!hasQaAuth && !hasDemoAuth && !isAuthRoute && !isPublicRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
+    const url = new URL('/login', getRequestPublicOrigin(request))
     url.searchParams.set('returnTo', `${request.nextUrl.pathname}${request.nextUrl.search}`)
     return NextResponse.redirect(url)
   }

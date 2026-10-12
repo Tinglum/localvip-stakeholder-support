@@ -434,6 +434,7 @@ export function getStakeholderAccess(profile: Profile, options?: StakeholderAcce
 
 export function canAccessPath(profile: Profile, pathname: string) {
   const { shell } = getStakeholderAccess(profile)
+  if (pathname === '/account-review') return ['admin', 'business', 'community', 'consumer'].includes(shell)
   const operatorCrmPrefixes = [
     '/crm/businesses',
     '/crm/causes',
