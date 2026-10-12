@@ -172,7 +172,7 @@ export default function TransactionsPage() {
         description="Payments, fees, and per-transaction allocation breakdown."
         actions={
           <Button asChild variant="outline">
-            <a href="https://dashboard.stripe.com/acct_1RPBxrELwUmCPaLF/payments" target="_blank" rel="noopener noreferrer">
+            <a href={process.env.NEXT_PUBLIC_DEPLOY_ENV === 'production' ? 'https://dashboard.stripe.com/acct_1RPBxrELwUmCPaLF/payments' : 'https://dashboard.stripe.com/acct_1RPBxxCefasBkOAC/test/payments'} target="_blank" rel="noopener noreferrer">
               Open LocalVIP Stripe dashboard
             </a>
           </Button>
