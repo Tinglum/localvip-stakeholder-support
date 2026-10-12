@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { BrandColorPicker } from '@/components/ui/brand-color-picker'
 import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import Link from 'next/link'
 import { AlertTriangle, CheckCircle2, ExternalLink, Globe2, ImageIcon, Loader2, Save, Send, Upload, Wand2 } from 'lucide-react'
@@ -14,7 +15,8 @@ import { LandingStyleCarousel } from '@/components/community/landing-style-carou
 import { expandBrandPalette, extractBrandColorsFromImage } from '@/lib/brand-colors'
 import { useAuth } from '@/lib/auth/context'
 import { useCauses } from '@/lib/supabase/hooks'
-import { resolveCommunityCause } from '@/lib/community-cause'
+import { useSelectedCause } from '@/components/community/use-selected-cause'
+import { useSearchParams } from 'next/navigation'
 import { CauseLoadError } from '@/components/community/cause-load-error'
 import { CAUSE_PHOTO_PROMPTS } from '@/lib/cause-setup'
 import {
@@ -36,7 +38,8 @@ function Field({ label, children, hint }: { label: string; children: React.React
 export default function CauseLandingPageEditor() {
   const { profile } = useAuth()
   const { data: causes, loading, error, refetch } = useCauses()
-  const cause = React.useMemo(() => resolveCommunityCause(profile, causes), [profile, causes])
+  const searchParams = useSearchParams()
+  const cause = useSelectedCause(profile, causes, searchParams.get('causeId'))
   const causeId = cause ? qaCauseId(cause) : null
   const [config, setConfig] = React.useState<LandingConfig | null>(null)
   const [record, setRecord] = React.useState<LandingRecord | null>(null)
@@ -270,7 +273,7 @@ export default function CauseLandingPageEditor() {
             {!config.brandColorsConfirmed && config.assets.mark.src && <span className="text-sm text-surface-600">Review colors after changing your logo.</span>}
           </div>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          {(Object.keys(config.colors) as Array<keyof LandingConfig['colors']>).map((key) => <Field key={key} label={key.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase())}><div className="flex gap-2"><input aria-label={`${key} color picker`} type="color" value={config.colors[key]} onChange={(e) => update({ colors: { ...config.colors, [key]: e.target.value } })} className="h-9 w-12 rounded border border-surface-300" /><Input value={config.colors[key]} onChange={(e) => update({ colors: { ...config.colors, [key]: e.target.value } })} /></div></Field>)}
+          {(Object.keys(config.colors) as Array<keyof LandingConfig['colors']>).map((key) => <Field key={key} label={key.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase())}><BrandColorPicker label={key.replace(/([A-Z])/g, ' $1').replace(/^./, value => value.toUpperCase())} value={config.colors[key]} swatches={Object.values(config.colors)} disabled={saving} onChange={value => update({ colors: { ...config.colors, [key]: value } })} /></Field>)}
           </div>
         </CardContent></Card>
       </div>

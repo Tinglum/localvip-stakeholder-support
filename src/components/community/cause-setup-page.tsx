@@ -12,7 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
 import { useCauses } from '@/lib/supabase/hooks'
-import { resolveCommunityCause } from '@/lib/community-cause'
+import { useSelectedCause } from '@/components/community/use-selected-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
 import {
   defaultLandingConfig,
@@ -78,7 +78,7 @@ export function CauseSetupPage() {
   const searchParams = useSearchParams()
   const { profile } = useAuth()
   const { data: causes, loading: causesLoading, error: causesError, refetch: refetchCauses } = useCauses()
-  const cause = React.useMemo(() => resolveCommunityCause(profile, causes), [profile, causes])
+  const cause = useSelectedCause(profile, causes, searchParams.get('causeId'))
   const causeId = cause ? qaCauseId(cause) : null
 
   const [detail, setDetail] = React.useState<CauseDetail | null>(null)
@@ -271,6 +271,7 @@ export function CauseSetupPage() {
 
   return (
     <div className="space-y-6 pb-16">
+      {searchParams.get('from') === 'flyer-generator' && <Link className="text-sm text-brand-700 underline" href={`/community/materials/generator?causeId=${causeId}`}>← Back to flyer generator</Link>}
       <PageHeader
         title={`Set up ${name}`}
         description="Two parts: set up your account so LocalVIP can take you live, then get your logo, colors and materials ready to promote. Everything stays editable later."
@@ -379,7 +380,7 @@ export function CauseSetupPage() {
                 todoText={publishBlocked
                   ? `Preview your page any time. Your first publish needs all four photos — still missing: ${missingPhotos.map((prompt) => prompt.label).join(', ')}.`
                   : 'Preview your landing page with your logo, photos and colors, then publish it.'}
-                actionHref="/community/landing-page" actionLabel={signals.landingPublished ? 'Edit landing page' : 'Open landing page editor'} />
+                actionHref={`/community/landing-page?causeId=${causeId}`} actionLabel={signals.landingPublished ? 'Edit landing page' : 'Open landing page editor'} />
             )}
           </div>
         </CardContent>

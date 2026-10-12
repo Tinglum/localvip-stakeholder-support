@@ -420,7 +420,7 @@ export function Topbar({
           'rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wider',
           IS_QA ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900',
         )}>
-          {IS_QA ? 'Test data' : 'QA source data'}
+          {IS_QA ? 'Test data' : (process.env.NEXT_PUBLIC_DEPLOY_ENV === 'production' ? 'Live data' : 'QA test data')}
         </span>
         {isAdminProfile(profile) ? (
           <a

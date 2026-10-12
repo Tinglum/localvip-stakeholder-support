@@ -1,4 +1,5 @@
 'use client'
+import { StripeDashboardButton } from '@/components/business/stripe-dashboard-button'
 
 /**
  * THE BUSINESS EDITOR — one implementation, two presentations.
@@ -1327,6 +1328,7 @@ export function StripeFields({ editor }: { editor: BusinessEditor }) {
               <p className="mt-1 text-sm leading-6 text-success-800">
                 Your business can receive LocalVIP customer payments. This requirement is complete.
               </p>
+              {editor.business ? <StripeDashboardButton businessId={editor.business.id} /> : null}
             </div>
           </div>
         </div>

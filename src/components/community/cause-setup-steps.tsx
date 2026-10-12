@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import Link from 'next/link'
 import {
   CheckCircle2, Clock3, ExternalLink, FileText, ImageIcon, Loader2,
@@ -22,7 +21,9 @@ import {
   type CauseSetupSignals,
   type CauseSetupStepKey,
 } from '@/lib/cause-setup'
-import { isHexColor, type BrandTriple } from '@/lib/brand-colors'
+import { isHexColor, readableBrandText, type BrandTriple } from '@/lib/brand-colors'
+import { BrandColorPicker } from '@/components/ui/brand-color-picker'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 
 /* ─── Shared bits ─────────────────────────────────────────────── */
 
@@ -285,6 +286,7 @@ export function ColorsStep({ initial, confirmed, logoSrc, name, busy, onExtract,
   const [extracting, setExtracting] = React.useState(false)
   const [note, setNote] = React.useState<string | null>(null)
   const tried = React.useRef(false)
+  const swatches = [...Object.values(initial), ...Object.values(colors)]
 
   const pull = React.useCallback(async () => {
     setExtracting(true); setNote(null)
@@ -314,27 +316,27 @@ export function ColorsStep({ initial, confirmed, logoSrc, name, busy, onExtract,
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
       <div className="space-y-5">
+        {logoSrc ? <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoSrc} alt={`${name} logo for color sampling`} className="h-32 w-full object-contain" />
+          <p className="mt-2 text-xs text-surface-600">Use the eyedropper beside a color to sample from your logo or another image on screen.</p>
+        </div> : null}
         <div className="grid gap-4 sm:grid-cols-3">
           {slots.map(([key, label, hint]) => (
             <Field key={key} label={label} hint={hint}>
-              <div className="flex gap-2">
-                <input type="color" aria-label={`${label} picker`} value={isHexColor(colors[key]) ? colors[key] : '#000000'}
-                  onChange={(e) => setColors((c) => ({ ...c, [key]: e.target.value.toUpperCase() }))}
-                  className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-surface-300 bg-white" />
-                <Input value={colors[key]} onChange={(e) => setColors((c) => ({ ...c, [key]: e.target.value }))} className="font-mono uppercase" />
-              </div>
+              <BrandColorPicker label={label} value={colors[key]} swatches={swatches} disabled={busy || extracting} onChange={value => setColors(c => ({ ...c, [key]: value }))} />
             </Field>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={() => void pull()} disabled={!logoSrc || extracting}>
+          <Button variant="outline" onClick={() => void pull()} disabled={busy || !logoSrc || extracting}>
             {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
             Use colors from my logo
           </Button>
           {!logoSrc ? <span className="text-xs text-surface-500">Upload your logo first to pull colors from it.</span> : null}
         </div>
         {note ? <p role="status" className="text-sm text-surface-600">{note}</p> : null}
-        <StepFooter busy={busy} disabled={!valid} saveLabel={confirmed ? 'Save colors' : 'Use these colors'} onSave={() => onSave(colors)} />
+        <StepFooter busy={busy} disabled={!valid || extracting} saveLabel={confirmed ? 'Save colors' : 'Use these colors'} onSave={() => onSave(colors)} />
       </div>
       <FlyerPreview colors={colors} logoSrc={logoSrc} name={name} />
     </div>
@@ -344,20 +346,20 @@ export function ColorsStep({ initial, confirmed, logoSrc, name, busy, onExtract,
 function FlyerPreview({ colors, logoSrc, name }: { colors: BrandTriple; logoSrc: string; name: string }) {
   const ok = (c: string) => (isHexColor(c) ? c : '#CBD5E1')
   return (
-    <div aria-label="Flyer preview in your colors" className="overflow-hidden rounded-2xl border border-surface-200 shadow-sm">
-      <div className="px-5 pb-6 pt-5 text-white" style={{ backgroundColor: ok(colors.primary) }}>
+    <div aria-label="Flyer preview in your colors" className="self-start overflow-hidden rounded-2xl border border-surface-200 shadow-sm">
+      <div className="px-5 pb-6 pt-5" style={{ backgroundColor: ok(colors.primary), color: readableBrandText(ok(colors.primary)) }}>
         {logoSrc
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={logoSrc} alt="" className="mb-4 h-10 w-24 rounded bg-white/95 object-contain p-1" />
           : <Palette className="mb-4 h-8 w-8 opacity-80" />}
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: ok(colors.accent) }}>Shop local. Give back.</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em]">Shop local. Give back.</p>
         <p className="mt-1 text-lg font-bold leading-tight">Support {name || 'your school'} every time you shop</p>
       </div>
       <div className="space-y-3 bg-white p-5">
         <div className="h-2 w-3/4 rounded-full" style={{ backgroundColor: ok(colors.secondary) }} />
         <div className="h-2 w-1/2 rounded-full bg-surface-200" />
         <div className="flex items-center justify-between pt-2">
-          <span className="rounded-full px-3 py-1.5 text-xs font-bold text-white" style={{ backgroundColor: ok(colors.accent) }}>Scan to join</span>
+          <span className="rounded-full px-3 py-1.5 text-xs font-bold" style={{ backgroundColor: ok(colors.accent), color: readableBrandText(ok(colors.accent)) }}>Scan to join</span>
           <QrCode className="h-10 w-10 text-surface-800" />
         </div>
       </div>

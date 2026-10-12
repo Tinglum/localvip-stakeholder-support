@@ -138,6 +138,7 @@ const COMMUNITY_NAV_ITEMS: NavItem[] = [
   { label: 'Businesses', href: '/community/businesses', icon: 'Store', minLevel: 0 },
   { label: 'Supporters', href: '/community/supporters', icon: 'Users', minLevel: 0 },
   { label: 'Campaign Materials', href: '/community/materials', icon: 'FileDown', minLevel: 0 },
+  { label: 'Flyer Generator', href: '/community/materials/generator', icon: 'FileText', minLevel: 0 },
 ]
 
 const INFLUENCER_NAV_ITEMS: NavItem[] = [

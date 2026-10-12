@@ -118,14 +118,14 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
   const flyerCount = generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed').length || 0
   const variantCount = new Set(generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed')
     .map(item => materialMetadata(item.metadata))
-    .filter(metadata => metadata?.generator === 'cause-campaign-v1' && String(metadata.version || '').startsWith('campaign-template-v7|'))
+    .filter(metadata => metadata?.generator === 'cause-campaign-v1' && String(metadata.version || '').startsWith('approved-library-v8|'))
     .map(metadata => `${metadata?.audience}:${metadata?.design}`)).size
   const flyerFiles = new Map<string, { name: string; url: string; audience: string; design: string }>()
   for (const item of generated?.items || []) {
     const metadata = materialMetadata(item.metadata)
     if (!item.generatedFileUrl || item.generationStatus === 'failed'
       || metadata?.generator !== 'cause-campaign-v1'
-      || !String(metadata.version || '').startsWith('campaign-template-v7|')) continue
+      || !String(metadata.version || '').startsWith('approved-library-v8|')) continue
     const audience = String(metadata.audience || '')
     const design = String(metadata.design || '')
     const key = `${audience}:${design}`
@@ -261,7 +261,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
       let customGenerated = 0
       const existing = await request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${cause.id}&pageSize=100`)
       if (logoUrl && coverUrl) {
-        const version = `campaign-template-v7|${cause.name}|${cause.city || ''}|${cause.state || ''}|${campaignSlug}|${logoUrl}|${coverUrl}|${cause.referralCode}|${cause.category || ''}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}`
+        const version = `approved-library-v8|${cause.name}|${cause.city || ''}|${cause.state || ''}|${campaignSlug}|${logoUrl}|${coverUrl}|${cause.referralCode}|${cause.category || ''}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}`
         for (const audience of audiences) {
           for (const design of FLYER_DESIGNS) {
           const alreadySaved = existing?.items?.some(item => {

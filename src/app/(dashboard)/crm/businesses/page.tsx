@@ -46,9 +46,9 @@ const STRIPE_OPTIONS = [
 ]
 
 const QA_LIVE_OPTIONS = [
-  { value: 'live', label: 'Live on QA' },
-  { value: 'not_live', label: 'Not live on QA' },
-  { value: 'unknown', label: 'QA live unknown' },
+  { value: 'live', label: 'Live on customer app' },
+  { value: 'not_live', label: 'Not live on customer app' },
+  { value: 'unknown', label: 'Live status unknown' },
 ]
 
 interface BusinessRow extends CrmBusinessListItem {
@@ -408,7 +408,7 @@ export default function BusinessesPage() {
     },
     {
       key: 'qaLiveState',
-      header: 'Live on QA',
+      header: 'Live on customer app',
       sortable: true,
       render: item => (
         <button
@@ -418,7 +418,7 @@ export default function BusinessesPage() {
             setFilters(current => ({ ...current, qaLiveState: item.qaLiveState }))
           }}
           className="inline-flex"
-          title="Filter businesses by this QA live state"
+          title="Filter businesses by this live state"
         >
           {item.active === null ? (
             <Badge variant="default">Unknown</Badge>
@@ -466,7 +466,7 @@ export default function BusinessesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Businesses"
-        description="See which QA businesses have finished Stripe onboarding and which ones are actually live for customers in the webapp."
+        description="See which businesses have finished Stripe onboarding and which ones are actually live for customers in the webapp."
         actions={(
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" /> Add Business
@@ -484,7 +484,7 @@ export default function BusinessesPage() {
         onRowClick={item => router.push(item.detailHref)}
         filters={[
           { key: 'stripeState', label: 'All Stripe states', options: STRIPE_OPTIONS },
-          { key: 'qaLiveState', label: 'All QA live states', options: QA_LIVE_OPTIONS },
+          { key: 'qaLiveState', label: 'All live states', options: QA_LIVE_OPTIONS },
         ]}
         activeFilters={filters}
         onFilterChange={(key, value) => setFilters(current => ({ ...current, [key]: value }))}
@@ -492,7 +492,7 @@ export default function BusinessesPage() {
           <EmptyState
             icon={<Store className="h-8 w-8" />}
             title="No businesses yet"
-            description="No QA businesses were found."
+            description="No businesses were found."
             action={{ label: 'Add Business', onClick: () => setAddOpen(true) }}
           />
         )}
@@ -502,7 +502,7 @@ export default function BusinessesPage() {
         <div className="flex items-start gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
           <div>
-            <p className="font-medium">QA business sync warning</p>
+            <p className="font-medium">Business sync warning</p>
             <p className="mt-1 text-xs text-warning-700">{error || qaError}</p>
           </div>
         </div>
@@ -519,7 +519,7 @@ export default function BusinessesPage() {
           <DialogHeader>
             <DialogTitle>Add a New Business</DialogTitle>
             <DialogDescription>
-              Register the business and its owner directly in the QA network.
+              Register the business and its owner directly in the LocalVIP network.
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit}>
