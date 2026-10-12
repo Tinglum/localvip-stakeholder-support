@@ -45,10 +45,35 @@ export async function GET() {
     return null
   }
   const availableBase = pickNumber(available, ['availableAmount', 'amount', 'Amount'])
+  // Mirror the consumer webapp wallet: the headline is the TOTAL balance
+  // (available + still-pending cashback), with the available slice and the
+  // pending release shown underneath. Same source endpoint, same math — the
+  // portal was previously dropping the pending portion, so its totals read
+  // lower than my.localvip.com. (#119, #145)
+  const totalBalance = pickNumber(available, ['currentAmount']) ?? availableBase
+  const pendingCashback = pickNumber(available, ['pendingCashbackAmount'])
+  const pendingBankVerification = pickNumber(available, ['pendingBankVerificationAmount'])
+  const pendingReleaseAt =
+    available && typeof available === 'object' && typeof (available as Record<string, unknown>).pendingReleaseAt === 'string'
+      ? ((available as Record<string, unknown>).pendingReleaseAt as string)
+      : null
+  // Lifetime cashback includes cashback that is earned but still settling,
+  // matching the webapp (readAmount + pendingAmount).
+  const lifetimeCashbackBase = pickNumber(cashback, ['amount', 'Amount'])
+  const lifetimeCashbackPending = pickNumber(cashback, ['pendingAmount'])
+  const lifetimeCashback =
+    lifetimeCashbackBase === null && lifetimeCashbackPending === null
+      ? null
+      : (lifetimeCashbackBase ?? 0) + (lifetimeCashbackPending ?? 0)
 
   return NextResponse.json({
     available: availableBase,
+    total: totalBalance,
+    pendingCashback,
+    pendingBankVerification,
+    pendingReleaseAt,
     cashback,
+    lifetimeCashback,
     bonusCash,
     causeImpact,
   })

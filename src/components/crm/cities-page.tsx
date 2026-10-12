@@ -225,8 +225,11 @@ export default function CitiesPage() {
       {!error && filteredCities.length > 0 && (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {filteredCities.map(city => {
-            const cityBusinesses = businesses.filter(business => business.city_id === city.id)
-            const cityCauses = causes.filter(cause => cause.city_id === city.id)
+            // QA accounts carry a "City, State" label, while City records use
+            // numeric IDs. The detail page uses this same label for membership.
+            const cityLabel = [city.name, city.state].filter(Boolean).join(', ')
+            const cityBusinesses = businesses.filter(business => business.city_id === city.id || business.city_id === cityLabel)
+            const cityCauses = causes.filter(cause => cause.city_id === city.id || cause.city_id === cityLabel)
             const cityCampaigns = campaigns.filter(campaign => campaign.city_id === city.id)
             const cityProfiles = profiles.filter(profile => profile.city_id === city.id)
             const cityBusinessIds = new Set(cityBusinesses.map(business => business.id))

@@ -147,17 +147,46 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const [preview, setPreview] = React.useState<Material | null>(null)
   const [customizing, setCustomizing] = React.useState<Material | null>(null)
   const [tab, setTab] = React.useState<string | null>(null)
+  const [landingState, setLandingState] = React.useState<'draft' | 'published' | 'missing' | null>(null)
+
+  React.useEffect(() => {
+    if (!causeAccountId) return
+    let cancelled = false
+    void fetch(`/api/crm/causes/${causeAccountId}/landing-page`, { cache: 'no-store' })
+      .then(response => response.json())
+      .then((record: { draft?: unknown; published?: unknown; status?: string }) => {
+        if (!cancelled) setLandingState(record.status === 'published' || record.status === 'published_with_changes' || record.published ? 'published' : record.draft ? 'draft' : 'missing')
+      })
+      .catch(() => { if (!cancelled) setLandingState(null) })
+    return () => { cancelled = true }
+  }, [causeAccountId])
 
   const templateMap = React.useMemo(() => new Map(templates.map(item => [String(item.id), item])), [templates])
   const accountIds = React.useMemo(() => new Set([
     profile.business_id, profile.organization_id, profile.id, localProfileId, causeAccountId, businessAccountId,
   ].filter(Boolean).map(String)), [businessAccountId, causeAccountId, localProfileId, profile.business_id, profile.id, profile.organization_id])
 
-  const generatedMaterials = React.useMemo(() => generated.filter(row => {
+  const generatedMaterials = React.useMemo(() => {
+    const seenCampaignAudiences = new Set<string>()
+    const scoped = generated.filter(row => {
     if (row.generation_status !== 'generated' || row.is_active === false || row.is_outdated || !row.generated_file_url) return false
     const ids = [row.business_id, row.cause_id, row.stakeholder_id].filter(Boolean).map(String)
     return ids.some(id => accountIds.has(id))
-  }).map(row => generatedToMaterial(row, templateMap.get(String(row.template_id)))), [accountIds, generated, templateMap])
+    })
+    const hasAudienceFlyers = Boolean(causeAccountId) && scoped.some(row => row.metadata?.generator === 'cause-campaign-v1')
+    const hasDesignedFlyers = scoped.some(row => row.metadata?.generator === 'cause-campaign-v1' && row.metadata?.design)
+    return scoped.sort((a, b) => String(b.updated_at || b.generated_at || '').localeCompare(String(a.updated_at || a.generated_at || '')))
+      .filter(row => {
+        const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {}
+        if (hasAudienceFlyers && metadata.generator === 'cause-template-v1') return false
+        if (hasDesignedFlyers && metadata.generator === 'cause-campaign-v1' && !metadata.design) return false
+        if (metadata.generator !== 'cause-campaign-v1' || typeof metadata.audience !== 'string') return true
+        const variant = `${metadata.audience}:${metadata.design || 'legacy'}`
+        if (seenCampaignAudiences.has(variant)) return false
+        seenCampaignAudiences.add(variant)
+        return true
+      }).map(row => generatedToMaterial(row, templateMap.get(String(row.template_id))))
+  }, [accountIds, causeAccountId, generated, templateMap])
 
   const eligible = React.useMemo(
     () => allMaterials.filter(material => materialIsAvailableToProfile(material, profile, { causeAccountId, businessAccountId })),
@@ -204,6 +233,17 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   return (
     <div className="space-y-6">
       {!embedded && <PageHeader title={copy.pageTitle} description={copy.pageDescription} />}
+      {causeAccountId && landingState && landingState !== 'missing' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-5 py-4">
+          <div>
+            <p className="font-semibold text-surface-900">Your landing pages are {landingState === 'published' ? 'published' : 'ready to review'}</p>
+            <p className="text-sm text-surface-600">The family, business, school, and general pages use your saved logo and cover photo.</p>
+          </div>
+          <Link href="/community/landing-page" className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+            {landingState === 'published' ? 'Manage landing pages' : 'Open landing page draft'} <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
       <MaterialPreviewDialog material={preview} open={!!preview} onOpenChange={open => { if (!open) setPreview(null) }} />
       <CauseMaterialGenerateDialog material={customizing} causeAccountId={causeAccountId} onClose={() => setCustomizing(null)} onGenerated={() => refetchGenerated()} />
 

@@ -20,6 +20,9 @@ import { useBusinesses, useCauses } from '@/lib/supabase/hooks'
 import { COMMUNITY_BUSINESS_STATUS } from '@/lib/constants'
 import { resolveCommunityCause } from '@/lib/community-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
+import { getCauseQaAccountId } from '@/lib/community-cause'
+
+type BusinessLead = { id: string; businessName: string; city?: string; contactName?: string; contactEmail?: string; contactPhone?: string; status: string }
 
 export default function CommunityBusinessesPage() {
   const { profile } = useAuth()
@@ -37,6 +40,51 @@ export default function CommunityBusinessesPage() {
   )
 
   const isSchool = scopedCause?.type === 'school'
+  const causeQaId = getCauseQaAccountId(scopedCause)
+  const [leads, setLeads] = React.useState<BusinessLead[]>([])
+  const [leadError, setLeadError] = React.useState('')
+  const [savingLead, setSavingLead] = React.useState(false)
+  const [businessName, setBusinessName] = React.useState('')
+  const [city, setCity] = React.useState('')
+  const [contactName, setContactName] = React.useState('')
+  const [contactEmail, setContactEmail] = React.useState('')
+  const [contactPhone, setContactPhone] = React.useState('')
+
+  const reloadLeads = React.useCallback(async () => {
+    if (!causeQaId) return
+    try {
+      const response = await fetch(`/api/community/business-nominations?causeId=${encodeURIComponent(causeQaId)}`)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Could not load business leads.')
+      setLeads(data.items || [])
+      setLeadError('')
+    } catch (error) {
+      setLeadError(error instanceof Error ? error.message : 'Could not load business leads.')
+    }
+  }, [causeQaId])
+
+  React.useEffect(() => { void reloadLeads() }, [reloadLeads])
+
+  async function addLead(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!causeQaId || savingLead) return
+    setSavingLead(true)
+    setLeadError('')
+    try {
+      const response = await fetch(`/api/community/business-nominations?causeId=${encodeURIComponent(causeQaId)}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ businessName, city, contactName, contactEmail, contactPhone }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Could not add business lead.')
+      setBusinessName(''); setCity(''); setContactName(''); setContactEmail(''); setContactPhone('')
+      await reloadLeads()
+    } catch (error) {
+      setLeadError(error instanceof Error ? error.message : 'Could not add business lead.')
+    } finally {
+      setSavingLead(false)
+    }
+  }
 
   if (causesLoading) return <div role="status" className="animate-pulse p-8 text-sm text-surface-500">Loading your cause...</div>
   if (causesError) return <CauseLoadError onRetry={() => reloadCauses()} />
@@ -71,6 +119,25 @@ export default function CommunityBusinessesPage() {
         <StatCard label="Setting Up" value={settingUpCount} icon={<ArrowRight className="h-5 w-5" />} />
         <StatCard label="Active" value={liveCount} icon={<CheckCircle2 className="h-5 w-5" />} />
       </div>
+
+      {causeQaId && (
+        <Card>
+          <CardHeader><CardTitle>Invite a local business</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-surface-600">Add a business you would like on your support team. The LocalVIP team can follow up with the contact you provide.</p>
+            <form onSubmit={addLead} className="grid gap-3 sm:grid-cols-2">
+              <input className="rounded-lg border border-surface-200 px-3 py-2 text-sm" aria-label="Business name" placeholder="Business name *" required minLength={2} maxLength={120} value={businessName} onChange={e => setBusinessName(e.target.value)} />
+              <input className="rounded-lg border border-surface-200 px-3 py-2 text-sm" aria-label="City" placeholder="City" maxLength={80} value={city} onChange={e => setCity(e.target.value)} />
+              <input className="rounded-lg border border-surface-200 px-3 py-2 text-sm" aria-label="Contact name" placeholder="Contact name" maxLength={80} value={contactName} onChange={e => setContactName(e.target.value)} />
+              <input className="rounded-lg border border-surface-200 px-3 py-2 text-sm" aria-label="Contact email" placeholder="Contact email" type="email" maxLength={160} value={contactEmail} onChange={e => setContactEmail(e.target.value)} />
+              <input className="rounded-lg border border-surface-200 px-3 py-2 text-sm" aria-label="Contact phone" placeholder="Contact phone" type="tel" maxLength={40} value={contactPhone} onChange={e => setContactPhone(e.target.value)} />
+              <div><Button type="submit" size="sm" disabled={savingLead}>{savingLead ? 'Adding...' : 'Add business lead'}</Button></div>
+            </form>
+            {leadError && <p role="alert" className="text-sm text-red-600">{leadError}</p>}
+            {leads.length > 0 && <div className="space-y-2"><h3 className="text-sm font-semibold">Businesses you suggested</h3>{leads.map(lead => <div key={lead.id} className="flex justify-between rounded-lg border border-surface-200 p-3 text-sm"><span>{lead.businessName}{lead.city ? ` · ${lead.city}` : ''}</span><Badge variant="outline">{lead.status}</Badge></div>)}</div>}
+          </CardContent>
+        </Card>
+      )}
 
       {supportingBusinesses.length === 0 ? (
         <Card>

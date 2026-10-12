@@ -41,7 +41,7 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } },
 ) {
-  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner'])
+  const access = await requireQaRouteAccess(['admin', 'field', 'launch_partner', 'community'])
   if ('error' in access) return access.error
 
   const qaNonprofitId = parseQaRouteId(params.id)
@@ -60,6 +60,10 @@ export async function GET(
   }
 
   return proxyQaImage([
+    // Where UploadLogo actually writes the file (wwwroot/uploads/logos). The
+    // MVC Get* actions below 302 to a login page for API callers, so before
+    // this every cause logo 502'd here.
+    `/uploads/logos/${encodeURIComponent(imageName)}`,
     `/Nonprofits/GetLogo?id=${qaNonprofitId}`,
     `/Nonprofits/GetImage?id=${qaNonprofitId}`,
     `/Nonprofit/GetLogo?id=${qaNonprofitId}`,

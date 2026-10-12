@@ -328,7 +328,7 @@ export function computeCauseOnboardingChecklist(input: {
   const items: CauseChecklistItem[] = [
     { id: 'name', label: 'Organization name set', met: !!input.cause.name?.trim(), href: base, tab: 'mission' },
     { id: 'type', label: 'Organization type assigned', met: !!input.cause.type, href: base, tab: 'mission' },
-    { id: 'city', label: 'City assigned', met: !!input.cause.city_id, href: base, tab: 'mission' },
+    { id: 'city', label: 'City assigned', met: hasCauseCity(input.cause), href: base, tab: 'mission' },
     { id: 'contact', label: 'Email or phone added', met: !!(input.cause.email || input.cause.phone), href: base, tab: 'mission' },
     { id: 'website', label: 'Website added', met: !!input.cause.website, href: base, tab: 'mission' },
     { id: 'owner', label: 'Owner assigned', met: input.hasOwner, href: base, tab: 'mission' },

@@ -469,11 +469,11 @@ export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Add one person now</CardTitle>
+            <CardTitle>Add someone to your list</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-surface-600">
-              Use this when someone comes to mind right away. You only need a name and one way to reach them.
+              Start with people who already like you, know your team, or come in often. You only need a name and one way to reach them.
             </p>
             <div className="flex flex-wrap gap-2">
               {SUGGESTED_TAGS.map((tag) => (
@@ -483,9 +483,9 @@ export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean
               ))}
             </div>
             <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-              <p className="text-sm font-semibold text-surface-900">Example</p>
+              <p className="text-sm font-semibold text-surface-900">Simple rule</p>
               <p className="mt-1 text-sm text-surface-600">
-                Add Sarah, a regular customer, with her phone number, then mark her as invited after you text her.
+                If you would feel comfortable texting them today, they belong on your list.
               </p>
             </div>
             <Button className={`w-full sm:w-auto ${BUSINESS_ACCENT_BUTTON_CLASS}`} onClick={() => handleOpenCreate()}>
@@ -516,35 +516,6 @@ export function BusinessMy100ListPage({ embedded = false }: { embedded?: boolean
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Who to add first</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-surface-600">
-            Start with people who already like you, know your team, or come in often. Do not start with strangers.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {SUGGESTED_TAGS.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => handleOpenCreate(tag)}
-                className="rounded-full border border-[#d7e200] bg-[#fbfdd9] px-3 py-1.5 text-sm text-[#556100] transition-colors hover:border-[#c7d400] hover:bg-[#f6fac1]"
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
-          <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
-            <p className="text-sm font-semibold text-surface-900">Simple rule</p>
-            <p className="mt-1 text-sm text-surface-600">
-              If you would feel comfortable texting them today, they belong on your list.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>

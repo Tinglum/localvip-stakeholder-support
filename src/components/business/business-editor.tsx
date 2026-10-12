@@ -1,4 +1,5 @@
 'use client'
+import { StripeDashboardButton } from '@/components/business/stripe-dashboard-button'
 
 /**
  * THE BUSINESS EDITOR — one implementation, two presentations.
@@ -17,6 +18,7 @@
  */
 
 import * as React from 'react'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -386,11 +388,19 @@ export function useBusinessEditor(): BusinessEditor {
       hundredListInterest: HundredListInterest; visibleInReferrerSearch: boolean
     }>('business-setup-fields', draftScope)
 
-    setName(draft?.name ?? business.name ?? '')
-    setCategoryId(draft?.categoryId ?? (savedCategoryId ? String(savedCategoryId) : ''))
-    setDescription(draft?.description ?? business.public_description ?? portal.description ?? '')
-    setAvgTicket(draft?.avgTicket ?? readUsdInput(business.avg_ticket || portal.avg_ticket || ''))
-    setKeywords(draft?.keywords ?? parseKeywords(business.products_services || portal.products_services))
+    // An older failed autosave may leave an empty browser draft behind. Do not
+    // let it mask populated QA account fields every time the owner signs in.
+    const seedName = draft?.name?.trim() || business.name || ''
+    const seedCategoryId = draft?.categoryId?.trim() || (savedCategoryId ? String(savedCategoryId) : '')
+    const seedDescription = draft?.description?.trim() || business.public_description || portal.description || ''
+    const seedAvgTicket = draft?.avgTicket?.trim() || readUsdInput(business.avg_ticket || portal.avg_ticket || '')
+    const savedKeywords = parseKeywords(business.products_services || portal.products_services)
+    const seedKeywords = draft?.keywords?.length ? draft.keywords : savedKeywords
+    setName(seedName)
+    setCategoryId(seedCategoryId)
+    setDescription(seedDescription)
+    setAvgTicket(seedAvgTicket)
+    setKeywords(seedKeywords)
     setLogoUrl(business.logo_url || portal.logo_url || null)
     setCoverUrl(business.cover_photo_url || portal.cover_photo_url || null)
     setCaptureHeadline(draft?.captureHeadline ?? captureOffer?.headline ?? '')
@@ -400,11 +410,11 @@ export function useBusinessEditor(): BusinessEditor {
     setVisibleInReferrerSearch(draft?.visibleInReferrerSearch ?? nextVisibleInReferrerSearch)
     setCaptureOfferId(captureOffer?.id || null)
     snapshotRef.current = serializeSetupSnapshot({
-      name: business.name || '',
-      categoryId: savedCategoryId ? String(savedCategoryId) : '',
-      description: business.public_description || portal.description || '',
-      avgTicket: readUsdInput(business.avg_ticket || portal.avg_ticket || ''),
-      keywords: parseKeywords(business.products_services || portal.products_services),
+      name: seedName,
+      categoryId: seedCategoryId,
+      description: seedDescription,
+      avgTicket: seedAvgTicket,
+      keywords: seedKeywords,
       logoUrl: business.logo_url || portal.logo_url || null,
       coverUrl: business.cover_photo_url || portal.cover_photo_url || null,
       logoFileName: null,
@@ -1088,6 +1098,7 @@ export function BrandingFields({ editor, showValidation = false }: { editor: Bus
           aria-label="Upload business logo"
           onChange={(event) => editor.setLogoFile(event.target.files?.[0] || null)}
         />
+        <LogoImageTools file={editor.logoFile} onChange={editor.setLogoFile} />
         {showValidation && logoMissing ? <RequiredFieldHint /> : null}
         <div
           className={`flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-surface-50 ${
@@ -1317,6 +1328,7 @@ export function StripeFields({ editor }: { editor: BusinessEditor }) {
               <p className="mt-1 text-sm leading-6 text-success-800">
                 Your business can receive LocalVIP customer payments. This requirement is complete.
               </p>
+              {editor.business ? <StripeDashboardButton businessId={editor.business.id} /> : null}
             </div>
           </div>
         </div>

@@ -132,10 +132,13 @@ const LAUNCH_PARTNER_NAV_ITEMS: NavItem[] = [
 
 const COMMUNITY_NAV_ITEMS: NavItem[] = [
   { label: 'Home', href: '/dashboard', icon: 'LayoutDashboard', minLevel: 0 },
-  { label: 'Onboarding', href: '/onboarding/cause', icon: 'CheckSquare', minLevel: 0 },
+  // Guided two-track setup (account, then brand & materials), like the
+  // business portal's /portal/setup.
+  { label: 'Setup', href: '/community/setup', icon: 'CheckSquare', minLevel: 0 },
   { label: 'Businesses', href: '/community/businesses', icon: 'Store', minLevel: 0 },
   { label: 'Supporters', href: '/community/supporters', icon: 'Users', minLevel: 0 },
   { label: 'Campaign Materials', href: '/community/materials', icon: 'FileDown', minLevel: 0 },
+  { label: 'Flyer Generator', href: '/community/materials/generator', icon: 'FileText', minLevel: 0 },
 ]
 
 const INFLUENCER_NAV_ITEMS: NavItem[] = [
@@ -153,6 +156,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Businesses', href: '/crm/businesses', icon: 'Store', minLevel: 0 },
       { label: 'Causes', href: '/crm/causes', icon: 'Heart', minLevel: 0 },
+      { label: 'Cause Sign-ups', href: '/crm/cause-leads', icon: 'Inbox', minLevel: 0 },
       { label: 'Customers', href: '/crm/contacts', icon: 'Users', minLevel: 0 },
       { label: 'Contacts', href: '/crm/people', icon: 'Contact', minLevel: 0 },
       { label: 'Team', href: '/crm/stakeholders', icon: 'UserCheck', minLevel: 0 },
@@ -197,6 +201,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
       { label: 'Team', href: '/admin/stakeholders', icon: 'FolderKanban', minLevel: 0 },
       { label: 'Material Tasks', href: '/admin/material-engine/tasks', icon: 'ListChecks', minLevel: 0 },
       { label: 'Template Manager', href: '/admin/material-engine/templates', icon: 'LayoutTemplate', minLevel: 0 },
+      { label: 'Email Invitations', href: '/admin/invitations', icon: 'Mail', minLevel: 100 },
       { label: 'Users', href: '/admin/users', icon: 'Users', minLevel: 0 },
       { label: 'Settings', href: '/admin/settings', icon: 'Settings', minLevel: 100 },
       { label: 'Bug Center', href: '/admin/bugs', icon: 'Bug', minLevel: 0 },
@@ -432,6 +437,9 @@ export function canAccessPath(profile: Profile, pathname: string) {
   const operatorCrmPrefixes = [
     '/crm/businesses',
     '/crm/causes',
+    // Admin-only in practice (the proxy route is gated to the admin shell), but
+    // listed here so the operator CRM prefix set stays in step with the nav.
+    '/crm/cause-leads',
     '/crm/contacts',
     // The contacts section is an operator surface like the rest of CRM; without
     // it here an operator following the nav item is bounced to /dashboard.
@@ -495,6 +503,7 @@ export function canAccessPath(profile: Profile, pathname: string) {
   if (shell === 'community') {
     return [
       '/dashboard',
+      '/community/setup',
       '/onboarding/cause',
       '/community/supporters',
       '/community/businesses',

@@ -324,7 +324,7 @@ export default function CustomersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
-              {items.map((node) => {
+              {[...items].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((node) => {
                 const meta = typeMeta(node.type)
                 const location = [node.city, node.state].filter(Boolean).join(', ')
                 return (

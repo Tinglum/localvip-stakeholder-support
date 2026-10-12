@@ -46,6 +46,9 @@ async function call(
       const payload = JSON.parse(init.body as string)
       if (payload.role) await parseQaResponse(await fetchQaApi(`${url}/role`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: payload.role }) }), 'Could not update role.')
       if (payload.status) await parseQaResponse(await fetchQaApi(`${url}/status`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ active: payload.status === 'active' }) }), 'Could not update status.')
+      // Phone goes through the SysAdmin-only PUT /User/{id}/profile (absent keys = unchanged).
+      const phone = typeof payload.phone === 'string' ? payload.phone : typeof payload.phoneNumber === 'string' ? payload.phoneNumber : undefined
+      if (phone !== undefined) await parseQaResponse(await fetchQaApi(`${url}/profile`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phoneNumber: phone.trim() }) }), 'Could not update phone.')
       init.method = 'GET'; delete init.body; delete init.headers
     }
     const res = await fetchQaApi(url, init)

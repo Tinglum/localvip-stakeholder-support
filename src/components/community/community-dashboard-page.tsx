@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowRight,
@@ -64,6 +65,7 @@ import { COMMUNITY_BUSINESS_STATUS, COMMUNITY_CAUSE_STATUS } from '@/lib/constan
 import { formatDate } from '@/lib/utils'
 import type { TaskPriority } from '@/lib/types/database'
 import { resolveCommunityCause } from '@/lib/community-cause'
+import { CauseSetupPrompt } from '@/components/community/cause-setup-prompt'
 import { clearOnboardingDraft, readOnboardingDraft, writeOnboardingDraft } from '@/lib/onboarding-draft'
 import { StakeholderMaterialsPage } from '@/components/materials/stakeholder-materials-page'
 
@@ -103,6 +105,12 @@ function getCauseQaAccountId(cause: { external_id?: string | null; metadata?: Re
 export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab?: DashboardTab }) {
   const { profile, roleLabel } = useAuth()
   const [activeTab, setActiveTab] = React.useState<DashboardTab>(initialTab)
+  // Setup moved to its own guided page (/community/setup); the old inline
+  // "6-step setup" tab is gone, so send any old deep link there.
+  const router = useRouter()
+  React.useEffect(() => {
+    if (activeTab === 'onboarding') router.replace('/community/setup')
+  }, [activeTab, router])
   const { data: causes, loading: causesLoading } = useCauses()
   const { data: contacts } = useContacts()
   const { data: businesses } = useBusinesses()
@@ -314,7 +322,15 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
     })
   }, [scopedCause, steps, codes, generatedMaterials, qrCodes, supportingBusinesses.length])
 
-  const generatedCount = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url).length
+  const readyGenerated = generatedMaterials.filter(m => m.generation_status === 'generated' && !!m.generated_file_url)
+  const hasAudienceFlyers = readyGenerated.some(m => m.metadata?.generator === 'cause-campaign-v1')
+  const hasDesignedFlyers = readyGenerated.some(m => m.metadata?.generator === 'cause-campaign-v1' && m.metadata?.design)
+  const generatedCount = new Set(readyGenerated
+    .filter(m => !hasAudienceFlyers || m.metadata?.generator !== 'cause-template-v1')
+    .filter(m => !hasDesignedFlyers || m.metadata?.generator !== 'cause-campaign-v1' || m.metadata?.design)
+    .map(m => m.metadata?.generator === 'cause-campaign-v1'
+      ? `audience:${String(m.metadata.audience || '')}:${String(m.metadata.design || 'legacy')}`
+      : `template:${m.template_id || m.material_id || m.generated_file_name || m.id}`)).size
   const materialMap = React.useMemo(() => new Map(allMaterials.map(m => [m.id, m])), [allMaterials])
   const activeMaterialPairs = React.useMemo(() =>
     generatedMaterials
@@ -325,7 +341,8 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   const hasLinkedQr = typeof causeMetadata.linked_qr_code_id === 'string' && causeMetadata.linked_qr_code_id.length > 0
   const hasLinkedGeneratedMaterial = typeof causeMetadata.linked_generated_material_id === 'string'
     && causeMetadata.linked_generated_material_id.length > 0
-  const hasSupporterQr = qrCodes.length > 0 || hasLinkedQr
+  const hasSupporterQr = qrCodes.length > 0 || hasLinkedQr || generatedMaterials.some(m =>
+    m.generation_status === 'generated' && !!m.generated_file_url && m.metadata?.generator === 'cause-campaign-v1')
   const hasReadyMaterials = generatedCount > 0 || activeMaterialPairs.length > 0 || hasLinkedGeneratedMaterial
 
   const displayReadiness = React.useMemo(() => {
@@ -527,7 +544,6 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
   // ─── Tab config ───
   const tabs: Array<{ key: DashboardTab; label: string; icon: React.ReactNode; count?: number }> = [
     { key: 'overview', label: 'Overview', icon: <Rocket className="h-4 w-4" /> },
-    { key: 'onboarding', label: '6-step setup', icon: <CheckSquare className="h-4 w-4" /> },
     { key: 'businesses', label: 'Businesses', icon: <Store className="h-4 w-4" />, count: supportingBusinesses.length },
     { key: 'network', label: 'Network', icon: <Network className="h-4 w-4" /> },
     { key: 'materials', label: 'Materials', icon: <FileText className="h-4 w-4" />, count: generatedCount },
@@ -538,6 +554,8 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
 
   return (
     <div className="space-y-6">
+      <CauseSetupPrompt causeId={causeQaAccountId} />
+
       {/* ── Hero / Header ── */}
       <div className="rounded-2xl border border-surface-200 bg-gradient-to-r from-brand-50 to-surface-50 p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -768,6 +786,9 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
                       if (file) void uploadCauseAsset('logo', file)
                     }}
                   />
+                  {profileDraft.logoUrl && (
+                    <img src={profileDraft.logoUrl} alt={`${profileDraft.name} logo`} className="h-24 w-full rounded-lg border border-surface-200 bg-white object-contain p-2" />
+                  )}
                   <div className="flex items-center gap-1.5 text-xs font-normal">
                     {logoAssetState.status === 'uploading' && (
                       <span className="inline-flex items-center gap-1 text-surface-500"><Loader2 className="h-3 w-3 animate-spin" />Uploading...</span>
@@ -791,6 +812,9 @@ export function CommunityDashboardPage({ initialTab = 'overview' }: { initialTab
                       if (file) void uploadCauseAsset('cover_photo', file)
                     }}
                   />
+                  {profileDraft.coverPhotoUrl && (
+                    <img src={profileDraft.coverPhotoUrl} alt={`${profileDraft.name} cover`} className="h-24 w-full rounded-lg border border-surface-200 object-cover" />
+                  )}
                   <div className="flex items-center gap-1.5 text-xs font-normal">
                     {coverAssetState.status === 'uploading' && (
                       <span className="inline-flex items-center gap-1 text-surface-500"><Loader2 className="h-3 w-3 animate-spin" />Uploading...</span>

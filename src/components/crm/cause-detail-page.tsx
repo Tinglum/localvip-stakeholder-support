@@ -257,6 +257,57 @@ export default function CauseDetailPage() {
     ? 'generated'
     : setupTask?.status || 'idle'
   const qaLinkedCauseId = causeResponse?.qaCauseId || cause?.qa_account_id || qaCauseId || null
+  const [launchStatus, setLaunchStatus] = React.useState<{
+    flyers: string; flyerCount: number; totalMaterialCount: number; landingPages: string; landingSlug: string | null
+    flyerFiles: Array<{ name: string; url: string; audience: string; design: string }>
+    /** The 60-second film, the cut the public landing page plays. */
+    video: string; videoUrl: string | null
+    /** The 15-second cut, the one an operator forwards to a business owner. */
+    shortVideo: string; shortVideoUrl: string | null
+  } | null>(null)
+  const [launchBusy, setLaunchBusy] = React.useState(false)
+  const [launchMessage, setLaunchMessage] = React.useState<string | null>(null)
+  // The 60-second film takes minutes and renders in the background, so the
+  // status is not final when the page loads. Poll while a cut is rendering and
+  // stop as soon as nothing is.
+  const videoRendering = launchStatus?.video === 'rendering' || launchStatus?.shortVideo === 'rendering'
+  React.useEffect(() => {
+    if (!qaLinkedCauseId) return
+    let cancelled = false
+    const load = () => fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials`)
+      .then(async response => {
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(body.error || 'Could not load launch materials.')
+        return body
+      })
+      .then(status => { if (!cancelled) setLaunchStatus(status) })
+      .catch(error => { if (!cancelled) setLaunchMessage(error instanceof Error ? error.message : 'Could not load launch materials.') })
+    void load()
+    const timer = videoRendering ? setInterval(() => void load(), 20000) : null
+    return () => { cancelled = true; if (timer) clearInterval(timer) }
+  }, [qaLinkedCauseId, videoRendering])
+  async function handleLaunchMaterials(flyersOnly = false) {
+    if (!qaLinkedCauseId) return
+    setLaunchBusy(true)
+    setLaunchMessage(null)
+    try {
+      const response = await fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials${flyersOnly ? '?flyersOnly=1' : ''}`, { method: 'POST' })
+      const body = await response.json().catch(() => ({ error: 'The request was interrupted. Refresh this page to check which files were saved.' }))
+      if (!response.ok) throw new Error(body.error || 'Could not generate launch materials.')
+      const statuses = Object.entries(body.steps || {}).map(([name, value]) => {
+        const step = value as { status: string; detail?: string }
+        return `${name}: ${step.status}${step.detail ? ` — ${step.detail}` : ''}`
+      })
+      setLaunchMessage(statuses.join(' · '))
+      const statusResponse = await fetch(`/api/crm/causes/${qaLinkedCauseId}/launch-materials`)
+      if (statusResponse.ok) setLaunchStatus(await statusResponse.json())
+      await refetchExecution()
+    } catch (error) {
+      setLaunchMessage(error instanceof Error ? error.message : 'Could not generate launch materials.')
+    } finally {
+      setLaunchBusy(false)
+    }
+  }
   const qaImportedFacts = React.useMemo<QaImportedFact[]>(() => {
     if (!cause || !qaLinkedCauseId) return []
 
@@ -419,6 +470,26 @@ export default function CauseDetailPage() {
       throw new Error('This cause has no writable account.')
     }
   }, [causeResponse?.qaCauseId, localCauseId, updateCause])
+
+  const [goLiveBusy, setGoLiveBusy] = React.useState(false)
+  const [goLiveError, setGoLiveError] = React.useState<string | null>(null)
+  const reviewGoLive = React.useCallback(async (decision: 'approve' | 'send_back') => {
+    if (!canEditCrm || !causeResponse?.qaCauseId) return
+    setGoLiveBusy(true); setGoLiveError(null)
+    try {
+      const response = await fetch(`/api/qa/nonprofits/${causeResponse.qaCauseId}/${decision === 'approve' ? 'publish' : 'send-back'}`, { method: 'POST' })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'The review decision could not be saved.')
+      }
+      setLaunchStatus(current => current ? { ...current, landingPages: decision === 'approve' ? 'published' : 'draft' } : current)
+      refetchCause()
+    } catch (error) {
+      setGoLiveError(error instanceof Error ? error.message : 'That decision could not be saved.')
+    } finally {
+      setGoLiveBusy(false)
+    }
+  }, [canEditCrm, causeResponse?.qaCauseId, refetchCause])
 
   const handleStageChange = React.useCallback(async (newStage: OnboardingStage) => {
     if (!cause || !canEditCrm) return
@@ -774,6 +845,24 @@ export default function CauseDetailPage() {
           current: cause.stage === stage,
         }))}
       />
+
+      {/* ── Go-live review (cause submitted from /community/setup) ── */}
+      {isAdmin && canEditCrm && launchStatus?.landingPages === 'pending_review' && cause.stage !== 'live' && (
+        <div className="flex flex-col gap-4 rounded-2xl border border-brand-200 bg-gradient-to-r from-brand-50 via-white to-white p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold text-surface-950">{cause.name} asked to go live</p>
+            <p className="mt-1 text-sm text-surface-600">They finished account setup. Check the profile, then approve to make them selectable by supporters.</p>
+            {goLiveError ? <p role="alert" className="mt-2 text-sm text-danger-600">{goLiveError}</p> : null}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" disabled={goLiveBusy} onClick={() => void reviewGoLive('send_back')}>Send back</Button>
+            <Button disabled={goLiveBusy} onClick={() => void reviewGoLive('approve')}>
+              {goLiveBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Approve and go live
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <PageHeader
@@ -1481,7 +1570,52 @@ export default function CauseDetailPage() {
          ══════════════════════════════════════════════════════════ */}
       {activeTab === 'materials' && (
         <div className="space-y-6">
-          {generatedMaterialPairs.length === 0 ? (
+          {qaLinkedCauseId && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Launch materials</CardTitle>
+                <p className="text-sm text-surface-500">Create flyers and a landing page draft from this cause&apos;s assets. Flyers are for internal review until the landing page is published; then test both QR destinations before sharing.</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <MiniStatus label="Audience flyers" value={launchStatus ? `${launchStatus.flyerCount}/12 ${launchStatus.flyers}` : 'Checking'} />
+                  <MiniStatus label="Landing pages" value={launchStatus?.landingPages || 'Checking'} />
+                  <MiniStatus label="60-second film (on the page)" value={launchStatus?.video || 'Checking'} />
+                  <MiniStatus label="15-second cut (to forward)" value={launchStatus?.shortVideo || 'Checking'} />
+                </div>
+                {launchStatus && !launchStatus.landingPages.startsWith('published') && <p role="status" className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm text-warning-800">Draft campaign: do not distribute these flyers yet. Publish the cause page first.</p>}
+                {videoRendering && (
+                  <p className="text-sm text-surface-600">
+                    A video is rendering on the render box. It takes a few minutes for the 60-second film; this page is checking every 20 seconds, and you can leave and come back.
+                  </p>
+                )}
+                {launchMessage && <p className="whitespace-pre-wrap text-sm text-surface-600">{launchMessage}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void handleLaunchMaterials(true)} disabled={launchBusy}>
+                    {launchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    Generate 12 flyers
+                  </Button>
+                  <Button variant="outline" onClick={() => void handleLaunchMaterials()} disabled={launchBusy}>Generate landing page and videos</Button>
+                  {launchStatus?.landingSlug && launchStatus.landingPages.startsWith('published') && <a href={`https://my.localvip.com/landing/${launchStatus.landingSlug}`} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open landing page</Button></a>}
+                  {launchStatus?.videoUrl && <a href={launchStatus.videoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open 60-second film</Button></a>}
+                  {launchStatus?.shortVideoUrl && <a href={launchStatus.shortVideoUrl} target="_blank" rel="noopener noreferrer"><Button variant="outline" type="button">Open 15-second cut</Button></a>}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {launchStatus?.flyerFiles?.length ? (
+            <Card><CardHeader><CardTitle>Campaign flyers</CardTitle></CardHeader><CardContent className="grid gap-2 sm:grid-cols-2">
+              {launchStatus.flyerFiles.map(file => <a key={`${file.audience}:${file.design}`} href={file.url} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-surface-200 px-3 py-2 text-sm text-brand-700 hover:border-brand-300 hover:bg-brand-50">
+                {file.audience.charAt(0).toUpperCase() + file.audience.slice(1)} · {file.design.charAt(0).toUpperCase() + file.design.slice(1)} <ExternalLink className="ml-1 inline h-3 w-3" />
+              </a>)}
+            </CardContent></Card>
+          ) : null}
+          {generatedMaterialPairs.length === 0 && !launchStatus?.flyerFiles?.length && (launchStatus?.totalMaterialCount || 0) > 0 ? (
+            <Card><CardContent className="py-6">
+              <p className="text-sm font-semibold text-surface-700">{launchStatus?.totalMaterialCount} files saved in the QA materials library</p>
+              <a href="/materials/library" className="mt-2 inline-block text-sm text-brand-700 underline">Open materials library</a>
+            </CardContent></Card>
+          ) : generatedMaterialPairs.length === 0 && !launchStatus?.flyerFiles?.length ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <FileText className="mx-auto mb-3 h-10 w-10 text-surface-300" />

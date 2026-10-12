@@ -167,7 +167,17 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Transactions" description="Payments, fees, and per-transaction allocation breakdown." />
+      <PageHeader
+        title="Transactions"
+        description="Payments, fees, and per-transaction allocation breakdown."
+        actions={
+          <Button asChild variant="outline">
+            <a href={process.env.NEXT_PUBLIC_DEPLOY_ENV === 'production' ? 'https://dashboard.stripe.com/acct_1RPBxrELwUmCPaLF/payments' : 'https://dashboard.stripe.com/acct_1RPBxxCefasBkOAC/test/payments'} target="_blank" rel="noopener noreferrer">
+              Open LocalVIP Stripe dashboard
+            </a>
+          </Button>
+        }
+      />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-sm">

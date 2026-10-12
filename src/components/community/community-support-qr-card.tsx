@@ -80,7 +80,7 @@ export function CommunitySupportQrCard({ cause, totalSupporters }: CommunitySupp
       const nextPreview = await generateStyledQR({
         data: resource.redirectUrl,
         size: 420,
-        foregroundColor: resource.brand === 'hato' ? '#ec8012' : '#db2777',
+        foregroundColor: resource.brand === 'hato' ? '#ec8012' : '#071A3D',
         backgroundColor: '#ffffff',
         frameText: resource.frameText,
         dotStyle: 'rounded',
@@ -116,7 +116,7 @@ export function CommunitySupportQrCard({ cause, totalSupporters }: CommunitySupp
     const svg = generateQRSVG({
       data: resource.redirectUrl,
       size: 1024,
-      foregroundColor: resource.brand === 'hato' ? '#ec8012' : '#db2777',
+      foregroundColor: resource.brand === 'hato' ? '#ec8012' : '#071A3D',
       backgroundColor: '#ffffff',
     })
     downloadSVG(svg, `${resource.supportSlug}-supporter-qr.svg`)
@@ -128,18 +128,18 @@ export function CommunitySupportQrCard({ cause, totalSupporters }: CommunitySupp
         <div className="flex items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <QrCode className="h-5 w-5 text-pink-600" />
+              <QrCode className="h-5 w-5 text-brand-700" />
               Supporter QR
             </CardTitle>
             <p className="mt-2 text-sm text-surface-600">
-              Give your community a simple page they can open in seconds and share again just as easily.
+              Give your community a link that opens the campaign when it is live and sign-up while it is being prepared.
             </p>
           </div>
-          <Badge variant="info">Public supporter page</Badge>
+          <Badge variant="info">Supporter link</Badge>
         </div>
       </CardHeader>
       <CardContent className="grid gap-6 xl:grid-cols-[240px,1fr]">
-        <div className="rounded-[1.75rem] border border-surface-200 bg-gradient-to-br from-pink-50 via-white to-rose-50 p-4">
+        <div className="rounded-[1.75rem] border border-surface-200 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-4">
           <div className="flex min-h-[280px] items-center justify-center rounded-[1.5rem] border border-dashed border-surface-200 bg-white p-4">
             {loading ? (
               <div className="flex flex-col items-center gap-3 text-surface-400">
@@ -159,7 +159,7 @@ export function CommunitySupportQrCard({ cause, totalSupporters }: CommunitySupp
           <div className="rounded-[1.5rem] border border-surface-200 bg-surface-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Support link</p>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <code className="overflow-x-auto rounded-xl bg-white px-3 py-2 font-mono text-xs text-pink-700 shadow-sm">
+              <code className="overflow-x-auto rounded-xl bg-white px-3 py-2 font-mono text-xs text-brand-700 shadow-sm">
                 {resource?.displayUrl || 'Preparing your link...'}
               </code>
               <div className="flex flex-wrap gap-2">
@@ -194,7 +194,7 @@ export function CommunitySupportQrCard({ cause, totalSupporters }: CommunitySupp
             <p className="text-sm font-semibold text-surface-900">What happens next</p>
             <div className="mt-3 space-y-2 text-sm text-surface-600">
               <p>1. A supporter scans the QR.</p>
-              <p>2. They land on your public supporter page.</p>
+              <p>2. They reach your campaign or sign-up page.</p>
               <p>3. Their signup shows up in your supporter list.</p>
             </div>
           </div>

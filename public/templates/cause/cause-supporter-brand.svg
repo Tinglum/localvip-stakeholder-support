@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="1100" viewBox="0 0 850 1100">
+  <!--
+    Cause supporter flyer, painted in each cause's brand colours.
+    The backend fills these at generation time (BrandTokens.cs):
+      {{brand_primary}} {{brand_primary_dark}} {{brand_secondary}}
+      {{brand_accent}} {{brand_light}} {{brand_on_primary}}
+      {{cause_name}} {{cause_name_size}} (font size that fits the name)
+    The white panel at the bottom centre is where the QR code is stamped
+    (default QR position: x 0.5, y 0.82, size 0.22 of the page width).
+  -->
+  <rect width="850" height="1100" fill="{{brand_light}}"/>
+
+  <!-- Header band -->
+  <defs><clipPath id="header"><rect width="850" height="430"/></clipPath></defs>
+  <rect width="850" height="470" fill="{{brand_primary}}"/>
+  <g clip-path="url(#header)">
+    <circle cx="760" cy="80" r="190" fill="{{brand_secondary}}" opacity="0.35"/>
+    <circle cx="70" cy="420" r="120" fill="{{brand_secondary}}" opacity="0.25"/>
+  </g>
+  <rect y="430" width="850" height="40" fill="{{brand_primary_dark}}"/>
+
+  <text x="60" y="110" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="4" fill="{{brand_accent}}">SHOP LOCAL. GIVE BACK.</text>
+  <text x="60" y="190" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" fill="{{brand_on_primary}}">Every time you shop,</text>
+  <text x="60" y="258" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" fill="{{brand_on_primary}}">you support</text>
+  <text x="60" y="336" font-family="Arial, Helvetica, sans-serif" font-size="{{cause_name_size}}" font-weight="800" fill="{{brand_accent}}">{{cause_name}}</text>
+  <text x="60" y="392" font-family="Arial, Helvetica, sans-serif" font-size="22" fill="{{brand_on_primary}}" opacity="0.9">Join free with LocalVIP. No extra cost to you.</text>
+
+  <!-- Three steps -->
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="60" y="520" width="230" height="200" rx="22" fill="#FFFFFF"/>
+    <circle cx="110" cy="570" r="28" fill="{{brand_primary}}"/>
+    <text x="110" y="580" text-anchor="middle" font-size="26" font-weight="800" fill="{{brand_on_primary}}">1</text>
+    <text x="84" y="640" font-size="24" font-weight="700" fill="{{brand_primary_dark}}">Scan the code</text>
+    <text x="84" y="672" font-size="18" fill="#475569">and join in under</text>
+    <text x="84" y="696" font-size="18" fill="#475569">a minute.</text>
+
+    <rect x="310" y="520" width="230" height="200" rx="22" fill="#FFFFFF"/>
+    <circle cx="360" cy="570" r="28" fill="{{brand_primary}}"/>
+    <text x="360" y="580" text-anchor="middle" font-size="26" font-weight="800" fill="{{brand_on_primary}}">2</text>
+    <text x="334" y="640" font-size="24" font-weight="700" fill="{{brand_primary_dark}}">Shop local</text>
+    <text x="334" y="672" font-size="18" fill="#475569">at participating</text>
+    <text x="334" y="696" font-size="18" fill="#475569">businesses.</text>
+
+    <rect x="560" y="520" width="230" height="200" rx="22" fill="#FFFFFF"/>
+    <circle cx="610" cy="570" r="28" fill="{{brand_accent}}"/>
+    <text x="610" y="580" text-anchor="middle" font-size="26" font-weight="800" fill="#FFFFFF">3</text>
+    <text x="584" y="640" font-size="24" font-weight="700" fill="{{brand_primary_dark}}">We all win</text>
+    <text x="584" y="672" font-size="18" fill="#475569">A share of each</text>
+    <text x="584" y="696" font-size="18" fill="#475569">purchase supports us.</text>
+  </g>
+
+  <!-- QR panel (the QR is stamped at page x 0.5, y 0.82, size 0.22 of width) -->
+  <rect x="300" y="770" width="250" height="264" rx="28" fill="#FFFFFF" stroke="{{brand_accent}}" stroke-width="6"/>
+  <text x="425" y="1062" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="{{brand_primary_dark}}">Scan to join and support us</text>
+
+  <!-- Footer -->
+  <text x="60" y="1082" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#64748B">Powered by LocalVIP</text>
+</svg>

@@ -112,6 +112,7 @@ export function BusinessProfilePage() {
           <ReadOnlyFact
             label="Setup requirements"
             value={`${setupState.completedCount} of ${setupState.totalSteps} complete`}
+            href={`/portal/setup${editor.missingSteps[0] ? `?step=${editor.missingSteps[0].key}` : ''}`}
           />
           <ReadOnlyFact label="LocalVIP deal" value={cashbackLabel} />
           <ReadOnlyFact label="Linked cause or school" value={linkedCause?.name || 'Customer chooses later'} />
@@ -202,11 +203,14 @@ export function BusinessProfilePage() {
   )
 }
 
-function ReadOnlyFact({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">
+function ReadOnlyFact({ label, value, href }: { label: string; value: React.ReactNode; href?: string }) {
+  const content = (
+    <>
       <p className="text-xs uppercase tracking-[0.16em] text-surface-500">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-surface-900">{value}</p>
-    </div>
+      <p className="mt-2 text-lg font-semibold text-surface-900">{value}{href && <ArrowRight className="ml-2 inline h-4 w-4" />}</p>
+    </>
   )
+  return href
+    ? <Link href={href} className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4 transition hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{content}</Link>
+    : <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-4">{content}</div>
 }

@@ -96,16 +96,18 @@ export function BugReporter() {
   React.useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [operator, profileName] = await Promise.all([
-        fetch('/api/admin/operator', { cache: 'no-store' })
+      const session = await fetch('/api/auth/session', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+      const profileName = typeof session?.profile?.full_name === 'string' ? session.profile.full_name : null
+      const isSharedAdmin = session?.profile?.role === 'super_admin'
+        || (session?.profile?.role === 'admin' && session?.profile?.role_subtype === 'super')
+      const operator = isSharedAdmin
+        ? await fetch('/api/admin/operator', { cache: 'no-store' })
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => (typeof d?.operator === 'string' ? d.operator : null))
-          .catch(() => null),
-        fetch('/api/auth/session', { cache: 'no-store' })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((s) => (typeof s?.profile?.full_name === 'string' ? s.profile.full_name : null))
-          .catch(() => null),
-      ])
+          .catch(() => null)
+        : null
       if (cancelled) return
       const name = operator || profileName
       if (name) setReporterName(name)

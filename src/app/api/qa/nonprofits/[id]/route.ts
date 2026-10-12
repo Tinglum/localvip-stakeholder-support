@@ -64,6 +64,11 @@ export async function PUT(
     // there was no forwarding line, and until now no column behind it either.
     if (body.website === null || typeof body.website === 'string') profilePayload.website = body.website ?? ''
 
+    // Short public description ("headline") and longer "about" text, set by the
+    // cause itself in /community/setup. The backend already accepted both.
+    if (typeof body.headline === 'string') profilePayload.headline = body.headline.trim().slice(0, 200)
+    if (typeof body.description === 'string') profilePayload.description = body.description.trim().slice(0, 4000)
+
     // The backend stores a city NAME and STATE on the account; it has no concept
     // of the dashboard's city id. Only city_id was ever sent, so it matched
     // nothing here and the city silently failed to save while the dialog still

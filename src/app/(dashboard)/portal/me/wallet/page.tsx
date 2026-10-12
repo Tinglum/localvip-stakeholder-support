@@ -46,7 +46,12 @@ interface CauseImpactPayload {
 
 interface WalletResponse {
   available: AmountPayload
+  total?: number | null
+  pendingCashback?: number | null
+  pendingBankVerification?: number | null
+  pendingReleaseAt?: string | null
   cashback: AmountPayload
+  lifetimeCashback?: number | null
   bonusCash: AmountPayload
   causeImpact: CauseImpactPayload | null
 }
@@ -181,7 +186,13 @@ export default function MyWalletPage() {
 
 
   const available = normalizeAmount(data?.available ?? null, ['availableAmount', 'amount', 'Amount'])
-  const cashback = normalizeAmount(data?.cashback ?? null)
+  const totalBalance = typeof data?.total === 'number' ? data.total : available
+  const pendingCashback = typeof data?.pendingCashback === 'number' ? data.pendingCashback : null
+  const pendingReleaseAt = data?.pendingReleaseAt ?? null
+  const cashback =
+    typeof data?.lifetimeCashback === 'number'
+      ? data.lifetimeCashback
+      : normalizeAmount(data?.cashback ?? null)
   const bonusCash = normalizeAmount(data?.bonusCash ?? null)
   const usCauseContribution = pickCauseImpactNumber(data?.causeImpact, [
     'usCauseContributionLifetime',
@@ -203,7 +214,7 @@ export default function MyWalletPage() {
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="My Wallet & Earnings"
-        description="See what money is ready to use, what you have earned over time, and how much support has gone to your causes."
+        description="See what money is ready to use, what you have earned over time, and how much support has gone to your cause."
         breadcrumb={[{ label: 'Portal', href: '/portal' }, { label: 'Wallet & Earnings' }]}
         actions={
           <Button
@@ -255,11 +266,19 @@ export default function MyWalletPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <WalletTile
-          label="Cashback Available"
-          value={available}
+          label="Wallet Balance"
+          value={totalBalance}
           icon={<Wallet className="h-5 w-5 text-brand-600" />}
           accent="bg-brand-50"
-          caption="Cashback ready to transfer in your LocalVIP wallet"
+          caption={
+            pendingCashback && pendingCashback > 0
+              ? `${formatUsd(available)} available now · ${formatUsd(pendingCashback)} pending${
+                  pendingReleaseAt
+                    ? ` (releases ${new Date(pendingReleaseAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`
+                    : ''
+                }`
+              : `${formatUsd(available)} available now to transfer in your LocalVIP wallet`
+          }
           loading={loading}
           emphasize
         />
@@ -302,8 +321,8 @@ export default function MyWalletPage() {
         </div>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Your selected causes</CardTitle>
-            <CardDescription>Your settled support to each currently selected cause. Your lifetime total also includes causes you supported previously.</CardDescription>
+            <CardTitle className="text-base">Your cause</CardTitle>
+            <CardDescription>Your settled support for the cause you selected. Your lifetime total also includes causes you supported previously.</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             {loading ? (
@@ -320,7 +339,7 @@ export default function MyWalletPage() {
               <p className="text-sm text-surface-400">
                 No causes selected yet.{' '}
                 <Link href="/portal/me/causes" className="text-brand-600 underline">
-                  Choose your causes
+                  Choose your cause
                 </Link>
                 .
               </p>

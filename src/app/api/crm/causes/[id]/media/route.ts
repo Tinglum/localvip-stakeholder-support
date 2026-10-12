@@ -3,9 +3,14 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getAuthenticatedSession } from '@/lib/server/auth-session'
 import { fetchQaApi, parseQaResponse, QaApiError } from '@/lib/auth/qa-api'
 import { buildQaAccountMetadata, buildQaCauseLogoUrl, getQaAccountIdFromLocal, isRecord, resolveImageUrl } from '@/lib/server/qa-dashboard-shared'
-import { syncQaCauseLogo } from '@/lib/server/qa-dashboard-causes'
+import { fetchQaCauseDetail, syncQaCauseLogo } from '@/lib/server/qa-dashboard-causes'
+import { generateCauseLaunchMaterials } from '@/lib/server/cause-launch-materials'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import type { Cause } from '@/lib/types/database'
+
+export const maxDuration = 300
+export const runtime = 'nodejs'
 
 /**
  * QaApiError carries the raw upstream body (parseQaResponse's createQaApiError already
@@ -78,12 +83,26 @@ export async function POST(
       })
       const json = await parseQaResponse<unknown>(res, `Failed to upload ${mediaType}.`)
       const row = (json && typeof json === 'object' ? json : {}) as Record<string, unknown>
-      const fileUrl = (row.imageUrl as string | undefined)
+      const stored = (row.imageUrl as string | undefined)
         || (row.logoUrl as string | undefined)
         || (row.coverPhotoUrl as string | undefined)
         || (row.CoverPhotoUrl as string | undefined)
         || null
-      return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true })
+      // Landing pages and PDFs need a public URL; the authenticated image proxy
+      // cannot be used by visitors on my.localvip.com.
+      const fileUrl = stored && !/^https?:\/\//i.test(stored)
+        ? new URL(stored.startsWith('/uploads/') ? stored : `/uploads/${mediaType === 'logo' ? 'logos' : 'covers'}/${encodeURIComponent(stored)}`, QA_AUTH_CONFIG.baseUrl).toString()
+        : stored
+      // The asset is already stored in QA. Flyer and video rendering can take minutes,
+      // so finish the upload response before refreshing launch materials.
+      void fetchQaCauseDetail(Number(params.id))
+        .then(cause => generateCauseLaunchMaterials({
+          ...cause,
+          imageUrl: mediaType === 'logo' ? stored : cause.imageUrl,
+          coverPhotoUrl: mediaType === 'cover_photo' ? stored : cause.coverPhotoUrl,
+        }))
+        .catch(error => console.error('[cause-media] launch generation failed', error))
+      return NextResponse.json({ success: true, mediaType, fileUrl, syncedToQa: true, launchMaterials: 'preparing' })
     } catch (err) {
       const { message, status } = extractQaErrorMessage(err)
       return NextResponse.json({ error: message }, { status })

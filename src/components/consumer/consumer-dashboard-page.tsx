@@ -268,7 +268,7 @@ export function ConsumerDashboardPage() {
   const filteredFriends = data.friends.filter((friend) =>
     `${friend.firstName} ${friend.lastName} ${friend.email}`.toLowerCase().includes(normalizedNetworkSearch)
   )
-  const filteredCauses = data.causes.filter((cause) =>
+  const filteredCauses = data.causes.slice(0, 1).filter((cause) =>
     `${cause.name} ${cause.ownerEmail || ''}`.toLowerCase().includes(normalizedNetworkSearch)
   )
   const filteredTransactions = data.transactions.filter((transaction) => {
@@ -303,7 +303,7 @@ export function ConsumerDashboardPage() {
       href: '/portal/me/network',
       tone: friend.isActive ? 'success' as const : 'warning' as const,
     })),
-    ...data.causes.slice(0, 4).map((cause) => ({
+    ...data.causes.slice(0, 1).map((cause) => ({
       id: `cause-${cause.id}`,
       title: cause.name,
       detail: cause.isActive ? 'Active selected cause' : 'Cause pending activation',
@@ -314,13 +314,13 @@ export function ConsumerDashboardPage() {
   ].slice(0, 10)
   const simulatedCashback = simulatedSpend * (simulatedCashbackPercent / 100)
   const simulatedNetworkLift = simulatedCashback * Math.max(1, simulatedFriends)
-  const milestonePercent = Math.round(((Number(payoutConfigured) + Math.min(5, data.friends.length) / 5 + Math.min(10, data.causes.length) / 10) / 3) * 100)
+  const milestonePercent = Math.round(((Number(payoutConfigured) + Math.min(5, data.friends.length) / 5 + Number(data.causes.length > 0)) / 3) * 100)
   const nextRewardStep = !payoutConfigured
     ? 'Choose PayPal or check as your payout method.'
     : data.summary.counts.friends < 5
       ? 'Invite one more friend to keep growing your network.'
-      : data.summary.counts.causes < 10
-        ? 'Pick another cause to grow your impact.'
+      : data.summary.counts.causes < 1
+        ? 'Choose the cause you want your support to help.'
         : 'Keep sharing your link and using LocalVIP.'
   const beginnerChecklist = [
     {
@@ -338,11 +338,11 @@ export function ConsumerDashboardPage() {
       actionLabel: data.friends.length >= 5 ? 'Goal complete' : 'Open network',
     },
     {
-      title: 'Choose my first 10 causes',
-      description: 'Supporting causes is part of how your LocalVIP activity grows your impact.',
-      complete: data.causes.length >= 10,
+      title: 'Choose my cause',
+      description: 'Choose the one cause you want your LocalVIP support to help.',
+      complete: data.causes.length >= 1,
       href: '/portal/me/causes',
-      actionLabel: data.causes.length >= 10 ? 'Goal complete' : 'Choose causes',
+      actionLabel: data.causes.length >= 1 ? 'Cause selected' : 'Choose a cause',
     },
   ]
 
@@ -474,7 +474,7 @@ export function ConsumerDashboardPage() {
           <div className="flex gap-3">
             <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              Tip: this dashboard is live against QA. Use Refresh QA after you change wallet, causes, network, or purchase data.
+              Tip: this dashboard is live against QA. Use Refresh QA after you change wallet, your cause, network, or purchase data.
             </p>
           </div>
           <button type="button" onClick={handleDismissTips} className="inline-flex items-center gap-1 font-semibold text-sky-800 hover:text-sky-950">
@@ -616,8 +616,8 @@ export function ConsumerDashboardPage() {
               />
               <SimpleToolCard
                 href="/portal/me/causes"
-                title="Choose my causes"
-                description="Pick the causes you want your activity to support."
+                title="Choose my cause"
+                description="Pick the one cause you want your support to help."
                 icon={<Heart className="h-4 w-4" />}
               />
               <SimpleToolCard
@@ -796,7 +796,7 @@ export function ConsumerDashboardPage() {
             <div className="grid gap-3 sm:grid-cols-3">
               <MiniMilestone label="Payout" complete={payoutConfigured} href="/portal/me/wallet" />
               <MiniMilestone label="5 friends" complete={data.friends.length >= 5} href="/portal/me/network" />
-              <MiniMilestone label="10 causes" complete={data.causes.length >= 10} href="/portal/me/causes" />
+              <MiniMilestone label="Cause" complete={data.causes.length >= 1} href="/portal/me/causes" />
             </div>
           </CardContent>
         </Card>
@@ -807,8 +807,8 @@ export function ConsumerDashboardPage() {
           <Card>
             <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-surface-900">Find people or causes</p>
-                <p className="mt-1 text-sm text-surface-500">Search your connected friends and selected causes from the QA dashboard payload.</p>
+                <p className="text-sm font-semibold text-surface-900">Find people or view your cause</p>
+                <p className="mt-1 text-sm text-surface-500">Search your connected friends and see the cause you selected.</p>
               </div>
               <div className="relative w-full sm:max-w-sm">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
@@ -853,18 +853,17 @@ export function ConsumerDashboardPage() {
           )}
         </AchievementCard>
 
-        <AchievementCard
-          icon={<Heart className="h-4 w-4" />}
-          title="Your 10-causes goal"
-          progress={data.causes.length}
-          goal={10}
-          nextStep={data.causes.length < 10 ? 'Pick another cause when you are ready to grow your impact.' : 'You reached your 10-causes goal.'}
-        >
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Heart className="h-4 w-4" />Your cause</CardTitle>
+            <p className="text-sm text-surface-500">Your support goes to the cause you selected.</p>
+          </CardHeader>
+          <CardContent>
           {filteredCauses.length === 0 ? (
             <div className="space-y-3">
-              <p className="text-sm text-surface-500">{networkSearch ? 'No causes match your search.' : 'No causes linked yet.'}</p>
+              <p className="text-sm text-surface-500">{networkSearch ? 'No result matches your search.' : 'No cause selected yet.'}</p>
               <Button variant="outline" size="sm" asChild>
-                <Link href="/portal/me/causes">Choose causes</Link>
+                <Link href="/portal/me/causes">Choose a cause</Link>
               </Button>
             </div>
           ) : (
@@ -882,7 +881,8 @@ export function ConsumerDashboardPage() {
               ))}
             </div>
           )}
-        </AchievementCard>
+          </CardContent>
+        </Card>
       </div>
 
       <Card id="activity" className="scroll-mt-24">
@@ -1024,7 +1024,7 @@ export function ConsumerDashboardPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {timeline.length === 0 ? (
-            <p className="text-sm text-surface-500">Nothing has happened yet. Once you shop, share, or choose causes, your timeline will show it here.</p>
+            <p className="text-sm text-surface-500">Nothing has happened yet. Once you shop, share, or choose your cause, your timeline will show it here.</p>
           ) : (
             timeline.map((item) => (
               <Link key={item.id} href={item.href} className="flex gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 transition-colors hover:border-brand-200 hover:bg-brand-50">

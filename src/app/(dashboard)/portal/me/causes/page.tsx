@@ -168,7 +168,7 @@ export default function MyCausesPage() {
         const res = await fetch('/api/portal/me/causes', { cache: 'no-store' })
         const json = await res.json().catch(() => null)
         if (!res.ok) {
-          throw new Error(json?.error || 'Your causes could not be loaded.')
+          throw new Error(json?.error || 'Your cause could not be loaded.')
         }
         if (!active) return
         const nextCatalog: CatalogCause[] = Array.isArray(json?.catalog) ? json.catalog : []
@@ -179,7 +179,7 @@ export default function MyCausesPage() {
         lastSavedKeyRef.current = selectionKey(nextSelection)
       } catch (error) {
         if (!active) return
-        setLoadError(error instanceof Error ? error.message : 'Your causes could not be loaded.')
+        setLoadError(error instanceof Error ? error.message : 'Your cause could not be loaded.')
       } finally {
         if (active) setLoading(false)
       }
@@ -291,9 +291,9 @@ export default function MyCausesPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader
-        title="My Causes"
-        description="Choose the causes you care about and see the support you are creating for each one."
-        breadcrumb={[{ label: 'Portal', href: '/portal' }, { label: 'My Causes' }]}
+        title="My Cause"
+        description="Choose the one cause you want your LocalVIP support to help."
+        breadcrumb={[{ label: 'Portal', href: '/portal' }, { label: 'My Cause' }]}
         actions={<SaveIndicator status={saveStatus} />}
       />
 
@@ -302,8 +302,7 @@ export default function MyCausesPage() {
           <div className="space-y-2">
             <p className="text-sm font-semibold text-surface-900">How this works</p>
             <p className="text-sm text-surface-600">
-              Add the causes you care about, then make sure the percentages add up to 100%. Your
-              changes save automatically a moment after you stop typing.
+              Choose the cause you want your support to go to. Your selection saves automatically a moment after you stop typing.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -331,7 +330,7 @@ export default function MyCausesPage() {
             {selectedCount > 0 ? (
               <>
                 <p className="text-subheading text-surface-900">
-                  {selectedCount} of {MAX_CAUSES} {selectedCount === 1 ? 'cause' : 'causes'} selected
+                  {selectedCount === 1 ? 'Your cause' : `${selectedCount} causes selected`}
                 </p>
                 <p className="text-body text-surface-500">
                   Your support is directed where it matters most to you.
@@ -342,7 +341,7 @@ export default function MyCausesPage() {
                 <p className="text-subheading text-surface-900">No causes selected yet</p>
                 <p className="text-body text-surface-500">
                   {catalogCount > 0
-                    ? `${catalogCount} causes are available below. Add up to ${MAX_CAUSES} to choose where your support goes.`
+                    ? `${catalogCount} causes are available below. Choose the one you want your support to help.`
                     : 'Use the search below to choose where your support should go.'}
                 </p>
               </>
@@ -399,7 +398,7 @@ export default function MyCausesPage() {
               Your lifetime impact
             </CardTitle>
             <CardDescription>
-              Aggregate lifetime support received by the causes you selected.
+              Aggregate lifetime support received by your selected cause.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -416,22 +415,24 @@ export default function MyCausesPage() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Your selections</CardTitle>
+          <CardTitle>{selectedCount === 1 ? 'Your cause' : 'Your cause selection'}</CardTitle>
           <CardDescription>
-            Drag each slider to choose the split. The other causes adjust automatically, so the total always stays at 100%.
+            {selectedCount > 1
+              ? 'Your support is divided between the causes shown below. The percentages always add up to 100%.'
+              : 'Your support goes to the cause you chose.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-surface-400">
               <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-sm">Loading your causes...</span>
+              <span className="text-sm">Loading your cause...</span>
             </div>
           ) : selection.length === 0 ? (
             <EmptyState
               icon={<Heart className="h-6 w-6" />}
               title="No causes selected yet"
-              description="Choose from the available causes below, add up to five, and then set how much of your support each should receive."
+              description="Choose the cause you want your support to go to. You can change your choice at any time."
             />
           ) : (
             <ul className="space-y-2.5">

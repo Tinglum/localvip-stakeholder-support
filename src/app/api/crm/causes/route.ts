@@ -9,6 +9,9 @@ import {
 } from '@/lib/server/qa-dashboard-causes'
 import type { QaCreateCauseInput } from '@/lib/crm-api'
 import type { OnboardingStage } from '@/lib/types/database'
+import { generateCauseLaunchMaterials } from '@/lib/server/cause-launch-materials'
+
+export const maxDuration = 300
 
 export async function GET() {
   const context = await getOperatorRouteContext(['admin', 'field', 'launch_partner'])
@@ -95,7 +98,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await createQaCause(payload)
-    return NextResponse.json(result, { status: 201 })
+    const launchMaterials = await generateCauseLaunchMaterials({
+      id: result.id, name: result.name, city, state, category: payload.category, referralCode: result.referralCode,
+    })
+    return NextResponse.json({ ...result, launchMaterials }, { status: 201 })
   } catch (error) {
     const normalized = qaCauseCreateError(error)
     return NextResponse.json({ error: normalized.message }, { status: normalized.status })

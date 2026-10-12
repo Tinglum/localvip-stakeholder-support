@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { CheckSquare, Plus, Clock, AlertCircle, Loader2 } from 'lucide-react'
+import { CheckSquare, Plus, Clock, AlertCircle, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { formatDate } from '@/lib/utils'
-import { useTasks, useTaskInsert, useTaskUpdate, useProfiles, useBusinesses, useCauses, useContacts, useStakeholderAssignments } from '@/lib/supabase/hooks'
+import { useTasks, useTaskInsert, useTaskUpdate, useTaskDelete, useProfiles, useBusinesses, useCauses, useContacts, useCities, useStakeholderAssignments } from '@/lib/supabase/hooks'
 import { useAuth } from '@/lib/auth/context'
 import type { Task, TaskPriority, TaskStatus } from '@/lib/types/database'
 
@@ -82,6 +82,7 @@ export default function TasksPage() {
     ? requestedReturnTo
     : ''
   const [addOpen, setAddOpen] = React.useState(false)
+  const [editingId, setEditingId] = React.useState<string | null>(null)
   const [filters, setFilters] = React.useState<Record<string, string>>({})
   const [submitting, setSubmitting] = React.useState(false)
 
@@ -92,7 +93,7 @@ export default function TasksPage() {
   const [status, setStatus] = React.useState<TaskStatus>('pending')
   const [dueDate, setDueDate] = React.useState('')
   const [assignedTo, setAssignedTo] = React.useState('')
-  const [entityType, setEntityType] = React.useState<'business' | 'cause' | 'contact' | ''>('')
+  const [entityType, setEntityType] = React.useState<'business' | 'cause' | 'contact' | 'city' | ''>('')
   const [entityId, setEntityId] = React.useState('')
 
   const taskFilters = React.useMemo(
@@ -106,12 +107,14 @@ export default function TasksPage() {
   )
   const { insert } = useTaskInsert()
   const { update } = useTaskUpdate()
+  const { remove: deleteTask } = useTaskDelete()
 
   // Lookup data
   const { data: profiles } = useProfiles()
   const { data: businesses } = useBusinesses()
   const { data: causes } = useCauses()
   const { data: contacts } = useContacts()
+  const { data: cities } = useCities()
   const { data: businessAssignments } = useStakeholderAssignments(
     businessId ? { entity_type: 'business', entity_id: businessId } : undefined,
     { enabled: !!businessId },
@@ -129,8 +132,9 @@ export default function TasksPage() {
     for (const b of businesses) map[b.id] = b.name
     for (const c of causes) map[c.id] = c.name
     for (const ct of contacts) map[ct.id] = `${ct.first_name} ${ct.last_name}`
+    for (const ci of cities) map[ci.id] = [ci.name, ci.state].filter(Boolean).join(', ')
     return map
-  }, [businesses, causes, contacts])
+  }, [businesses, causes, contacts, cities])
 
   const focusedBusiness = React.useMemo(
     () => businesses.find(business => business.id === businessId),
@@ -159,10 +163,12 @@ export default function TasksPage() {
     if (entityType === 'business') return businesses.map(b => ({ value: b.id, label: b.name }))
     if (entityType === 'cause') return causes.map(c => ({ value: c.id, label: c.name }))
     if (entityType === 'contact') return contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))
+    if (entityType === 'city') return cities.map(c => ({ value: c.id, label: [c.name, c.state].filter(Boolean).join(', ') }))
     return []
-  }, [entityType, businesses, causes, contacts])
+  }, [entityType, businesses, causes, contacts, cities])
 
   const resetForm = () => {
+    setEditingId(null)
     setTitle('')
     setDescription('')
     setPriority('medium')
@@ -174,6 +180,7 @@ export default function TasksPage() {
   }
 
   const openAddTask = () => {
+    setEditingId(null)
     if (businessId) {
       setEntityType('business')
       setEntityId(businessId)
@@ -193,17 +200,20 @@ export default function TasksPage() {
     e.preventDefault()
     setSubmitting(true)
 
-    const result = await insert({
+    const payload = {
       title,
       description: description || null,
       priority,
       status,
       due_date: dueDate || null,
       assigned_to: assignedTo || profile.id,
-      created_by: profile.id,
       entity_type: entityType || null,
       entity_id: entityId || null,
-    })
+    }
+
+    const result = editingId
+      ? await update(editingId, payload)
+      : await insert({ ...payload, created_by: profile.id })
 
     setSubmitting(false)
 
@@ -212,6 +222,25 @@ export default function TasksPage() {
       resetForm()
       refetch()
     }
+  }
+
+  const openEditTask = (task: Task) => {
+    setEditingId(task.id)
+    setTitle(task.title)
+    setDescription(task.description || '')
+    setPriority(task.priority)
+    setStatus(task.status)
+    setDueDate(task.due_date ? task.due_date.slice(0, 10) : '')
+    setAssignedTo(task.assigned_to || '')
+    setEntityType((task.entity_type as typeof entityType) || '')
+    setEntityId(task.entity_id || '')
+    setAddOpen(true)
+  }
+
+  const handleDelete = async (task: Task) => {
+    if (!window.confirm(`Delete task “${task.title}”? This cannot be undone.`)) return
+    const ok = await deleteTask(task.id)
+    if (ok) refetch()
   }
 
   const handleStatusToggle = async (task: Task) => {
@@ -274,6 +303,29 @@ export default function TasksPage() {
       key: 'created_at', header: 'Created', sortable: true, width: '120px',
       render: (t) => <span className="text-xs text-surface-500">{formatDate(t.created_at)}</span>,
     },
+    {
+      key: 'actions', header: '', width: '96px',
+      render: (t) => (
+        <div className="flex items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); openEditTask(t) }}
+            aria-label="Edit task"
+            className="rounded-md p-1.5 text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleDelete(t) }}
+            aria-label="Delete task"
+            className="rounded-md p-1.5 text-surface-500 transition-colors hover:bg-danger-50 hover:text-danger-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-400"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ),
+    },
   ]
 
   if (loading) {
@@ -332,7 +384,7 @@ export default function TasksPage() {
       <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm() }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Task</DialogTitle>
+            <DialogTitle>{editingId ? 'Edit Task' : 'Add Task'}</DialogTitle>
             <DialogDescription>Create an action item. Assign it to someone and set a due date.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -397,6 +449,7 @@ export default function TasksPage() {
                     <option value="business">Business</option>
                     <option value="cause">Cause</option>
                     <option value="contact">Contact</option>
+                    <option value="city">City</option>
                   </select>
                 </div>
                 <div>
@@ -420,7 +473,7 @@ export default function TasksPage() {
               <Button variant="outline" type="button" onClick={() => { setAddOpen(false); resetForm() }}>Cancel</Button>
               <Button type="submit" disabled={submitting}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {submitting ? 'Creating...' : 'Create Task'}
+                {submitting ? 'Saving...' : editingId ? 'Save Changes' : 'Create Task'}
               </Button>
             </DialogFooter>
           </form>

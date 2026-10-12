@@ -73,6 +73,10 @@ const ROUTE_LABELS: Record<string, string> = {
 
 const HISTORY_KEY = 'nav_history'
 const MAX_HISTORY = 50
+const IS_QA = process.env.NEXT_PUBLIC_DEPLOY_ENV === 'qa'
+const OTHER_DASHBOARD_URL = IS_QA
+  ? 'https://dashboard.localvip.com'
+  : 'https://dashboard-qa.5.252.52.243.sslip.io'
 
 function pathnameToLabel(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean)
@@ -184,11 +188,11 @@ function getActionCenterContent(shell: string, pathname: string) {
   if (shell === 'consumer') {
     return {
       title: 'Your easiest next move',
-      description: 'Start with your money, then your people, then your causes.',
+      description: 'Start with your money, then your people, then choose a cause.',
       items: [
         { label: 'Check my money', href: '/portal/me/wallet' },
         { label: 'See my network', href: '/portal/me/network' },
-        { label: 'Choose my causes', href: '/portal/me/causes' },
+        { label: 'Choose my cause', href: '/portal/me/causes' },
       ],
     }
   }
@@ -411,6 +415,22 @@ export function Topbar({
 
         {/* Everyone sees the current state; only admins get the toggle. */}
         <SystemStatusIndicator {...systemStatus} canToggle={isAdminProfile(profile)} />
+
+        <span className={cn(
+          'rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wider',
+          IS_QA ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900',
+        )}>
+          {IS_QA ? 'Test data' : (process.env.NEXT_PUBLIC_DEPLOY_ENV === 'production' ? 'Live data' : 'QA test data')}
+        </span>
+        {isAdminProfile(profile) ? (
+          <a
+            href={OTHER_DASHBOARD_URL}
+            className="rounded-lg border border-surface-200 px-2 py-1 text-xs font-semibold text-surface-700 hover:bg-surface-100"
+            aria-label={`Switch to ${IS_QA ? 'production' : 'test'} dashboard`}
+          >
+            Switch to {IS_QA ? 'production' : 'test'}
+          </a>
+        ) : null}
 
         {/* Platform switches live together: the consumer-app carousel toggle
             sits right beside the maintenance pill, same admin gating. */}

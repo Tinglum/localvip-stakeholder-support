@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import { compareNames, onboardingLocation, onboardingLocations, sortOnboarding, ONBOARDING_SORT_LABELS, type OnboardingSort } from '@/lib/onboarding-list'
 import Link from 'next/link'
 import {
@@ -102,10 +103,15 @@ const businessTheme = getEntityTheme('business')
 interface CauseForm {
   name: string
   type: Cause['type']
+  ownerFirstName: string
+  ownerLastName: string
   email: string
   phone: string
   website: string
   city_id: string
+  address1: string
+  zipCode: string
+  country: string
   brand: Brand
   source: string
   stage: OnboardingStage
@@ -114,10 +120,15 @@ interface CauseForm {
 const INITIAL_FORM: CauseForm = {
   name: '',
   type: 'school',
+  ownerFirstName: '',
+  ownerLastName: '',
   email: '',
   phone: '',
   website: '',
   city_id: '',
+  address1: '',
+  zipCode: '',
+  country: 'US',
   brand: 'localvip',
   source: '',
   stage: 'lead',
@@ -711,16 +722,28 @@ export default function CauseOnboardingPage() {
     setInsertingCause(true)
 
     try {
+      const selectedCity = cities.find(city => city.id === form.city_id)
+      if (!selectedCity) {
+        setSubmitError('Choose a city before creating this cause.')
+        return
+      }
       const response = await fetch('/api/crm/causes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name.trim(),
-          type: form.type,
+          category: form.type,
           brand: form.brand,
           stage: form.stage,
-          email: form.email.trim() || null,
-          phone: form.phone.trim() || null,
+          ownerFirstName: form.ownerFirstName.trim(),
+          ownerLastName: form.ownerLastName.trim(),
+          ownerEmail: form.email.trim(),
+          ownerPhone: form.phone.trim() || null,
+          address1: form.address1.trim(),
+          city: selectedCity.name,
+          state: selectedCity.state,
+          zipCode: form.zipCode.trim(),
+          country: form.country.trim(),
           website: form.website.trim() || null,
           city_id: form.city_id || null,
           source: form.source.trim() || null,
@@ -737,7 +760,11 @@ export default function CauseOnboardingPage() {
       setAddOpen(false)
       clearOnboardingDraft('cause-create', causeDraftScope)
       setForm(INITIAL_FORM)
-      setFeedback(`${payload.name || form.name.trim()} added and ready for QR/material setup.`)
+      const launchSteps = payload.launchMaterials?.steps as Record<string, { status: string }> | undefined
+      const launchSummary = launchSteps
+        ? ` Flyers: ${launchSteps.flyers?.status || 'unknown'}; landing pages: ${launchSteps.landingPages?.status || 'unknown'}; video: ${launchSteps.video?.status || 'unknown'}.`
+        : ' Open the cause to review its launch materials.'
+      setFeedback(`${payload.name || form.name.trim()} added.${launchSummary}`)
       await refreshAll()
     } finally {
       setInsertingCause(false)
@@ -1224,6 +1251,7 @@ function CauseDetailModal({
   const [lifecycleModal, setLifecycleModal] = React.useState<'initial_connection' | 'leader_conversation' | 'materials_qr' | 'activation_decision' | null>(null)
   const [showChecklist, setShowChecklist] = React.useState(false)
   const [uploadBusy, setUploadBusy] = React.useState<'logo' | 'cover' | null>(null)
+  const [pendingLogo, setPendingLogo] = React.useState<File | null>(null)
   const [assetError, setAssetError] = React.useState<string | null>(null)
   const [assetMessage, setAssetMessage] = React.useState<string | null>(null)
   const [engineBusy, setEngineBusy] = React.useState<'generate' | null>(null)
@@ -1283,11 +1311,11 @@ function CauseDetailModal({
   async function handleUploadMedia(mediaType: 'logo' | 'cover_photo', file: File) {
     if (!file.type.startsWith('image/')) {
       setAssetError('Choose an image file.')
-      return
+      return false
     }
     if (file.size > 10 * 1024 * 1024) {
       setAssetError('Images must be smaller than 10 MB.')
-      return
+      return false
     }
     setUploadBusy(mediaType === 'logo' ? 'logo' : 'cover')
     setAssetError(null)
@@ -1308,8 +1336,10 @@ function CauseDetailModal({
       else setLocalCoverUrl(previewUrl)
       setAssetMessage(`${mediaType === 'logo' ? 'Logo' : 'Cover photo'} uploaded.`)
       onStageChanged()
+      return true
     } catch (error) {
       setAssetError(error instanceof Error ? error.message : 'The image could not be uploaded.')
+      return false
     } finally {
       setUploadBusy(null)
     }
@@ -1484,8 +1514,9 @@ function CauseDetailModal({
                 </div>
               </button>
             </div>
-            <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleUploadMedia('logo', file); event.target.value = '' }} />
+            <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(event) => { setPendingLogo(event.target.files?.[0] || null); event.target.value = '' }} />
             <input ref={coverInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleUploadMedia('cover_photo', file); event.target.value = '' }} />
+            {pendingLogo && <div className="space-y-2 sm:col-span-2"><LogoImageTools file={pendingLogo} onChange={setPendingLogo} /><div className="flex gap-2"><Button size="sm" disabled={uploadBusy !== null} onClick={() => void handleUploadMedia('logo', pendingLogo).then((saved) => { if (saved) setPendingLogo(null) })}>Save logo</Button><Button variant="outline" size="sm" onClick={() => setPendingLogo(null)}>Cancel</Button></div></div>}
             {assetError ? <p className="text-xs font-medium text-danger-600">{assetError}</p> : null}
             {assetMessage ? <p className="text-xs font-medium text-success-700">{assetMessage}</p> : null}
             <div className="flex flex-wrap gap-2">
@@ -1849,7 +1880,7 @@ function AddCauseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add a New Cause</DialogTitle>
           <DialogDescription>
@@ -1869,7 +1900,7 @@ function AddCauseDialog({
               <option value="community">Community</option>
               <option value="other">Other</option>
             </FormSelect>
-            <FormSelect label="City" value={form.city_id} onChange={(value) => handleFormChange('city_id', value)}>
+            <FormSelect label="City *" value={form.city_id} onChange={(value) => handleFormChange('city_id', value)}>
               <option value="">Select a city...</option>
               {cities.map((city) => (
                 <option key={city.id} value={city.id}>{city.name}, {city.state}</option>
@@ -1877,8 +1908,16 @@ function AddCauseDialog({
             </FormSelect>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <FormInput label="Email" value={form.email} onChange={(value) => handleFormChange('email', value)} type="email" placeholder="contact@school.edu" />
-            <FormInput label="Phone" value={form.phone} onChange={(value) => handleFormChange('phone', value)} type="tel" placeholder="(404) 555-0000" />
+            <FormInput label="Primary contact first name *" required value={form.ownerFirstName} onChange={(value) => handleFormChange('ownerFirstName', value)} />
+            <FormInput label="Primary contact last name *" required value={form.ownerLastName} onChange={(value) => handleFormChange('ownerLastName', value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FormInput label="Primary contact email *" required value={form.email} onChange={(value) => handleFormChange('email', value)} type="email" placeholder="contact@school.edu" />
+            <FormInput label="Phone" value={form.phone} onChange={(value) => handleFormChange('phone', value)} type="tel" placeholder="(913) 555-0000" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FormInput label="Street address *" required value={form.address1} onChange={(value) => handleFormChange('address1', value)} />
+            <FormInput label="ZIP code *" required value={form.zipCode} onChange={(value) => handleFormChange('zipCode', value)} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <FormInput label="Website" value={form.website} onChange={(value) => handleFormChange('website', value)} type="url" placeholder="https://example.org" />

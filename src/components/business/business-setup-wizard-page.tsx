@@ -238,12 +238,12 @@ export function BusinessSetupWizardPage() {
                       aria-label={`${item.label}: ${statusLabel}. Open this step.`}
                     >
                       <span
-                        className={`flex h-12 w-12 items-center justify-center rounded-full border-2 bg-white shadow-sm ${
+                        className={`flex h-12 w-12 items-center justify-center rounded-full border-2 shadow-sm ${
                           complete
                             ? 'border-success-600 bg-success-600 text-white'
                             : isActive
                               ? 'border-brand-600 bg-brand-600 text-white ring-4 ring-brand-100'
-                              : 'border-surface-300 text-surface-500'
+                              : 'border-surface-300 bg-white text-surface-500'
                         }`}
                       >
                         {complete ? <CheckCircle2 className="h-5 w-5" /> : isActive ? item.icon : <span className="text-sm font-bold">{index + 1}</span>}

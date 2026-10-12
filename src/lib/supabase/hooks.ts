@@ -497,8 +497,17 @@ export function useBusinesses(filters?: Record<string, string>, options?: UseQue
         if (!res.ok) throw new Error('Failed to load businesses.')
         const json = await res.json()
         const arr = Array.isArray(json) ? json : (json ? [json] : [])
-        // QA list shape → Supabase Business shape (best effort)
-        const mapped: Business[] = arr.map((b: Record<string, unknown>) => mapQaBusinessRecordToBusiness(b))
+        // Owner-scoped queries commonly start from the list response. Fetch the
+        // account detail before seeding the editor: the list may omit the saved
+        // category, description, average ticket and keywords.
+        const records: Record<string, unknown>[] = parsedFilters.owner_id && !scopedId && arr.length === 1
+          ? [await (async () => {
+              const detailRes = await withTimeout(fetch(`/api/qa/businesses/${arr[0].id}`, { cache: 'no-store' }), 'business detail load')
+              if (!detailRes.ok) throw new Error('Failed to load your business profile.')
+              return detailRes.json() as Promise<Record<string, unknown>>
+            })()]
+          : arr
+        const mapped: Business[] = records.map(mapQaBusinessRecordToBusiness)
         if (!cancelled) setData(mapped)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed.')
@@ -589,6 +598,15 @@ export function useBusinessUpdate() {
   return { update, loading, error }
 }
 
+function causeAssetUrl(value: unknown, folder: 'logos' | 'covers') {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const trimmed = value.trim()
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  const base = (process.env.NEXT_PUBLIC_QA_AUTH_BASE_URL || 'https://qa.localvip.com').replace(/\/$/, '')
+  if (trimmed.startsWith('/uploads/')) return `${base}${trimmed}`
+  return `${base}/uploads/${folder}/${encodeURIComponent(trimmed)}`
+}
+
 export function useCauses(filters?: Record<string, string>, options?: UseQueryOptions) {
   const [data, setData] = React.useState<Cause[]>([])
   const [loading, setLoading] = React.useState(options?.enabled ?? true)
@@ -619,16 +637,21 @@ export function useCauses(filters?: Record<string, string>, options?: UseQueryOp
           state: (c.state as string) || null,
           country: (c.country as string) || null,
           type: 'nonprofit',
-          owner_id: null,
-          owner_user_id: null,
-          city_id: null,
+          // The nonprofit list carries the owning user; it was dropped here, so
+          // cause owners never showed up in city team coverage or owner counts.
+          owner_id: c.ownerUserId == null ? null : String(c.ownerUserId),
+          owner_user_id: c.ownerUserId == null ? null : String(c.ownerUserId),
+          // QA nonprofits store city/state as account text, not a numeric city
+          // FK. Mirror the business mapping so a cause can be matched to (and
+          // shown on) a city page by the same `City, State` label.
+          city_id: c.city ? [c.city, c.state].filter(Boolean).join(', ') : null,
           campaign_id: c.crmCampaignId == null ? null : String(c.crmCampaignId),
           brand: 'localvip',
           stage: 'lead',
           status: c.active ? 'active' : 'inactive',
-          metadata: { qaId: c.id, ownerUserId: c.ownerUserId, headline: c.headline },
-          logo_url: (c.logoUrl as string) || (c.imageUrl as string) || null,
-          cover_photo_url: (c.coverPhotoUrl as string) || null,
+          metadata: { qaId: c.id, ownerUserId: c.ownerUserId, headline: c.headline, crmStage: c.crmStage ?? null, crmStatus: c.crmStatus ?? null },
+          logo_url: causeAssetUrl(c.logoUrl || c.imageUrl, 'logos'),
+          cover_photo_url: causeAssetUrl(c.coverPhotoUrl, 'covers'),
           external_id: String(c.id),
           created_at: (c.createdDate as string) || new Date().toISOString(),
           updated_at: (c.updatedDate as string) || new Date().toISOString(),
@@ -737,6 +760,7 @@ export function useCampaigns(filters?: Record<string, string>, options?: UseQuer
   return useQaQuery<Campaign>('campaigns', { filters, enabled: options?.enabled })
 }
 export function useCampaignInsert() { return useQaInsert<Campaign>('campaigns') }
+export function useCampaignUpdate() { return useQaUpdate<Campaign>('campaigns') }
 
 export function useOffers(filters?: Record<string, string>, options?: UseQueryOptions) {
   return useQaQuery<Offer>('offers', { filters, enabled: options?.enabled })
@@ -773,6 +797,7 @@ export function useTasks(filters?: Record<string, string>, options?: UseQueryOpt
 }
 export function useTaskInsert() { return useQaInsert<Task>('tasks') }
 export function useTaskUpdate() { return useQaUpdate<Task>('tasks') }
+export function useTaskDelete() { return useQaDelete('tasks') }
 
 export function useOutreach(filters?: Record<string, string>, options?: UseQueryOptions) {
   return useQaQuery<OutreachActivity>('outreach_activities', { filters, enabled: options?.enabled })
@@ -834,6 +859,8 @@ export function useQrCodeCollections(_filters?: Record<string, string>) {
 }
 export function useQrCodeCollectionInsert() { return useQaInsert<QrCodeCollection>('qr_code_collections') }
 export function useQrCodeCollectionUpdate() { return useQaUpdate<QrCodeCollection>('qr_code_collections') }
+export function useQrCodeCollectionDelete() { return useQaDelete('qr_code_collections') }
+export function useQrCodeUpdate() { return useQaUpdate<QrCode>('qr_codes') }
 export function useQrCodeInsert() { return useQaInsert<QrCode>('qr_codes') }
 export function useQrCodeDelete() { return useQaDelete('qr_codes') }
 

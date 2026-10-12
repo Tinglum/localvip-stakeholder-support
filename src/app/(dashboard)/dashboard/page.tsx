@@ -191,6 +191,15 @@ function TeamDashboardPage() {
       .sort((left, right) => left.name.localeCompare(right.name)),
     [businessData]
   )
+  const causesPendingLiveReview = React.useMemo(
+    () => causeData
+      .filter((cause) => {
+        const meta = (cause.metadata || {}) as { crmStatus?: unknown; crmStage?: unknown }
+        return meta.crmStatus === 'pending_live_review' && String(meta.crmStage || '').toLowerCase() !== 'live'
+      })
+      .sort((left, right) => left.name.localeCompare(right.name)),
+    [causeData]
+  )
   const immediateItems = React.useMemo(
     () => {
       const items = [
@@ -428,6 +437,35 @@ function TeamDashboardPage() {
                   <p className="mt-1 text-sm text-emerald-100">
                     {[business.category, business.email].filter(Boolean).join(' / ') || 'Ready for CRM review'}
                   </p>
+                </div>
+                <ArrowRight className="h-5 w-5 shrink-0" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {isAdmin && causesPendingLiveReview.length > 0 ? (
+        <section className="overflow-hidden rounded-[2rem] border-4 border-pink-500 bg-pink-500 text-white shadow-xl shadow-pink-200/70">
+          <div className="p-6 sm:p-8">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20">
+                <Rocket className="h-7 w-7" />
+              </span>
+              <Badge className="border-white/40 bg-white text-pink-800">{causesPendingLiveReview.length} waiting</Badge>
+            </div>
+            <h2 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">Schools and causes want to go live</h2>
+            <p className="mt-3 max-w-3xl text-base leading-7 text-pink-50">
+              They finished account setup. Open each one, check the profile, then use Approve and go live at the top of the page.
+            </p>
+          </div>
+          <div className="grid gap-px bg-pink-400 sm:grid-cols-2 xl:grid-cols-3">
+            {causesPendingLiveReview.map((cause) => (
+              <Link key={cause.id} href={`/crm/causes/${cause.id}`}
+                className="flex items-center justify-between gap-4 bg-pink-600/80 px-6 py-5 transition-colors hover:bg-pink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white">
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-semibold">{cause.name}</p>
+                  <p className="mt-1 text-sm text-pink-100">{[cause.city_id, cause.email].filter(Boolean).join(' / ') || 'Ready for review'}</p>
                 </div>
                 <ArrowRight className="h-5 w-5 shrink-0" />
               </Link>
