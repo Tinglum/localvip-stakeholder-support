@@ -165,7 +165,9 @@ export default function CustomersPage() {
       const res = await fetch('/api/dashboard/open-in-app', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ targetUserId: node.userId }),
+        // This is the Customers list, so open the consumer app even when the
+        // person also leads a cause or runs a business.
+        body: JSON.stringify({ targetUserId: node.userId, view: 'consumer' }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok || !json.url) {
