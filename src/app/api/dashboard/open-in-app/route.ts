@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   const access = await requireQaRouteAccess(['admin'])
   if ('error' in access) return access.error
 
-  let body: { targetUserId?: number | string; businessAccountId?: number | string } = {}
+  let body: { targetUserId?: number | string; businessAccountId?: number | string; view?: string } = {}
   try {
     body = await request.json()
   } catch {
@@ -27,6 +27,16 @@ export async function POST(request: NextRequest) {
   if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
     return NextResponse.json({ error: 'A positive integer targetUserId is required.' }, { status: 400 })
   }
+
+  // Which experience the admin meant to open. The CRM list the button was
+  // clicked on fixes this unambiguously, so we carry it across as a hint and
+  // let the webapp honour it over its own role auto-detection — the detection
+  // picks one account type at random for a user linked to several (a customer
+  // who also leads a cause), which is the exact "logged in as a cause" bug this
+  // fixes. It only chooses a landing route; data access stays gated by the
+  // session's real memberships and the verified business/cause ids below.
+  const view =
+    body.view === 'business' || body.view === 'cause' || body.view === 'consumer' ? body.view : null
 
   // Which business the admin launched from. The webapp used to re-derive the
   // business from the user alone, so an owner of several businesses landed in
@@ -62,7 +72,8 @@ export async function POST(request: NextRequest) {
     // signed-in user before honouring it — this is a hint, not an authority.
     const url =
       `${WEBAPP_URL}/auth/app-handoff#t=${encodeURIComponent(result.accessToken)}` +
-      (verifiedBusinessAccountId != null ? `&b=${encodeURIComponent(String(verifiedBusinessAccountId))}` : '')
+      (verifiedBusinessAccountId != null ? `&b=${encodeURIComponent(String(verifiedBusinessAccountId))}` : '') +
+      (view != null ? `&v=${encodeURIComponent(view)}` : '')
     return NextResponse.json({
       url,
       target: {

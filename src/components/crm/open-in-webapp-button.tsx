@@ -58,6 +58,12 @@ export function OpenInWebappButton({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUserId: numericId,
+          // The admin clicked this on a specific CRM list, so the intended
+          // landing view is unambiguous here. We send it so the webapp opens
+          // the right experience even for a user linked to several account
+          // types (e.g. a customer who is also a cause leader), where the
+          // webapp's own role auto-detection would otherwise pick one at random.
+          view: stakeholderType === 'Business' ? 'business' : stakeholderType === 'Cause' ? 'cause' : 'consumer',
           ...(numericBusinessAccountId != null ? { businessAccountId: numericBusinessAccountId } : {}),
         }),
       })
