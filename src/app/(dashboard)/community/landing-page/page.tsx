@@ -225,7 +225,7 @@ export default function CauseLandingPageEditor() {
     {message && <div role="status" className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">{message}</div>}
 
     <Card><CardContent className="p-5 sm:p-6">
-      <LandingStyleCarousel config={config} live={live} baseUrl={baseUrl} onSelect={(design) => update({ design })} />
+      <LandingStyleCarousel config={config} live={live} baseUrl={baseUrl} version={record?.landingPagePublishedDate || String(record?.revision ?? '')} onSelect={(design) => update({ design })} />
     </CardContent></Card>
 
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
