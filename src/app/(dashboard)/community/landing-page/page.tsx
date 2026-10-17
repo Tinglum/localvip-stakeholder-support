@@ -4,7 +4,7 @@ import * as React from 'react'
 import { BrandColorPicker } from '@/components/ui/brand-color-picker'
 import { LogoImageTools } from '@/components/ui/logo-image-tools'
 import Link from 'next/link'
-import { AlertTriangle, CheckCircle2, ExternalLink, Globe2, ImageIcon, Loader2, Save, Send, Upload, Wand2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ExternalLink, Globe2, ImageIcon, Loader2, RotateCcw, Save, Send, Upload, Wand2 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import {
   defaultLandingConfig as defaultConfig,
   isLandingOutOfDate,
   landingPhotoWarnings,
+  DEFAULT_LANDING_PALETTE,
   landingPublishBlockers,
   qaCauseId,
   slugify,
@@ -269,6 +270,16 @@ export default function CauseLandingPageEditor() {
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="outline" onClick={() => void pullLogoColors()} disabled={!config.assets.mark.src || extractingColors}>
               {extractingColors ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}Use colors from my logo
+            </Button>
+            <Button
+              variant="outline"
+              disabled={saving || extractingColors || (Object.keys(DEFAULT_LANDING_PALETTE) as Array<keyof LandingConfig['colors']>).every(key => config.colors[key]?.toUpperCase() === DEFAULT_LANDING_PALETTE[key])}
+              onClick={() => {
+                update({ colors: { ...DEFAULT_LANDING_PALETTE }, brandColorsConfirmed: true })
+                setMessage('Default LocalVIP colors restored in your draft. Review the preview, then publish to update the live landing page.')
+              }}
+            >
+              <RotateCcw className="h-4 w-4" />Back to default colors
             </Button>
             {!config.brandColorsConfirmed && config.assets.mark.src && <span className="text-sm text-surface-600">Review colors after changing your logo.</span>}
           </div>

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   CheckCircle2, Clock3, ExternalLink, FileText, ImageIcon, Loader2,
   Palette, QrCode, Rocket, Upload, Wand2,
+  RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,7 +22,8 @@ import {
   type CauseSetupSignals,
   type CauseSetupStepKey,
 } from '@/lib/cause-setup'
-import { isHexColor, readableBrandText, type BrandTriple } from '@/lib/brand-colors'
+import { brandFromPalette, isHexColor, readableBrandText, type BrandTriple } from '@/lib/brand-colors'
+import { DEFAULT_LANDING_PALETTE } from '@/lib/cause-landing-config'
 import { BrandColorPicker } from '@/components/ui/brand-color-picker'
 import { LogoImageTools } from '@/components/ui/logo-image-tools'
 
@@ -286,6 +288,7 @@ export function ColorsStep({ initial, confirmed, logoSrc, name, busy, onExtract,
   const [extracting, setExtracting] = React.useState(false)
   const [note, setNote] = React.useState<string | null>(null)
   const tried = React.useRef(false)
+  const defaults = brandFromPalette(DEFAULT_LANDING_PALETTE)
   const swatches = [...Object.values(initial), ...Object.values(colors)]
 
   const pull = React.useCallback(async () => {
@@ -332,6 +335,14 @@ export function ColorsStep({ initial, confirmed, logoSrc, name, busy, onExtract,
           <Button variant="outline" onClick={() => void pull()} disabled={busy || !logoSrc || extracting}>
             {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
             Use colors from my logo
+          </Button>
+          <Button
+            variant="outline"
+            disabled={busy || extracting || (Object.keys(defaults) as Array<keyof BrandTriple>).every(key => colors[key].toUpperCase() === defaults[key])}
+            onClick={() => { setColors(defaults); setNote('Default LocalVIP colors restored. Save to keep them.') }}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Back to default colors
           </Button>
           {!logoSrc ? <span className="text-xs text-surface-500">Upload your logo first to pull colors from it.</span> : null}
         </div>
