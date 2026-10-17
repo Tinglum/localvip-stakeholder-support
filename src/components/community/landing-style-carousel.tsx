@@ -20,28 +20,34 @@ const PAGE_WIDTH = 1280
 const PAGE_HEIGHT = 768
 const SCALE = 240 / PAGE_WIDTH
 
+// Before a cause publishes there is nothing of theirs to render, so the cards
+// show a built-in example campaign that uses the default LocalVIP palette
+// (the same navy and gold as DEFAULT_LANDING_PALETTE). It is rendered live
+// from the templates, so the cards can never drift from the real styles the
+// way the old fixed screenshots (another school's pink branding) did.
+const EXAMPLE_CAMPAIGN_URL = `${(process.env.NEXT_PUBLIC_WEBAPP_URL || 'https://my.localvip.com').replace(/\/+$/, '')}/landing/OlatheWest`
+
 /**
- * Once the cause's page is published, each card shows that page — its own
- * name, colors and photos — in that style, via the webapp's `?design=` view.
- * Before that there is nothing of theirs to show, so the cards fall back to
- * screenshots of an example school and say so.
+ * One style card's thumbnail: the real page in that style, via the webapp's
+ * `?design=` view. Once published it is the cause's own page, with its name,
+ * colors and photos, and `version` reloads it on every publish.
  */
 function StyleThumbnail({ design, live, baseUrl, version }: { design: LandingDesign; live: boolean; baseUrl: string; version: string }) {
   const [loaded, setLoaded] = React.useState(false)
-  if (!live) {
-    return <img src={`/landing-styles/${design}.webp`} alt="" loading="lazy" decoding="async" width="480" height="288" className="h-full w-full object-cover" />
-  }
-  const src = `${baseUrl}?design=${encodeURIComponent(design)}${version ? `&v=${encodeURIComponent(version)}` : ''}`
+  const page = live ? baseUrl : EXAMPLE_CAMPAIGN_URL
+  const src = `${page}?design=${encodeURIComponent(design)}${live && version ? `&v=${encodeURIComponent(version)}` : ''}`
+  React.useEffect(() => setLoaded(false), [src])
   return (
     <div className="relative h-full w-full">
       {!loaded && <div className="absolute inset-0 animate-pulse bg-surface-200" aria-hidden="true" />}
       <iframe
+        key={src}
         src={src}
         title=""
         aria-hidden="true"
         tabIndex={-1}
         loading="lazy"
-        // A thumbnail, not an app: no scripts beyond the page's own, no clicks.
+        // A thumbnail, not an app: no clicks, no navigation away.
         sandbox="allow-scripts allow-same-origin"
         onLoad={() => setLoaded(true)}
         className="pointer-events-none origin-top-left border-0"
@@ -71,7 +77,7 @@ export function LandingStyleCarousel({ config, live, baseUrl, version = '', onSe
           <p className="mt-1 text-sm text-surface-600">
             {live
               ? 'These previews show your published page in each style. Your choice stays a draft until you publish.'
-              : 'These previews use an example school. Publish your page to see each style with your own name, colors and photos.'}
+              : 'These previews use an example school in the default LocalVIP colors. Publish your page and they switch to your own name, colors and photos.'}
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
