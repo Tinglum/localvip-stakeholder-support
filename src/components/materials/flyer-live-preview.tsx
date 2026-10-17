@@ -2,8 +2,8 @@
 
 import * as React from 'react'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
-import { brightenFlyerPixels, fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, FLYER_PHOTO_SIZE, type FlyerMeasure } from '@/lib/flyer-fit'
-import type { FlyerImageSlotId, FlyerOverrides, FlyerSlots } from '@/lib/flyer-slots'
+import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type FlyerMeasure } from '@/lib/flyer-fit'
+import type { FlyerImageSlotId, FlyerOverrides, FlyerSlots, PreparedFlyerImage } from '@/lib/flyer-slots'
 
 export type FlyerPreviewFonts = { display: string; sans: string; faces: { url: string; family: string; weight: number }[] }
 
@@ -18,6 +18,8 @@ type Props = {
   /** Local files shown while their upload is still in flight. */
   localImages: Partial<Record<FlyerImageSlotId, string>>
   onHeaderError: (message: string) => void
+  /** The renderer's treatment of a replacement image (logo trim, photo brightening). */
+  prepareImage: (slot: FlyerImageSlotId, url: string) => Promise<PreparedFlyerImage>
 }
 
 /**
@@ -25,7 +27,7 @@ type Props = {
  * change the SVG DOM directly, refitted with the renderer's own rules and
  * fonts, so nothing round-trips to the server until the PDF is generated.
  */
-export function FlyerLivePreview({ svg, fonts, slots, edits, loadedImages, localImages, onHeaderError }: Props) {
+export function FlyerLivePreview({ svg, fonts, slots, edits, loadedImages, localImages, onHeaderError, prepareImage }: Props) {
   const host = React.useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = React.useState(0)
   const wanted = React.useRef<Partial<Record<FlyerImageSlotId, string>>>({})
@@ -38,7 +40,9 @@ export function FlyerLivePreview({ svg, fonts, slots, edits, loadedImages, local
     const root = element.shadowRoot || element.attachShadow({ mode: 'open' })
     root.innerHTML = `<style>:host{display:block}svg{display:block;width:100%;height:auto}`
       + `.display{font-family:"${fonts.display}"!important}.sans{font-family:"${fonts.sans}"!important}</style>${svg}`
-    root.querySelectorAll<SVGImageElement>('image[data-slot]').forEach(image => { image.dataset.loadedHref = image.getAttribute('href') || '' })
+    root.querySelectorAll<SVGImageElement>('image[data-slot]').forEach(image => {
+      for (const name of ['href', 'x', 'y', 'width', 'height']) image.dataset[`loaded${name}`] = image.getAttribute(name) || ''
+    })
     let cancelled = false
     void loadFonts(fonts).finally(() => { if (!cancelled) setMounted(count => count + 1) })
     return () => { cancelled = true }
@@ -79,15 +83,31 @@ export function FlyerLivePreview({ svg, fonts, slots, edits, loadedImages, local
     for (const slot of slots.images) {
       const desired = localImages[slot.id] || edits.images?.[slot.id] || slot.default
       wanted.current[slot.id] = desired
-      const images = root.querySelectorAll<SVGImageElement>(`image[data-slot="${slot.id}"]`)
-      const show = (href: string) => { if (wanted.current[slot.id] === desired) images.forEach(image => image.setAttribute('href', href)) }
-      if (desired === (loadedImages?.[slot.id] || slot.default)) { images.forEach(image => image.setAttribute('href', image.dataset.loadedHref || '')); continue }
-      const source = desired.startsWith('blob:') ? desired : toProxiedMaterialUrl(desired)
-      // Swap at once; a photo then takes its print treatment when that is ready.
-      show(source)
-      if (slot.id === 'photo') void treatedPhoto(source).then(show, () => undefined)
+      const images = Array.from(root.querySelectorAll<SVGImageElement>(`image[data-slot="${slot.id}"]`))
+      if (desired === (loadedImages?.[slot.id] || slot.default)) {
+        for (const image of images) for (const name of ['href', 'x', 'y', 'width', 'height']) {
+          const value = image.dataset[`loaded${name}`]
+          if (value) image.setAttribute(name, value)
+        }
+        continue
+      }
+      // Swap at once, then take the renderer's treatment (logo trim and its
+      // box in the benefit circle, photo brightening) so the view matches print.
+      images.forEach(image => image.setAttribute('href', desired.startsWith('blob:') ? desired : toProxiedMaterialUrl(desired)))
+      if (desired.startsWith('blob:')) continue
+      void prepared(slot.id, desired, prepareImage).then(result => {
+        if (wanted.current[slot.id] !== desired) return
+        for (const image of images) {
+          image.setAttribute('href', result.href)
+          if (result.flowLogo && image.getAttribute('clip-path')?.includes('flowLogoClip')) {
+            const { width, height } = result.flowLogo
+            image.setAttribute('x', String(-width / 2)); image.setAttribute('y', String(-height / 2))
+            image.setAttribute('width', String(width)); image.setAttribute('height', String(height))
+          }
+        }
+      }, () => undefined)
     }
-  }, [mounted, edits, localImages, slots, loadedImages, fonts, onHeaderError])
+  }, [mounted, edits, localImages, slots, loadedImages, fonts, onHeaderError, prepareImage])
 
   return <div ref={host} role="img" aria-label="Live flyer preview" className="mx-auto w-full max-w-[560px] bg-white shadow-lg" />
 }
@@ -113,28 +133,13 @@ function loadFonts(fonts: FlyerPreviewFonts) {
   return loadedFontSets.get(key)!
 }
 
-const treatedPhotos = new Map<string, Promise<string>>()
-/** The cover photo as the renderer prints it: cover-cropped and brightened when dark. */
-function treatedPhoto(source: string) {
-  if (!treatedPhotos.has(source)) {
-    const done = (async () => {
-      const image = new Image()
-      image.src = source
-      await image.decode()
-      const { width, height } = FLYER_PHOTO_SIZE
-      const canvas = document.createElement('canvas')
-      canvas.width = width; canvas.height = height
-      const context = canvas.getContext('2d')!
-      const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight)
-      context.drawImage(image, (width - image.naturalWidth * scale) / 2, (height - image.naturalHeight * scale) / 2, image.naturalWidth * scale, image.naturalHeight * scale)
-      const pixels = context.getImageData(0, 0, width, height)
-      if (brightenFlyerPixels(pixels.data)) context.putImageData(pixels, 0, 0)
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', .95))
-      if (!blob) throw new Error('Could not prepare the photo.')
-      return URL.createObjectURL(blob)
-    })()
-    done.catch(() => treatedPhotos.delete(source))
-    treatedPhotos.set(source, done)
+const preparedImages = new Map<string, Promise<PreparedFlyerImage>>()
+function prepared(slot: FlyerImageSlotId, url: string, prepare: Props['prepareImage']) {
+  const key = `${slot}:${url}`
+  if (!preparedImages.has(key)) {
+    const done = prepare(slot, url)
+    done.catch(() => preparedImages.delete(key))
+    preparedImages.set(key, done)
   }
-  return treatedPhotos.get(source)!
+  return preparedImages.get(key)!
 }

@@ -4,7 +4,7 @@ import { fetchPortalCauseAccounts } from '@/lib/server/portal-cause'
 import { fetchQaCauseDetail } from '@/lib/server/qa-dashboard-causes'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
-import { renderCauseCampaignFlyer, renderCauseCampaignFlyerSvg, getFlyerSlots, isFlyerImageUrl, validateFlyerOverrides, FLYER_DESIGNS, type FlyerAudience, type FlyerDesign } from '@/lib/server/cause-campaign-flyers'
+import { prepareFlyerImage, renderCauseCampaignFlyer, renderCauseCampaignFlyerSvg, getFlyerSlots, isFlyerImageUrl, validateFlyerOverrides, FLYER_DESIGNS, type FlyerAudience, type FlyerDesign } from '@/lib/server/cause-campaign-flyers'
 import { isHexColor } from '@/lib/brand-colors'
 import type { LandingRecord } from '@/lib/cause-landing-config'
 import { compactFlyerOverrides, flyerEditKey, type FlyerOverrides } from '@/lib/flyer-slots'
@@ -82,6 +82,17 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const body = await request.json().catch(() => null)
   if (!body || !['business', 'families', 'schools', 'boosters'].includes(body.audience) || !FLYER_DESIGNS.includes(body.design) || !['default', 'logo', 'manual'].includes(body.mode)) return NextResponse.json({ error: 'Choose an audience, design, and color mode.' }, { status: 400 })
   if (body.mode !== 'default' && !['background', 'highlight', 'accent'].every(key => typeof body.palette?.[key] === 'string' && isHexColor(body.palette[key]))) return NextResponse.json({ error: 'Choose valid six-digit hex colors.' }, { status: 400 })
+  if (body.output === 'image') {
+    // One replacement image, treated as the renderer treats it, for the live preview.
+    const url = typeof body.url === 'string' && body.url.startsWith('/uploads/') ? `${QA_AUTH_CONFIG.baseUrl}${body.url}` : body.url
+    if (!['logo', 'photo'].includes(body.slot) || !isFlyerImageUrl(url)) return NextResponse.json({ error: 'Choose an image uploaded to LocalVIP.' }, { status: 400 })
+    try {
+      return NextResponse.json(await prepareFlyerImage(body.slot, url), { headers: { 'cache-control': 'private, max-age=600' } })
+    } catch (error) {
+      console.error('Flyer image preparation failed:', error instanceof Error ? error.message : 'Unknown error')
+      return NextResponse.json({ error: 'Could not prepare this image. Try another one.' }, { status: 502 })
+    }
+  }
   try {
     const source = await loadFlyerSource(params.id)
     const { cause, draft, logoUrl, coverUrl } = source

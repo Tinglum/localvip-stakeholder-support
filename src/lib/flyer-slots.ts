@@ -20,6 +20,9 @@ export type FlyerImageSlot = { id: FlyerImageSlotId; label: string; default: str
 export type FlyerSlots = { text: FlyerTextSlot[]; images: FlyerImageSlot[] }
 export type FlyerOverrides = { text?: Record<string, string>; images?: Partial<Record<FlyerImageSlotId, string>> }
 
+/** A replacement image as the renderer prints it, plus its box in the benefit circle for a logo. */
+export type PreparedFlyerImage = { href: string; flowLogo?: { width: number; height: number } }
+
 export const FLYER_IMAGE_SLOT_LABELS: Record<FlyerImageSlotId, string> = { logo: 'Cause logo', photo: 'Cover photo' }
 
 /** The key a cause's saved edits live under: one set per design and audience. */

@@ -8,9 +8,9 @@ import { PDFDocument } from 'pdf-lib'
 import QRCode from 'qrcode'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { readableBrandText } from '@/lib/brand-colors'
-import { brightenFlyerPixels, fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, FLYER_PHOTO_SIZE, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
+import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
 import { flyerFonts } from '@/lib/server/flyer-fonts'
-import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot } from '@/lib/flyer-slots'
+import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
 
 import { approvedFlyerTemplateId, type FlyerAudience, type FlyerDesign } from '@/lib/flyer-designs'
 
@@ -71,6 +71,27 @@ const measureFlyerText: FlyerMeasure = (text, kind, weight, size) => {
 }
 /** resvg options that render with exactly the measured and previewed faces. */
 const resvgFonts = () => ({ font: { fontFiles: flyerFonts().faces.map(face => face.file), loadSystemFonts: true, defaultFontFamily: flyerFonts().sans } })
+const FLYER_PHOTO_SIZE = { width: 1875, height: 1725 }
+
+/** Lifts dark cover photos so the hero stays legible. Mutates RGBA pixels in place. */
+function brightenFlyerPixels(data: Uint8ClampedArray) {
+  let brightness = 0, samples = 0
+  for (let i = 0; i < data.length; i += 64) {
+    brightness += data[i] * .21 + data[i + 1] * .72 + data[i + 2] * .07
+    samples++
+  }
+  const mean = brightness / samples
+  const gamma = mean < 85 ? .56 : mean < 115 ? .72 : mean < 145 ? .88 : 1
+  if (gamma === 1) return false
+  const lut = Array.from({ length: 256 }, (_, value) => Math.round(255 * (value / 255) ** gamma))
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = lut[data[i]]
+    data[i + 1] = lut[data[i + 1]]
+    data[i + 2] = lut[data[i + 2]]
+  }
+  return true
+}
+
 async function brightenPhoto(dataUrl: string) {
   const { width, height } = FLYER_PHOTO_SIZE
   let image
@@ -546,30 +567,45 @@ export function layoutForLetter(svg: string) {
 }
 
 /**
- * The composed Letter-bleed SVG a PDF is printed from, with every editable
+ * The composed Letter SVG a PDF is printed from, with every editable
  * line and image tagged by slot id, for the generator's live preview.
  */
 export async function renderCauseCampaignFlyerSvg(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0]) {
   return Buffer.from(await renderCauseCampaignFlyer(input, 'svg')).toString('utf8')
 }
 
-export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview: boolean | 'svg' = false) {
-  // Keep native decoder failures out of the web server. A fresh process also
-  // releases all native image allocations after each print-resolution PDF.
-  if (process.env.LOCALVIP_FLYER_WORKER !== '1') {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const { stdout } = await promisify(execFile)(process.execPath,
-          ['--import', 'tsx', path.join(process.cwd(), 'scripts/cause-flyer-worker.ts'), JSON.stringify(input), preview === 'svg' ? 'svg' : preview ? 'preview' : 'pdf'],
-          { cwd: process.cwd(), env: { ...process.env, LOCALVIP_FLYER_WORKER: '1' }, encoding: 'buffer',
-            timeout: 120000, maxBuffer: 32 * 1024 * 1024 })
-        return new Uint8Array(stdout)
-      } catch (error) {
-        if (attempt < 2 && (error as { signal?: string }).signal === 'SIGSEGV') continue
-        throw error
-      }
+// Keep native decoder failures out of the web server. A fresh process also
+// releases all native image allocations after each print-resolution PDF.
+async function runFlyerWorker(payload: unknown, mode: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { stdout } = await promisify(execFile)(process.execPath,
+        ['--import', 'tsx', path.join(process.cwd(), 'scripts/cause-flyer-worker.ts'), JSON.stringify(payload), mode],
+        { cwd: process.cwd(), env: { ...process.env, LOCALVIP_FLYER_WORKER: '1' }, encoding: 'buffer',
+          timeout: 120000, maxBuffer: 32 * 1024 * 1024 })
+      return new Uint8Array(stdout)
+    } catch (error) {
+      if (attempt < 2 && (error as { signal?: string }).signal === 'SIGSEGV') continue
+      throw error
     }
   }
+}
+
+/**
+ * One replacement image treated exactly as the renderer treats it: a logo is
+ * trimmed to its mark (with its box in the benefit circle), a photo is
+ * cropped and brightened. The live preview swaps it in without a full render.
+ */
+export async function prepareFlyerImage(slot: 'logo' | 'photo', url: string): Promise<PreparedFlyerImage> {
+  if (process.env.LOCALVIP_FLYER_WORKER !== '1') return JSON.parse(Buffer.from(await runFlyerWorker({ slot, url }, 'image')).toString('utf8'))
+  const data = await imageData(url)
+  if (slot === 'photo') return { href: await brightenPhoto(data) }
+  const href = await trimLogo(data)
+  return { href, flowLogo: flowLogoBox(href) }
+}
+
+export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview: boolean | 'svg' = false) {
+  if (process.env.LOCALVIP_FLYER_WORKER !== '1') return runFlyerWorker(input, preview === 'svg' ? 'svg' : preview ? 'preview' : 'pdf')
   const svg = layoutForLetter(await buildCauseCampaignFlyerSvg(input))
   if (preview === 'svg') return Buffer.from(svg)
   // 2550 × 3300 is 300 pixels per printed inch on Letter, which keeps type,

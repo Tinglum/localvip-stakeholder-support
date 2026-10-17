@@ -13,7 +13,7 @@ import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { FLYER_AUDIENCES, FLYER_DESIGNS, FLYER_DESIGN_LABELS, approvedFlyerTemplateId, flyerDesignForTemplate } from '@/lib/flyer-designs'
 import type { LandingRecord } from '@/lib/cause-landing-config'
 import type { FlyerAudience, FlyerDesign } from '@/lib/flyer-designs'
-import { compactFlyerOverrides, flyerEditKey, type FlyerImageSlotId, type FlyerOverrides, type FlyerSlots } from '@/lib/flyer-slots'
+import { compactFlyerOverrides, flyerEditKey, type FlyerImageSlotId, type FlyerOverrides, type FlyerSlots, type PreparedFlyerImage } from '@/lib/flyer-slots'
 import { FlyerEditPanel } from '@/components/materials/flyer-edit-panel'
 import { FlyerLivePreview, type FlyerPreviewFonts } from '@/components/materials/flyer-live-preview'
 import { Download, Loader2 } from 'lucide-react'
@@ -200,6 +200,13 @@ export default function FlyerGeneratorPage() {
   const onLocalImage = React.useCallback((slot: FlyerImageSlotId, url: string | undefined) =>
     setLocalImages(current => ({ ...current, [slot]: url })), [])
   const showEditor = !!live && live.target === target && editor?.key === target
+  const prepareImage = React.useCallback(async (slot: FlyerImageSlotId, url: string): Promise<PreparedFlyerImage> => {
+    const response = await fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ audience, design, mode, palette, output: 'image', slot, url }) })
+    const body = await response.json()
+    if (!response.ok) throw new Error(body.error || 'Could not prepare the image.')
+    return body
+  }, [causeId, audience, design, mode, palette])
   const locked = busy || extracting
   return <div className="space-y-6">
     <Link href="/community/materials" className="text-sm text-brand-700">← Campaign materials</Link>
@@ -266,7 +273,7 @@ export default function FlyerGeneratorPage() {
         {headerError && <p role="alert" className="text-sm text-error-700">{headerError}</p>}
         {showEditor
           ? <div className={`transition-opacity ${liveLoading ? 'opacity-60' : ''}`}><FlyerLivePreview svg={live.svg} fonts={live.fonts} slots={editor.slots} edits={edits} loadedImages={live.images}
-              localImages={localImages} onHeaderError={setHeaderError} /></div>
+              localImages={localImages} onHeaderError={setHeaderError} prepareImage={prepareImage} /></div>
           : <div className="flex min-h-96 items-center justify-center rounded-xl border border-dashed border-surface-300 p-8 text-center text-surface-500">
               {ready ? 'Preparing your flyer preview…' : 'Select a ready cause to preview its flyer.'}
             </div>}
