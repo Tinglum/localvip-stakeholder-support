@@ -87,10 +87,12 @@ export type CauseVideoProps = {
   coverPhotoUrl: string
   photos: Record<string, string>
   joinUrl: string
+  primaryColor?: string
+  accentColor?: string
 }
 
 export const causeVideoVersion = (cut: CauseVideoCut, props: CauseVideoProps, photoSlots: readonly string[]) =>
-  [CAUSE_VIDEO_CUTS[cut].versionPrefix, props.logoUrl, ...photoSlots.map((slot) => props.photos[slot] || ''), props.joinUrl].join('|')
+  [CAUSE_VIDEO_CUTS[cut].versionPrefix, props.logoUrl, ...photoSlots.map((slot) => props.photos[slot] || ''), props.joinUrl, props.causeName, props.locality, props.kind, props.primaryColor || '', props.accentColor || ''].join('|')
 
 export type CauseVideoJobState = { status: 'rendering' | 'failed'; cut: CauseVideoCut; detail: string }
 
@@ -126,6 +128,8 @@ async function postRender(cut: CauseVideoCut, props: CauseVideoProps) {
         coverPhotoUrl: props.coverPhotoUrl,
         photos: props.photos,
         joinUrl: props.joinUrl,
+        primaryColor: props.primaryColor,
+        accentColor: props.accentColor,
         // Omitting it would mean the 15s, so only the 60s names itself.
         ...(spec.composition ? { composition: spec.composition } : {}),
       }),

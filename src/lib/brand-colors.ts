@@ -22,6 +22,16 @@ export function isHexColor(value: string) {
   return /^#[0-9a-f]{6}$/i.test(value.trim())
 }
 
+export function readableBrandText(hex: string) {
+  const rgb = hexToRgb(hex) || [0, 0, 0]
+  const linear = rgb.map(value => {
+    const channel = value / 255
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  })
+  const luminance = linear[0] * .2126 + linear[1] * .7152 + linear[2] * .0722
+  return luminance > .179 ? '#000000' : '#FFFFFF'
+}
+
 function mix(hex: string, target: Rgb, amount: number) {
   const rgb = hexToRgb(hex)
   if (!rgb) return hex
@@ -38,6 +48,7 @@ function saturation([r, g, b]: Rgb) {
 /** The three chosen colours → the six-slot palette the landing page and materials read. */
 export function expandBrandPalette(brand: BrandTriple, current?: LandingColors): LandingColors {
   return {
+    ...(current?.buttonText ? { buttonText: current.buttonText } : {}),
     navy: brand.primary.toUpperCase(),
     navyDeep: mix(brand.primary, [0, 0, 0], 0.4),
     royal: brand.secondary.toUpperCase(),

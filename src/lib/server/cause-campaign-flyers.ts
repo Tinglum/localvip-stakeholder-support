@@ -1,34 +1,39 @@
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
+import { Resvg } from '@resvg/resvg-js'
 import { PDFDocument } from 'pdf-lib'
 import QRCode from 'qrcode'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
+import { readableBrandText } from '@/lib/brand-colors'
 
-export type FlyerAudience = 'business' | 'families' | 'schools'
+export type FlyerAudience = 'business' | 'families' | 'schools' | 'boosters'
+export type FlyerKind = 'cause' | 'school' | 'booster'
+export const FLYER_DESIGNS = ['community', 'growth', 'comparison'] as const
+export type FlyerDesign = (typeof FLYER_DESIGNS)[number]
 
-// Reusable layout based on the Olathe West flyer. School imagery is always the
-// cause's uploaded logo and cover photo.
-const flyers: Record<FlyerAudience, {
-  kicker: string; hero: string[]; gold: string[]; intro: string;
-  steps: Array<[string, string]>; cta: string
-}> = {
-  business: {
-    kicker: 'FOR LOCAL BUSINESSES', hero: ['YOUR BUSINESS.', 'OUR COMMUNITY.'], gold: ["LET'S WIN", 'TOGETHER.'],
-    intro: 'When local families win, local businesses win. Host a Giveback Day and connect with the people who already support this school.',
-    steps: [['YOU PICK THE DAY', 'Choose a day that works for your business.'], ['WE PROMOTE YOU', 'Invite school families and local supporters.'], ['THEY SHOP', 'Customers enjoy your offer and give back.'], ['IMPACT CONTINUES', 'Build a relationship beyond one event.']],
-    cta: 'PLAN YOUR FIRST GIVEBACK DAY',
-  },
-  families: {
-    kicker: 'FOR FAMILIES & SUPPORTERS', hero: ['YOUR EVERYDAY.', 'THEIR FUTURE.'], gold: ["LET'S WIN", 'TOGETHER.'],
-    intro: 'Support your school through the local places you already love. Discover offers, shop nearby, and help your community grow stronger.',
-    steps: [['FIND LOCAL', 'Explore businesses in your community.'], ['CHOOSE AN OFFER', 'Pick an experience that works for you.'], ['SHOP & SAVE', 'Enjoy the offer while giving back.'], ['SCHOOL BENEFITS', 'Your everyday choices add up.']],
-    cta: 'FIND YOUR LOCAL OFFER',
-  },
-  schools: {
-    kicker: 'FOR SCHOOL & BOOSTER LEADERS', hero: ['YOUR SCHOOL.', 'OUR COMMUNITY.'], gold: ["LET'S WIN", 'TOGETHER.'],
-    intro: 'Bring families and nearby businesses together around your school. One campaign can create lasting local support.',
-    steps: [['SHARE YOUR GOAL', 'Tell your community what matters.'], ['INVITE PARTNERS', 'Welcome businesses that want to help.'], ['RALLY FAMILIES', 'Give supporters a simple way to join.'], ['GROW IMPACT', 'Keep the momentum going together.']],
-    cta: 'BUILD YOUR SCHOOL CAMPAIGN',
-  },
+// Exact artwork from the dashboard's Olathe library. Booster outreach uses
+// the school series, personalized to the club's identity.
+export function approvedFlyerTemplateId(audience: FlyerAudience, design: FlyerDesign = 'community') {
+  const series = audience === 'business' ? [77, 68, 69] : audience === 'families' ? [70, 71, 72] : [73, 74, 75]
+  return series[FLYER_DESIGNS.indexOf(design)]
+}
+
+const templateDir = path.join(process.cwd(), 'src/lib/server/flyer-templates')
+const esc = (value: string) => value.replace(/[&<>"']/g, char => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
+})[char]!)
+function color(value: string | undefined, fallback: string) {
+  return /^#[0-9a-f]{6}$/i.test(value || '') ? value! : fallback
+}
+
+export function flyerKind(category?: string | null, name = ''): FlyerKind {
+  const identity = `${category || ''} ${name}`
+  if (/booster|pta|pto|parent.teacher|athletic club/i.test(identity)) return 'booster'
+  if (/school|district|academy|education/i.test(identity)) return 'school'
+  return 'cause'
 }
 
 function allowedImageUrl(value: string) {
@@ -40,198 +45,174 @@ function allowedImageUrl(value: string) {
   return url.toString()
 }
 
-async function imageBytes(url: string) {
+async function imageData(url: string) {
   const response = await fetch(allowedImageUrl(url), { signal: AbortSignal.timeout(15000) })
   if (!response.ok) throw new Error(`Could not load flyer image (${response.status}).`)
-  const bytes = await response.arrayBuffer()
-  if (bytes.byteLength > 12 * 1024 * 1024) throw new Error('Flyer image exceeds 12 MB.')
-  return Buffer.from(bytes)
+  const bytes = Buffer.from(await response.arrayBuffer())
+  if (bytes.length > 12 * 1024 * 1024) throw new Error('Flyer image exceeds 12 MB.')
+  if (bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') {
+    const image = await loadImage(bytes)
+    const canvas = createCanvas(image.width, image.height)
+    canvas.getContext('2d').drawImage(image, 0, 0)
+    return `data:image/png;base64,${(await canvas.encode('png')).toString('base64')}`
+  }
+  const mime = bytes[0] === 0x89 && bytes[1] === 0x50 ? 'image/png'
+    : bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg'
+    : bytes.toString('utf8', 0, 300).includes('<svg') ? 'image/svg+xml' : null
+  if (!mime) throw new Error('Flyer image must be PNG, JPEG, SVG, or WebP.')
+  return `data:${mime};base64,${bytes.toString('base64')}`
 }
 
-type Context = ReturnType<ReturnType<typeof createCanvas>['getContext']>
-
-function wrap(ctx: Context, value: string, maxWidth: number) {
+const measure = createCanvas(1, 1).getContext('2d')
+function wrap(value: string, width: number, size: number, weight = 400) {
+  measure.font = `${weight} ${size}px Arial`
   const lines: string[] = []
-  let current = ''
-  for (const word of value.split(/\s+/)) {
-    const next = current ? `${current} ${word}` : word
-    if (current && ctx.measureText(next).width > maxWidth) { lines.push(current); current = word }
-    else current = next
+  let line = ''
+  for (const word of value.trim().split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word
+    if (line && measure.measureText(next).width > width) { lines.push(line); line = word }
+    else line = next
   }
-  if (current) lines.push(current)
+  if (line) lines.push(line)
   return lines
 }
-
-function fittedText(ctx: Context, value: string, x: number, y: number, width: number, size: number, minSize = 23) {
-  let currentSize = size
-  do {
-    ctx.font = `900 ${currentSize}px Arial`
-    if (ctx.measureText(value).width <= width || currentSize <= minSize) break
-    currentSize -= 2
-  } while (currentSize > minSize)
-  ctx.fillText(value, x, y)
-}
-
-function centeredLines(ctx: Context, value: string, x: number, y: number, width: number, lineHeight: number) {
-  wrap(ctx, value, width).forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight))
-}
-
-export async function renderCauseCampaignFlyer(input: {
-  name: string; locality: string; logoUrl: string; coverUrl: string; joinUrl: string; audience: FlyerAudience
-  mission?: string; parentOrganization?: string; colors?: { navy?: string; gold?: string }
-}) {
-  const [logoBytes, coverBytes] = await Promise.all([imageBytes(input.logoUrl), imageBytes(input.coverUrl)])
-  const [logo, cover] = await Promise.all([loadImage(logoBytes), loadImage(coverBytes)])
-  const canvas = createCanvas(1275, 1650)
+async function brightenPhoto(dataUrl: string) {
+  const width = 1875
+  const height = 1725
+  let image
+  try {
+    image = await loadImage(Buffer.from(dataUrl.split(',')[1], 'base64'))
+  } catch {
+    // Some valid large PNGs are rejected by canvas's decoder. Resvg uses the
+    // same renderer as the final template and normalizes them first.
+    const normalized = new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image href="${dataUrl}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice"/></svg>`).render().asPng()
+    image = await loadImage(normalized)
+  }
+  const canvas = createCanvas(width, height)
   const ctx = canvas.getContext('2d')
-  const validColor = (value: string | undefined, fallback: string) => value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback
-  const navy = validColor(input.colors?.navy, '#061b3e')
-  const gold = validColor(input.colors?.gold, '#e1aa2b')
-  const navyRgb = [1, 3, 5].map(index => parseInt(navy.slice(index, index + 2), 16)).join(',')
-  const white = '#ffffff'
-  const copy = flyers[input.audience]
-
-  const heroHeight = 785
-  const imageScale = Math.max(1275 / cover.width, heroHeight / cover.height)
-  ctx.drawImage(cover, (1275 - cover.width * imageScale) / 2, (heroHeight - cover.height * imageScale) / 2,
-    cover.width * imageScale, cover.height * imageScale)
-  const shade = ctx.createLinearGradient(0, 0, 1150, 0)
-  shade.addColorStop(0, `rgba(${navyRgb},.98)`)
-  shade.addColorStop(.48, `rgba(${navyRgb},.85)`)
-  shade.addColorStop(1, `rgba(${navyRgb},.24)`)
-  ctx.fillStyle = shade
-  ctx.fillRect(0, 0, 1275, heroHeight)
-  const topShade = ctx.createLinearGradient(0, 0, 0, 165)
-  topShade.addColorStop(0, `rgba(${navyRgb},.95)`)
-  topShade.addColorStop(1, `rgba(${navyRgb},.3)`)
-  ctx.fillStyle = topShade
-  ctx.fillRect(0, 0, 1275, 165)
-
-  ctx.fillStyle = white
-  ctx.beginPath(); ctx.roundRect(58, 38, 123, 123, 16); ctx.fill()
-  const logoScale = Math.min(103 / logo.width, 103 / logo.height)
-  ctx.drawImage(logo, 68 + (103 - logo.width * logoScale) / 2, 48 + (103 - logo.height * logoScale) / 2,
-    logo.width * logoScale, logo.height * logoScale)
-  ctx.fillStyle = gold
-  ctx.fillRect(202, 47, 4, 106)
-  ctx.fillStyle = white
-  fittedText(ctx, input.name.toUpperCase(), 226, 91, 735, 44, 16)
-  ctx.fillStyle = '#ced7e7'
-  ctx.font = 'bold 23px Arial'
-  ctx.fillText(copy.kicker, 228, 131)
-  if (input.parentOrganization?.trim()) {
-    ctx.fillStyle = gold
-    fittedText(ctx, input.parentOrganization.trim().toUpperCase(), 228, 158, 735, 18, 14)
+  const scale = Math.max(width / image.width, height / image.height)
+  ctx.drawImage(image, (width - image.width * scale) / 2, (height - image.height * scale) / 2,
+    image.width * scale, image.height * scale)
+  const pixels = ctx.getImageData(0, 0, width, height)
+  let brightness = 0, samples = 0
+  for (let i = 0; i < pixels.data.length; i += 64) {
+    brightness += (pixels.data[i] * .21 + pixels.data[i + 1] * .72 + pixels.data[i + 2] * .07)
+    samples++
   }
-  ctx.textAlign = 'right'
-  ctx.fillStyle = white
-  ctx.font = '900 36px Arial'
-  ctx.fillText('LOCALVIP', 1212, 80)
-  ctx.fillStyle = gold
-  ctx.font = 'bold 17px Arial'
-  ctx.fillText('LOCAL FAMILIES. LOCAL FUTURES.', 1210, 112)
-  ctx.textAlign = 'left'
-
-  let y = 262
-  ctx.fillStyle = white
-  for (const line of copy.hero) { fittedText(ctx, line, 64, y, 810, 77, 45); y += 83 }
-  y += 14
-  ctx.fillStyle = gold
-  for (const line of copy.gold) { fittedText(ctx, line, 64, y, 805, 88, 50); y += 93 }
-  ctx.fillStyle = gold
-  ctx.fillRect(65, 655, 460, 5)
-  ctx.fillStyle = white
-  ctx.font = '27px Arial'
-  const intro = input.mission?.trim() ? `Our goal: ${input.mission.trim().slice(0, 140)}` : copy.intro
-  wrap(ctx, intro, 690).slice(0, 4).forEach((line, index) => ctx.fillText(line, 65, 700 + index * 34))
-
-  ctx.fillStyle = '#f4f5f7'
-  ctx.fillRect(0, 785, 1275, 370)
-  ctx.fillStyle = gold
-  ctx.fillRect(0, 785, 1275, 5)
-  for (let index = 0; index < 4; index++) {
-    const x = 45 + index * 310
-    if (index) { ctx.fillStyle = '#bec4ce'; ctx.fillRect(x - 15, 830, 2, 280) }
-    ctx.fillStyle = navy
-    ctx.beginPath(); ctx.arc(x + 27, 838, 29, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = white
-    ctx.font = 'bold 29px Arial'
-    ctx.textAlign = 'center'
-    ctx.fillText(String(index + 1), x + 27, 848)
-    ctx.fillStyle = gold
-    ctx.font = 'bold 62px Arial'
-    ctx.fillText(['1', '2', '3', '4'][index], x + 139, 945)
-    ctx.fillStyle = navy
-    ctx.font = '900 27px Arial'
-    centeredLines(ctx, copy.steps[index][0], x + 139, 1003, 255, 30)
-    ctx.fillStyle = '#263246'
-    ctx.font = '22px Arial'
-    centeredLines(ctx, copy.steps[index][1], x + 139, 1073, 254, 27)
-    ctx.textAlign = 'left'
+  const mean = brightness / samples
+  const gamma = mean < 85 ? .56 : mean < 115 ? .72 : mean < 145 ? .88 : 1
+  if (gamma < 1) {
+    const lut = Array.from({ length: 256 }, (_, value) => Math.round(255 * (value / 255) ** gamma))
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      pixels.data[i] = lut[pixels.data[i]]
+      pixels.data[i + 1] = lut[pixels.data[i + 1]]
+      pixels.data[i + 2] = lut[pixels.data[i + 2]]
+    }
+    ctx.putImageData(pixels, 0, 0)
   }
+  return `data:image/png;base64,${(await canvas.encode('png')).toString('base64')}`
+}
 
-  ctx.fillStyle = white
-  ctx.fillRect(0, 1155, 1275, 224)
-  ctx.strokeStyle = '#ced2da'
-  ctx.lineWidth = 3
-  ctx.beginPath(); ctx.moveTo(0, 1156); ctx.lineTo(1275, 1156); ctx.stroke()
-  const benefits = [
-    { x: 204, title: 'FAMILIES', detail: 'Offers and local connection' },
-    { x: 638, title: 'YOUR SCHOOL', detail: 'More community support' },
-    { x: 1071, title: 'BUSINESSES', detail: 'Loyal local customers' },
-  ]
-  ctx.fillStyle = gold
-  ctx.font = 'bold 38px Arial'
-  ctx.textAlign = 'center'
-  ctx.fillText('Generosity should go both ways.', 638, 1215)
-  benefits.forEach((benefit, index) => {
-    ctx.fillStyle = navy
-    ctx.beginPath(); ctx.arc(benefit.x, 1273, 31, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = gold
-    ctx.font = 'bold 35px Arial'
-    ctx.fillText(['+', '*', '+'][index], benefit.x, 1285)
-    ctx.fillStyle = navy
-    ctx.font = 'bold 25px Arial'
-    ctx.fillText(benefit.title, benefit.x, 1327)
-    ctx.fillStyle = '#4b5768'
-    ctx.font = '20px Arial'
-    ctx.fillText(benefit.detail, benefit.x, 1354)
-  })
-  ctx.textAlign = 'left'
+// A twelve-flyer set shares two uploads. Decode them once instead of repeating
+// native image allocations for every design; retain only the latest pair.
+let preparedAssets: { key: string; expires: number; value: Promise<[string, string]> } | undefined
+function prepareAssets(logoUrl: string, coverUrl: string) {
+  const key = JSON.stringify([logoUrl, coverUrl])
+  if (preparedAssets?.key === key && preparedAssets.expires > Date.now()) return preparedAssets.value
+  const value = Promise.all([imageData(logoUrl), imageData(coverUrl).then(brightenPhoto)])
+  preparedAssets = { key, expires: Date.now() + 10 * 60 * 1000, value }
+  void value.catch(() => { if (preparedAssets?.value === value) preparedAssets = undefined })
+  return value
+}
 
-  ctx.fillStyle = navy
-  ctx.fillRect(0, 1380, 1275, 222)
-  ctx.fillStyle = gold
-  ctx.fillRect(0, 1380, 1275, 5)
-  ctx.fillStyle = white
-  ctx.beginPath(); ctx.roundRect(44, 1404, 177, 177, 8); ctx.fill()
-  const qr = await QRCode.toDataURL(input.joinUrl, { margin: 1, width: 156, color: { dark: navy, light: white } })
-  const qrImage = await loadImage(Buffer.from(qr.split(',')[1], 'base64'))
-  ctx.drawImage(qrImage, 54, 1414, 157, 157)
-  ctx.fillStyle = gold
-  ctx.fillRect(243, 1410, 4, 165)
-  ctx.fillStyle = white
-  ctx.font = 'bold 26px Arial'
-  ctx.fillText('READY TO MAKE A DIFFERENCE?', 274, 1449)
-  ctx.fillStyle = gold
-  fittedText(ctx, copy.cta, 274, 1511, 920, 53, 31)
-  ctx.fillStyle = white
-  ctx.font = '25px Arial'
-  ctx.fillText('Scan the code to connect with your community.', 275, 1555)
-  ctx.fillStyle = '#e8ebf0'
-  ctx.fillRect(0, 1602, 1275, 48)
-  ctx.fillStyle = navy
-  ctx.font = 'bold 18px Arial'
-  ctx.fillText('LOCAL FAMILIES. LOCAL BUSINESSES.', 55, 1633)
-  ctx.fillStyle = '#ad7a12'
-  ctx.fillText('LOCAL FUTURES.', 772, 1633)
-  ctx.textAlign = 'right'
-  ctx.fillStyle = navy
-  ctx.fillText(input.locality.toUpperCase(), 1225, 1633)
+export async function buildCauseCampaignFlyerSvg(input: {
+  name: string; locality: string; logoUrl: string; coverUrl: string; joinUrl: string; audience: FlyerAudience
+  design?: FlyerDesign; category?: string | null; mission?: string; parentOrganization?: string; colors?: { navy?: string; gold?: string }
+  palette?: { background: string; highlight: string; accent: string }
+}) {
+  const name = input.name.trim()
+  if (!name) throw new Error('A cause name is required for flyer generation.')
+  const kind = flyerKind(input.category, name)
+  const [[logo, photo], template] = await Promise.all([
+    prepareAssets(input.logoUrl, input.coverUrl),
+    readFile(path.join(templateDir, `approved-${approvedFlyerTemplateId(input.audience, input.design)}.svg`), 'utf8'),
+  ])
+  const qr = await QRCode.toDataURL(input.joinUrl, { margin: 3, width: 164, errorCorrectionLevel: 'M' })
+  // Preserve the library's navy/white/gold hierarchy. Cause colors belong
+  // only in small secondary details, never the hero or main headline.
+  const accent = color(input.palette?.accent, color(input.colors?.gold, color(input.colors?.navy, '#efb719')))
+  const heading = name.toUpperCase()
+  let headerSize = 39
+  let headerLines = wrap(heading, 605, headerSize, 900)
+  measure.font = `900 ${headerSize}px Arial`
+  while ((headerLines.length > 2 || headerLines.some(line => measure.measureText(line).width > 605)) && headerSize > 22) {
+    headerSize -= 2
+    headerLines = wrap(heading, 605, headerSize, 900)
+    measure.font = `900 ${headerSize}px Arial`
+  }
+  if (headerLines.length > 2 || headerLines.some(line => measure.measureText(line).width > 605)) {
+    throw new Error('The cause name is too long for the flyer header.')
+  }
+  const kindLabel = kind === 'booster' ? 'BOOSTER CLUB' : kind === 'school' ? 'SCHOOL COMMUNITY' : 'COMMUNITY CAUSE'
+  const parent = input.parentOrganization?.trim().toUpperCase()
+  const identityLabel = parent && parent.length < 34 ? `${kindLabel} · ${parent}` : kindLabel
+  const header = headerLines.map((line, index) => `<text class="display white" x="212" y="${75 + index * 37}" font-size="${headerSize}">${esc(line)}</text>`).join('')
+    + `<text class="sans white" x="214" y="${headerLines.length === 2 ? 145 : 119}" font-size="15" letter-spacing="1.2">${esc(identityLabel)}</text>`
+  const replacements: Record<string, string> = { HEADER: header, PHOTO: photo, LOGO: logo, QR: qr }
+  const subject = input.audience === 'boosters' || kind === 'booster' ? 'club' : kind === 'school' ? 'school' : 'cause'
+  // Retain the library's artwork and copy. Generic organization references keep
+  // body text within the original line lengths; the header carries the full name.
+  const svg = template
+    .replace(/More Olathe West families discover/g, 'More local families discover')
+    .replace(/OLATHE WEST GIVEBACK DAY/g, 'LOCAL GIVEBACK DAY')
+    .replace(/Choose a day\. Olathe West/g, `Choose a day. Our ${subject}`)
+    .replace(/Olathe West/g, `our ${subject}`).replace(/OLATHE WEST/g, `OUR ${subject.toUpperCase()}`)
+    .replace(/SUPPORT OLATHE/g, 'SUPPORT THIS').replace(/WEST TOGETHER\./g, `${subject.toUpperCase()} TOGETHER.`)
+    .replace(/INVITE OLATHE/g, 'INVITE LOCAL').replace(/WEST FAMILIES/g, 'SUPPORTERS')
+    .replace(/IN OLATHE\./g, 'LOCALLY.')
+    .replace(/school/gi, value => value === value.toUpperCase() ? subject.toUpperCase() : subject)
+    .replace(/(<circle\b[^>]*\br="(?:18|22)"[^>]*\bfill=")#(?:0b2349|efb719)(")/g, `$1${accent}$2`)
+    .replace(/class="(sans|display) (?:white|navy)"([^>]*font-size="(?:19|23)")/g, 'class="$1 step-number"$2')
+    .replace(/{{([A-Z_]+)}}/g, (_, key: string) => replacements[key] ?? '')
+    .replace('</defs>', `<style>.step-number{fill:${readableBrandText(accent)}}</style></defs>`)
+  if (!input.palette) return svg
+  const background = color(input.palette.background, '#0b2349')
+  const highlight = color(input.palette.highlight, '#efb719')
+  return svg.replace(/#(?:0b2349|041735)/gi, background).replace(/#efb719/gi, highlight)
+    .replace(/(<circle\b[^>]*\br="(?:18|22)"[^>]*\bfill=")#[0-9a-f]{6}(")/gi, `$1${accent}$2`)
+    .replace(/<text\b[^>]*>/g, tag => {
+      const y = Number(/\by="([\d.]+)"/.exec(tag)?.[1])
+      return y < 690 ? tag.replace(/\bwhite\b/, 'manual-hero-text') : tag
+    })
+    .replace('</defs>', `<style>.manual-hero-text{fill:${readableBrandText(background)}}.navy{fill:${readableBrandText(background) === '#FFFFFF' ? background : '#0b2349'}}</style></defs>`)
+}
 
+export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview = false) {
+  // Keep native decoder failures out of the web server. A fresh process also
+  // releases all native image allocations after each print-resolution PDF.
+  if (process.env.LOCALVIP_FLYER_WORKER !== '1') {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const { stdout } = await promisify(execFile)(process.execPath,
+          ['--import', 'tsx', path.join(process.cwd(), 'scripts/cause-flyer-worker.ts'), JSON.stringify(input), preview ? 'preview' : 'pdf'],
+          { cwd: process.cwd(), env: { ...process.env, LOCALVIP_FLYER_WORKER: '1' }, encoding: 'buffer',
+            timeout: 120000, maxBuffer: 32 * 1024 * 1024 })
+        return new Uint8Array(stdout)
+      } catch (error) {
+        if (attempt < 2 && (error as { signal?: string }).signal === 'SIGSEGV') continue
+        throw error
+      }
+    }
+  }
+  const svg = await buildCauseCampaignFlyerSvg(input)
+  // A letter-size PDF needs roughly 300 pixels per printed inch. Rendering
+  // the editable SVG at 2.5x keeps type, icons and QR modules crisp in print.
+  const png = new Resvg(svg, { fitTo: { mode: 'width', value: 2625 } }).render().asPng()
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([612, 792])
-  const image = await pdf.embedPng(await canvas.encode('png'))
-  page.drawImage(image, { x: 0, y: 0, width: 612, height: 792 })
-  return pdf.save()
+  // Fit the original 1050 × 1500 artwork onto Letter without stretching it.
+  const printWidth = 792 * 1050 / 1500
+  page.drawImage(await pdf.embedPng(png), { x: (612 - printWidth) / 2, y: 0, width: printWidth, height: 792 })
+  const bytes = await pdf.save()
+  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { fitTo: { mode: 'width', value: 735 } }).render().asPng().toString('base64') })) : bytes
 }

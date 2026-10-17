@@ -8,7 +8,17 @@ import type { Cause } from '@/lib/types/database'
  * cause picks here is what its flyers and its landing page use.
  */
 export type ImageAsset = { src: string; alt: string }
-export type LandingColors = { navy: string; navyDeep: string; royal: string; silver: string; silverLight: string; gold: string }
+export type LandingColors = { navy: string; navyDeep: string; royal: string; silver: string; silverLight: string; gold: string; buttonText?: string }
+
+export const LANDING_COLOR_LABELS = {
+  navy: 'Main background',
+  navyDeep: 'Dark backgrounds',
+  royal: 'Secondary backgrounds',
+  silver: 'Muted text and borders',
+  silverLight: 'Light backgrounds',
+  gold: 'Buttons and highlights',
+  buttonText: 'Button text',
+} as const
 export type LandingDesign = 'stadium' | 'editorial' | 'flyer' | 'v4' | 'cc3' | 'classic'
 export type LandingConfig = {
   slug: string

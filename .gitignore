@@ -50,3 +50,4 @@ tmp/
 .agents/
 .codex/
 tests/
+.localvip-material-jobs/

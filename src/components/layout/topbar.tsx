@@ -30,6 +30,7 @@ import { FeaturedCarouselToggle } from '@/components/layout/featured-carousel-to
 import type { SystemStatusState } from '@/lib/system-status'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { useNotifications } from '@/lib/supabase/hooks'
 
 const ROUTE_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -239,6 +240,13 @@ export function Topbar({
 }: TopbarProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const {data: notifications, refetch: refreshNotifications} = useNotifications()
+  const materialNotices = notifications.filter(item => item.entity_type === 'cause' && item.title === 'Your flyers and videos are ready').slice(0, 5)
+  const unreadMaterials = materialNotices.filter(item => !item.is_read).length
+  React.useEffect(() => {
+    const timer = window.setInterval(() => refreshNotifications(), 30000)
+    return () => window.clearInterval(timer)
+  }, [refreshNotifications])
   const access = getStakeholderAccess(profile, { businessSetupComplete })
   const searchPlaceholder = access.searchPlaceholder
   const [searchValue, setSearchValue] = React.useState('')
@@ -457,8 +465,9 @@ export function Topbar({
 
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <button className="relative rounded-xl p-2 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600">
+            <button aria-label={unreadMaterials ? `${unreadMaterials} new material notifications` : 'Open action center'} className="relative min-h-11 min-w-11 rounded-xl p-2 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600">
               <Bell className="h-4 w-4" />
+              {unreadMaterials ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-brand-600" /> : null}
             </button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
@@ -469,6 +478,9 @@ export function Topbar({
             >
               <p className="mb-2 text-sm font-semibold text-surface-800">Action Center</p>
               <div className="space-y-2">
+                {materialNotices.map(item => <Link key={item.id} href={`/community/setup?step=materials&causeId=${encodeURIComponent(item.entity_id || '')}`} onClick={() => { if (!item.is_read) void fetch(`/api/qa/notifications/${item.id}/read`, {method:'PATCH',keepalive:true}).then(() => refreshNotifications()) }} className="block rounded-xl border border-success-200 bg-success-50 px-3 py-3 text-sm text-success-900">
+                  <span className="block font-semibold">{item.title}</span><span className="mt-1 block text-xs leading-5">{item.message}</span>
+                </Link>)}
                 <div className="rounded-xl border border-surface-200 bg-surface-50 px-3 py-3">
                   <p className="text-sm font-medium text-surface-800">{actionCenter.title}</p>
                   <p className="mt-1 text-xs leading-5 text-surface-500">

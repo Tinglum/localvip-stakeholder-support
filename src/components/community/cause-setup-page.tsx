@@ -1,6 +1,8 @@
 'use client'
 
 import * as React from 'react'
+import type { RenderJob } from '@/lib/server/cause-video-durable'
+import type { MaterialJob } from '@/lib/server/material-job-store'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -12,7 +14,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
 import { useCauses } from '@/lib/supabase/hooks'
-import { resolveCommunityCause } from '@/lib/community-cause'
+import { useSelectedCause } from '@/components/community/use-selected-cause'
 import { CauseLoadError } from '@/components/community/cause-load-error'
 import {
   defaultLandingConfig,
@@ -78,7 +80,7 @@ export function CauseSetupPage() {
   const searchParams = useSearchParams()
   const { profile } = useAuth()
   const { data: causes, loading: causesLoading, error: causesError, refetch: refetchCauses } = useCauses()
-  const cause = React.useMemo(() => resolveCommunityCause(profile, causes), [profile, causes])
+  const cause = useSelectedCause(profile, causes, searchParams.get('causeId'))
   const causeId = cause ? qaCauseId(cause) : null
 
   const [detail, setDetail] = React.useState<CauseDetail | null>(null)
@@ -91,22 +93,41 @@ export function CauseSetupPage() {
   const [message, setMessage] = React.useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [genProgress, setGenProgress] = React.useState<string | null>(null)
   const [genError, setGenError] = React.useState<string | null>(null)
+  const [videoJobs, setVideoJobs] = React.useState<RenderJob[]>([])
+  const [generationStartedAt, setGenerationStartedAt] = React.useState<string | null>(null)
+  const [generation, setGeneration] = React.useState<Omit<MaterialJob, 'cause' | 'accessToken'> | null>(null)
+  const [readyFlyers, setReadyFlyers] = React.useState<Array<{url: string; name: string; key: string}>>([])
 
   const loadDetail = React.useCallback(async () => {
     if (!causeId) return
     const [d, l, launch] = await Promise.all([
       fetch(`/api/qa/nonprofits/${causeId}`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your organization.')),
       fetch(`/api/crm/causes/${causeId}/landing-page`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your landing page.')).catch(() => null),
-      fetch(`/api/crm/causes/${causeId}/launch-materials`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your flyers.')).catch(() => null),
+      fetch(`/api/crm/causes/${causeId}/launch-materials`, { cache: 'no-store' }).then((r) => readJson(r, 'Could not load your flyers.')),
     ])
     setDetail(d as CauseDetail)
     setLanding(l as LandingRecord | null)
-    setFlyerCount(Number((launch as { flyerCount?: number } | null)?.flyerCount || 0))
+    const status = launch as { flyerCount?: number; videoJobs?: Record<string, RenderJob>; videoJobError?: string | null; generation?: Omit<MaterialJob, 'cause' | 'accessToken'> | null; readyFlyers?: typeof readyFlyers } | null
+    setFlyerCount(Number(status?.generation?.flyerCount ?? status?.flyerCount ?? 0))
+    setGeneration(status?.generation || null)
+    setReadyFlyers(status?.readyFlyers || [])
+    setVideoJobs(Object.values(status?.videoJobs || {}))
+    setGenError(status?.generation?.error || status?.videoJobError || null)
   }, [causeId])
 
   React.useEffect(() => {
     loadDetail().catch((e) => setLoadError(e instanceof Error ? e.message : 'Could not load your setup.'))
   }, [loadDetail])
+
+  const pendingVideos = videoJobs.filter(job => job.status === 'queued' || job.status === 'rendering_video')
+  const batchActive = !!generation && ['queued', 'generating_flyers', 'rendering_video'].includes(generation.status)
+  const notificationPending = generation?.status === 'completed' && generation.notification === 'pending'
+  const videoProgress = videoJobs.length ? videoJobs.map(job => `${job.composition === 'CauseGiveback60' ? '60-second film' : '15-second cut'}: ${job.stage}${job.status === 'rendering_video' ? ` (${job.progress}%)` : ''}`).join(' · ') : null
+  React.useEffect(() => {
+    if (!causeId || (!generating && !batchActive && !notificationPending && pendingVideos.length === 0)) return
+    const timer = window.setInterval(() => { void loadDetail().catch(error => setGenError(error instanceof Error ? error.message : 'Could not check generation progress.')) }, 2000)
+    return () => window.clearInterval(timer)
+  }, [causeId, generating, batchActive, notificationPending, pendingVideos.length, loadDetail])
 
   const landingConfig: LandingConfig | null = React.useMemo(() => {
     if (!cause || !causeId) return null
@@ -241,20 +262,14 @@ export function CauseSetupPage() {
   const generate = async () => {
     if (generatingRef.current) return
     generatingRef.current = true
+    setGenerationStartedAt(new Date().toISOString())
     setGenerating(true); setGenError(null); setGenProgress('Creating your audience flyers and cause video. You can continue setup in this tab while they generate...')
     try {
       const result = await fetch(`/api/crm/causes/${causeId}/launch-materials`, { method: 'POST' })
-        .then((r) => readJson(r, 'Materials could not be generated.')) as {
-          steps?: { flyers?: { status?: string; detail?: string }; video?: { status?: string; detail?: string } }
-        }
+        .then((r) => readJson(r, 'Materials could not be generated.')) as { generation: Omit<MaterialJob, 'cause' | 'accessToken'> }
+      setGeneration(result.generation)
+      setGenProgress(result.generation.stage)
       await loadDetail()
-      const flyers = result.steps?.flyers
-      const video = result.steps?.video
-      // The videos render on a separate box and the 60-second film takes a few
-      // minutes, so say where it got to rather than implying it is done.
-      setGenProgress([flyers?.detail || 'Your flyers are ready.', video?.detail].filter(Boolean).join(' '))
-      if (flyers?.status === 'failed' || flyers?.status === 'partial') setGenError(flyers.detail || 'Some flyers could not be created.')
-      else if (video?.status === 'failed') setGenError(video.detail || 'Your video could not be created.')
     } catch (e) {
       setGenProgress(null); setGenError(e instanceof Error ? e.message : 'Materials could not be generated.')
     } finally { generatingRef.current = false; setGenerating(false) }
@@ -271,6 +286,7 @@ export function CauseSetupPage() {
 
   return (
     <div className="space-y-6 pb-16">
+      {searchParams.get('from') === 'flyer-generator' && <Link className="text-sm text-brand-700 underline" href={`/community/materials/generator?causeId=${causeId}`}>← Back to flyer generator</Link>}
       <PageHeader
         title={`Set up ${name}`}
         description="Two parts: set up your account so LocalVIP can take you live, then get your logo, colors and materials ready to promote. Everything stays editable later."
@@ -360,7 +376,7 @@ export function CauseSetupPage() {
               <GoLiveStep name={name} signals={signals} busy={busy} onOpenStep={openStep}
                 onSubmit={() => void run(() => putProfile({ status: 'pending_live_review' }), 'Submitted. LocalVIP will review your account.')} />
             )}
-            {activeKey === 'images' && <ImagesStep logoSrc={logoSrc} photoUrls={photoUrls} publishBlocked={publishBlocked} busy={busy} onUpload={(target, file) => void upload(target, file)} onContinue={() => nextAfter('images')} />}
+            {activeKey === 'images' && <ImagesStep logoSrc={logoSrc} photoUrls={photoUrls} publishBlocked={publishBlocked} busy={busy} onUpload={upload} onContinue={() => nextAfter('images')} />}
             {activeKey === 'colors' && (
               <ColorsStep key={`k-${landingConfig.brandColorsConfirmed ? 'y' : 'n'}`} busy={busy} name={name} logoSrc={logoSrc}
                 initial={brandFromPalette(landingConfig.colors)} confirmed={signals.colorsConfirmed}
@@ -372,14 +388,14 @@ export function CauseSetupPage() {
                   if (saved) void generate()
                 })()} />
             )}
-            {activeKey === 'materials' && <MaterialsStep count={signals.generatedCount} busy={busy || generating} progress={genProgress} error={genError} onGenerate={() => void generate()} />}
+            {activeKey === 'materials' && <MaterialsStep count={signals.generatedCount} busy={busy || generating || batchActive || pendingVideos.length > 0} startedAt={batchActive ? generation!.createdAt : generating ? generationStartedAt : pendingVideos.map(job => job.createdAt).sort()[0] || null} progress={generation ? `${generation.stage}${generation.status === 'rendering_video' && videoProgress ? ` · ${videoProgress}` : ''}` : genProgress || videoProgress} readyFlyers={readyFlyers} completionNote={generation?.status === 'completed' ? generation.notification === 'sent' ? 'The cause contact has a completion notification in their dashboard.' : generation.notification === 'unavailable' ? 'No linked contact account is available for notification. Your completed files are saved here.' : generation.notificationError || 'Sending the contact’s dashboard notification…' : null} error={genError || videoJobs.find(job => job.status === 'failed' || job.status === 'partial')?.error || null} onGenerate={() => void generate()} />}
             {activeKey === 'landing' && (
               <LinkStep icon={<Globe2 className="h-5 w-5" />} done={signals.landingPublished}
                 doneText="Your landing page is live. Share it anywhere, and your flyers point to it."
                 todoText={publishBlocked
                   ? `Preview your page any time. Your first publish needs all four photos — still missing: ${missingPhotos.map((prompt) => prompt.label).join(', ')}.`
                   : 'Preview your landing page with your logo, photos and colors, then publish it.'}
-                actionHref="/community/landing-page" actionLabel={signals.landingPublished ? 'Edit landing page' : 'Open landing page editor'} />
+                actionHref={`/community/landing-page?causeId=${causeId}`} actionLabel={signals.landingPublished ? 'Edit landing page' : 'Open landing page editor'} />
             )}
           </div>
         </CardContent>

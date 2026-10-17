@@ -21,7 +21,9 @@ import {
   type CauseSetupSignals,
   type CauseSetupStepKey,
 } from '@/lib/cause-setup'
-import { isHexColor, type BrandTriple } from '@/lib/brand-colors'
+import { isHexColor, readableBrandText, type BrandTriple } from '@/lib/brand-colors'
+import { BrandColorPicker } from '@/components/ui/brand-color-picker'
+import { LogoImageTools } from '@/components/ui/logo-image-tools'
 
 /* ─── Shared bits ─────────────────────────────────────────────── */
 
@@ -172,7 +174,7 @@ export function GoLiveStep({ name, signals, busy, onSubmit, onOpenStep }: {
           )
         })}
       </ul>
-      <p className="text-sm text-surface-600">No bank or tax details are needed now. LocalVIP asks for those when your first check is ready.</p>
+      <p className="text-sm text-surface-600">Finish your landing page, logo, photos and colors before submitting. LocalVIP reviews the completed page once before it goes live. Bank and tax details can wait until your first check.</p>
       <div className="flex justify-end border-t border-surface-100 pt-5">
         <Button onClick={onSubmit} disabled={busy || !ready}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
@@ -191,10 +193,11 @@ export function ImagesStep({ logoSrc, photoUrls, publishBlocked, busy, onUpload,
   /** True while missing photos are still stopping a first publication. */
   publishBlocked: boolean
   busy: boolean
-  onUpload: (target: 'logo' | CausePhotoSlot, file: File) => void
+  onUpload: (target: 'logo' | CausePhotoSlot, file: File) => Promise<boolean>
   onContinue: () => void
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const [pendingLogo, setPendingLogo] = React.useState<File | null>(null)
   const targetRef = React.useRef<'logo' | CausePhotoSlot>('logo')
   const pick = (target: 'logo' | CausePhotoSlot) => { targetRef.current = target; inputRef.current?.click() }
   const missing = CAUSE_PHOTO_PROMPTS.filter((prompt) => !photoUrls[prompt.slot].trim())
@@ -203,7 +206,7 @@ export function ImagesStep({ logoSrc, photoUrls, publishBlocked, busy, onUpload,
   return (
     <div className="space-y-5">
       <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
-        onChange={(e) => { const file = e.target.files?.[0]; if (file) onUpload(targetRef.current, file); e.target.value = '' }} />
+        onChange={(e) => { const file = e.target.files?.[0]; if (file) { if (targetRef.current === 'logo') setPendingLogo(file); else void onUpload(targetRef.current, file) } e.target.value = '' }} />
 
       <div className="grid gap-4 md:grid-cols-[220px_1fr]">
         <ImageSlot label="Logo" hint="Transparent PNG or SVG works best." src={logoSrc} fit="contain" busy={busy} onPick={() => pick('logo')} />
@@ -217,6 +220,8 @@ export function ImagesStep({ logoSrc, photoUrls, publishBlocked, busy, onUpload,
           <p className="mt-2">Use real photos of your own community, and keep them different from each other.</p>
         </div>
       </div>
+
+      {pendingLogo && <div className="space-y-2"><LogoImageTools file={pendingLogo} onChange={setPendingLogo} /><div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => void onUpload('logo', pendingLogo).then((saved) => { if (saved) setPendingLogo(null) })}>Upload this logo</Button><Button variant="outline" size="sm" onClick={() => setPendingLogo(null)}>Cancel</Button></div></div>}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {CAUSE_PHOTO_PROMPTS.map((prompt) => (
@@ -281,6 +286,7 @@ export function ColorsStep({ initial, confirmed, logoSrc, name, busy, onExtract,
   const [extracting, setExtracting] = React.useState(false)
   const [note, setNote] = React.useState<string | null>(null)
   const tried = React.useRef(false)
+  const swatches = [...Object.values(initial), ...Object.values(colors)]
 
   const pull = React.useCallback(async () => {
     setExtracting(true); setNote(null)
@@ -310,27 +316,27 @@ export function ColorsStep({ initial, confirmed, logoSrc, name, busy, onExtract,
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
       <div className="space-y-5">
+        {logoSrc ? <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoSrc} alt={`${name} logo for color sampling`} className="h-32 w-full object-contain" />
+          <p className="mt-2 text-xs text-surface-600">Use the eyedropper beside a color to sample from your logo or another image on screen.</p>
+        </div> : null}
         <div className="grid gap-4 sm:grid-cols-3">
           {slots.map(([key, label, hint]) => (
             <Field key={key} label={label} hint={hint}>
-              <div className="flex gap-2">
-                <input type="color" aria-label={`${label} picker`} value={isHexColor(colors[key]) ? colors[key] : '#000000'}
-                  onChange={(e) => setColors((c) => ({ ...c, [key]: e.target.value.toUpperCase() }))}
-                  className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-surface-300 bg-white" />
-                <Input value={colors[key]} onChange={(e) => setColors((c) => ({ ...c, [key]: e.target.value }))} className="font-mono uppercase" />
-              </div>
+              <BrandColorPicker label={label} value={colors[key]} swatches={swatches} disabled={busy || extracting} onChange={value => setColors(c => ({ ...c, [key]: value }))} />
             </Field>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={() => void pull()} disabled={!logoSrc || extracting}>
+          <Button variant="outline" onClick={() => void pull()} disabled={busy || !logoSrc || extracting}>
             {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
             Use colors from my logo
           </Button>
           {!logoSrc ? <span className="text-xs text-surface-500">Upload your logo first to pull colors from it.</span> : null}
         </div>
         {note ? <p role="status" className="text-sm text-surface-600">{note}</p> : null}
-        <StepFooter busy={busy} disabled={!valid} saveLabel={confirmed ? 'Save colors' : 'Use these colors'} onSave={() => onSave(colors)} />
+        <StepFooter busy={busy} disabled={!valid || extracting} saveLabel={confirmed ? 'Save colors' : 'Use these colors'} onSave={() => onSave(colors)} />
       </div>
       <FlyerPreview colors={colors} logoSrc={logoSrc} name={name} />
     </div>
@@ -340,20 +346,20 @@ export function ColorsStep({ initial, confirmed, logoSrc, name, busy, onExtract,
 function FlyerPreview({ colors, logoSrc, name }: { colors: BrandTriple; logoSrc: string; name: string }) {
   const ok = (c: string) => (isHexColor(c) ? c : '#CBD5E1')
   return (
-    <div aria-label="Flyer preview in your colors" className="overflow-hidden rounded-2xl border border-surface-200 shadow-sm">
-      <div className="px-5 pb-6 pt-5 text-white" style={{ backgroundColor: ok(colors.primary) }}>
+    <div aria-label="Flyer preview in your colors" className="self-start overflow-hidden rounded-2xl border border-surface-200 shadow-sm">
+      <div className="px-5 pb-6 pt-5" style={{ backgroundColor: ok(colors.primary), color: readableBrandText(ok(colors.primary)) }}>
         {logoSrc
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={logoSrc} alt="" className="mb-4 h-10 w-24 rounded bg-white/95 object-contain p-1" />
           : <Palette className="mb-4 h-8 w-8 opacity-80" />}
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: ok(colors.accent) }}>Shop local. Give back.</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em]">Shop local. Give back.</p>
         <p className="mt-1 text-lg font-bold leading-tight">Support {name || 'your school'} every time you shop</p>
       </div>
       <div className="space-y-3 bg-white p-5">
         <div className="h-2 w-3/4 rounded-full" style={{ backgroundColor: ok(colors.secondary) }} />
         <div className="h-2 w-1/2 rounded-full bg-surface-200" />
         <div className="flex items-center justify-between pt-2">
-          <span className="rounded-full px-3 py-1.5 text-xs font-bold text-white" style={{ backgroundColor: ok(colors.accent) }}>Scan to join</span>
+          <span className="rounded-full px-3 py-1.5 text-xs font-bold" style={{ backgroundColor: ok(colors.accent), color: readableBrandText(ok(colors.accent)) }}>Scan to join</span>
           <QrCode className="h-10 w-10 text-surface-800" />
         </div>
       </div>
@@ -388,28 +394,49 @@ export function LinkStep({ icon, done, doneText, todoText, actionHref, actionLab
   )
 }
 
-export function MaterialsStep({ count, busy, progress, error, onGenerate }: {
-  count: number; busy: boolean; progress: string | null; error: string | null; onGenerate: () => void
+export function MaterialsStep({ count, busy, progress, error, onGenerate, startedAt, readyFlyers = [], completionNote }: {
+  count: number; busy: boolean; progress: string | null; error: string | null; onGenerate: () => void; startedAt?: string | null
+  readyFlyers?: Array<{url: string; name: string; key: string}>; completionNote?: string | null
 }) {
+  const [now, setNow] = React.useState(Date.now)
+  React.useEffect(() => {
+    if (!busy || !startedAt) return
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [busy, startedAt])
+  const elapsed = startedAt ? Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000)) : 0
   return (
     <div className="space-y-5">
-      <div className={`flex items-start gap-4 rounded-2xl border px-5 py-5 ${count > 0 ? 'border-success-200 bg-success-50' : 'border-surface-200 bg-surface-50'}`}>
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${count > 0 ? 'bg-success-600 text-white' : 'bg-white text-brand-600 shadow-sm'}`}>
-          {count > 0 ? <CheckCircle2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+      <div className={`flex items-start gap-4 rounded-2xl border px-5 py-5 ${count >= 12 ? 'border-success-200 bg-success-50' : 'border-surface-200 bg-surface-50'}`}>
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${count >= 12 ? 'bg-success-600 text-white' : 'bg-white text-brand-600 shadow-sm'}`}>
+          {count >= 12 ? <CheckCircle2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
         </span>
-        <p className={`text-sm ${count > 0 ? 'text-success-900' : 'text-surface-700'}`}>
+        <p className={`text-sm ${count >= 12 ? 'text-success-900' : 'text-surface-700'}`}>
           {count > 0
-            ? `${count} of 3 audience flyers are ready. Regenerate after you change your logo, photo or colors.`
+            ? `${count} of 12 flyers are ready across four audiences and three designs. Regenerate after you change your logo, photo or colors.`
             : 'Create your flyers for families and local businesses. They use your logo, your colors and your QR code.'}
         </p>
       </div>
       {progress ? <p role="status" className="text-sm text-surface-600">{progress}</p> : null}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-sm font-medium text-surface-800"><span>Flyers ready</span><span className="tabular-nums" aria-live="polite">{Math.min(12, count)}/12</span></div>
+        <progress aria-label="Flyers ready" max={12} value={Math.min(12, count)} className="block h-3 w-full overflow-hidden rounded-full accent-brand-600" />
+        <p className="text-xs text-surface-500">Each flyer appears below as soon as it is saved. Videos continue separately after 12/12.</p>
+      </div>
+      {readyFlyers.length ? <ul className="grid gap-2 sm:grid-cols-2" aria-label="Finished flyers">{readyFlyers.filter(flyer => /^https?:\/\//i.test(flyer.url)).map(flyer => <li key={flyer.key}><a href={flyer.url} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium capitalize text-brand-700 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"><span>{flyer.name}</span><span className="text-xs">Open PDF ↗</span></a></li>)}</ul> : null}
+      {completionNote ? <p role="status" className="text-sm text-surface-600">{completionNote}</p> : null}
+      {busy && startedAt ? <div className="space-y-1 rounded-xl bg-surface-50 p-4 text-sm text-surface-600">
+        <p className="font-medium tabular-nums">Elapsed: {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</p>
+        <p>Flyers usually take 1–2 minutes; the 60-second film takes about 3–5 minutes. Queue time may be longer.</p>
+        <p>You can leave this page. Flyers and videos continue in the background, and saved progress returns when you reopen it.</p>
+      </div> : null}
       {error ? <p role="alert" className="text-sm text-danger-600">{error}</p> : null}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-surface-100 pt-5">
-        {count > 0 ? <Button asChild variant="outline"><Link href="/community/materials">See my materials</Link></Button> : null}
-        <Button onClick={onGenerate} disabled={busy}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-          {count > 0 ? 'Regenerate materials' : 'Generate my materials'}
+        {count > 0 ? <Button asChild variant="outline" className="min-h-11"><Link href="/community/materials">See my materials</Link></Button> : null}
+        <Button onClick={onGenerate} disabled={busy} className="min-h-11">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Wand2 className="h-4 w-4" />}
+          {busy ? 'Generating materials…' : count > 0 ? 'Regenerate materials' : 'Generate my materials'}
         </Button>
       </div>
     </div>

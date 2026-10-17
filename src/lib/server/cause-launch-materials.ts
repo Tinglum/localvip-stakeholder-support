@@ -1,7 +1,9 @@
 import { createDetachedQaRequester, fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
-import { renderCauseCampaignFlyer, type FlyerAudience } from './cause-campaign-flyers'
+import { FLYER_DESIGNS, flyerKind, renderCauseCampaignFlyer, type FlyerAudience } from './cause-campaign-flyers'
 import { CAUSE_PHOTO_PROMPTS, type CausePhotoSlot } from '@/lib/cause-setup'
+import { getConsumerWebappBaseUrl } from '@/lib/material-engine'
+import { durableVideoJobsEnabled, queueDurableVideo, reconcileDurableVideos, type RenderJob } from './cause-video-durable'
 import {
   CAUSE_VIDEO_CUTS, causeVideoJobState, causeVideoVersion, requestCauseVideoRender,
   type CauseVideoCut, type CauseVideoProps,
@@ -31,7 +33,7 @@ const PHOTO_SLOTS = CAUSE_PHOTO_PROMPTS.map((prompt) => prompt.slot)
 const STALE_LIVE_NOTE = 'Your live page still shows the previous version. Open your landing page and press Publish to update it.'
 const isLandingLive = (status?: string) => status === 'published' || status === 'published_with_changes'
 
-type LaunchCause = {
+export type LaunchCause = {
   id: number
   name: string
   city?: string | null
@@ -44,7 +46,7 @@ type LaunchCause = {
 }
 
 type LandingRecord = { status?: string; draft?: unknown; published?: unknown }
-type GeneratedList = { items?: Array<{ generatedFileUrl?: string | null; generationStatus?: string | null; metadata?: unknown }> }
+type GeneratedList = { items?: Array<{ generatedFileUrl?: string | null; generatedFileName?: string | null; generationStatus?: string | null; metadata?: unknown }> }
 const DEFAULT_SETUP_CALL_URL = process.env.LOCALVIP_SETUP_CALL_URL || 'https://calendly.com/ktinglum/localvip-internship'
 
 function materialMetadata(value: unknown): Record<string, unknown> | null {
@@ -110,16 +112,26 @@ async function migrateLegacyShortVideo(landingPath: string, record: LandingRecor
   return { ...rest, ...migrated } as VideoFields
 }
 
-export async function getCauseLaunchStatus(causeId: number, request: typeof qaJson = qaJson) {
-  const [landing, generated] = await Promise.all([
+export async function getCauseLaunchStatus(causeId: number, request: typeof qaJson = qaJson, flyerVersion?: string) {
+  const [loadedLanding, generated] = await Promise.all([
     request<LandingRecord>(`/api/dashboard/v1/Nonprofit/${causeId}/landing-page`),
-    request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${causeId}`),
+    request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${causeId}&pageSize=100`),
   ])
+  let landing = loadedLanding
+  let videoJobs: Partial<Record<CauseVideoCut, RenderJob>> = {}
+  let videoJobError: string | null = null
+  if (durableVideoJobsEnabled()) {
+    try {
+      const reconciled = await reconcileDurableVideos(causeId, landing, request)
+      landing = reconciled.record
+      videoJobs = reconciled.jobs
+    } catch (error) { videoJobError = error instanceof Error ? error.message : 'Could not check video progress.' }
+  }
   const flyerCount = generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed').length || 0
-  const audienceCount = new Set(generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed')
+  const variantCount = new Set(generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed')
     .map(item => materialMetadata(item.metadata))
-    .filter(metadata => metadata?.generator === 'cause-campaign-v1' && String(metadata.version || '').startsWith('olathe-west-layout-v3|'))
-    .map(metadata => metadata?.audience)).size
+    .filter(metadata => metadata?.generator === 'cause-campaign-v1' && String(metadata.version || '').startsWith('approved-library-v8|'))
+    .map(metadata => `${metadata?.audience}:${metadata?.design}`)).size
   const draft = landing?.draft as (VideoFields & { slug?: string; assets?: DraftAssets }) | null
   const published = landing?.published as VideoFields | null
   // `video` is the 60-second film, which is the cut the public page plays.
@@ -134,6 +146,9 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
    * video exists before it does.
    */
   const cutState = (cut: CauseVideoCut, url: string | null) => {
+    const persisted = videoJobs[cut]
+    if (persisted && ['queued', 'rendering_video'].includes(persisted.status)) return 'rendering'
+    if (persisted && ['partial', 'failed'].includes(persisted.status)) return persisted.status
     const job = causeVideoJobState(causeId, cut)
     if (url && job?.status !== 'rendering') return 'generated'
     if (job) return job.status === 'failed' ? 'failed' : 'rendering'
@@ -147,12 +162,19 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
     ? 'waiting for photos'
     : cutState('feature', videoUrl)
   return {
+    ...(process.env.CAUSE_MATERIAL_JOBS_ENABLED === '1' ? {readyFlyers: (generated?.items || []).flatMap(item => {
+      const metadata = materialMetadata(item.metadata)
+      const url = item.generatedFileUrl?.startsWith('/uploads/') ? `${QA_AUTH_CONFIG.baseUrl}${item.generatedFileUrl}` : item.generatedFileUrl
+      return item.generatedFileUrl && item.generationStatus !== 'failed' && metadata?.generator === 'cause-campaign-v1' && (!flyerVersion || metadata.version === flyerVersion)
+        ? [{url: url!, name: `${metadata.audience} · ${metadata.design}`, key: `${metadata.audience}:${metadata.design}`}] : []
+    }).filter((item, index, rows) => rows.findIndex(row => row.key === item.key) === index)} : {}),
+    ...(durableVideoJobsEnabled() ? { videoJobs, videoJobError } : {}),
     missingPhotos,
     /** True when the live page is serving an older revision than the draft. */
     landingNeedsRepublish: landing?.status === 'published_with_changes'
       || (isLandingLive(landing?.status) && !!videoUrl && published?.video?.src !== videoUrl),
-    flyers: audienceCount === 3 ? 'generated' : audienceCount > 0 ? 'partial' : 'waiting for assets',
-    flyerCount: audienceCount,
+    flyers: variantCount === 12 ? 'generated' : variantCount > 0 ? 'partial' : 'waiting for assets',
+    flyerCount: variantCount,
     totalMaterialCount: flyerCount,
     landingPages: landing?.status || 'not_started',
     landingSlug: draft?.slug || null,
@@ -164,7 +186,7 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
   }
 }
 
-async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: typeof qaJson) {
+async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: typeof qaJson, progress?: (count: number, stage: string, version: string) => void) {
   const steps: Record<string, { status: string; detail?: string }> = {}
   const landingPath = `/api/dashboard/v1/Nonprofit/${cause.id}/landing-page`
   let campaignSlug = `${slugify(cause.name) || 'cause'}-${cause.id}`
@@ -238,39 +260,43 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
     if (!cause.referralCode) {
       steps.flyers = { status: 'waiting', detail: 'The cause needs a referral code before its QR flyers can be generated.' }
     } else {
-      const audiences: FlyerAudience[] = ['business', 'families', 'schools']
+      const audiences: FlyerAudience[] = ['business', 'families', 'schools', 'boosters']
       const flyerErrors: string[] = []
       let customGenerated = 0
       const existing = await request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${cause.id}&pageSize=100`)
       if (logoUrl && coverUrl) {
-        const version = `olathe-west-layout-v3|${logoUrl}|${coverUrl}|${cause.referralCode}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}`
+        const version = `approved-library-v8|${cause.name}|${cause.city || ''}|${cause.state || ''}|${campaignSlug}|${logoUrl}|${coverUrl}|${cause.referralCode}|${cause.category || ''}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}|${getConsumerWebappBaseUrl()}`
+        progress?.(0, 'Creating flyers: 0/12 ready', version)
         for (const audience of audiences) {
+          for (const design of FLYER_DESIGNS) {
           const alreadySaved = existing?.items?.some(item => {
             const metadata = materialMetadata(item.metadata)
-            return item.generatedFileUrl && metadata?.generator === 'cause-campaign-v1' && metadata?.audience === audience && metadata?.version === version
+            return item.generatedFileUrl && item.generationStatus !== 'failed' && metadata?.generator === 'cause-campaign-v1' && metadata?.audience === audience && metadata?.design === design && metadata?.version === version
           })
-          if (alreadySaved) { customGenerated += 1; continue }
+          if (alreadySaved) { customGenerated += 1; progress?.(customGenerated, `Creating flyers: ${customGenerated}/12 ready`, version); continue }
           try {
-            const joinUrl = `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/${audience}?ref=${encodeURIComponent(cause.referralCode)}`
+            const joinUrl = `${getConsumerWebappBaseUrl()}/go/campaign/${encodeURIComponent(campaignSlug)}/${audience}?ref=${encodeURIComponent(cause.referralCode)}`
             const bytes = await renderCauseCampaignFlyer({ name: cause.name,
               locality: [cause.city, cause.state].filter(Boolean).join(', ') || 'Your community',
-              logoUrl, coverUrl, joinUrl, audience, mission: flyerMission, parentOrganization, colors: flyerColors })
-            const filename = `${slugify(cause.name) || 'cause'}-${audience}-flyer.pdf`
+              logoUrl, coverUrl, joinUrl, audience, design, category: cause.category, mission: flyerMission, parentOrganization, colors: flyerColors })
+            const filename = `${slugify(cause.name) || 'cause'}-${audience}-${design}-flyer.pdf`
             const form = new FormData()
             form.append('file', new File([new Uint8Array(bytes)], filename, { type: 'application/pdf' }))
             const uploaded = await request<{ fileUrl: string }>(
               '/api/dashboard/v1/MaterialAsset/upload?folder=cause-launch', { method: 'POST', body: form },
-              `Could not upload ${audience} flyer.`)
+              `Could not upload ${audience} ${design} flyer.`)
             if (!uploaded?.fileUrl) throw new Error('The asset upload did not return a file URL.')
             await request('/api/dashboard/v1/GeneratedMaterial', {
               method: 'POST', headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ causeAccountId: cause.id, generatedFileUrl: uploaded.fileUrl,
-                generatedFileName: filename, libraryFolder: 'Cause launch', tags: `school,cause,${audience}`,
-                metadata: { generator: 'cause-campaign-v1', audience, version, joinUrl } }),
-            }, `Could not save ${audience} flyer.`)
+                generatedFileName: filename, libraryFolder: 'Cause launch', tags: `${flyerKind(cause.category, cause.name)},cause,${audience},${design}`,
+                metadata: { generator: 'cause-campaign-v1', audience, design, version, joinUrl } }),
+            }, `Could not save ${audience} ${design} flyer.`)
             customGenerated += 1
+            progress?.(customGenerated, `Creating flyers: ${customGenerated}/12 ready`, version)
           } catch (error) {
-            flyerErrors.push(`${audience}: ${error instanceof Error ? error.message : String(error)}`)
+            flyerErrors.push(`${audience}/${design}: ${error instanceof Error ? error.message : String(error)}`)
+          }
           }
         }
       }
@@ -297,8 +323,8 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
           || types.some(type => ['cause', 'school', 'community', 'nonprofit'].includes(String(type).trim().toLowerCase()))
       }) as Array<{ id: number | string; name?: string }>
       if (templates.length === 0) {
-        steps.flyers = { status: customGenerated === 3 ? 'generated' : 'waiting',
-          detail: customGenerated === 3 ? '3/3 audience flyers generated.' : 'Upload a logo and cover photo to generate three audience flyers.' }
+        steps.flyers = { status: customGenerated === 12 ? 'generated' : flyerErrors.length ? (customGenerated ? 'partial' : 'failed') : 'waiting',
+          detail: customGenerated === 12 ? '12/12 flyers generated.' : flyerErrors.length ? `${customGenerated}/12 flyers generated. ${flyerErrors.join(' ')}` : 'Upload a logo and cover photo to generate twelve flyers.' }
       } else {
         const errors: string[] = []
         let generated = 0
@@ -321,8 +347,8 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
         }
         const allErrors = [...flyerErrors, ...errors]
         steps.flyers = { status: allErrors.length ? (generated || customGenerated ? 'partial' : 'failed') :
-          customGenerated === 3 || (!logoUrl || !coverUrl) ? 'generated' : 'partial',
-          detail: `${customGenerated}/3 audience flyers, ${generated}/${templates.length} templates generated.${allErrors.length ? ` ${allErrors.join(' ')}` : ''}` }
+          customGenerated === 12 || (!logoUrl || !coverUrl) ? 'generated' : 'partial',
+          detail: `${customGenerated}/12 flyers, ${generated}/${templates.length} templates generated.${allErrors.length ? ` ${allErrors.join(' ')}` : ''}` }
       }
     }
   } catch (error) {
@@ -330,7 +356,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   }
 
   const videoJoinUrl = cause.referralCode
-    ? `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/families?ref=${encodeURIComponent(cause.referralCode)}`
+    ? `${getConsumerWebappBaseUrl()}/go/campaign/${encodeURIComponent(campaignSlug)}/families?ref=${encodeURIComponent(cause.referralCode)}`
     : ''
   const videoProps: CauseVideoProps = {
     accountId: cause.id, causeName: cause.name,
@@ -341,6 +367,8 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
     // compatibility; `photos.crowd` is the same image.
     photos: Object.fromEntries(PHOTO_SLOTS.filter((slot) => photoUrls[slot]).map((slot) => [slot, photoUrls[slot]])),
     joinUrl: videoJoinUrl,
+    primaryColor: flyerColors?.navy,
+    accentColor: flyerColors?.gold,
   }
   // Every photo is in the version key: when a cause adds the three newer
   // photos later, the video re-renders with its remaining beats filled in.
@@ -377,14 +405,20 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
       for (const cut of cuts) {
         const spec = CAUSE_VIDEO_CUTS[cut]
         const current = stored[spec.field]
-        if (current?.src && (!stored[spec.sourceField] || stored[spec.sourceField] === versions[cut])) {
+        if (current?.src && (durableVideoJobsEnabled()
+          ? !!current.poster && stored[spec.sourceField] === versions[cut]
+          : !stored[spec.sourceField] || stored[spec.sourceField] === versions[cut])) {
           notes.push(`${spec.label}: ${current.src}`)
           continue
         }
-        const state = requestCauseVideoRender(cause.id, cut, {
-          version: versions[cut], props: videoProps, request: detached, landingPath,
-        })
-        notes.push(`${spec.label}: ${state.detail}`)
+        const want = { version: versions[cut], props: videoProps, request: detached, landingPath }
+        if (durableVideoJobsEnabled()) {
+          const job = await queueDurableVideo(cause.id, cut, want)
+          notes.push(`${spec.label}: ${job.stage}. You can leave and return to check progress.`)
+        } else {
+          const state = requestCauseVideoRender(cause.id, cut, want)
+          notes.push(`${spec.label}: ${state.detail}`)
+        }
       }
       if (!cuts.includes('feature')) {
         notes.push(`60-second film: waiting for the ${missingPhotos.map((prompt) => prompt.label.toLowerCase()).join(', ')} photo${missingPhotos.length > 1 ? 's' : ''}. It has a plate for each one, so it renders once the set is complete.`)
@@ -393,7 +427,9 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
       // serving its published revision until the cause publishes again, so say
       // so rather than implying the public can see the new video.
       if (live) notes.push(STALE_LIVE_NOTE)
-      const states = cuts.map((cut) => causeVideoJobState(cause.id, cut))
+      const states = durableVideoJobsEnabled()
+        ? Object.values((await getCauseLaunchStatus(cause.id, request)).videoJobs || {}).map(job => ({ status: ['queued', 'rendering_video'].includes(job.status) ? 'rendering' : job.status === 'partial' ? 'failed' : job.status }))
+        : cuts.map((cut) => causeVideoJobState(cause.id, cut))
       steps.video = {
         status: states.some((state) => state?.status === 'failed') ? 'failed'
           : states.some((state) => state?.status === 'rendering') ? 'rendering'
@@ -411,10 +447,10 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
 
 const launchQueue = new Map<number, Promise<unknown>>()
 
-export async function generateCauseLaunchMaterials(cause: LaunchCause, request: typeof qaJson = qaJson) {
+export async function generateCauseLaunchMaterials(cause: LaunchCause, request: typeof qaJson = qaJson, progress?: (count: number, stage: string, version: string) => void) {
   const previous = launchQueue.get(cause.id)
   const run = (previous ? previous.catch(() => undefined) : Promise.resolve())
-    .then(() => generateCauseLaunchMaterialsInner(cause, request))
+    .then(() => generateCauseLaunchMaterialsInner(cause, request, progress))
   launchQueue.set(cause.id, run)
   try { return await run } finally { if (launchQueue.get(cause.id) === run) launchQueue.delete(cause.id) }
 }

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getOperatorRouteContext } from '@/lib/server/operator-access'
 import { fetchQaCauseDetail } from '@/lib/server/qa-dashboard-causes'
-import { generateCauseLaunchMaterials, getCauseLaunchStatus } from '@/lib/server/cause-launch-materials'
+import { getCauseLaunchStatus } from '@/lib/server/cause-launch-materials'
+import { getQaAccessToken } from '@/lib/auth/qa-api'
+import { getMaterialJobStore, startMaterialWorker } from '@/lib/server/material-job-runner'
+import { publicMaterialJob } from '@/lib/server/material-job-store'
 import { fetchPortalCauseAccounts } from '@/lib/server/portal-cause'
 
 export const runtime = 'nodejs'
@@ -26,7 +29,9 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   const authorized = await context(params.id)
   if ('error' in authorized) return authorized.error
   try {
-    return NextResponse.json(await getCauseLaunchStatus(authorized.id))
+    const job = process.env.CAUSE_MATERIAL_JOBS_ENABLED === '1' ? getMaterialJobStore().read(authorized.id) : null
+    const status = await getCauseLaunchStatus(authorized.id, undefined, job?.flyerVersion || undefined)
+    return NextResponse.json({ ...status, ...(job && !job.flyerVersion ? {readyFlyers: []} : {}), generation: job ? publicMaterialJob(job) : null }, {headers: {'cache-control': 'no-store'}})
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not load launch status.' }, { status: 502 })
   }
@@ -36,8 +41,14 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
   const authorized = await context(params.id)
   if ('error' in authorized) return authorized.error
   try {
+    if (process.env.CAUSE_MATERIAL_JOBS_ENABLED !== '1' || process.env.CAUSE_VIDEO_DURABLE_JOBS !== '1')
+      return NextResponse.json({ error: 'The background materials worker is not enabled in this environment. Configure the QA materials and durable video workers before generating.' }, { status: 503 })
     const cause = await fetchQaCauseDetail(authorized.id)
-    return NextResponse.json(await generateCauseLaunchMaterials(cause))
+    const token = await getQaAccessToken()
+    if (!token) return NextResponse.json({error: 'Sign in again before generating materials.'}, {status: 401})
+    const {job, reused} = getMaterialJobStore().enqueue({...cause}, token)
+    startMaterialWorker()
+    return NextResponse.json({generation: publicMaterialJob(job), reused}, {status: 202, headers: {'cache-control': 'no-store'}})
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not generate launch materials.' }, { status: 502 })
   }

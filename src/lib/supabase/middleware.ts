@@ -32,6 +32,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/forgot-password')
 
   const isPublicRoute = pathname === '/' ||
+    pathname.startsWith('/api/cause-video/generated/') ||
     // Invite auto-login lands here before any session exists.
     pathname.startsWith('/welcome') ||
     pathname.startsWith('/demo') ||
