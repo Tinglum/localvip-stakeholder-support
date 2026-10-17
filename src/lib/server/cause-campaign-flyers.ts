@@ -520,6 +520,11 @@ function layoutElement(element: string, header: { dx: number; dy: number }) {
   const y = numAttr(tag, 'y') ?? 0
   if ((name === 'rect' || name === 'image') && width && x + width === ART_WIDTH) return stretchBands(element)
   if (name === 'g' && /\sclip-path=/.test(tag)) return stretchBands(element)
+  // The header may arrive as loose <text>s or wrapped in one group
+  // (data-slot-header); either way it moves with the enlarged logo.
+  if (name === 'g' && (/\sdata-slot-header\b/.test(tag) || /<text\b[^>]*\sx="21[24]"/.test(element) && !/transform=/.test(tag))) {
+    return `<g transform="translate(${header.dx} ${header.dy})">${element}</g>`
+  }
   if (name === 'g') {
     const translate = /translate\(([-\d.]+)[ ,]+([-\d.]+)\)/.exec(tag)
     return translate ? layoutGroup(element, tag, Number(translate[1]), Number(translate[2])) : element
@@ -561,7 +566,7 @@ export function layoutForLetter(svg: string) {
   // Centre the name/label block on the larger logo. A two-line name runs to
   // the label at y=145; a one-line name to y=119 (cap tops at y≈47).
   const nameLines = (body.match(/<text\b[^>]*class="display[^"]*"[^>]*\sx="212"/g) || []).length
-  const header = { dx: HEADER_TEXT_X - 212, dy: Math.round(HEADER_CENTER_Y - (47 + (nameLines > 1 ? 145 : 119)) / 2) }
+  const header = { dx: +(HEADER_TEXT_X - 212).toFixed(2), dy: Math.round(HEADER_CENTER_Y - (47 + (nameLines > 1 ? 145 : 119)) / 2) }
   return head + topLevelElements(body).map(part => part.startsWith('<') && !part.startsWith('<!--') ? layoutElement(part, header) : part).join('') + svg.slice(bodyEnd)
 }
 
