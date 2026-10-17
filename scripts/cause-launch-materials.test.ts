@@ -89,7 +89,8 @@ test('four audiences across three designs use the cause assets and produce print
         joinUrl: `https://my.localvip.com/landing/test-school-42/${audience}?ref=TEST`, audience, design })
       assert.equal(Buffer.from(pdf).subarray(0, 5).toString(), '%PDF-')
       assert.ok(pdf.length > 10000)
-      assert.match(Buffer.from(pdf).toString('latin1'), /\/Width 2625\b/)
+      assert.match(Buffer.from(pdf).toString('latin1'), /\/Width 2550\b/)
+      assert.match(Buffer.from(pdf).toString('latin1'), /\/Height 3300\b/)
       }
     }
   } finally { globalThis.fetch = originalFetch }

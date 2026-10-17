@@ -9,17 +9,11 @@ import QRCode from 'qrcode'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { readableBrandText } from '@/lib/brand-colors'
 
-export type FlyerAudience = 'business' | 'families' | 'schools' | 'boosters'
-export type FlyerKind = 'cause' | 'school' | 'booster'
-export const FLYER_DESIGNS = ['community', 'growth', 'comparison'] as const
-export type FlyerDesign = (typeof FLYER_DESIGNS)[number]
+import { approvedFlyerTemplateId, type FlyerAudience, type FlyerDesign } from '@/lib/flyer-designs'
 
-// Exact artwork from the dashboard's Olathe library. Booster outreach uses
-// the school series, personalized to the club's identity.
-export function approvedFlyerTemplateId(audience: FlyerAudience, design: FlyerDesign = 'community') {
-  const series = audience === 'business' ? [77, 68, 69] : audience === 'families' ? [70, 71, 72] : [73, 74, 75]
-  return series[FLYER_DESIGNS.indexOf(design)]
-}
+// Exact artwork from the dashboard's Olathe library; ids live in flyer-designs.
+export { approvedFlyerTemplateId, FLYER_DESIGNS, type FlyerAudience, type FlyerDesign } from '@/lib/flyer-designs'
+export type FlyerKind = 'cause' | 'school' | 'booster'
 
 const templateDir = path.join(process.cwd(), 'src/lib/server/flyer-templates')
 const esc = (value: string) => value.replace(/[&<>"']/g, char => ({
@@ -187,6 +181,33 @@ export async function buildCauseCampaignFlyerSvg(input: {
     .replace('</defs>', `<style>.manual-hero-text{fill:${readableBrandText(background)}}.navy{fill:${readableBrandText(background) === '#FFFFFF' ? background : '#0b2349'}}</style></defs>`)
 }
 
+// The library artwork is 7:10 (1050 × 1500); Letter is 8.5:11. Fitting it by
+// height left 0.4" white bars on both sides, and cropping to width would cut
+// the header and footer. Instead widen the canvas to Letter's aspect and run
+// every full-width band (backgrounds, hero photo, clip) out to the new edges,
+// so the content keeps its proportions and the page prints edge to edge.
+const ART_WIDTH = 1050
+const ART_HEIGHT = 1500
+const BLEED_WIDTH = ART_HEIGHT * 8.5 / 11
+const BLEED_PAD = (BLEED_WIDTH - ART_WIDTH) / 2
+export function toLetterBleed(svg: string) {
+  const num = (tag: string, name: string) => Number(new RegExp(`\\s${name}="([-\\d.]+)"`).exec(tag)?.[1] ?? 0)
+  return svg
+    .replace(/<svg\b[^>]*>/, tag => tag.replace(/\swidth="[^"]*"/, ` width="${BLEED_WIDTH}"`)
+      .replace(/\sviewBox="[^"]*"/, ` viewBox="${-BLEED_PAD} 0 ${BLEED_WIDTH} ${ART_HEIGHT}"`))
+    .replace(/<(?:rect|image)\b[^>]*>/g, tag => {
+      const x = num(tag, 'x')
+      const width = num(tag, 'width')
+      // Only elements that reach the artwork's right edge are bands; a local
+      // x="0" inside a translated icon group must stay as drawn.
+      if (x + width !== ART_WIDTH) return tag
+      const left = x === 0
+      const nextX = left ? -BLEED_PAD : x
+      const nextWidth = width + BLEED_PAD * (left ? 2 : 1)
+      return tag.replace(/\sx="[^"]*"/, '').replace(/\swidth="[^"]*"/, ` x="${nextX}" width="${nextWidth}"`)
+    })
+}
+
 export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview = false) {
   // Keep native decoder failures out of the web server. A fresh process also
   // releases all native image allocations after each print-resolution PDF.
@@ -204,15 +225,13 @@ export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCau
       }
     }
   }
-  const svg = await buildCauseCampaignFlyerSvg(input)
-  // A letter-size PDF needs roughly 300 pixels per printed inch. Rendering
-  // the editable SVG at 2.5x keeps type, icons and QR modules crisp in print.
-  const png = new Resvg(svg, { fitTo: { mode: 'width', value: 2625 } }).render().asPng()
+  const svg = toLetterBleed(await buildCauseCampaignFlyerSvg(input))
+  // 2550 × 3300 is 300 pixels per printed inch on Letter, which keeps type,
+  // icons and QR modules crisp in print.
+  const png = new Resvg(svg, { fitTo: { mode: 'width', value: 2550 } }).render().asPng()
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([612, 792])
-  // Fit the original 1050 × 1500 artwork onto Letter without stretching it.
-  const printWidth = 792 * 1050 / 1500
-  page.drawImage(await pdf.embedPng(png), { x: (612 - printWidth) / 2, y: 0, width: printWidth, height: 792 })
+  page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 612, height: 792 })
   const bytes = await pdf.save()
-  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { fitTo: { mode: 'width', value: 735 } }).render().asPng().toString('base64') })) : bytes
+  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { fitTo: { mode: 'width', value: 765 } }).render().asPng().toString('base64') })) : bytes
 }

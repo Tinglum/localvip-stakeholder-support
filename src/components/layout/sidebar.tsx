@@ -205,9 +205,12 @@ function SidebarItem({
     () => item.children?.filter((child) => userLevel >= child.minLevel) || [],
     [item.children, userLevel]
   )
-  const childActive = visibleChildren.some(
-    (child) => pathname === child.href || pathname.startsWith(`${child.href}/`)
-  )
+  // A child can sit beneath a sibling's path (/community/materials/generator
+  // under /community/materials); only the most specific match is active.
+  const activeChildHref = visibleChildren
+    .filter((child) => pathname === child.href || pathname.startsWith(`${child.href}/`))
+    .reduce<string | null>((best, child) => (!best || child.href.length > best.length ? child.href : best), null)
+  const childActive = activeChildHref !== null
   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`) || childActive
   const hasChildren = item.children && item.children.length > 0
 
@@ -276,7 +279,7 @@ function SidebarItem({
         <ul className="ml-4 mt-1 space-y-0.5 border-l border-surface-100 pl-3">
           {visibleChildren.map((child) => {
             const ChildIcon = ICON_MAP[child.icon] || LayoutDashboard
-            const isChildActive = pathname === child.href || pathname.startsWith(`${child.href}/`)
+            const isChildActive = child.href === activeChildHref
 
             return (
               <li key={child.href}>
