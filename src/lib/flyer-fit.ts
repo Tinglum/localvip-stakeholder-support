@@ -1,5 +1,5 @@
 /**
- * Text fitting and photo treatment for cause flyers, shared by the server
+ * Text fitting for cause flyers, shared by the server
  * renderer and the generator's live preview. Both sides measure with the same
  * font files, so a line fitted in the browser matches the printed PDF.
  * Client-safe: no server imports.
@@ -58,27 +58,6 @@ export function fitFlyerLine(text: string, allowed: number, kind: FlyerFontKind,
 
 /** A line's text as measured: its runs joined by single spaces. */
 export const flyerLineText = (runs: (string | undefined | null)[]) => runs.filter(Boolean).join(' ')
-
-export const FLYER_PHOTO_SIZE = { width: 1875, height: 1725 }
-
-/** Lifts dark cover photos so the hero stays legible. Mutates RGBA pixels in place. */
-export function brightenFlyerPixels(data: Uint8ClampedArray) {
-  let brightness = 0, samples = 0
-  for (let i = 0; i < data.length; i += 64) {
-    brightness += data[i] * .21 + data[i + 1] * .72 + data[i + 2] * .07
-    samples++
-  }
-  const mean = brightness / samples
-  const gamma = mean < 85 ? .56 : mean < 115 ? .72 : mean < 145 ? .88 : 1
-  if (gamma === 1) return false
-  const lut = Array.from({ length: 256 }, (_, value) => Math.round(255 * (value / 255) ** gamma))
-  for (let i = 0; i < data.length; i += 4) {
-    data[i] = lut[data[i]]
-    data[i + 1] = lut[data[i + 1]]
-    data[i + 2] = lut[data[i + 2]]
-  }
-  return true
-}
 
 export function escapeXml(value: string) {
   return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' } as Record<string, string>)[char])
