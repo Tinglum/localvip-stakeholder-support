@@ -13,8 +13,10 @@ import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { FLYER_AUDIENCES, FLYER_DESIGNS, FLYER_DESIGN_LABELS, approvedFlyerTemplateId, flyerDesignForTemplate } from '@/lib/flyer-designs'
 import type { LandingRecord } from '@/lib/cause-landing-config'
 import type { FlyerAudience, FlyerDesign } from '@/lib/flyer-designs'
-import { compactFlyerOverrides, flyerEditKey, type FlyerOverrides, type FlyerSlots } from '@/lib/flyer-slots'
+import { compactFlyerOverrides, flyerEditKey, type FlyerImageSlotId, type FlyerOverrides, type FlyerSlots, type PreparedFlyerImage } from '@/lib/flyer-slots'
 import { FlyerEditPanel } from '@/components/materials/flyer-edit-panel'
+import { FlyerLivePreview, type FlyerPreviewFonts } from '@/components/materials/flyer-live-preview'
+import { Download, Loader2 } from 'lucide-react'
 
 const DEFAULT = { background: '#0B2349', highlight: '#EFB719', accent: '#EFB719' }
 const modes = [{ value: 'default', label: 'Default', hint: 'Dark blue, white, and gold.' }, { value: 'logo', label: 'Use colors of my logo', hint: 'Logo accents with the dark blue and gold theme.' }, { value: 'manual', label: 'Manual', hint: 'Choose each color yourself.' }] as const
@@ -75,18 +77,28 @@ export default function FlyerGeneratorPage() {
   const [busy, setBusy] = React.useState(false)
   const [extracting, setExtracting] = React.useState(false)
   const [error, setError] = React.useState('')
-  const [result, setResult] = React.useState<{ pdf: string; preview: string; settings: string; overrides: FlyerOverrides; saveError?: string } | null>(null)
+  const [result, setResult] = React.useState<{ pdf: string; key: string } | null>(null)
   const settings = JSON.stringify({ causeId, audience, design, mode, palette })
-  const dirty = !!result && result.settings !== settings
-  // Text and image edits for the generated design. `editor.key` ties the slots to
-  // the cause, design and audience they were loaded for.
+  // Text and image edits. `editor.key` ties the slots to the cause, design and
+  // audience they were loaded for.
   const [editor, setEditor] = React.useState<{ key: string; slots: FlyerSlots; assets: string[] } | null>(null)
   const [editorError, setEditorError] = React.useState('')
   const [edits, setEdits] = React.useState<FlyerOverrides>({})
+  const editsRef = React.useRef(edits)
+  editsRef.current = edits
   const target = `${causeId}:${flyerEditKey(design, audience)}`
-  const pendingEdits = !!result && JSON.stringify(compactFlyerOverrides(edits)) !== JSON.stringify(compactFlyerOverrides(result.overrides))
+  // The live preview: the composed SVG for the current options. Text and image
+  // edits are applied to it in the browser; only option changes refetch it.
+  const [live, setLive] = React.useState<{ settings: string; target: string; svg: string; fonts: FlyerPreviewFonts; images: FlyerOverrides['images'] } | null>(null)
+  const [liveLoading, setLiveLoading] = React.useState(false)
+  const [localImages, setLocalImages] = React.useState<Partial<Record<FlyerImageSlotId, string>>>({})
+  const [headerError, setHeaderError] = React.useState('')
+  const [saveState, setSaveState] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const savedEdits = React.useRef('{}')
+  const editKey = JSON.stringify(compactFlyerOverrides(edits))
+  const pdfFresh = !!result && result.key === `${settings}${editKey}`
   React.useEffect(() => {
-    setResult(null); setEditor(null); setEdits({}); setLogo(''); setLogoColors([]); setMode('default'); setPalette(DEFAULT); setError('')
+    setResult(null); setEditor(null); setLive(null); setEdits({}); setLogo(''); setLogoColors([]); setMode('default'); setPalette(DEFAULT); setError('')
     if (!causeId) return
     const controller = new AbortController()
     void fetch(`/api/crm/causes/${causeId}/landing-page`, { signal: controller.signal }).then(async response => {
@@ -109,51 +121,101 @@ export default function FlyerGeneratorPage() {
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not read logo colors.'); setMode('default'); setPalette(DEFAULT) }
     finally { setExtracting(false) }
   }
-  async function loadEditor() {
+  const ready = !!selectedStatus?.ready && Object.values(palette).every(isHexColor)
+  // Slots for the current design; saved edits arrive with the preview SVG.
+  React.useEffect(() => {
+    if (!ready) return
+    const controller = new AbortController()
     setEditorError('')
-    try {
-      const response = await fetch(`/api/crm/causes/${causeId}/flyer?design=${design}&audience=${audience}`, { cache: 'no-store' })
+    void fetch(`/api/crm/causes/${causeId}/flyer?design=${design}&audience=${audience}`, { cache: 'no-store', signal: controller.signal }).then(async response => {
       const body = await response.json()
       if (!response.ok) throw new Error(body.error || 'Could not load the editable text.')
       setEditor({ key: target, slots: body.slots, assets: body.assets || [] })
-    } catch (error) { setEditorError(error instanceof Error ? error.message : 'Could not load the editable text.') }
-  }
-  // Without `overrides` the server applies the cause's saved edits for this
-  // design and audience; with them, it renders and saves those instead.
-  async function generate(overrides?: FlyerOverrides) {
-    if (!selectedStatus?.ready) return
+    }).catch(error => { if (error.name !== 'AbortError') setEditorError(error instanceof Error ? error.message : 'Could not load the editable text.') })
+    return () => controller.abort()
+  }, [ready, causeId, design, audience, target])
+  // Fetch the composed SVG whenever the cause, design, audience or colors
+  // change. Edits made so far carry over when only the colors changed.
+  React.useEffect(() => {
+    if (!ready) return
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      setLiveLoading(true); setError('')
+      const sameTarget = live?.target === target
+      void fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' }, signal: controller.signal,
+        body: JSON.stringify({ audience, design, mode, palette, output: 'svg', overrides: sameTarget ? editsRef.current : undefined }) })
+        .then(async response => {
+          const body = await response.json()
+          if (!response.ok) throw new Error(body.error || 'Could not load the flyer preview.')
+          if (!sameTarget) { setEdits(body.overrides || {}); savedEdits.current = JSON.stringify(compactFlyerOverrides(body.overrides)); setSaveState('idle') }
+          setLive({ settings, target, svg: body.svg, fonts: body.fonts, images: body.overrides?.images || {} })
+        })
+        .catch(error => { if (error.name !== 'AbortError') setError(error instanceof Error ? error.message : 'Could not load the flyer preview.') })
+        .finally(() => { if (!controller.signal.aborted) setLiveLoading(false) })
+    }, 350)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [ready, settings]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Keep edits on the cause as they are made, so leaving the page loses nothing.
+  React.useEffect(() => {
+    if (!live || live.target !== target || editKey === savedEdits.current) return
+    const timer = setTimeout(() => {
+      setSaveState('saving')
+      void fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ audience, design, mode, palette, output: 'save', overrides: JSON.parse(editKey) }) })
+        .then(async response => {
+          const body = await response.json()
+          if (!response.ok) throw new Error(body.error || body.saveError || 'Save failed.')
+          savedEdits.current = editKey; setSaveState('saved')
+        })
+        .catch(() => setSaveState('error'))
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [editKey, live, target]) // eslint-disable-line react-hooks/exhaustive-deps
+  async function generatePdf() {
+    if (!ready || headerError) return
     setBusy(true); setError('')
-    const sameDesign = editor?.key === target
-    if (!sameDesign) { setEditor(null); void loadEditor() }
+    const key = `${settings}${editKey}`
     try {
       const response = await fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ audience, design, mode, palette, overrides: overrides ?? (sameDesign ? edits : undefined) }) })
+        body: JSON.stringify({ audience, design, mode, palette, overrides: JSON.parse(editKey) }) })
       const body = await response.json()
-      if (!response.ok) throw new Error(body.error || 'Could not generate flyer.')
-      setResult({ ...body, settings }); setEdits(body.overrides || {})
-    } catch (error) { setError(error instanceof Error ? error.message : 'Could not generate flyer.') }
+      if (!response.ok) throw new Error(body.error || 'Could not create the PDF.')
+      if (!body.saveError) { savedEdits.current = editKey; setSaveState('saved') }
+      setResult({ pdf: body.pdf, key })
+      download(body.pdf)
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not create the PDF.') }
     finally { setBusy(false) }
   }
   function resetAllEdits() {
     if (!window.confirm('Reset every text and image edit on this flyer to the generated defaults?')) return
-    setEdits({}); void generate({})
+    setEdits({})
   }
-  function download() {
-    if (!result) return
-    const bytes = Uint8Array.from(atob(result.pdf), char => char.charCodeAt(0))
+  function download(pdf = result?.pdf) {
+    if (!pdf) return
+    const bytes = Uint8Array.from(atob(pdf), char => char.charCodeAt(0))
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
     const link = document.createElement('a'); link.href = url; link.download = `localvip-${causeId}-${audience}-${design}.pdf`; link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
+  const onLocalImage = React.useCallback((slot: FlyerImageSlotId, url: string | undefined) =>
+    setLocalImages(current => ({ ...current, [slot]: url })), [])
+  const showEditor = !!live && live.target === target && editor?.key === target
+  const prepareImage = React.useCallback(async (slot: FlyerImageSlotId, url: string): Promise<PreparedFlyerImage> => {
+    const response = await fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ audience, design, mode, palette, output: 'image', slot, url }) })
+    const body = await response.json()
+    if (!response.ok) throw new Error(body.error || 'Could not prepare the image.')
+    return body
+  }, [causeId, audience, design, mode, palette])
   const locked = busy || extracting
   return <div className="space-y-6">
     <Link href="/community/materials" className="text-sm text-brand-700">← Campaign materials</Link>
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h1 className="text-2xl font-bold text-surface-900">Flyer generator</h1><p className="mt-2 text-surface-600">Create one flyer from the approved designs. Preview your colors, then download a print-ready PDF.</p></div>
+      <div><h1 className="text-2xl font-bold text-surface-900">Flyer generator</h1><p className="mt-2 text-surface-600">Create one flyer from the approved designs. Edit its text and images in the live preview, then generate a print-ready PDF.</p></div>
       <Link href="/community/materials?tab=templates" className="inline-flex h-10 items-center rounded-lg border border-surface-300 bg-white px-4 text-sm font-medium text-surface-700 transition-colors hover:border-brand-300 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Browse templates →</Link>
     </div>
     {templateParam && (imported
-      ? <p role="status" className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-surface-700">Imported library template #{templateParam}: <strong>{FLYER_DESIGN_LABELS[imported.design]}</strong> design for {imported.audience}. Generate to personalize it.</p>
+      ? <p role="status" className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-surface-700">Imported library template #{templateParam}: <strong>{FLYER_DESIGN_LABELS[imported.design]}</strong> design for {imported.audience}. Personalize it below.</p>
       : <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Library template #{templateParam} can’t be generated here yet. The generator renders the approved Community Win, Growth and Comparison designs; choose one below, or customize that template from the <Link href="/community/materials?tab=templates" className="underline">template library</Link>.</p>)}
     <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
       <div className="min-w-0 space-y-6">
@@ -190,21 +252,31 @@ export default function FlyerGeneratorPage() {
         {mode === 'manual' ? (Object.keys(DEFAULT) as Array<keyof typeof DEFAULT>).map(key => <div key={key} className="space-y-2"><p className="text-sm font-medium capitalize">{key}</p><BrandColorPicker label={key} value={palette[key]} swatches={[...Object.values(DEFAULT), ...logoColors]} disabled={locked} onChange={value => setPalette(current => ({ ...current, [key]: value }))} /></div>) : <div className="flex gap-2" aria-label="Selected palette">{Object.entries(palette).map(([key, value]) => <span key={key} title={`${key}: ${value}`} className="h-8 w-8 rounded-full border border-surface-300" style={{ backgroundColor: value }} />)}</div>}
         {(error || causesError) && <p role="alert" className="text-sm text-error-700">{error || String(causesError)}</p>}
         {!loading && !causeId && !scoped && <p className="text-sm text-surface-600">Select a cause to begin. <Link href="/community/setup" className="text-brand-700 underline">Open cause setup</Link></p>}
-        <Button onClick={() => void generate()} disabled={locked || !selectedStatus?.ready || !Object.values(palette).every(isHexColor)} className="h-11 w-full">{busy ? 'Generating flyer…' : result ? 'Regenerate flyer' : 'Generate flyer'}</Button>
       </div>
-      {result && !dirty && (editor?.key === target
-        ? <FlyerEditPanel slots={editor.slots} assets={editor.assets} edits={edits} pending={pendingEdits} busy={locked}
-            onChange={setEdits} onUpdate={() => void generate(edits)} onResetAll={resetAllEdits} />
+      {ready && (showEditor
+        ? <FlyerEditPanel slots={editor.slots} assets={editor.assets} edits={edits} busy={busy} saveState={saveState}
+            onChange={setEdits} onLocalImage={onLocalImage} onResetAll={resetAllEdits} />
         : <div className="rounded-2xl border border-surface-200 bg-white p-5 text-sm text-surface-600">
-            {editorError ? <><p role="alert" className="text-error-700">{editorError}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void loadEditor()}>Retry</Button></> : <p role="status">Loading editable text and images…</p>}
+            {editorError ? <p role="alert" className="text-error-700">{editorError}</p> : <p role="status">Loading editable text and images…</p>}
           </div>)}
       </div>
       <div className="min-w-0 space-y-4 self-start rounded-2xl border border-surface-200 bg-surface-50 p-5 lg:sticky lg:top-6">
-        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">Preview</h2><Button variant="outline" disabled={!result || dirty || pendingEdits || locked} onClick={download}>Download PDF</Button></div>
-        {dirty && <p role="status" className="text-sm text-surface-600">Colors or options changed. Regenerate to update the preview and download.</p>}
-        {!dirty && pendingEdits && <p role="status" className="text-sm text-surface-600">You have unapplied edits. Update the preview to include them in the download.</p>}
-        {result?.saveError && <p role="alert" className="text-sm text-error-700">{result.saveError}</p>}
-        {result ? <img src={`data:image/png;base64,${result.preview}`} alt="Generated cause flyer preview" className="mx-auto h-auto w-full max-w-[525px] shadow-lg" /> : <div className="flex min-h-96 items-center justify-center rounded-xl border border-dashed border-surface-300 p-8 text-center text-surface-500">Your flyer will appear here after generation.</div>}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 font-semibold">Live preview {liveLoading && <Loader2 className="h-4 w-4 animate-spin text-surface-400" aria-label="Updating preview" />}</h2>
+            <p className="mt-1 text-xs text-surface-500">A preview of your edits. The print-ready PDF is created when you click Generate PDF.</p>
+          </div>
+          {pdfFresh
+            ? <Button variant="outline" onClick={() => download()}><Download className="h-4 w-4" />Download PDF</Button>
+            : <Button onClick={() => void generatePdf()} disabled={!showEditor || busy || liveLoading || !!headerError}>{busy ? <><Loader2 className="h-4 w-4 animate-spin" />Creating PDF…</> : 'Generate PDF'}</Button>}
+        </div>
+        {headerError && <p role="alert" className="text-sm text-error-700">{headerError}</p>}
+        {showEditor
+          ? <div className={`transition-opacity ${liveLoading ? 'opacity-60' : ''}`}><FlyerLivePreview svg={live.svg} fonts={live.fonts} slots={editor.slots} edits={edits} loadedImages={live.images}
+              localImages={localImages} onHeaderError={setHeaderError} prepareImage={prepareImage} /></div>
+          : <div className="flex min-h-96 items-center justify-center rounded-xl border border-dashed border-surface-300 p-8 text-center text-surface-500">
+              {ready ? 'Preparing your flyer preview…' : 'Select a ready cause to preview its flyer.'}
+            </div>}
       </div>
     </div>
   </div>

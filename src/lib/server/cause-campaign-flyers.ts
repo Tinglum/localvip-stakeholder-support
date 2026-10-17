@@ -2,13 +2,15 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { createCanvas, loadImage } from '@napi-rs/canvas'
+import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
 import { Resvg } from '@resvg/resvg-js'
 import { PDFDocument } from 'pdf-lib'
 import QRCode from 'qrcode'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { readableBrandText } from '@/lib/brand-colors'
-import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot } from '@/lib/flyer-slots'
+import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
+import { flyerFonts } from '@/lib/server/flyer-fonts'
+import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
 
 import { approvedFlyerTemplateId, type FlyerAudience, type FlyerDesign } from '@/lib/flyer-designs'
 
@@ -58,22 +60,40 @@ async function imageData(url: string) {
   return `data:${mime};base64,${bytes.toString('base64')}`
 }
 
-const measure = createCanvas(1, 1).getContext('2d')
-function wrap(value: string, width: number, size: number, weight = 400) {
-  measure.font = `${weight} ${size}px Arial`
-  const lines: string[] = []
-  let line = ''
-  for (const word of value.trim().split(/\s+/)) {
-    const next = line ? `${line} ${word}` : word
-    if (line && measure.measureText(next).width > width) { lines.push(line); line = word }
-    else line = next
-  }
-  if (line) lines.push(line)
-  return lines
+// Measure with the same font files resvg renders with (see flyer-fonts).
+const measureContext = createCanvas(1, 1).getContext('2d')
+let fontsRegistered = false
+const measureFlyerText: FlyerMeasure = (text, kind, weight, size) => {
+  const fonts = flyerFonts()
+  if (!fontsRegistered) { for (const face of fonts.faces) GlobalFonts.registerFromPath(face.file, face.family); fontsRegistered = true }
+  measureContext.font = `${weight} ${size}px "${kind === 'display' ? fonts.display : fonts.sans}"`
+  return measureContext.measureText(text).width
 }
+/** resvg options that render with exactly the measured and previewed faces. */
+const resvgFonts = () => ({ font: { fontFiles: flyerFonts().faces.map(face => face.file), loadSystemFonts: true, defaultFontFamily: flyerFonts().sans } })
+const FLYER_PHOTO_SIZE = { width: 1875, height: 1725 }
+
+/** Lifts dark cover photos so the hero stays legible. Mutates RGBA pixels in place. */
+function brightenFlyerPixels(data: Uint8ClampedArray) {
+  let brightness = 0, samples = 0
+  for (let i = 0; i < data.length; i += 64) {
+    brightness += data[i] * .21 + data[i + 1] * .72 + data[i + 2] * .07
+    samples++
+  }
+  const mean = brightness / samples
+  const gamma = mean < 85 ? .56 : mean < 115 ? .72 : mean < 145 ? .88 : 1
+  if (gamma === 1) return false
+  const lut = Array.from({ length: 256 }, (_, value) => Math.round(255 * (value / 255) ** gamma))
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = lut[data[i]]
+    data[i + 1] = lut[data[i + 1]]
+    data[i + 2] = lut[data[i + 2]]
+  }
+  return true
+}
+
 async function brightenPhoto(dataUrl: string) {
-  const width = 1875
-  const height = 1725
+  const { width, height } = FLYER_PHOTO_SIZE
   let image
   try {
     image = await loadImage(Buffer.from(dataUrl.split(',')[1], 'base64'))
@@ -89,23 +109,51 @@ async function brightenPhoto(dataUrl: string) {
   ctx.drawImage(image, (width - image.width * scale) / 2, (height - image.height * scale) / 2,
     image.width * scale, image.height * scale)
   const pixels = ctx.getImageData(0, 0, width, height)
-  let brightness = 0, samples = 0
-  for (let i = 0; i < pixels.data.length; i += 64) {
-    brightness += (pixels.data[i] * .21 + pixels.data[i + 1] * .72 + pixels.data[i + 2] * .07)
-    samples++
-  }
-  const mean = brightness / samples
-  const gamma = mean < 85 ? .56 : mean < 115 ? .72 : mean < 145 ? .88 : 1
-  if (gamma < 1) {
-    const lut = Array.from({ length: 256 }, (_, value) => Math.round(255 * (value / 255) ** gamma))
-    for (let i = 0; i < pixels.data.length; i += 4) {
-      pixels.data[i] = lut[pixels.data[i]]
-      pixels.data[i + 1] = lut[pixels.data[i + 1]]
-      pixels.data[i + 2] = lut[pixels.data[i + 2]]
-    }
-    ctx.putImageData(pixels, 0, 0)
-  }
+  if (brightenFlyerPixels(pixels.data)) ctx.putImageData(pixels, 0, 0)
   return `data:image/png;base64,${(await canvas.encode('png')).toString('base64')}`
+}
+
+// Logos often arrive with generous transparent or white padding, which made
+// them read small in the header and the benefit circle. Crop to the visible
+// mark and note its shape, so layoutForLetter can size it to the circle.
+type LogoFit = { aspect: number; round: boolean }
+const logoFits = new Map<string, LogoFit>()
+async function trimLogo(dataUrl: string) {
+  let image
+  try { image = await loadImage(Buffer.from(dataUrl.split(',')[1], 'base64')) } catch { return dataUrl }
+  const scale = Math.min(1, 800 / Math.max(image.width, image.height))
+  const width = Math.max(1, Math.round(image.width * scale)), height = Math.max(1, Math.round(image.height * scale))
+  const canvas = createCanvas(width, height)
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(image, 0, 0, width, height)
+  const { data } = ctx.getImageData(0, 0, width, height)
+  const empty = (x: number, y: number) => {
+    const i = (y * width + x) * 4
+    return data[i + 3] < 24 || (data[i] > 244 && data[i + 1] > 244 && data[i + 2] > 244)
+  }
+  let left = width, right = -1, top = height, bottom = -1
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    if (empty(x, y)) continue
+    if (x < left) left = x
+    if (x > right) right = x
+    if (y < top) top = y
+    if (y > bottom) bottom = y
+  }
+  if (right < left || bottom < top) return dataUrl
+  const w = right - left + 1, h = bottom - top + 1
+  // A mark whose corners are background (a seal, a crest, a centred badge)
+  // can fill the circle; anything else must fit inside it unclipped.
+  const corner = Math.max(2, Math.round(Math.min(w, h) * .12))
+  let filled = 0, total = 0
+  for (const [cx, cy] of [[left, top], [right - corner, top], [left, bottom - corner], [right - corner, bottom - corner]]) {
+    for (let y = cy; y < cy + corner; y++) for (let x = cx; x < cx + corner; x++) { total++; if (!empty(x, y)) filled++ }
+  }
+  const out = createCanvas(w, h)
+  out.getContext('2d').drawImage(canvas, left, top, w, h, 0, 0, w, h)
+  const trimmed = `data:image/png;base64,${(await out.encode('png')).toString('base64')}`
+  if (logoFits.size > 20) logoFits.clear()
+  logoFits.set(trimmed, { aspect: w / h, round: filled / total < .04 })
+  return trimmed
 }
 
 // A twelve-flyer set shares two uploads. Decode them once instead of repeating
@@ -114,7 +162,7 @@ let preparedAssets: { key: string; expires: number; value: Promise<[string, stri
 function prepareAssets(logoUrl: string, coverUrl: string) {
   const key = JSON.stringify([logoUrl, coverUrl])
   if (preparedAssets?.key === key && preparedAssets.expires > Date.now()) return preparedAssets.value
-  const value = Promise.all([imageData(logoUrl), imageData(coverUrl).then(brightenPhoto)])
+  const value = Promise.all([imageData(logoUrl).then(trimLogo), imageData(coverUrl).then(brightenPhoto)])
   preparedAssets = { key, expires: Date.now() + 10 * 60 * 1000, value }
   void value.catch(() => { if (preparedAssets?.value === value) preparedAssets = undefined })
   return value
@@ -183,43 +231,41 @@ function walkFlyerText(svg: string, visit: (element: TextElement) => string | vo
 }
 
 function fontFor(attrs: string) {
-  const weight = /\bdisplay\b/.test(attr(attrs, 'class') || '') ? 900 : Number(attr(attrs, 'font-weight') || 400)
-  return { weight, size: Number(attr(attrs, 'font-size') || 16) }
-}
-function textWidth(value: string, weight: number, size: number) {
-  measure.font = `${weight} ${size}px Arial`
-  return measure.measureText(value).width
+  const kind: FlyerFontKind = /\bdisplay\b/.test(attr(attrs, 'class') || '') ? 'display' : 'sans'
+  const weight = kind === 'display' ? 900 : Number(attr(attrs, 'font-weight') || 400)
+  return { kind, weight, size: Number(attr(attrs, 'font-size') || 16) }
 }
 
+/**
+ * Applies text overrides and tags every editable line for the live preview:
+ * each <text> carries its font, design size and allowed width (data-fit), and
+ * each run is a <tspan data-slot="…">. The preview refits with the same rule.
+ */
 function applyFlyerTextOverrides(svg: string, overrides: Record<string, string>) {
-  if (!Object.keys(overrides).some(id => !id.startsWith('header.'))) return svg
   // Each block may grow to slightly wider than its widest default line.
   const blockWidth = new Map<string, number>()
   walkFlyerText(svg, ({ attrs, lines }) => {
-    const { weight, size } = fontFor(attrs)
+    const { kind, weight, size } = fontFor(attrs)
     const key = lines.find(Boolean)?.key
-    if (key) blockWidth.set(key, Math.max(blockWidth.get(key) || 0, textWidth(lines.map(line => line?.text || '').join(' '), weight, size)))
+    if (key) blockWidth.set(key, Math.max(blockWidth.get(key) || 0, measureFlyerText(flyerLineText(lines.map(line => line?.text)), kind, weight, size)))
   })
   return walkFlyerText(svg, ({ attrs, parts, lines }) => {
-    if (!lines.some(line => line && line.id in overrides)) return
+    const texts: (string | undefined)[] = []
     const next = parts.map((part, index) => {
       const line = lines[index]
-      if (!line || !(line.id in overrides)) return part
-      const value = esc(overrides[line.id].trim())
+      if (!line) return part
+      const value = line.id in overrides ? overrides[line.id].trim() : line.text
+      texts.push(value)
       // Keep the run's surrounding spacing and any <tspan> styling.
-      return part.replace(/^(\s*(?:<tspan\b[^>]*>)?\s*)[\s\S]*?(\s*(?:<\/tspan>)?\s*)$/, (_, open: string, close: string) => `${open}${value}${close}`)
+      return part.replace(/^(\s*)(<tspan\b[^>]*>)?\s*[\s\S]*?(<\/tspan>)?(\s*)$/, (_, before: string, open: string | undefined, _close, after: string) =>
+        `${before}${(open || '<tspan>').replace('<tspan', `<tspan data-slot="${line.id}"`)}${esc(value)}</tspan>${after}`)
     })
-    const { weight, size } = fontFor(attrs)
+    const { kind, weight, size } = fontFor(attrs)
     const allowed = (blockWidth.get(lines.find(Boolean)!.key) || 0) * 1.08
-    const width = textWidth(unesc(next.join('').replace(/<[^>]+>/g, '')), weight, size)
-    let fitted = attrs
-    if (allowed && width > allowed) {
-      // Shrink a long line to fit its block; past 60% of the design size,
-      // condense it instead so it can never spill out of the layout.
-      const scaled = Math.max(size * allowed / width, size * .6)
-      fitted = attrs.replace(/\bfont-size="[^"]*"/, `font-size="${scaled.toFixed(1)}"`)
-      if (scaled === size * .6) fitted += ` textLength="${allowed.toFixed(0)}" lengthAdjust="spacingAndGlyphs"`
-    }
+    const fit = fitFlyerLine(flyerLineText(texts), allowed, kind, weight, size, measureFlyerText)
+    const fitted = attrs.replace(/\bfont-size="[^"]*"/, `font-size="${fit.size}"`)
+      + ` data-kind="${kind}" data-weight="${weight}" data-size="${size}" data-fit="${allowed.toFixed(1)}"`
+      + (fit.textLength ? ` textLength="${fit.textLength}" lengthAdjust="spacingAndGlyphs"` : '')
     return `<text${fitted}>${next.join('')}</text>`
   })
 }
@@ -325,27 +371,16 @@ export async function buildCauseCampaignFlyerSvg(input: {
   // Preserve the library's navy/white/gold hierarchy. Cause colors belong
   // only in small secondary details, never the hero or main headline.
   const accent = color(input.palette?.accent, color(input.colors?.gold, color(input.colors?.navy, '#efb719')))
-  const heading = name.toUpperCase()
-  let headerSize = 39
-  let headerLines = wrap(heading, 605, headerSize, 900)
-  measure.font = `900 ${headerSize}px Arial`
-  while ((headerLines.length > 2 || headerLines.some(line => measure.measureText(line).width > 605)) && headerSize > 22) {
-    headerSize -= 2
-    headerLines = wrap(heading, 605, headerSize, 900)
-    measure.font = `900 ${headerSize}px Arial`
-  }
-  if (headerLines.length > 2 || headerLines.some(line => measure.measureText(line).width > 605)) {
-    throw new Error('The cause name is too long for the flyer header.')
-  }
+  const headerFit = fitFlyerHeader(name, measureFlyerText)
+  if (!headerFit) throw new Error('The cause name is too long for the flyer header.')
   const kindLabel = kind === 'booster' ? 'BOOSTER CLUB' : kind === 'school' ? 'SCHOOL COMMUNITY' : 'COMMUNITY CAUSE'
   const parent = input.parentOrganization?.trim().toUpperCase()
   const identityLabel = text['header.label'] ?? (parent && parent.length < 34 ? `${kindLabel} · ${parent}` : kindLabel)
-  measure.font = '400 15px Arial'
-  const labelSize = Math.max(9, Math.min(15, Math.floor(15 * 560 / (measure.measureText(identityLabel).width || 1))))
-  const header = headerLines.map((line, index) => `<text class="display white" x="212" y="${75 + index * 37}" font-size="${headerSize}">${esc(line)}</text>`).join('')
-    + `<text class="sans white" x="214" y="${headerLines.length === 2 ? 145 : 119}" font-size="${labelSize}" letter-spacing="1.2">${esc(identityLabel)}</text>`
+  // The preview rebuilds this group with the same markup as the name is edited.
+  const header = `<g data-slot-header="">${flyerHeaderMarkup(headerFit, identityLabel, measureFlyerText)}</g>`
   const replacements: Record<string, string> = { HEADER: header, PHOTO: photo, LOGO: logo, QR: qr }
   const svg = applyFlyerTextOverrides(localizeTemplateCopy(template, input.audience, kind, accent), text)
+    .replace(/href="{{(LOGO|PHOTO)}}"/g, (tag, key: string) => `data-slot="${key.toLowerCase()}" ${tag}`)
     .replace(/{{([A-Z_]+)}}/g, (_, key: string) => replacements[key] ?? '')
     .replace('</defs>', `<style>.step-number{fill:${readableBrandText(accent)}}</style></defs>`)
   if (!input.palette) return svg
@@ -360,57 +395,225 @@ export async function buildCauseCampaignFlyerSvg(input: {
     .replace('</defs>', `<style>.manual-hero-text{fill:${readableBrandText(background)}}.navy{fill:${readableBrandText(background) === '#FFFFFF' ? background : '#0b2349'}}</style></defs>`)
 }
 
-// The library artwork is 7:10 (1050 × 1500); Letter is 8.5:11. Fitting it by
-// height left 0.4" white bars on both sides, and cropping to width would cut
-// the header and footer. Instead widen the canvas to Letter's aspect and run
-// every full-width band (backgrounds, hero photo, clip) out to the new edges,
-// so the content keeps its proportions and the page prints edge to edge.
+// ---- Letter layout ---------------------------------------------------------
+// The library artwork is 7:10 (1050 × 1500); Letter is 8.5:11, i.e. the same
+// height and ~10% wider. Rather than pad the sides, every element is placed
+// on the wider page: horizontal positions scale by LETTER_K (so margins,
+// columns, cards, the benefit flow and the footer spread across the full
+// width with proportional gutters), while type and icons keep their size.
+// Full-width bands and cards stretch; the cause logo gets a larger header
+// slot and fills its circle in the benefit flow.
+//
+// This runs on the composed SVG, after slots and overrides are applied, so
+// template coordinates (which identify editable slots) are never changed.
+// <text> elements are only ever wrapped in a translating <g>, never edited.
 const ART_WIDTH = 1050
 const ART_HEIGHT = 1500
-const BLEED_WIDTH = ART_HEIGHT * 8.5 / 11
-const BLEED_PAD = (BLEED_WIDTH - ART_WIDTH) / 2
-export function toLetterBleed(svg: string) {
-  const num = (tag: string, name: string) => Number(new RegExp(`\\s${name}="([-\\d.]+)"`).exec(tag)?.[1] ?? 0)
-  return svg
-    .replace(/<svg\b[^>]*>/, tag => tag.replace(/\swidth="[^"]*"/, ` width="${BLEED_WIDTH}"`)
-      .replace(/\sviewBox="[^"]*"/, ` viewBox="${-BLEED_PAD} 0 ${BLEED_WIDTH} ${ART_HEIGHT}"`))
-    .replace(/<(?:rect|image)\b[^>]*>/g, tag => {
-      const x = num(tag, 'x')
-      const width = num(tag, 'width')
-      // Only elements that reach the artwork's right edge are bands; a local
-      // x="0" inside a translated icon group must stay as drawn.
-      if (x + width !== ART_WIDTH) return tag
-      const left = x === 0
-      const nextX = left ? -BLEED_PAD : x
-      const nextWidth = width + BLEED_PAD * (left ? 2 : 1)
-      return tag.replace(/\sx="[^"]*"/, '').replace(/\swidth="[^"]*"/, ` x="${nextX}" width="${nextWidth}"`)
-    })
+const LETTER_WIDTH = ART_HEIGHT * 8.5 / 11
+const LETTER_K = LETTER_WIDTH / ART_WIDTH
+const X = (x: number) => +(x * LETTER_K).toFixed(2)
+const shift = (x: number) => +(x * (LETTER_K - 1)).toFixed(2)
+// Header: the cause logo is ~45% larger than the library's 120 × 104 slot,
+// with the gold rule and the name/label block following it.
+const HEADER_LOGO = { x: X(56), y: 30, width: 168, height: 144 }
+const HEADER_RULE_X = HEADER_LOGO.x + HEADER_LOGO.width + 16
+const HEADER_TEXT_X = HEADER_RULE_X + 22
+const HEADER_CENTER_Y = HEADER_LOGO.y + HEADER_LOGO.height / 2
+// Benefit flow: the circle is r=55 with a 5px stroke (inner edge 52.5).
+const FLOW_LOGO_RADIUS = 50
+/**
+ * The largest box for the logo in the flow circle. A round mark fills the
+ * clip circle; any other shape gets the largest rectangle of its proportions
+ * whose corners stay inside it, so no part of the mark is cut off.
+ */
+function flowLogoBox(href: string) {
+  const fit = logoFits.get(href)
+  const diameter = FLOW_LOGO_RADIUS * 2
+  if (fit?.round) return { width: diameter, height: diameter }
+  const aspect = fit?.aspect || 1
+  const height = diameter / Math.sqrt(1 + aspect * aspect)
+  return { width: +(height * aspect).toFixed(2), height: +height.toFixed(2) }
 }
 
-export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview = false) {
-  // Keep native decoder failures out of the web server. A fresh process also
-  // releases all native image allocations after each print-resolution PDF.
-  if (process.env.LOCALVIP_FLYER_WORKER !== '1') {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const { stdout } = await promisify(execFile)(process.execPath,
-          ['--import', 'tsx', path.join(process.cwd(), 'scripts/cause-flyer-worker.ts'), JSON.stringify(input), preview ? 'preview' : 'pdf'],
-          { cwd: process.cwd(), env: { ...process.env, LOCALVIP_FLYER_WORKER: '1' }, encoding: 'buffer',
-            timeout: 120000, maxBuffer: 32 * 1024 * 1024 })
-        return new Uint8Array(stdout)
-      } catch (error) {
-        if (attempt < 2 && (error as { signal?: string }).signal === 'SIGSEGV') continue
-        throw error
-      }
+const numAttr = (tag: string, name: string) => {
+  const value = new RegExp(`\\s${name}="([-\\d.]+)"`).exec(tag)?.[1]
+  return value === undefined ? undefined : Number(value)
+}
+const setAttr = (tag: string, name: string, value: number | string) =>
+  new RegExp(`\\s${name}="[^"]*"`).test(tag)
+    ? tag.replace(new RegExp(`\\s${name}="[^"]*"`), ` ${name}="${value}"`)
+    : tag.replace(/^<([a-zA-Z]+)/, `<$1 ${name}="${value}"`)
+
+/** Full-width bands span the page; the right-anchored hero photo keeps its edge. */
+function stretchBands(fragment: string) {
+  return fragment.replace(/<(?:rect|image)\b[^>]*>/g, tag => {
+    const x = numAttr(tag, 'x') ?? 0
+    const width = numAttr(tag, 'width') ?? 0
+    // Only elements reaching the artwork's right edge are bands; a local
+    // x="0" inside a translated icon group must stay as drawn.
+    if (!width || x + width !== ART_WIDTH) return tag
+    return setAttr(setAttr(tag, 'x', X(x)), 'width', +(LETTER_WIDTH - X(x)).toFixed(2))
+  })
+}
+
+/** Splits an SVG fragment into its top-level elements (and the text between them). */
+function topLevelElements(body: string) {
+  const parts: string[] = []
+  const token = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z]+)\b[^>]*?(\/?)>/g
+  let depth = 0, start = 0, last = 0, match: RegExpExecArray | null
+  while ((match = token.exec(body))) {
+    if (match[0].startsWith('<!--')) continue
+    const [, closing, , selfClosing] = match
+    if (!closing && depth === 0) { if (match.index > last) parts.push(body.slice(last, match.index)); start = match.index }
+    if (closing) depth--
+    else if (!selfClosing) depth++
+    if (depth === 0) { parts.push(body.slice(start, token.lastIndex)); last = token.lastIndex }
+  }
+  parts.push(body.slice(last))
+  return parts
+}
+
+function layoutGroup(element: string, open: string, tx: number, ty: number) {
+  const inner = element.slice(open.length)
+  // Cards: anchor the left edge and stretch the panel to the scaled width.
+  const card = /^\s*<rect\b(?![^>]*\sx=)[^>]*\swidth="(\d+(?:\.\d+)?)"/.exec(inner)
+  if (card && Number(card[1]) >= 200) {
+    const width = Number(card[1])
+    const nextTx = X(tx)
+    const nextWidth = +(X(tx + width) - nextTx).toFixed(2)
+    // Edited lines may use the card's extra width (data-fit is the editor's line budget).
+    const resized = inner.replace(card[0], card[0].replace(/\swidth="[^"]*"/, ` width="${nextWidth}"`))
+      .replace(/\sdata-fit="([\d.]+)"/g, (_, fit: string) => ` data-fit="${(Number(fit) + nextWidth - width).toFixed(1)}"`)
+    return open.replace(/translate\([^)]*\)/, `translate(${nextTx} ${ty})`) + resized
+  }
+  // Anything else keeps its size and moves with its visual centre: the shared
+  // x of its centred text (step columns, the LocalVIP mark), else its first
+  // image, else its origin (benefit circles, footer actions).
+  const centred = /<text\b[^>]*\sx="([-\d.]+)"[^>]*text-anchor="middle"/.exec(inner)
+  const image = /<image\b[^>]*>/.exec(inner)?.[0]
+  const centre = centred ? Number(centred[1])
+    : image && (numAttr(image, 'x') ?? 0) >= 0 ? (numAttr(image, 'x') ?? 0) + (numAttr(image, 'width') ?? 0) / 2 : 0
+  const nextTx = +(X(tx + centre) - centre).toFixed(2)
+  // Column rules sit on the boundary between columns, which scales with them.
+  const ruled = inner.replace(/<line\b(?=[^>]*\sx1="0")(?=[^>]*\sx2="0")[^>]*>/g, line =>
+    setAttr(setAttr(line, 'x1', +(X(tx) - nextTx).toFixed(2)), 'x2', +(X(tx) - nextTx).toFixed(2)))
+  const flowLogo = ruled.replace(/<image\b(?=[^>]*\sx="-)(?=[^>]*\sy="-)[^>]*>/g, tag => {
+    const { width, height } = flowLogoBox(/\shref="([^"]*)"/.exec(tag)?.[1] || '')
+    let next = setAttr(setAttr(setAttr(setAttr(tag, 'x', -width / 2), 'y', -height / 2), 'width', width), 'height', height)
+    next = setAttr(next, 'preserveAspectRatio', 'xMidYMid meet')
+    return next.replace(/\s*\/?>$/, ' clip-path="url(#flowLogoClip)"/>')
+  })
+  return open.replace(/translate\([^)]*\)/, `translate(${nextTx} ${ty})`) + flowLogo
+}
+
+function layoutElement(element: string, header: { dx: number; dy: number }) {
+  const open = /^<([a-zA-Z]+)\b[^>]*>/.exec(element)
+  if (!open) return element
+  const [tag, name] = open
+  const x = numAttr(tag, 'x') ?? 0
+  const width = numAttr(tag, 'width') ?? 0
+  const y = numAttr(tag, 'y') ?? 0
+  if ((name === 'rect' || name === 'image') && width && x + width === ART_WIDTH) return stretchBands(element)
+  if (name === 'g' && /\sclip-path=/.test(tag)) return stretchBands(element)
+  // The header may arrive as loose <text>s or wrapped in one group
+  // (data-slot-header); either way it moves with the enlarged logo.
+  if (name === 'g' && (/\sdata-slot-header\b/.test(tag) || /<text\b[^>]*\sx="21[24]"/.test(element) && !/transform=/.test(tag))) {
+    return `<g transform="translate(${header.dx} ${header.dy})">${element}</g>`
+  }
+  if (name === 'g') {
+    const translate = /translate\(([-\d.]+)[ ,]+([-\d.]+)\)/.exec(tag)
+    return translate ? layoutGroup(element, tag, Number(translate[1]), Number(translate[2])) : element
+  }
+  if (name === 'text') {
+    // The cause name and label move with the enlarged header logo.
+    if ((x === 212 || x === 214) && y < 170) return `<g transform="translate(${header.dx} ${header.dy})">${element}</g>`
+    return `<g transform="translate(${shift(x)} 0)">${element}</g>`
+  }
+  if (name === 'image' && y < 60 && x < 70) {
+    return element.replace(tag, setAttr(setAttr(setAttr(setAttr(tag, 'x', HEADER_LOGO.x), 'y', HEADER_LOGO.y), 'width', HEADER_LOGO.width), 'height', HEADER_LOGO.height))
+  }
+  if (name === 'rect' && x === 190 && y < 60) {
+    return element.replace(tag, setAttr(setAttr(setAttr(tag, 'x', HEADER_RULE_X), 'y', HEADER_LOGO.y + 12), 'height', HEADER_LOGO.height - 24))
+  }
+  if (name === 'rect' || name === 'image') return element.replace(tag, setAttr(tag, 'x', +(x + shift(x + width / 2)).toFixed(2)))
+  if (name === 'line') return element.replace(tag, setAttr(setAttr(tag, 'x1', X(numAttr(tag, 'x1') ?? 0)), 'x2', X(numAttr(tag, 'x2') ?? 0)))
+  if (name === 'circle') return element.replace(tag, setAttr(tag, 'cx', X(numAttr(tag, 'cx') ?? 0)))
+  if (name === 'path') {
+    const d = /\sd="([^"]*)"/.exec(tag)?.[1] || ''
+    // Flow arrows are absolute M/C/L curves; scale their x coordinates.
+    if (!/^[MCL\d\s.,-]+$/.test(d)) return element
+    let index = 0
+    const next = d.replace(/-?\d+(?:\.\d+)?/g, value => (index++ % 2 === 0 ? String(X(Number(value))) : value))
+    return element.replace(tag, tag.replace(/\sd="[^"]*"/, ` d="${next}"`))
+  }
+  return element
+}
+
+/** Lays a composed 1050 × 1500 flyer out on a Letter-proportioned page. See above. */
+export function layoutForLetter(svg: string) {
+  const defsEnd = svg.indexOf('</defs>')
+  const bodyStart = defsEnd >= 0 ? defsEnd + '</defs>'.length : svg.indexOf('>', svg.indexOf('<svg')) + 1
+  const bodyEnd = svg.lastIndexOf('</svg>')
+  const head = stretchBands(svg.slice(0, bodyStart))
+    .replace(/<svg\b[^>]*>/, root => setAttr(setAttr(root, 'width', LETTER_WIDTH), 'viewBox', `0 0 ${LETTER_WIDTH} ${ART_HEIGHT}`))
+    .replace('</defs>', `<clipPath id="flowLogoClip"><circle r="${FLOW_LOGO_RADIUS}"/></clipPath></defs>`)
+  const body = svg.slice(bodyStart, bodyEnd)
+  // Centre the name/label block on the larger logo. The block spans y≈47 to
+  // the label at 119 (one-line name) or 145 (two lines); the live editor
+  // rebuilds it on every name edit, so centre on the midpoint of both cases
+  // rather than on whichever line count the server rendered.
+  const header = { dx: +(HEADER_TEXT_X - 212).toFixed(2), dy: Math.round(HEADER_CENTER_Y - (47 + (119 + 145) / 2) / 2) }
+  return head + topLevelElements(body).map(part => part.startsWith('<') && !part.startsWith('<!--') ? layoutElement(part, header) : part).join('') + svg.slice(bodyEnd)
+}
+
+/**
+ * The composed Letter SVG a PDF is printed from, with every editable
+ * line and image tagged by slot id, for the generator's live preview.
+ */
+export async function renderCauseCampaignFlyerSvg(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0]) {
+  return Buffer.from(await renderCauseCampaignFlyer(input, 'svg')).toString('utf8')
+}
+
+// Keep native decoder failures out of the web server. A fresh process also
+// releases all native image allocations after each print-resolution PDF.
+async function runFlyerWorker(payload: unknown, mode: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { stdout } = await promisify(execFile)(process.execPath,
+        ['--import', 'tsx', path.join(process.cwd(), 'scripts/cause-flyer-worker.ts'), JSON.stringify(payload), mode],
+        { cwd: process.cwd(), env: { ...process.env, LOCALVIP_FLYER_WORKER: '1' }, encoding: 'buffer',
+          timeout: 120000, maxBuffer: 32 * 1024 * 1024 })
+      return new Uint8Array(stdout)
+    } catch (error) {
+      if (attempt < 2 && (error as { signal?: string }).signal === 'SIGSEGV') continue
+      throw error
     }
   }
-  const svg = toLetterBleed(await buildCauseCampaignFlyerSvg(input))
+}
+
+/**
+ * One replacement image treated exactly as the renderer treats it: a logo is
+ * trimmed to its mark (with its box in the benefit circle), a photo is
+ * cropped and brightened. The live preview swaps it in without a full render.
+ */
+export async function prepareFlyerImage(slot: 'logo' | 'photo', url: string): Promise<PreparedFlyerImage> {
+  if (process.env.LOCALVIP_FLYER_WORKER !== '1') return JSON.parse(Buffer.from(await runFlyerWorker({ slot, url }, 'image')).toString('utf8'))
+  const data = await imageData(url)
+  if (slot === 'photo') return { href: await brightenPhoto(data) }
+  const href = await trimLogo(data)
+  return { href, flowLogo: flowLogoBox(href) }
+}
+
+export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview: boolean | 'svg' = false) {
+  if (process.env.LOCALVIP_FLYER_WORKER !== '1') return runFlyerWorker(input, preview === 'svg' ? 'svg' : preview ? 'preview' : 'pdf')
+  const svg = layoutForLetter(await buildCauseCampaignFlyerSvg(input))
+  if (preview === 'svg') return Buffer.from(svg)
   // 2550 × 3300 is 300 pixels per printed inch on Letter, which keeps type,
   // icons and QR modules crisp in print.
-  const png = new Resvg(svg, { fitTo: { mode: 'width', value: 2550 } }).render().asPng()
+  const png = new Resvg(svg, { ...resvgFonts(), fitTo: { mode: 'width', value: 2550 } }).render().asPng()
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([612, 792])
   page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 612, height: 792 })
   const bytes = await pdf.save()
-  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { fitTo: { mode: 'width', value: 765 } }).render().asPng().toString('base64') })) : bytes
+  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { ...resvgFonts(), fitTo: { mode: 'width', value: 765 } }).render().asPng().toString('base64') })) : bytes
 }

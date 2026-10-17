@@ -60,11 +60,17 @@ test('text and image overrides reach the rendered flyer, escaped and fitted', as
       images: { logo: `${base}/flyer-edits/logo.png`, photo: `${base}/flyer-edits/photo.png` },
     }
     const svg = await buildCauseCampaignFlyerSvg({ ...input, overrides })
-    assert.match(svg, />BAKE SALE &amp; &lt;MORE&gt;</)
-    assert.match(svg, /<tspan fill="#efb719">GO TEAM\.<\/tspan>/)
-    assert.match(svg, />RENAMED CAUSE</)
-    assert.match(svg, /font-size="[\d.]+"[^>]*>A MUCH LONGER STEP TITLE/)
-    assert.doesNotMatch(svg, /font-size="18"[^>]*>A MUCH LONGER STEP TITLE/)
+    assert.match(svg, /<tspan data-slot="headline.1">BAKE SALE &amp; &lt;MORE&gt;<\/tspan>/)
+    // The space between a footer's runs survives tagging.
+    assert.match(svg, /<\/tspan> <tspan data-slot="footer.2" fill="#efb719">GO TEAM\.<\/tspan>/)
+    assert.match(svg, /<g data-slot-header="">[^]*>RENAMED CAUSE</)
+    const step = /<text[^>]*font-size="([\d.]+)"[^>]*data-size="(\d+)"[^>]*><tspan data-slot="step2-title.1">A MUCH LONGER STEP TITLE/.exec(svg)
+    assert.ok(step && Number(step[1]) < Number(step[2]), 'a long line shrinks below its design size')
+    // Every slot line and both images are tagged for the live preview.
+    const slots = await getFlyerSlots(input)
+    for (const slot of slots.text.filter(item => !item.id.startsWith('header.'))) assert.ok(svg.includes(`data-slot="${slot.id}"`), `${slot.id} is not tagged`)
+    assert.equal(svg.match(/data-slot="logo"/g)?.length, 2)
+    assert.equal(svg.match(/data-slot="photo"/g)?.length, 1)
 
     const { pdf, preview } = JSON.parse(Buffer.from(await renderCauseCampaignFlyer({ ...input, overrides }, true)).toString('utf8'))
     assert.equal(Buffer.from(pdf, 'base64').subarray(0, 5).toString(), '%PDF-')

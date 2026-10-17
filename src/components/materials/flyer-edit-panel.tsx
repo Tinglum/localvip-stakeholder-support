@@ -14,19 +14,21 @@ type Props = {
   /** The cause's existing logo and photos, offered as one-click choices. */
   assets: string[]
   edits: FlyerOverrides
-  /** True when `edits` differ from what the preview shows. */
-  pending: boolean
   busy: boolean
+  /** Background save of the edits to the cause, shown in the footer. */
+  saveState: 'idle' | 'saving' | 'saved' | 'error'
   onChange: (edits: FlyerOverrides) => void
-  onUpdate: () => void
+  /** Shows a picked file in the preview while it uploads (undefined clears it). */
+  onLocalImage: (slot: FlyerImageSlot['id'], objectUrl: string | undefined) => void
   onResetAll: () => void
 }
 
 /**
  * Line-by-line copy and image edits for a generated flyer. Lines map to the
  * approved layout's own lines, so the artwork's structure never changes.
+ * Every change shows in the live preview at once; the PDF is made on demand.
  */
-export function FlyerEditPanel({ slots, assets, edits, pending, busy, onChange, onUpdate, onResetAll }: Props) {
+export function FlyerEditPanel({ slots, assets, edits, busy, saveState, onChange, onLocalImage, onResetAll }: Props) {
   const groups = React.useMemo(() => {
     const byGroup = new Map<string, FlyerTextSlot[]>()
     for (const slot of slots.text) byGroup.set(slot.group, [...(byGroup.get(slot.group) || []), slot])
@@ -48,14 +50,14 @@ export function FlyerEditPanel({ slots, assets, edits, pending, busy, onChange, 
     <header className="flex items-start justify-between gap-3 border-b border-surface-100 p-5">
       <div>
         <h2 id="flyer-edit-title" className="font-semibold text-surface-900">Edit text &amp; images</h2>
-        <p className="mt-1 text-sm text-surface-600">Edits are saved for this design and audience when you update the preview.</p>
+        <p className="mt-1 text-sm text-surface-600">Changes appear in the preview as you type. They are kept for this design and audience.</p>
       </div>
       {editedCount > 0 && <span className="shrink-0 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">{editedCount} edited</span>}
     </header>
 
     <div className="grid gap-4 border-b border-surface-100 p-5 sm:grid-cols-2">
       {slots.images.map(slot => <ImageSlotEditor key={slot.id} slot={slot} value={edits.images?.[slot.id]} assets={assets} disabled={busy}
-        onChange={value => setImage(slot.id, value)} />)}
+        onChange={value => setImage(slot.id, value)} onLocal={url => onLocalImage(slot.id, url)} />)}
     </div>
 
     <div className="divide-y divide-surface-100">
@@ -80,7 +82,9 @@ export function FlyerEditPanel({ slots, assets, edits, pending, busy, onChange, 
 
     <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-b-2xl border-t border-surface-200 bg-white/95 p-4 backdrop-blur">
       <Button variant="ghost" size="sm" disabled={busy || editedCount === 0} onClick={onResetAll}><RotateCcw className="h-3.5 w-3.5" />Reset all</Button>
-      <Button disabled={busy || !pending} onClick={onUpdate}>{busy ? <><Loader2 className="h-4 w-4 animate-spin" />Updating…</> : 'Update preview'}</Button>
+      <p role="status" aria-live="polite" className={`text-xs ${saveState === 'error' ? 'text-error-700' : 'text-surface-500'}`}>
+        {saveState === 'saving' ? 'Saving edits…' : saveState === 'saved' ? 'Edits saved' : saveState === 'error' ? 'Edits not saved — they will be saved with your PDF.' : ''}
+      </p>
     </footer>
   </section>
 }
@@ -104,19 +108,24 @@ function TextLineEditor({ slot, label, numbered, value, disabled, onChange }: {
   </div>
 }
 
-function ImageSlotEditor({ slot, value, assets, disabled, onChange }: {
-  slot: FlyerImageSlot; value: string | undefined; assets: string[]; disabled: boolean; onChange: (value: string | undefined) => void
+function ImageSlotEditor({ slot, value, assets, disabled, onChange, onLocal }: {
+  slot: FlyerImageSlot; value: string | undefined; assets: string[]; disabled: boolean
+  onChange: (value: string | undefined) => void; onLocal: (objectUrl: string | undefined) => void
 }) {
+  const [local, setLocal] = React.useState('')
   const input = React.useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = React.useState(false)
   const [error, setError] = React.useState('')
-  const current = value || slot.default
+  const current = local || value || slot.default
   const choices = assets.filter(asset => asset !== current).slice(0, 4)
 
   async function upload(file: File) {
     setError('')
     if (!IMAGE_TYPES.includes(file.type)) { setError('Choose a PNG, JPEG, or WebP image.'); return }
     if (file.size > MAX_IMAGE_BYTES) { setError('Choose an image under 12 MB.'); return }
+    // Show the picked file right away; the upload replaces it with the stored copy.
+    const objectUrl = URL.createObjectURL(file)
+    setLocal(objectUrl); onLocal(objectUrl)
     setUploading(true)
     try {
       const form = new FormData()
@@ -126,7 +135,11 @@ function ImageSlotEditor({ slot, value, assets, disabled, onChange }: {
       if (!response.ok || !body?.fileUrl) throw new Error(body?.error || 'The image could not be uploaded.')
       onChange(body.fileUrl as string)
     } catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : 'The image could not be uploaded.') }
-    finally { setUploading(false); if (input.current) input.current.value = '' }
+    finally {
+      setUploading(false); setLocal(''); onLocal(undefined)
+      if (input.current) input.current.value = ''
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
+    }
   }
 
   return <div className="space-y-2">
@@ -137,7 +150,7 @@ function ImageSlotEditor({ slot, value, assets, disabled, onChange }: {
     </div>
     <div className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl border bg-surface-50 ${value ? 'border-brand-300' : 'border-surface-200'}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={toProxiedMaterialUrl(current)} alt={`${slot.label} on the flyer`} className={slot.id === 'logo' ? 'max-h-[80%] max-w-[80%] object-contain' : 'h-full w-full object-cover'} />
+      <img src={current.startsWith('blob:') ? current : toProxiedMaterialUrl(current)} alt={`${slot.label} on the flyer`} className={slot.id === 'logo' ? 'max-h-[80%] max-w-[80%] object-contain' : 'h-full w-full object-cover'} />
       {uploading && <div className="absolute inset-0 flex items-center justify-center bg-white/70"><Loader2 className="h-5 w-5 animate-spin text-brand-600" aria-label="Uploading" /></div>}
     </div>
     <input ref={input} type="file" accept={IMAGE_TYPES.join(',')} className="sr-only" tabIndex={-1} aria-hidden
