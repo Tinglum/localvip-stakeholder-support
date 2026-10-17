@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { AddressFields } from '@/components/ui/address-fields'
 import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { useCrmCauses } from '@/lib/hooks/crm-businesses'
 import type { Brand, Cause, OnboardingStage } from '@/lib/types/database'
@@ -546,33 +547,20 @@ export default function CausesPage() {
                   <option value="other">Other</option>
                 </select>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">City *</label>
-                <Input required value={form.city} onChange={event => handleFormChange('city', event.target.value)} />
-              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-surface-700">Street Address *</label>
-              <Input required placeholder="123 Main Street" value={form.address1} onChange={event => handleFormChange('address1', event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-surface-700">Address Line 2</label>
-              <Input placeholder="Suite, unit, or floor" value={form.address2} onChange={event => handleFormChange('address2', event.target.value)} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">State *</label>
-                <Input required value={form.state} onChange={event => handleFormChange('state', event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">ZIP Code *</label>
-                <Input required value={form.zipCode} onChange={event => handleFormChange('zipCode', event.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-surface-700">Country *</label>
-              <Input required value={form.country} onChange={event => handleFormChange('country', event.target.value)} />
-            </div>
+            <AddressFields
+              required
+              value={form}
+              onChange={next => setForm(current => ({
+                ...current,
+                address1: next.address1,
+                address2: next.address2,
+                city: next.city,
+                state: next.state,
+                zipCode: next.zipCode,
+                country: next.country,
+              }))}
+            />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-surface-700">Website</label>

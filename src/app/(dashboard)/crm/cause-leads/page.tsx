@@ -24,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import { AddressFields } from '@/components/ui/address-fields'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ORGANIZATION_TYPE_LABELS,
@@ -487,73 +487,16 @@ export default function CauseLeadsPage() {
                     : 'The public form does not ask for a street address, and registration requires one. Add it before approving.'}
                 </p>
 
-                <div className="mt-3 space-y-3">
-                  <div className="space-y-2">
-                    <label htmlFor="cause-lead-address1" className="text-sm font-medium text-surface-700">
-                      Street address *
-                    </label>
-                    <Input
-                      id="cause-lead-address1"
-                      required
-                      autoComplete="off"
-                      aria-describedby="cause-lead-address1-hint"
-                      placeholder="1234 Main St"
-                      value={address.address1}
-                      onChange={event => setAddress(current => ({ ...current, address1: event.target.value }))}
-                    />
-                    <p
-                      id="cause-lead-address1-hint"
-                      className={missingAddress1 ? 'text-xs text-warning-600' : 'text-xs text-surface-400'}
-                    >
-                      {missingAddress1
-                        ? 'Required — approval is refused without a street address.'
-                        : 'Used to register the nonprofit account.'}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="cause-lead-address2" className="text-sm font-medium text-surface-700">
-                      Suite, unit, building
-                    </label>
-                    <Input
-                      id="cause-lead-address2"
-                      autoComplete="off"
-                      value={address.address2}
-                      onChange={event => setAddress(current => ({ ...current, address2: event.target.value }))}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-2">
-                      <label htmlFor="cause-lead-city" className="text-sm font-medium text-surface-700">City</label>
-                      <Input
-                        id="cause-lead-city"
-                        autoComplete="off"
-                        value={address.city}
-                        onChange={event => setAddress(current => ({ ...current, city: event.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="cause-lead-state" className="text-sm font-medium text-surface-700">State</label>
-                      <Input
-                        id="cause-lead-state"
-                        autoComplete="off"
-                        value={address.state}
-                        onChange={event => setAddress(current => ({ ...current, state: event.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="cause-lead-zip" className="text-sm font-medium text-surface-700">ZIP</label>
-                      <Input
-                        id="cause-lead-zip"
-                        autoComplete="off"
-                        inputMode="numeric"
-                        value={address.zipCode}
-                        onChange={event => setAddress(current => ({ ...current, zipCode: event.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </div>
+                <AddressFields
+                  className="mt-3"
+                  value={address}
+                  onChange={next => setAddress(next)}
+                />
+                <p className={missingAddress1 ? 'mt-2 text-xs text-warning-600' : 'mt-2 text-xs text-surface-400'}>
+                  {missingAddress1
+                    ? 'Required — approval is refused without a street address.'
+                    : 'Used to register the nonprofit account.'}
+                </p>
               </section>
 
               <section className="mt-5">

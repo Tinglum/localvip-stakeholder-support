@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { AddressFields } from '@/components/ui/address-fields'
 import { ONBOARDING_STAGES } from '@/lib/constants'
 import { useCrmBusinesses } from '@/lib/hooks/crm-businesses'
 import { formatDate } from '@/lib/utils'
@@ -635,34 +636,25 @@ export default function BusinessesPage() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-surface-700">Street Address *</label>
-              <Input required placeholder="123 Main Street" value={formAddress1} onChange={event => setFormAddress1(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-surface-700">Address Line 2</label>
-              <Input placeholder="Suite, unit, or floor" value={formAddress2} onChange={event => setFormAddress2(event.target.value)} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">City *</label>
-                <Input required value={formCity} onChange={event => setFormCity(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">State *</label>
-                <Input required value={formState} onChange={event => setFormState(event.target.value)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">ZIP Code *</label>
-                <Input required value={formZipCode} onChange={event => setFormZipCode(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-surface-700">Country *</label>
-                <Input required value={formCountry} onChange={event => setFormCountry(event.target.value)} />
-              </div>
-            </div>
+            <AddressFields
+              required
+              value={{
+                address1: formAddress1,
+                address2: formAddress2,
+                city: formCity,
+                state: formState,
+                zipCode: formZipCode,
+                country: formCountry,
+              }}
+              onChange={next => {
+                setFormAddress1(next.address1)
+                setFormAddress2(next.address2)
+                setFormCity(next.city)
+                setFormState(next.state)
+                setFormZipCode(next.zipCode)
+                setFormCountry(next.country)
+              }}
+            />
             <div className="space-y-2">
               <label className="text-sm font-medium text-surface-700">Category</label>
               <Input placeholder="e.g. Restaurant" value={formCategory} onChange={event => setFormCategory(event.target.value)} />

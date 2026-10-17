@@ -25,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { AddressFields, EMPTY_ADDRESS } from '@/components/ui/address-fields'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth/context'
@@ -1044,39 +1045,19 @@ export function BusinessGrowPage({ embedded = false }: { embedded?: boolean } = 
                       type="tel"
                     />
                   </InputBlock>
-                  {inviteeType === 'cause' ? (
-                    <div className="md:col-span-2">
-                      <InputBlock label="Street address">
-                        <Input
-                          value={inviteeAddress1}
-                          onChange={(event) => setInviteeAddress1(event.target.value)}
-                          placeholder="1200 Peachtree St NE"
-                        />
-                      </InputBlock>
-                    </div>
-                  ) : null}
-                  <InputBlock label="City">
-                    <Input
-                      value={inviteeCity}
-                      onChange={(event) => setInviteeCity(event.target.value)}
-                      placeholder={cityName}
+                  {/* The invite stores no unit or country (US invites), so those stay
+                      hidden; a street is only collected for a cause. */}
+                  <div className="md:col-span-2">
+                    <AddressFields
+                      fields={inviteeType === 'cause' ? ['address1', 'city', 'state', 'zipCode'] : ['city', 'state', 'zipCode']}
+                      value={{ ...EMPTY_ADDRESS, address1: inviteeAddress1, city: inviteeCity, state: inviteeState, zipCode: inviteeZip }}
+                      onChange={next => {
+                        setInviteeAddress1(next.address1)
+                        setInviteeCity(next.city)
+                        setInviteeState(next.state)
+                        setInviteeZip(next.zipCode)
+                      }}
                     />
-                  </InputBlock>
-                  <div className="grid grid-cols-2 gap-4">
-                    <InputBlock label="State">
-                      <Input
-                        value={inviteeState}
-                        onChange={(event) => setInviteeState(event.target.value)}
-                        placeholder="GA"
-                      />
-                    </InputBlock>
-                    <InputBlock label="ZIP">
-                      <Input
-                        value={inviteeZip}
-                        onChange={(event) => setInviteeZip(event.target.value)}
-                        placeholder="30309"
-                      />
-                    </InputBlock>
                   </div>
                   <div className="md:col-span-2">
                     <InputBlock label={inviteeType === 'cause' ? 'Why this cause' : 'Personal note'}>

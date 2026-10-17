@@ -57,6 +57,7 @@ import { BRANDS, ONBOARDING_STAGES } from '@/lib/constants'
 import { getEntityTheme } from '@/lib/entity-themes'
 import { cn, formatDate } from '@/lib/utils'
 import { getStakeholderShell } from '@/lib/stakeholder-access'
+import { AddressFields, EMPTY_ADDRESS, normalizeUsState } from '@/components/ui/address-fields'
 import { clearOnboardingDraft, readOnboardingDraft, writeOnboardingDraft } from '@/lib/onboarding-draft'
 import {
   computeCauseOnboardingChecklist,
@@ -1915,10 +1916,24 @@ function AddCauseDialog({
             <FormInput label="Primary contact email *" required value={form.email} onChange={(value) => handleFormChange('email', value)} type="email" placeholder="contact@school.edu" />
             <FormInput label="Phone" value={form.phone} onChange={(value) => handleFormChange('phone', value)} type="tel" placeholder="(913) 555-0000" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <FormInput label="Street address *" required value={form.address1} onChange={(value) => handleFormChange('address1', value)} />
-            <FormInput label="ZIP code *" required value={form.zipCode} onChange={(value) => handleFormChange('zipCode', value)} />
-          </div>
+          {/* City comes from LocalVIP's market list above, so only street and ZIP
+              are typed here. Picking a Google result also selects the matching
+              market city when there is one. */}
+          <AddressFields
+            required
+            fields={['address1', 'zipCode']}
+            value={{ ...EMPTY_ADDRESS, address1: form.address1, zipCode: form.zipCode, country: form.country || 'US' }}
+            onChange={next => {
+              handleFormChange('address1', next.address1)
+              handleFormChange('zipCode', next.zipCode)
+            }}
+            onPick={picked => {
+              const market = cities.find(city =>
+                city.name.trim().toLowerCase() === picked.city.trim().toLowerCase()
+                && normalizeUsState(city.state || '') === normalizeUsState(picked.state))
+              if (market) handleFormChange('city_id', market.id)
+            }}
+          />
           <div className="grid grid-cols-2 gap-4">
             <FormInput label="Website" value={form.website} onChange={(value) => handleFormChange('website', value)} type="url" placeholder="https://example.org" />
             <FormInput label="Source" value={form.source} onChange={(value) => handleFormChange('source', value)} placeholder="e.g. Referral, Event, Community Intro" />

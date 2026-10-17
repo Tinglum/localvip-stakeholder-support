@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { AddressFields, EMPTY_ADDRESS } from '@/components/ui/address-fields'
 import { BiometricUnlockSetting } from '@/components/auth/biometric-unlock-setting'
 
 interface ConsumerProfile {
@@ -181,24 +182,20 @@ export default function ConsumerProfilePage() {
                 <Input value={form.phoneNumber} onChange={(event) => updateField('phoneNumber', event.target.value)} placeholder="Phone number" />
               </label>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-surface-700">City</span>
-                  <Input value={form.city} onChange={(event) => updateField('city', event.target.value)} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-surface-700">State / region</span>
-                  <Input value={form.state} onChange={(event) => updateField('state', event.target.value)} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-surface-700">ZIP / postal code</span>
-                  <Input value={form.zipCode} onChange={(event) => updateField('zipCode', event.target.value)} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-sm font-medium text-surface-700">Country</span>
-                  <Input value={form.country} onChange={(event) => updateField('country', event.target.value)} />
-                </label>
-              </div>
+              {/* Your own address, so the browser may fill it. The profile stores
+                  no street, so only city / state / postal code / country show. */}
+              <AddressFields
+                browserAutofill
+                fields={['city', 'state', 'zipCode', 'country']}
+                value={{ ...EMPTY_ADDRESS, city: form.city, state: form.state, zipCode: form.zipCode, country: form.country }}
+                onChange={next => setForm(current => ({
+                  ...current,
+                  city: next.city,
+                  state: next.state,
+                  zipCode: next.zipCode,
+                  country: next.country,
+                }))}
+              />
 
               <div className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600">
                 Email, referral code, share link, payout method, causes, and wallet controls live in their own sections so customers do not accidentally break account-critical data.
