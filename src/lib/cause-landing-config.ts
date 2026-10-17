@@ -1,5 +1,6 @@
 import { CAUSE_PHOTO_PROMPTS } from '@/lib/cause-setup'
 import type { Cause } from '@/lib/types/database'
+import type { FlyerOverrides } from '@/lib/flyer-slots'
 
 /**
  * The cause landing-page config, shared by the landing-page editor and cause
@@ -47,6 +48,8 @@ export type LandingConfig = {
   assetsArePlaceholder: boolean
   /** Set once the cause has chosen (or accepted logo-derived) brand colours. */
   brandColorsConfirmed?: boolean
+  /** The cause's own flyer copy and image edits, keyed by flyerEditKey(design, audience). */
+  flyerEdits?: Record<string, FlyerOverrides>
 }
 
 export type LandingRecord = {
