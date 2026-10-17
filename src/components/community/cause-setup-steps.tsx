@@ -397,6 +397,19 @@ export function LinkStep({ icon, done, doneText, todoText, actionHref, actionLab
 export function MaterialsStep({ count, busy, progress, error, onGenerate }: {
   count: number; busy: boolean; progress: string | null; error: string | null; onGenerate: () => void
 }) {
+  const [elapsedSeconds, setElapsedSeconds] = React.useState(0)
+
+  React.useEffect(() => {
+    if (!busy) { setElapsedSeconds(0); return }
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [busy])
+
+  const elapsed = `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}`
+
   return (
     <div className="space-y-5">
       <div className={`flex items-start gap-4 rounded-2xl border px-5 py-5 ${count > 0 ? 'border-success-200 bg-success-50' : 'border-surface-200 bg-surface-50'}`}>
@@ -409,6 +422,14 @@ export function MaterialsStep({ count, busy, progress, error, onGenerate }: {
             : 'Create your flyers for families and local businesses. They use your logo, your colors and your QR code.'}
         </p>
       </div>
+      {busy ? (
+        <div role="status" className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
+          <p className="font-semibold">Generating materials · {elapsed} elapsed</p>
+          <p className="mt-1 text-xs text-brand-800">
+            Flyers usually take 1–2 minutes. The cause video continues in the background and usually takes 3–5 minutes.
+          </p>
+        </div>
+      ) : null}
       {progress ? <p role="status" className="text-sm text-surface-600">{progress}</p> : null}
       {error ? <p role="alert" className="text-sm text-danger-600">{error}</p> : null}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-surface-100 pt-5">
