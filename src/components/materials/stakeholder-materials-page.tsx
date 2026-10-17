@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { ArrowRight, CheckCircle2, Download, Eye, FileText, Loader2, QrCode, Search, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ import { useBusinesses, useCauses, useGeneratedMaterials, useMaterialTemplates, 
 import { getBusinessQaAccountId, resolveScopedBusiness } from '@/lib/business-portal'
 import { getCauseQaAccountId, resolveCommunityCause } from '@/lib/community-cause'
 import { cn } from '@/lib/utils'
+import { FLYER_DESIGN_LABELS, flyerDesignForTemplate } from '@/lib/flyer-designs'
 import {
   explainMaterialAvailability,
   getMaterialDelivery,
@@ -42,15 +44,25 @@ function generatedToMaterial(row: GeneratedMaterial, template?: MaterialTemplate
   }
 }
 
-function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize, onPreview }: {
+// The flyer generator renders a fixed set of approved library designs. Match a
+// library template by its own id or the generation template it maps to.
+function generatorTemplateId(material: Material) {
+  const generationId = (material.metadata as Record<string, unknown> | null)?.generation_template_id
+  return [material.id, generationId].map(id => String(id ?? '')).find(id => flyerDesignForTemplate(id)) || null
+}
+
+function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize, onPreview, showGenerator }: {
   material: Material
   profile: ReturnType<typeof useAuth>['profile']
   actionLabel?: string
   actionHref?: string
   onCustomize?: () => void
   onPreview: () => void
+  showGenerator?: boolean
 }) {
   const source = material.file_url || material.thumbnail_url
+  const generatorId = showGenerator ? generatorTemplateId(material) : null
+  const generatorDesign = flyerDesignForTemplate(generatorId)
   return (
     <Card className="overflow-hidden transition-shadow hover:shadow-card-hover">
       <button type="button" onClick={onPreview} className="block h-40 w-full border-b border-surface-100 bg-surface-50 text-left">
@@ -79,13 +91,19 @@ function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize,
           ) : material.file_url ? (
             <Button size="sm" asChild><a href={material.file_url} download><Download className="h-3.5 w-3.5" /> {actionLabel || 'Download'}</a></Button>
           ) : null}
+          {generatorId && (
+            <Button size="sm" variant="outline" asChild><Link href={`/community/materials/generator?template=${encodeURIComponent(generatorId)}`}><Sparkles className="h-3.5 w-3.5" /> Open in flyer generator</Link></Button>
+          )}
         </div>
+        {showGenerator && (generatorDesign
+          ? <p className="text-xs text-surface-500">Flyer generator design: {FLYER_DESIGN_LABELS[generatorDesign.design]} · {generatorDesign.audience}</p>
+          : <p className="text-xs text-surface-500">Not available in the flyer generator — use Customize instead.</p>)}
       </CardContent>
     </Card>
   )
 }
 
-function MaterialSection({ title, description, materials, profile, customize, empty, onPreview, onCustomize }: {
+function MaterialSection({ title, description, materials, profile, customize, empty, onPreview, onCustomize, showGenerator }: {
   title: string
   description: string
   materials: Material[]
@@ -94,6 +112,7 @@ function MaterialSection({ title, description, materials, profile, customize, em
   empty: string
   onPreview: (material: Material) => void
   onCustomize?: (material: Material) => void
+  showGenerator?: boolean
 }) {
   return (
     <section className="space-y-3" aria-label={title}>
@@ -107,6 +126,7 @@ function MaterialSection({ title, description, materials, profile, customize, em
             <MaterialCard key={material.id} material={material} profile={profile} onPreview={() => onPreview(material)}
               onCustomize={customize && onCustomize ? () => onCustomize(material) : undefined}
               actionLabel={customize ? 'Customize' : undefined}
+              showGenerator={showGenerator}
               actionHref={customize ? `/portal/materials?tab=templates&generateTemplate=${encodeURIComponent(String((material.metadata as Record<string, unknown> | null)?.generation_template_id || material.id))}` : undefined} />
           ))}
         </div>
@@ -146,7 +166,8 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
   const [search, setSearch] = React.useState('')
   const [preview, setPreview] = React.useState<Material | null>(null)
   const [customizing, setCustomizing] = React.useState<Material | null>(null)
-  const [tab, setTab] = React.useState<string | null>(null)
+  const requestedTab = useSearchParams().get('tab')
+  const [tab, setTab] = React.useState<string | null>(requestedTab)
   const [landingState, setLandingState] = React.useState<'draft' | 'published' | 'missing' | null>(null)
 
   React.useEffect(() => {
@@ -300,6 +321,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
           empty={activeGroup.empty}
           onPreview={setPreview}
           onCustomize={activeGroup.customize && shell === 'community' ? setCustomizing : undefined}
+          showGenerator={activeGroup.customize && shell === 'community'}
         />
       )}
     </div>
