@@ -257,7 +257,7 @@ function applyFlyerTextOverrides(svg: string, overrides: Record<string, string>)
       const value = line.id in overrides ? overrides[line.id].trim() : line.text
       texts.push(value)
       // Keep the run's surrounding spacing and any <tspan> styling.
-      return part.replace(/^(\s*)(<tspan\b[^>]*>)?\s*[\s\S]*?\s*(<\/tspan>)?(\s*)$/, (_, before: string, open: string | undefined, _close, after: string) =>
+      return part.replace(/^(\s*)(<tspan\b[^>]*>)?\s*[\s\S]*?(<\/tspan>)?(\s*)$/, (_, before: string, open: string | undefined, _close, after: string) =>
         `${before}${(open || '<tspan>').replace('<tspan', `<tspan data-slot="${line.id}"`)}${esc(value)}</tspan>${after}`)
     })
     const { kind, weight, size } = fontFor(attrs)

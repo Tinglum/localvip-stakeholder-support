@@ -61,7 +61,8 @@ test('text and image overrides reach the rendered flyer, escaped and fitted', as
     }
     const svg = await buildCauseCampaignFlyerSvg({ ...input, overrides })
     assert.match(svg, /<tspan data-slot="headline.1">BAKE SALE &amp; &lt;MORE&gt;<\/tspan>/)
-    assert.match(svg, /<tspan data-slot="footer.2" fill="#efb719">GO TEAM\.<\/tspan>/)
+    // The space between a footer's runs survives tagging.
+    assert.match(svg, /<\/tspan> <tspan data-slot="footer.2" fill="#efb719">GO TEAM\.<\/tspan>/)
     assert.match(svg, /<g data-slot-header="">[^]*>RENAMED CAUSE</)
     const step = /<text[^>]*font-size="([\d.]+)"[^>]*data-size="(\d+)"[^>]*><tspan data-slot="step2-title.1">A MUCH LONGER STEP TITLE/.exec(svg)
     assert.ok(step && Number(step[1]) < Number(step[2]), 'a long line shrinks below its design size')
