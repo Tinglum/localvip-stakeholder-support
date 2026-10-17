@@ -4,10 +4,11 @@ import { fetchPortalCauseAccounts } from '@/lib/server/portal-cause'
 import { fetchQaCauseDetail } from '@/lib/server/qa-dashboard-causes'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
-import { renderCauseCampaignFlyer, getFlyerSlots, isFlyerImageUrl, validateFlyerOverrides, FLYER_DESIGNS, type FlyerAudience, type FlyerDesign } from '@/lib/server/cause-campaign-flyers'
+import { renderCauseCampaignFlyer, renderCauseCampaignFlyerSvg, getFlyerSlots, isFlyerImageUrl, validateFlyerOverrides, FLYER_DESIGNS, type FlyerAudience, type FlyerDesign } from '@/lib/server/cause-campaign-flyers'
 import { isHexColor } from '@/lib/brand-colors'
 import type { LandingRecord } from '@/lib/cause-landing-config'
 import { compactFlyerOverrides, flyerEditKey, type FlyerOverrides } from '@/lib/flyer-slots'
+import { flyerFonts } from '@/lib/server/flyer-fonts'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -94,12 +95,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
       if ('error' in checked) return NextResponse.json({ error: checked.error }, { status: 400 })
       overrides = checked.overrides
     }
-    const palette = body.mode === 'manual' ? { background: body.palette.background, highlight: body.palette.highlight, accent: body.palette.accent } : undefined
-    const bytes = await renderCauseCampaignFlyer({ name: cause.name, locality: [cause.city, cause.state].filter(Boolean).join(', '), logoUrl, coverUrl,
-      joinUrl: `https://my.localvip.com/go/campaign/${encodeURIComponent(draft.slug)}/${body.audience}?ref=${encodeURIComponent(cause.referralCode)}`,
-      audience: body.audience as FlyerAudience, design: body.design as FlyerDesign, category: cause.category, palette, colors: body.mode === 'logo' ? { gold: body.palette.accent } : undefined, overrides }, true)
+    // `output`: 'svg' is the live preview (no save), 'save' stores edits made in
+    // the preview without rendering, anything else renders and saves the PDF.
+    const output = body.output === 'svg' || body.output === 'save' ? body.output : 'pdf'
     let saveError: string | undefined
-    if (JSON.stringify(overrides) !== JSON.stringify(saved)) {
+    if (output !== 'svg' && JSON.stringify(overrides) !== JSON.stringify(saved)) {
       // Edits live on the landing draft, the cause's one free-form JSON record.
       // Every other writer of the draft spreads it, so they survive those saves.
       const key = flyerEditKey(body.design, body.audience)
@@ -109,9 +109,22 @@ export async function POST(request: Request, { params }: { params: { id: string 
         method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: draft.slug, config: { ...draft, flyerEdits } }),
       }).then(response => parseQaResponse(response, 'Save failed.')).then(() => undefined, error => {
         console.error('Flyer edits could not be saved:', error instanceof Error ? error.message : 'Unknown error')
-        return 'The preview is updated, but your edits could not be saved for next time.'
+        return 'Your edits could not be saved for next time.'
       })
     }
+    if (output === 'save') return NextResponse.json({ overrides, saveError }, { status: saveError ? 502 : 200, headers: { 'cache-control': 'no-store' } })
+    const palette = body.mode === 'manual' ? { background: body.palette.background, highlight: body.palette.highlight, accent: body.palette.accent } : undefined
+    const input = { name: cause.name, locality: [cause.city, cause.state].filter(Boolean).join(', '), logoUrl, coverUrl,
+      joinUrl: `https://my.localvip.com/go/campaign/${encodeURIComponent(draft.slug)}/${body.audience}?ref=${encodeURIComponent(cause.referralCode)}`,
+      audience: body.audience as FlyerAudience, design: body.design as FlyerDesign, category: cause.category, palette, colors: body.mode === 'logo' ? { gold: body.palette.accent } : undefined, overrides }
+    if (output === 'svg') {
+      // The browser draws this with the same font files resvg prints with.
+      const { faces, display, sans } = flyerFonts()
+      return NextResponse.json({ svg: await renderCauseCampaignFlyerSvg(input), overrides,
+        fonts: { display, sans, faces: faces.map(({ key, family, weight }) => ({ url: `/api/flyer-fonts/${key}`, family, weight })) } },
+      { headers: { 'cache-control': 'no-store' } })
+    }
+    const bytes = await renderCauseCampaignFlyer(input, true)
     return NextResponse.json({ ...JSON.parse(Buffer.from(bytes).toString('utf8')), overrides, saveError }, { headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     console.error('Single flyer generation failed:', error instanceof Error ? error.message : 'Unknown error')

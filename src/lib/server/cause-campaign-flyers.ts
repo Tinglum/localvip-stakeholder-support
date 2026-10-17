@@ -2,12 +2,14 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { createCanvas, loadImage } from '@napi-rs/canvas'
+import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
 import { Resvg } from '@resvg/resvg-js'
 import { PDFDocument } from 'pdf-lib'
 import QRCode from 'qrcode'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { readableBrandText } from '@/lib/brand-colors'
+import { brightenFlyerPixels, fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, FLYER_PHOTO_SIZE, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
+import { flyerFonts } from '@/lib/server/flyer-fonts'
 import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot } from '@/lib/flyer-slots'
 
 import { approvedFlyerTemplateId, type FlyerAudience, type FlyerDesign } from '@/lib/flyer-designs'
@@ -58,22 +60,19 @@ async function imageData(url: string) {
   return `data:${mime};base64,${bytes.toString('base64')}`
 }
 
-const measure = createCanvas(1, 1).getContext('2d')
-function wrap(value: string, width: number, size: number, weight = 400) {
-  measure.font = `${weight} ${size}px Arial`
-  const lines: string[] = []
-  let line = ''
-  for (const word of value.trim().split(/\s+/)) {
-    const next = line ? `${line} ${word}` : word
-    if (line && measure.measureText(next).width > width) { lines.push(line); line = word }
-    else line = next
-  }
-  if (line) lines.push(line)
-  return lines
+// Measure with the same font files resvg renders with (see flyer-fonts).
+const measureContext = createCanvas(1, 1).getContext('2d')
+let fontsRegistered = false
+const measureFlyerText: FlyerMeasure = (text, kind, weight, size) => {
+  const fonts = flyerFonts()
+  if (!fontsRegistered) { for (const face of fonts.faces) GlobalFonts.registerFromPath(face.file, face.family); fontsRegistered = true }
+  measureContext.font = `${weight} ${size}px "${kind === 'display' ? fonts.display : fonts.sans}"`
+  return measureContext.measureText(text).width
 }
+/** resvg options that render with exactly the measured and previewed faces. */
+const resvgFonts = () => ({ font: { fontFiles: flyerFonts().faces.map(face => face.file), loadSystemFonts: true, defaultFontFamily: flyerFonts().sans } })
 async function brightenPhoto(dataUrl: string) {
-  const width = 1875
-  const height = 1725
+  const { width, height } = FLYER_PHOTO_SIZE
   let image
   try {
     image = await loadImage(Buffer.from(dataUrl.split(',')[1], 'base64'))
@@ -89,22 +88,7 @@ async function brightenPhoto(dataUrl: string) {
   ctx.drawImage(image, (width - image.width * scale) / 2, (height - image.height * scale) / 2,
     image.width * scale, image.height * scale)
   const pixels = ctx.getImageData(0, 0, width, height)
-  let brightness = 0, samples = 0
-  for (let i = 0; i < pixels.data.length; i += 64) {
-    brightness += (pixels.data[i] * .21 + pixels.data[i + 1] * .72 + pixels.data[i + 2] * .07)
-    samples++
-  }
-  const mean = brightness / samples
-  const gamma = mean < 85 ? .56 : mean < 115 ? .72 : mean < 145 ? .88 : 1
-  if (gamma < 1) {
-    const lut = Array.from({ length: 256 }, (_, value) => Math.round(255 * (value / 255) ** gamma))
-    for (let i = 0; i < pixels.data.length; i += 4) {
-      pixels.data[i] = lut[pixels.data[i]]
-      pixels.data[i + 1] = lut[pixels.data[i + 1]]
-      pixels.data[i + 2] = lut[pixels.data[i + 2]]
-    }
-    ctx.putImageData(pixels, 0, 0)
-  }
+  if (brightenFlyerPixels(pixels.data)) ctx.putImageData(pixels, 0, 0)
   return `data:image/png;base64,${(await canvas.encode('png')).toString('base64')}`
 }
 
@@ -183,43 +167,41 @@ function walkFlyerText(svg: string, visit: (element: TextElement) => string | vo
 }
 
 function fontFor(attrs: string) {
-  const weight = /\bdisplay\b/.test(attr(attrs, 'class') || '') ? 900 : Number(attr(attrs, 'font-weight') || 400)
-  return { weight, size: Number(attr(attrs, 'font-size') || 16) }
-}
-function textWidth(value: string, weight: number, size: number) {
-  measure.font = `${weight} ${size}px Arial`
-  return measure.measureText(value).width
+  const kind: FlyerFontKind = /\bdisplay\b/.test(attr(attrs, 'class') || '') ? 'display' : 'sans'
+  const weight = kind === 'display' ? 900 : Number(attr(attrs, 'font-weight') || 400)
+  return { kind, weight, size: Number(attr(attrs, 'font-size') || 16) }
 }
 
+/**
+ * Applies text overrides and tags every editable line for the live preview:
+ * each <text> carries its font, design size and allowed width (data-fit), and
+ * each run is a <tspan data-slot="…">. The preview refits with the same rule.
+ */
 function applyFlyerTextOverrides(svg: string, overrides: Record<string, string>) {
-  if (!Object.keys(overrides).some(id => !id.startsWith('header.'))) return svg
   // Each block may grow to slightly wider than its widest default line.
   const blockWidth = new Map<string, number>()
   walkFlyerText(svg, ({ attrs, lines }) => {
-    const { weight, size } = fontFor(attrs)
+    const { kind, weight, size } = fontFor(attrs)
     const key = lines.find(Boolean)?.key
-    if (key) blockWidth.set(key, Math.max(blockWidth.get(key) || 0, textWidth(lines.map(line => line?.text || '').join(' '), weight, size)))
+    if (key) blockWidth.set(key, Math.max(blockWidth.get(key) || 0, measureFlyerText(flyerLineText(lines.map(line => line?.text)), kind, weight, size)))
   })
   return walkFlyerText(svg, ({ attrs, parts, lines }) => {
-    if (!lines.some(line => line && line.id in overrides)) return
+    const texts: (string | undefined)[] = []
     const next = parts.map((part, index) => {
       const line = lines[index]
-      if (!line || !(line.id in overrides)) return part
-      const value = esc(overrides[line.id].trim())
+      if (!line) return part
+      const value = line.id in overrides ? overrides[line.id].trim() : line.text
+      texts.push(value)
       // Keep the run's surrounding spacing and any <tspan> styling.
-      return part.replace(/^(\s*(?:<tspan\b[^>]*>)?\s*)[\s\S]*?(\s*(?:<\/tspan>)?\s*)$/, (_, open: string, close: string) => `${open}${value}${close}`)
+      return part.replace(/^(\s*)(<tspan\b[^>]*>)?\s*[\s\S]*?\s*(<\/tspan>)?(\s*)$/, (_, before: string, open: string | undefined, _close, after: string) =>
+        `${before}${(open || '<tspan>').replace('<tspan', `<tspan data-slot="${line.id}"`)}${esc(value)}</tspan>${after}`)
     })
-    const { weight, size } = fontFor(attrs)
+    const { kind, weight, size } = fontFor(attrs)
     const allowed = (blockWidth.get(lines.find(Boolean)!.key) || 0) * 1.08
-    const width = textWidth(unesc(next.join('').replace(/<[^>]+>/g, '')), weight, size)
-    let fitted = attrs
-    if (allowed && width > allowed) {
-      // Shrink a long line to fit its block; past 60% of the design size,
-      // condense it instead so it can never spill out of the layout.
-      const scaled = Math.max(size * allowed / width, size * .6)
-      fitted = attrs.replace(/\bfont-size="[^"]*"/, `font-size="${scaled.toFixed(1)}"`)
-      if (scaled === size * .6) fitted += ` textLength="${allowed.toFixed(0)}" lengthAdjust="spacingAndGlyphs"`
-    }
+    const fit = fitFlyerLine(flyerLineText(texts), allowed, kind, weight, size, measureFlyerText)
+    const fitted = attrs.replace(/\bfont-size="[^"]*"/, `font-size="${fit.size}"`)
+      + ` data-kind="${kind}" data-weight="${weight}" data-size="${size}" data-fit="${allowed.toFixed(1)}"`
+      + (fit.textLength ? ` textLength="${fit.textLength}" lengthAdjust="spacingAndGlyphs"` : '')
     return `<text${fitted}>${next.join('')}</text>`
   })
 }
@@ -325,27 +307,16 @@ export async function buildCauseCampaignFlyerSvg(input: {
   // Preserve the library's navy/white/gold hierarchy. Cause colors belong
   // only in small secondary details, never the hero or main headline.
   const accent = color(input.palette?.accent, color(input.colors?.gold, color(input.colors?.navy, '#efb719')))
-  const heading = name.toUpperCase()
-  let headerSize = 39
-  let headerLines = wrap(heading, 605, headerSize, 900)
-  measure.font = `900 ${headerSize}px Arial`
-  while ((headerLines.length > 2 || headerLines.some(line => measure.measureText(line).width > 605)) && headerSize > 22) {
-    headerSize -= 2
-    headerLines = wrap(heading, 605, headerSize, 900)
-    measure.font = `900 ${headerSize}px Arial`
-  }
-  if (headerLines.length > 2 || headerLines.some(line => measure.measureText(line).width > 605)) {
-    throw new Error('The cause name is too long for the flyer header.')
-  }
+  const headerFit = fitFlyerHeader(name, measureFlyerText)
+  if (!headerFit) throw new Error('The cause name is too long for the flyer header.')
   const kindLabel = kind === 'booster' ? 'BOOSTER CLUB' : kind === 'school' ? 'SCHOOL COMMUNITY' : 'COMMUNITY CAUSE'
   const parent = input.parentOrganization?.trim().toUpperCase()
   const identityLabel = text['header.label'] ?? (parent && parent.length < 34 ? `${kindLabel} · ${parent}` : kindLabel)
-  measure.font = '400 15px Arial'
-  const labelSize = Math.max(9, Math.min(15, Math.floor(15 * 560 / (measure.measureText(identityLabel).width || 1))))
-  const header = headerLines.map((line, index) => `<text class="display white" x="212" y="${75 + index * 37}" font-size="${headerSize}">${esc(line)}</text>`).join('')
-    + `<text class="sans white" x="214" y="${headerLines.length === 2 ? 145 : 119}" font-size="${labelSize}" letter-spacing="1.2">${esc(identityLabel)}</text>`
+  // The preview rebuilds this group with the same markup as the name is edited.
+  const header = `<g data-slot-header="">${flyerHeaderMarkup(headerFit, identityLabel, measureFlyerText)}</g>`
   const replacements: Record<string, string> = { HEADER: header, PHOTO: photo, LOGO: logo, QR: qr }
   const svg = applyFlyerTextOverrides(localizeTemplateCopy(template, input.audience, kind, accent), text)
+    .replace(/href="{{(LOGO|PHOTO)}}"/g, (tag, key: string) => `data-slot="${key.toLowerCase()}" ${tag}`)
     .replace(/{{([A-Z_]+)}}/g, (_, key: string) => replacements[key] ?? '')
     .replace('</defs>', `<style>.step-number{fill:${readableBrandText(accent)}}</style></defs>`)
   if (!input.palette) return svg
@@ -387,14 +358,22 @@ export function toLetterBleed(svg: string) {
     })
 }
 
-export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview = false) {
+/**
+ * The composed Letter-bleed SVG a PDF is printed from, with every editable
+ * line and image tagged by slot id, for the generator's live preview.
+ */
+export async function renderCauseCampaignFlyerSvg(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0]) {
+  return Buffer.from(await renderCauseCampaignFlyer(input, 'svg')).toString('utf8')
+}
+
+export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview: boolean | 'svg' = false) {
   // Keep native decoder failures out of the web server. A fresh process also
   // releases all native image allocations after each print-resolution PDF.
   if (process.env.LOCALVIP_FLYER_WORKER !== '1') {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const { stdout } = await promisify(execFile)(process.execPath,
-          ['--import', 'tsx', path.join(process.cwd(), 'scripts/cause-flyer-worker.ts'), JSON.stringify(input), preview ? 'preview' : 'pdf'],
+          ['--import', 'tsx', path.join(process.cwd(), 'scripts/cause-flyer-worker.ts'), JSON.stringify(input), preview === 'svg' ? 'svg' : preview ? 'preview' : 'pdf'],
           { cwd: process.cwd(), env: { ...process.env, LOCALVIP_FLYER_WORKER: '1' }, encoding: 'buffer',
             timeout: 120000, maxBuffer: 32 * 1024 * 1024 })
         return new Uint8Array(stdout)
@@ -405,12 +384,13 @@ export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCau
     }
   }
   const svg = toLetterBleed(await buildCauseCampaignFlyerSvg(input))
+  if (preview === 'svg') return Buffer.from(svg)
   // 2550 × 3300 is 300 pixels per printed inch on Letter, which keeps type,
   // icons and QR modules crisp in print.
-  const png = new Resvg(svg, { fitTo: { mode: 'width', value: 2550 } }).render().asPng()
+  const png = new Resvg(svg, { ...resvgFonts(), fitTo: { mode: 'width', value: 2550 } }).render().asPng()
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([612, 792])
   page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 612, height: 792 })
   const bytes = await pdf.save()
-  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { fitTo: { mode: 'width', value: 765 } }).render().asPng().toString('base64') })) : bytes
+  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { ...resvgFonts(), fitTo: { mode: 'width', value: 765 } }).render().asPng().toString('base64') })) : bytes
 }
