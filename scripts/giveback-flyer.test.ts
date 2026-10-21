@@ -131,3 +131,25 @@ test('v5 adds a bold lead line, a gold cut edge and a framed scan target, and sa
   for (const id of ids) assert.equal(svg.split(`data-slot="${id}"`).length - 1, 1, id)
   assert.match(svg, /<path d="M0 340L612 322" stroke="#EFB719"/)
 })
+
+test('v6 reproduces the original draft: its words, runs, fonts and measured positions', async () => {
+  const v6 = { ...fathersClub, design: 'giveback-v6' as const }
+  const slots = getGivebackFlyerSlots(v6)
+  const ids = slots.text.map(slot => slot.id)
+  assert.equal(new Set(ids).size, ids.length)
+  const value = (id: string) => slots.text.find(slot => slot.id === id)?.default
+  assert.equal(value('benefits.1'), 'EVERYBODY WINS...')
+  assert.equal(value('host-name.1'), 'MIKE DAVISSON')
+  // The introduction keeps the draft's bold passage as its own runs.
+  assert.deepEqual(slots.text.filter(slot => slot.group === 'Introduction').map(slot => slot.default), [
+    'When Olathe families win, local businesses win.', 'Pick the days you want busier, and',
+    'every school, booster club and PTO in Olathe Public Schools can send its families to', 'you.',
+    'You give back like a spirit night, with no receipts to collect.'])
+  const svg = await buildCauseCampaignFlyerSvg(v6)
+  for (const id of ids) assert.equal(svg.split(`data-slot="${id}"`).length - 1, 1, id)
+  assert.match(svg, /<text class="display" x="36" y="156" font-size="43.99" font-weight="800" fill="#FFFFFF" letter-spacing="-1.056"/)
+  assert.match(svg, /<tspan data-slot="intro.2" font-weight="700" fill="#FFFFFF">Pick the days you want busier, and<\/tspan>/)
+  const result = JSON.parse(Buffer.from(await renderCauseCampaignFlyer(v6, true)).toString('utf8'))
+  const page = (await PDFDocument.load(Buffer.from(result.pdf, 'base64'))).getPage(0)
+  assert.deepEqual([page.getWidth(), page.getHeight()], [612, 792])
+})

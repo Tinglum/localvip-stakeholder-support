@@ -12,7 +12,7 @@ import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type Fl
 import { flyerFonts, givebackFonts } from '@/lib/server/flyer-fonts'
 import { buildGivebackFlyerSvg, buildGivebackPdf, givebackSlots, type GivebackCause, type GivebackVersion } from '@/lib/server/giveback-flyer'
 
-const givebackVersion = (design: unknown): GivebackVersion => design === 'giveback-v5' ? 'v5' : design === 'giveback-v4' ? 'v4' : design === 'giveback-v3' ? 'v3' : 'v2'
+const givebackVersion = (design: unknown): GivebackVersion => design === 'giveback-v6' ? 'v6' : design === 'giveback-v5' ? 'v5' : design === 'giveback-v4' ? 'v4' : design === 'giveback-v3' ? 'v3' : 'v2'
 import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, FLYER_ORG_WORD_SLOT, FLYER_ORG_WORDS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
 
 import { approvedFlyerTemplateId, isGivebackDesign, type FlyerAudience, type FlyerDesign, type GeneratorDesign, type GivebackDesign } from '@/lib/flyer-designs'
@@ -95,6 +95,41 @@ function brightenFlyerPixels(data: Uint8ClampedArray) {
   return true
 }
 
+/**
+ * How a cover photo is prepared: 'square' (library designs) crops to the
+ * library photo box, 'keep' keeps its shape for the GiveBack heroes, and
+ * 'draft' treats it exactly as the original draft's prep.py did.
+ */
+export type FlyerPhotoMode = 'square' | 'keep' | 'draft'
+export const flyerPhotoMode = (design: unknown): FlyerPhotoMode => design === 'giveback-v6' ? 'draft' : isGivebackDesign(design) ? 'keep' : 'square'
+
+// The draft's hero: cropped to 8.5 x 3.9 in (55% down a tall photo), then
+// blended toward ink, darkest at the top left, as prep.py did.
+async function draftHeroPhoto(dataUrl: string) {
+  const image = await loadImage(Buffer.from(dataUrl.split(',')[1], 'base64'))
+  const aspect = 8.5 / 3.9
+  let sx = 0, sy = 0, sw = image.width, sh = image.height
+  if (sw / sh > aspect) { sw = sh * aspect; sx = (image.width - sw) / 2 } else { sh = sw / aspect; sy = (image.height - sh) * .55 }
+  const width = Math.max(1, Math.min(2550, Math.round(sw))), height = Math.max(1, Math.round(width / aspect))
+  const canvas = createCanvas(width, height)
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, width, height)
+  const pixels = ctx.getImageData(0, 0, width, height)
+  const ink = [0x0e, 0x10, 0x13]
+  for (let y = 0; y < height; y++) {
+    const fy = .86 + .2 * (height > 1 ? y / (height - 1) : 0)
+    for (let x = 0; x < width; x++) {
+      const vis = (.15 + .32 * (width > 1 ? x / (width - 1) : 0)) * fy
+      const i = (y * width + x) * 4
+      for (let c = 0; c < 3; c++) pixels.data[i + c] = Math.max(0, Math.min(255, Math.round(ink[c] + (pixels.data[i + c] - ink[c]) * vis)))
+    }
+  }
+  ctx.putImageData(pixels, 0, 0)
+  return `data:image/jpeg;base64,${(await canvas.encode('jpeg', 92)).toString('base64')}`
+}
+
+const preparePhoto = (dataUrl: string, mode: FlyerPhotoMode) => mode === 'draft' ? draftHeroPhoto(dataUrl) : brightenPhoto(dataUrl, mode === 'keep')
+
 async function brightenPhoto(dataUrl: string, keepAspect = false) {
   let { width, height } = FLYER_PHOTO_SIZE
   let image
@@ -168,10 +203,10 @@ async function trimLogo(dataUrl: string) {
 // A twelve-flyer set shares two uploads. Decode them once instead of repeating
 // native image allocations for every design; retain only the latest pair.
 let preparedAssets: { key: string; expires: number; value: Promise<[string, string]> } | undefined
-function prepareAssets(logoUrl: string, coverUrl: string, keepAspect = false) {
-  const key = JSON.stringify([logoUrl, coverUrl, keepAspect])
+function prepareAssets(logoUrl: string, coverUrl: string, mode: FlyerPhotoMode = 'square') {
+  const key = JSON.stringify([logoUrl, coverUrl, mode])
   if (preparedAssets?.key === key && preparedAssets.expires > Date.now()) return preparedAssets.value
-  const value = Promise.all([imageData(logoUrl).then(trimLogo), imageData(coverUrl).then(photo => brightenPhoto(photo, keepAspect))])
+  const value = Promise.all([imageData(logoUrl).then(trimLogo), imageData(coverUrl).then(photo => preparePhoto(photo, mode))])
   preparedAssets = { key, expires: Date.now() + 10 * 60 * 1000, value }
   void value.catch(() => { if (preparedAssets?.value === value) preparedAssets = undefined })
   return value
@@ -408,7 +443,7 @@ export function getGivebackFlyerSlots(input: Pick<CauseFlyerInput, 'name' | 'loc
 }
 
 async function buildGivebackFlyer(input: CauseFlyerInput) {
-  const [logo, photo] = await prepareAssets(input.overrides?.images?.logo || input.logoUrl, input.overrides?.images?.photo || input.coverUrl, true)
+  const [logo, photo] = await prepareAssets(input.overrides?.images?.logo || input.logoUrl, input.overrides?.images?.photo || input.coverUrl, flyerPhotoMode(input.design))
   const text = input.overrides?.text || {}
   // The QR books the call the copy invites; it follows an edited booking address.
   const booking = (text['booking.1'] ?? 'calendly.com/30vip').trim()
@@ -655,10 +690,10 @@ async function runFlyerWorker(payload: unknown, mode: string) {
  * trimmed to its mark (with its box in the benefit circle), a photo is
  * cropped and brightened. The live preview swaps it in without a full render.
  */
-export async function prepareFlyerImage(slot: 'logo' | 'photo', url: string, keepAspect = false): Promise<PreparedFlyerImage> {
-  if (process.env.LOCALVIP_FLYER_WORKER !== '1') return JSON.parse(Buffer.from(await runFlyerWorker({ slot, url, keepAspect }, 'image')).toString('utf8'))
+export async function prepareFlyerImage(slot: 'logo' | 'photo', url: string, mode: FlyerPhotoMode = 'square'): Promise<PreparedFlyerImage> {
+  if (process.env.LOCALVIP_FLYER_WORKER !== '1') return JSON.parse(Buffer.from(await runFlyerWorker({ slot, url, mode }, 'image')).toString('utf8'))
   const data = await imageData(url)
-  if (slot === 'photo') return { href: await brightenPhoto(data, keepAspect) }
+  if (slot === 'photo') return { href: await preparePhoto(data, mode) }
   const href = await trimLogo(data)
   return { href, flowLogo: flowLogoBox(href) }
 }

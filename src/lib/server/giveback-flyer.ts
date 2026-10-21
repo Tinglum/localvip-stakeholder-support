@@ -50,8 +50,10 @@ export type GivebackCause = {
  * with an angled full-bleed hero, linked steps, icon cards and icon contacts.
  * v5: v4 refined: a bold lead line in the hero, a gold edge on the angled
  * cut, a framed scan target, larger body type and no repeated claims.
+ * v6: the original draft PDF, reproduced at its measured positions, fonts,
+ * sizes, colours and letter-spacing.
  */
-export type GivebackVersion = 'v2' | 'v3' | 'v4' | 'v5'
+export type GivebackVersion = 'v2' | 'v3' | 'v4' | 'v5' | 'v6'
 
 type Anchor = 'start' | 'middle' | 'end'
 type Line = { id: string; group: string; kind: FlyerFontKind; weight: number; size: number; x: number; y: number; width: number; fill: string; anchor: Anchor }
@@ -322,7 +324,7 @@ function defaultCopyV2(cause: GivebackCause): Record<string, string | string[]> 
 /** True when the district logo bundled with the template applies to this cause. */
 export const givebackDistrictLogo = (cause: GivebackCause) => /\bolathe public schools\b/i.test(cause.parentOrganization || '')
 
-function lines(cause: GivebackCause, version: GivebackVersion) {
+function lines(cause: GivebackCause, version: Exclude<GivebackVersion, 'v6'>) {
   const copy = defaultCopy(cause, version)
   const table = version === 'v5' ? blocksV5() : version === 'v4' ? blocksV4() : (version === 'v3' ? blocksV3 : blocks)(givebackDistrictLogo(cause))
   return table.flatMap(([key, group, count, kind, size, weight, x, y, step, width, fill, anchor = 'start']) => {
@@ -336,6 +338,7 @@ const lineLimit = (value: string) => Math.min(160, Math.max(24, Math.ceil(value.
 
 /** Every editable line with its default for this cause, plus the two image slots. */
 export function givebackSlots(cause: GivebackCause, logoUrl: string, coverUrl: string, version: GivebackVersion = 'v2'): FlyerSlots {
+  if (version === 'v6') return { text: draftSlots(cause), images: [{ id: 'logo', label: 'Cause logo', default: logoUrl }, { id: 'photo', label: 'Hero photo', default: coverUrl }] }
   const text: FlyerTextSlot[] = lines(cause, version).map(({ line, text, index }) => ({ id: line.id, group: line.group, line: index + 1, default: text, maxLength: lineLimit(text) }))
   return { text, images: [{ id: 'logo', label: 'Cause logo', default: logoUrl }, { id: 'photo', label: 'Hero photo', default: coverUrl }] }
 }
@@ -362,24 +365,242 @@ export async function buildGivebackPdf(svg: string) {
   const artwork = svg.replace(/<text\b[\s\S]*?<\/text>/g, '')
   const png = new Resvg(artwork, { font: { fontFiles: faces.map(face => face.file), loadSystemFonts: false, defaultFontFamily: sans }, fitTo: { mode: 'width', value: 2550 } }).render().asPng()
   page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 612, height: 792 })
+  const colour = (fill: string) => rgb(parseInt(fill.slice(1, 3), 16) / 255, parseInt(fill.slice(3, 5), 16) / 255, parseInt(fill.slice(5, 7), 16) / 255)
   for (const [, attrs, content] of svg.matchAll(/<text\b([^>]*)>([\s\S]*?)<\/text>/g)) {
-    const attr = (name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(attrs)?.[1]
-    const family = attr('class') === 'display' ? 'Montserrat' : 'Open Sans'
-    const font = fonts.get(`${family}:${attr('font-weight') || 400}`)
-    const fill = attr('fill') || INK
-    const value = unesc(content.replace(/<[^>]+>/g, ''))
-    if (!font || !/^#[\da-f]{6}$/i.test(fill)) throw new Error('Unsupported GiveBack flyer text style.')
-    if (!value) continue
-    let size = Number(attr('font-size'))
+    const read = (source: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(source)?.[1]
+    const family = read(attrs, 'class') === 'display' ? 'Montserrat' : 'Open Sans'
+    // A line is one or more runs (a <tspan> may set its own weight or colour)
+    // with any text between them, such as the space that separates two runs.
+    const runs = [...content.matchAll(/<tspan\b([^>]*)>([\s\S]*?)<\/tspan>|([^<]+)/g)].map(([, runAttrs = '', inner, between]) => {
+      const font = fonts.get(`${family}:${read(runAttrs, 'font-weight') || read(attrs, 'font-weight') || 400}`)
+      const fill = read(runAttrs, 'fill') || read(attrs, 'fill') || INK
+      if (!font || !/^#[\da-f]{6}$/i.test(fill)) throw new Error('Unsupported GiveBack flyer text style.')
+      return { text: unesc(inner ?? between ?? ''), font, fill }
+    }).filter(run => run.text)
+    if (!runs.some(run => run.text.trim())) continue
+    const spacing = Number(read(attrs, 'letter-spacing') || 0)
+    let size = Number(read(attrs, 'font-size'))
+    // Shape each run with the font's own layout (kerning included), as the
+    // browser and resvg do, then place glyph by glyph with any letter-spacing.
+    const shaped = runs.map(run => {
+      const face = (run.font as unknown as { embedder: { font: { unitsPerEm: number; layout: (text: string) => { glyphs: { codePoints: number[] }[]; positions: { xAdvance: number }[] } } } }).embedder.font
+      const layout = face.layout(run.text)
+      return { ...run, glyphs: layout.glyphs.map((glyph, index) => ({ text: String.fromCodePoint(...glyph.codePoints), advance: layout.positions[index].xAdvance / face.unitsPerEm })) }
+    })
+    const widthAt = (at: number) => shaped.reduce((sum, run) => sum + run.glyphs.reduce((total, glyph) => total + glyph.advance * at + spacing * [...glyph.text].length, 0), 0)
     // A condensed line (textLength) prints at the size that fits its width.
-    const length = Number(attr('textLength'))
-    if (length) size = Math.min(size, size * length / font.widthOfTextAtSize(value, size))
-    const anchor = attr('text-anchor')
-    const shift = anchor === 'end' ? font.widthOfTextAtSize(value, size) : anchor === 'middle' ? font.widthOfTextAtSize(value, size) / 2 : 0
-    page.drawText(value, { x: Number(attr('x')) - shift, y: 792 - Number(attr('y')), size, font,
-      color: rgb(parseInt(fill.slice(1, 3), 16) / 255, parseInt(fill.slice(3, 5), 16) / 255, parseInt(fill.slice(5, 7), 16) / 255) })
+    const length = Number(read(attrs, 'textLength'))
+    if (length) size = Math.min(size, size * length / widthAt(size))
+    const anchor = read(attrs, 'text-anchor')
+    let x = Number(read(attrs, 'x')) - (anchor === 'end' ? widthAt(size) : anchor === 'middle' ? widthAt(size) / 2 : 0)
+    const y = 792 - Number(read(attrs, 'y'))
+    for (const run of shaped) {
+      for (const glyph of run.glyphs) {
+        if (glyph.text.trim()) page.drawText(glyph.text, { x, y, size, font: run.font, color: colour(run.fill) })
+        x += glyph.advance * size + spacing * [...glyph.text].length
+      }
+    }
   }
   return pdf.save()
+}
+
+// ---- v6: the original draft, exactly --------------------------------------
+// Positions, sizes, colours and letter-spacing are measured from "Fathers
+// Club Business Flyer DRAFT.pdf" (flyer.py at 8.5 x 11 in). Lines may hold
+// runs of different weight and colour, as the draft's introduction does.
+
+type Run = { id: string; group: string; text: string; weight?: number; fill?: string }
+type RichLine = { x: number; y: number; width: number; kind: FlyerFontKind; weight: number; size: number; fill: string; spacing: number; anchor: Anchor; runs: Run[] }
+const DRAFT = { ink: '#0E1013', mute: '#59626B', line: '#CBD3DB', blue: '#5E7F9C', gold: '#EFB719', mist: '#EEF1F4', body: '#2E3841', white: '#FFFFFF' }
+const DRAFT_CARD_TITLE_X = [46.1, 236, 417.53]
+const DRAFT_BULLET_X = [58.34, 248.24, 429.76]
+
+const runWidth = (text: string, kind: FlyerFontKind, weight: number, size: number, spacing: number) =>
+  measureGiveback(text, kind, weight, size) + spacing * [...text].length
+
+function draftCopy(cause: GivebackCause) {
+  const city = titleCase(cause.city)
+  const area = cause.city.trim() ? city : 'local'
+  const CITY = (cause.city.trim() ? city : 'Local').toUpperCase()
+  const parent = cause.parentOrganization?.trim()
+  const owner = cause.owner || {}
+  const senders = parent ? `every school, booster club and PTO in ${parent}` : cause.schoolFocused ? 'every local school, booster club and PTO' : cause.name.trim()
+  return {
+    org: cause.name.trim().toUpperCase(),
+    district: parent ? ['SUPPORTING EVERY SCHOOL IN', parent.toUpperCase()] : cause.schoolFocused ? ['SUPPORTING LOCAL SCHOOLS', `ACROSS ${CITY}`] : ['SUPPORTING OUR', 'LOCAL COMMUNITY'],
+    eyebrow: `${CITY} GIVEBACK DAYS · FOR LOCAL BUSINESSES`,
+    headline: ['YOUR BUSINESS.', 'OUR COMMUNITY.'], highlight: "LET'S WIN TOGETHER.",
+    intro: [
+      { text: `When ${area} families win, local businesses win.`, bold: false },
+      { text: `Pick the days you want busier, and ${senders} can send its families to you.`, bold: true },
+      { text: 'You give back like a spirit night, with no receipts to collect.', bold: false },
+    ],
+    steps: [['PICK YOUR DAY', 'Weekly, monthly, your call'], ['WE BRING FAMILIES', `${city || 'Local'} families show up`], ['IT ALL ADDS UP', 'Tracked on qualifying sales']],
+    benefits: 'EVERYBODY WINS...',
+    cards: [
+      ['Your Business', ['Built for your slower days', 'Local families, not coupon hunters', 'Zero upfront or monthly fees']],
+      [`${city || 'Local'} Families`, [cause.schoolFocused ? 'Support schools as they shop' : 'Support a cause as they shop', 'Cash back on Giveback Days', 'At places they already love']],
+      cause.schoolFocused
+        ? [`${city || 'Local'} Schools`, [parent ? 'Every school, club and PTO' : 'Schools, clubs and PTOs', 'Giveback sent automatically', 'Year-round, not one night']]
+        : ['Our Cause', ['Giveback sent automatically', 'Year-round, not one night', 'Real local impact']],
+    ] as [string, string[]][],
+    scan: 'SCAN TO BOOK 15 MIN',
+    cta: ["LET'S PLAN YOUR FIRST", `${CITY} GIVEBACK DAY`],
+    contact: [['EMAIL', 'rick@localvip.com'], ['OR TEXT', '480-463-4632'], ['OR BOOK A CALL', 'calendly.com/30vip']],
+    note: '15 minutes to see what it looks like for your business. Zero upfront costs. Zero monthly fees.',
+    host: ['BROUGHT TO YOU BY', (owner.name?.trim() || cause.name.trim()).toUpperCase(), owner.name?.trim() ? 'Organizer' : '', owner.name?.trim() ? cause.name.trim() : '',
+      [owner.email?.trim(), owner.phone?.trim()].filter(Boolean).join(' · ')],
+    presenter: ['POWERED BY', 'RICK SWANSON', 'Founder & CEO', 'LocalVIP'],
+    tagline: 'Generosity pays.',
+  }
+}
+
+/** The draft's introduction: bold and regular passages wrapped together into lines of runs. */
+function draftIntroLines(segments: { text: string; bold: boolean }[]) {
+  const width = 464.4, size = 10.99
+  const words = segments.flatMap(segment => segment.text.split(/\s+/).filter(Boolean).map(word => ({ word, bold: segment.bold })))
+  const lines: { word: string; bold: boolean }[][] = [[]]
+  const lineWidth = (line: { word: string; bold: boolean }[]) => line.reduce((sum, item, index) =>
+    sum + measureGiveback((index ? ' ' : '') + item.word, 'sans', item.bold ? 700 : 400, size), 0)
+  for (const item of words) {
+    const current = lines[lines.length - 1]
+    if (current.length && lineWidth([...current, item]) > width) lines.push([item])
+    else current.push(item)
+  }
+  // Consecutive words of one weight form a run.
+  return lines.map(line => line.reduce<{ text: string; bold: boolean }[]>((runs, item) => {
+    const last = runs[runs.length - 1]
+    if (last && last.bold === item.bold) last.text += ` ${item.word}`
+    else runs.push({ text: item.word, bold: item.bold })
+    return runs
+  }, []))
+}
+
+function draftLines(cause: GivebackCause): RichLine[] {
+  const copy = draftCopy(cause)
+  const one = (id: string, group: string, text: string, x: number, y: number, width: number, kind: FlyerFontKind, weight: number, size: number, fill: string, em = 0, anchor: Anchor = 'start'): RichLine =>
+    ({ x, y, width, kind, weight, size, fill, spacing: +(em * size).toFixed(3), anchor, runs: [{ id, group, text }] })
+  const introBaselines = [273, 289.5, 305.25]
+  let introRun = 0
+  const intro = draftIntroLines(copy.intro).map((runs, index): RichLine => ({
+    x: 36, y: introBaselines[index] ?? 305.25 + (index - 2) * 15.95, width: 470, kind: 'sans', weight: 400, size: 10.99, fill: '#D6DCE3', spacing: 0, anchor: 'start',
+    runs: runs.map(run => ({ id: `intro.${++introRun}`, group: 'Introduction', text: run.text, ...(run.bold ? { weight: 700, fill: DRAFT.white } : {}) })),
+  }))
+  return [
+    one('org.1', 'Organization', copy.org, 102.27, 33, 250, 'display', 800, 15, DRAFT.ink, -0.01),
+    one('district.1', 'Supporting line', copy.district[0], 541.02, 25.5, 160, 'sans', 700, 7.5, DRAFT.mute, 0.1, 'end'),
+    one('district.2', 'Supporting line', copy.district[1], 541.02, 36.75, 160, 'sans', 700, 7.5, DRAFT.mute, 0.1, 'end'),
+    one('eyebrow.1', 'Banner', copy.eyebrow, 44.64, 102.75, 263, 'display', 700, 7.99, DRAFT.ink, 0.14),
+    one('headline.1', 'Headline', copy.headline[0], 36, 156, 540, 'display', 800, 43.99, DRAFT.white, -0.024),
+    one('headline.2', 'Headline', copy.headline[1], 36, 198.75, 540, 'display', 800, 43.99, DRAFT.white, -0.024),
+    one('highlight.1', 'Highlighted headline', copy.highlight, 36, 242.25, 540, 'display', 800, 43.99, DRAFT.gold, -0.024),
+    ...intro,
+    ...copy.steps.flatMap(([title, body], i) => [
+      one(`step${i + 1}-title.1`, `Step ${i + 1} title`, title, [70.34, 263.19, 452.19][i], 372.75, 140, 'display', 800, 11.5, DRAFT.ink, -0.01),
+      one(`step${i + 1}-body.1`, `Step ${i + 1} description`, body, [70.34, 263.19, 452.19][i], 385.5, 140, 'sans', 400, 7.99, DRAFT.mute),
+    ]),
+    one('benefits.1', 'Benefits heading', copy.benefits, 36, 440.25, 540, 'display', 800, 13.5, DRAFT.ink, -0.012),
+    ...copy.cards.flatMap(([title, rows], i) => {
+      const key = ['business', 'families', 'third'][i]
+      const label = ['Business', 'Families', 'Third'][i]
+      return [
+        one(`${key}-title.1`, `${label} card title`, title, DRAFT_CARD_TITLE_X[i], 479.25, 120, 'display', 800, 10.5, DRAFT.ink, -0.01),
+        ...rows.map((row, r) => one(`${key}.${r + 1}`, `${label} benefits`, row, DRAFT_BULLET_X[i], [508.5, 528, 547.5][r], 148, 'sans', 400, 9, DRAFT.body)),
+      ]
+    }),
+    one('scan.1', 'QR caption', copy.scan, 76.5, 688.5, 90, 'display', 700, 6.2, '#94A2AF', 0.08, 'middle'),
+    one('cta.1', 'Call to action', copy.cta[0], 137.02, 612.75, 430, 'display', 800, 15.49, DRAFT.white, -0.015),
+    one('cta.2', 'Call to action', copy.cta[1], 137.02, 630.75, 430, 'display', 800, 15.49, DRAFT.white, -0.015),
+    ...copy.contact.flatMap(([label, value], i) => {
+      const key = ['email', 'phone', 'booking'][i]
+      const x = [137.02, 265.48, 363.08][i], width = [122, 92, 213][i]
+      return [
+        one(`${key}-label.1`, `${['Email', 'Phone', 'Booking'][i]} label`, label, x, 649.5, width, 'display', 700, 7, DRAFT.gold, 0.1),
+        one(`${key}.1`, ['Email', 'Phone', 'Booking address'][i], value, x, 665.25, width, 'sans', 700, 11.5, DRAFT.white),
+      ]
+    }),
+    one('cta-note.1', 'Call to action note', copy.note, 137.02, 687, 439, 'sans', 400, 8.5, '#A3B0BC'),
+    one('host-label.1', 'Host label', copy.host[0], 36, 722.25, 240, 'display', 700, 6.49, DRAFT.mute, 0.12),
+    one('host-name.1', 'Host name', copy.host[1], 101, 740.25, 155, 'display', 800, 12, '#282828', -0.005),
+    one('host-title.1', 'Host title', copy.host[2], 101, 756, 180, 'sans', 700, 7.5, '#111111'),
+    one('host-org.1', 'Host organization', copy.host[3], 101, 765.75, 180, 'sans', 700, 7.5, '#3D5A73'),
+    one('host-contact.1', 'Host contact', copy.host[4], 101, 777, 190, 'sans', 400, 7.5, DRAFT.mute),
+    one('presenter-label.1', 'Presenter label', copy.presenter[0], 298.45, 722.25, 150, 'display', 700, 6.49, DRAFT.mute, 0.12),
+    one('presenter-name.1', 'Presenter name', copy.presenter[1], 341.99, 742.5, 140, 'display', 800, 12, '#0A3F96', -0.005),
+    one('presenter-title.1', 'Presenter title', copy.presenter[2], 341.99, 758.25, 140, 'sans', 700, 7.5, '#111111'),
+    one('presenter-org.1', 'Presenter organization', copy.presenter[3], 341.99, 768, 140, 'sans', 700, 7.5, '#1E4B9B'),
+    one('tagline.1', 'Tagline', copy.tagline, 576, 767.25, 90, 'sans', 400, 7, DRAFT.mute, 0, 'end'),
+  ]
+}
+
+function draftSlots(cause: GivebackCause): FlyerTextSlot[] {
+  const counts = new Map<string, number>()
+  return draftLines(cause).flatMap(line => line.runs.map(run => {
+    const index = (counts.get(run.group) || 0) + 1
+    counts.set(run.group, index)
+    return { id: run.id, group: run.group, line: index, default: run.text, maxLength: lineLimit(run.text) }
+  }))
+}
+
+/** One draft line, its runs fitted together; returns the markup and its printed width. */
+function draftText(line: RichLine, edits: Record<string, string>) {
+  const runs = line.runs.map(run => ({ ...run, text: (edits[run.id] ?? run.text).trim() }))
+  const widthAt = (size: number) => runs.reduce((sum, run, index) =>
+    sum + runWidth(run.text, line.kind, run.weight || line.weight, size, line.spacing) + (index ? runWidth(' ', line.kind, line.weight, size, line.spacing) : 0), 0)
+  const natural = widthAt(line.size)
+  const size = natural > line.width ? Math.max(line.size * line.width / natural, line.size * .6) : line.size
+  const condensed = natural * size / line.size > line.width + .5
+  const markup = `<text class="${line.kind}" x="${line.x}" y="${line.y}" font-size="${+size.toFixed(2)}" font-weight="${line.weight}" fill="${line.fill}"`
+    + (line.spacing ? ` letter-spacing="${line.spacing}"` : '') + (line.anchor === 'start' ? '' : ` text-anchor="${line.anchor}"`)
+    + (condensed ? ` textLength="${line.width}" lengthAdjust="spacingAndGlyphs"` : '')
+    + ` data-kind="${line.kind}" data-weight="${line.weight}" data-size="${line.size}" data-fit="${line.width}">`
+    + runs.map(run => `<tspan data-slot="${run.id}"${run.weight ? ` font-weight="${run.weight}"` : ''}${run.fill ? ` fill="${run.fill}"` : ''}>${esc(run.text)}</tspan>`).join(' ')
+    + '</text>'
+  return { markup, width: widthAt(size) }
+}
+
+async function buildDraftSvg(input: { cause: GivebackCause; logo: string; photo: string; qr?: string; text?: Record<string, string> }) {
+  const { readFile } = await import('node:fs/promises')
+  const asset = async (name: string) => `data:image/png;base64,${(await readFile(path.join(ASSETS, name))).toString('base64')}`
+  const [district, localvip, heart, pin] = await Promise.all(['ops-logo.png', 'localvip-logo.png', 'heart.png', 'pin.png'].map(asset))
+  const edits = input.text || {}
+  const lines = draftLines(input.cause)
+  const printed = lines.map(line => draftText(line, edits))
+  // Each card's heart follows its title, 0.06 in after the last letter.
+  const hearts = [0, 1, 2].map(i => {
+    const index = lines.findIndex(line => line.runs[0].id === `${['business', 'families', 'third'][i]}-title.1`)
+    return `<image href="${heart}" x="${+(DRAFT_CARD_TITLE_X[i] + printed[index].width + 4.32).toFixed(2)}" y="471" width="8.28" height="8.28"/>`
+  }).join('')
+  const card = (x: number, width: number) => `<rect x="${x}" y="456.38" width="${width}" height="106.5" rx="5.25" fill="#FFFFFF" stroke="${DRAFT.line}" stroke-width=".75"/>`
+    + `<rect x="${x + 9.37}" y="489" width="${width - 19.5}" height="1.5" fill="${DRAFT.line}"/>`
+  const bullets = DRAFT_BULLET_X.flatMap(x => [505.875, 525, 544.5].map(y => `<circle cx="${x - 9.6}" cy="${y}" r="2.88" fill="${DRAFT.blue}"/>`)).join('')
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="612" height="792" viewBox="0 0 612 792">
+<defs><style>.display{font-family:Montserrat}.sans{font-family:'Open Sans'}</style></defs>
+<rect width="612" height="792" fill="#FFFFFF"/>
+<rect y="57" width="612" height="2.25" fill="${DRAFT.blue}"/><rect x="90" y="14.25" width="1.5" height="28.5" fill="${DRAFT.line}"/>
+<image data-slot="logo" href="${input.logo}" x="36" y="9.8" width="43.5" height="37.5" preserveAspectRatio="xMidYMid meet"/>
+${givebackDistrictLogo(input.cause) ? `<image href="${district}" x="547.5" y="12.8" width="28.5" height="31.4" preserveAspectRatio="xMidYMid meet"/>` : ''}
+<rect y="59.25" width="612" height="280.5" fill="${DRAFT.ink}"/>
+<image data-slot="photo" href="${input.photo}" x="0" y="59.25" width="612" height="280.5" preserveAspectRatio="xMidYMid slice"/>
+<rect x="36" y="91.5" width="280.5" height="16.5" rx="1.5" fill="${DRAFT.gold}"/>
+<rect y="339.75" width="612" height="72" fill="#FFFFFF"/><rect y="411" width="612" height=".75" fill="${DRAFT.line}"/>
+<rect y="339.75" width="11.25" height="72" fill="${DRAFT.blue}"/>
+<rect x="213.75" y="354.75" width=".75" height="41.25" fill="${DRAFT.line}"/><rect x="402.75" y="354.75" width=".75" height="41.25" fill="${DRAFT.line}"/>
+${[41.48, 230.46, 419.44].map((x, i) => `<text class="display" x="${x}" y="381.75" font-size="19.99" font-weight="800" fill="${DRAFT.blue}">0${i + 1}</text>`).join('')}
+<rect y="411.75" width="612" height="168" fill="${DRAFT.mist}"/>
+${card(36.38, 176.24)}${card(226.12, 168)}${card(407.62, 168)}
+${bullets}${hearts}
+<rect y="579.75" width="612" height="126" fill="${DRAFT.ink}"/><rect y="579.75" width="612" height="3" fill="${DRAFT.gold}"/>
+<rect x="36" y="597.75" width="81" height="81" rx="3.75" fill="#FFFFFF"/>
+${input.qr ? `<image href="${input.qr}" x="39.75" y="601.5" width="73.5" height="73.5"/>` : ''}
+<rect y="705.75" width="612" height=".75" fill="${DRAFT.line}"/>
+<image data-slot="logo" href="${input.logo}" x="36" y="732.8" width="49.5" height="43.4" preserveAspectRatio="xMidYMid meet"/>
+<rect x="91.5" y="732.75" width="1.5" height="43.5" fill="${DRAFT.ink}"/><rect x="101.25" y="744.75" width="154.5" height=".75" fill="${DRAFT.blue}"/>
+<image href="${pin}" x="298.5" y="729" width="28.5" height="43.5" preserveAspectRatio="xMidYMid meet"/>
+<rect x="332.25" y="729" width="1.5" height="43.5" fill="${DRAFT.ink}"/><rect x="342" y="747" width="102" height=".75" fill="#1A3E7E"/>
+<image href="${localvip}" x="486" y="738" width="90" height="18" preserveAspectRatio="xMidYMid meet"/>
+${printed.map(item => item.markup).join('\n')}
+</svg>`
 }
 
 const esc = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!)
@@ -502,6 +723,7 @@ export async function buildGivebackFlyerSvg(input: { cause: GivebackCause; logo:
   const asset = async (name: string) => `data:image/png;base64,${(await readFile(path.join(ASSETS, name))).toString('base64')}`
   const [district, localvip] = await Promise.all([asset('ops-logo.png'), asset('localvip-logo.png')])
   const version = input.version || 'v2'
+  if (version === 'v6') return buildDraftSvg(input)
   const edits = input.text || {}
   const printed = lines(input.cause, version).map(({ line, text }) => {
     const value = (edits[line.id] ?? text).trim()

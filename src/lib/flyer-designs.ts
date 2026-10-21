@@ -21,12 +21,14 @@ export const GIVEBACK_V3_DESIGN = 'giveback-v3'
 export const GIVEBACK_V4_DESIGN = 'giveback-v4'
 // "giveback-v5" refines v4: bold hero lead, gold-edged cut, framed scan target.
 export const GIVEBACK_V5_DESIGN = 'giveback-v5'
-export const GIVEBACK_DESIGNS = [GIVEBACK_DESIGN, GIVEBACK_V3_DESIGN, GIVEBACK_V4_DESIGN, GIVEBACK_V5_DESIGN] as const
+// "giveback-v6" reproduces the original draft PDF exactly, filled per cause.
+export const GIVEBACK_V6_DESIGN = 'giveback-v6'
+export const GIVEBACK_DESIGNS = [GIVEBACK_DESIGN, GIVEBACK_V3_DESIGN, GIVEBACK_V4_DESIGN, GIVEBACK_V5_DESIGN, GIVEBACK_V6_DESIGN] as const
 export type GivebackDesign = (typeof GIVEBACK_DESIGNS)[number]
 export const isGivebackDesign = (value: unknown): value is GivebackDesign => (GIVEBACK_DESIGNS as readonly unknown[]).includes(value)
 export const GENERATOR_DESIGNS = [...FLYER_DESIGNS, ...GIVEBACK_DESIGNS] as const
 export type GeneratorDesign = (typeof GENERATOR_DESIGNS)[number]
-export const GENERATOR_DESIGN_LABELS: Record<GeneratorDesign, string> = { ...FLYER_DESIGN_LABELS, giveback: 'GiveBack Days v2 (business)', 'giveback-v3': 'GiveBack Days v3 (business)', 'giveback-v4': 'GiveBack Days v4 (business)', 'giveback-v5': 'GiveBack Days v5 (business)' }
+export const GENERATOR_DESIGN_LABELS: Record<GeneratorDesign, string> = { ...FLYER_DESIGN_LABELS, giveback: 'GiveBack Days v2 (business)', 'giveback-v3': 'GiveBack Days v3 (business)', 'giveback-v4': 'GiveBack Days v4 (business)', 'giveback-v5': 'GiveBack Days v5 (business)', 'giveback-v6': 'GiveBack Days v6 (original draft)' }
 export const isGeneratorDesign = (value: unknown): value is GeneratorDesign => (GENERATOR_DESIGNS as readonly unknown[]).includes(value)
 /** The audiences a generator design can be made for. */
 export const designAudiences = (design: GeneratorDesign): FlyerAudience[] => isGivebackDesign(design) ? ['business'] : FLYER_AUDIENCES

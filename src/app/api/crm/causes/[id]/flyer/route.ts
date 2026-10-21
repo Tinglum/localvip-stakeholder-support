@@ -4,7 +4,7 @@ import { fetchPortalCauseAccounts } from '@/lib/server/portal-cause'
 import { fetchQaCauseDetail } from '@/lib/server/qa-dashboard-causes'
 import { fetchQaApi, parseQaResponse } from '@/lib/auth/qa-api'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
-import { prepareFlyerImage, renderCauseCampaignFlyer, renderCauseCampaignFlyerSvg, getFlyerSlots, getGivebackFlyerSlots, isFlyerImageUrl, validateFlyerOverrides, type FlyerAudience, type FlyerDesign } from '@/lib/server/cause-campaign-flyers'
+import { flyerPhotoMode, prepareFlyerImage, renderCauseCampaignFlyer, renderCauseCampaignFlyerSvg, getFlyerSlots, getGivebackFlyerSlots, isFlyerImageUrl, validateFlyerOverrides, type FlyerAudience, type FlyerDesign } from '@/lib/server/cause-campaign-flyers'
 import { isHexColor } from '@/lib/brand-colors'
 import type { LandingRecord } from '@/lib/cause-landing-config'
 import { FLYER_ORG_WORD_SLOT, flyerEditsFor, storeFlyerEdits, type FlyerOverrides } from '@/lib/flyer-slots'
@@ -107,7 +107,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const url = typeof body.url === 'string' && body.url.startsWith('/uploads/') ? `${QA_AUTH_CONFIG.baseUrl}${body.url}` : body.url
     if (!['logo', 'photo'].includes(body.slot) || !isFlyerImageUrl(url)) return NextResponse.json({ error: 'Choose an image uploaded to LocalVIP.' }, { status: 400 })
     try {
-      return NextResponse.json(await prepareFlyerImage(body.slot, url, isGivebackDesign(body.design)), { headers: { 'cache-control': 'private, max-age=600' } })
+      return NextResponse.json(await prepareFlyerImage(body.slot, url, flyerPhotoMode(body.design)), { headers: { 'cache-control': 'private, max-age=600' } })
     } catch (error) {
       console.error('Flyer image preparation failed:', error instanceof Error ? error.message : 'Unknown error')
       return NextResponse.json({ error: 'Could not prepare this image. Try another one.' }, { status: 502 })
