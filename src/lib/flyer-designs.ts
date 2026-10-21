@@ -13,13 +13,19 @@ export const FLYER_DESIGN_LABELS: Record<FlyerDesign, string> = { community: 'Co
 // series, "giveback" is a native-Letter business flyer (GiveBack Days), built
 // from the Father's Club draft and filled from each cause's own details. It is
 // business-only and never part of the automatic twelve-flyer set.
+// "giveback-v3" is its third revision (full-width hero, one type scale, a single
+// QR-led call to action); both stay available.
 export const GIVEBACK_DESIGN = 'giveback'
-export const GENERATOR_DESIGNS = [...FLYER_DESIGNS, GIVEBACK_DESIGN] as const
+export const GIVEBACK_V3_DESIGN = 'giveback-v3'
+export const GIVEBACK_DESIGNS = [GIVEBACK_DESIGN, GIVEBACK_V3_DESIGN] as const
+export type GivebackDesign = (typeof GIVEBACK_DESIGNS)[number]
+export const isGivebackDesign = (value: unknown): value is GivebackDesign => (GIVEBACK_DESIGNS as readonly unknown[]).includes(value)
+export const GENERATOR_DESIGNS = [...FLYER_DESIGNS, ...GIVEBACK_DESIGNS] as const
 export type GeneratorDesign = (typeof GENERATOR_DESIGNS)[number]
-export const GENERATOR_DESIGN_LABELS: Record<GeneratorDesign, string> = { ...FLYER_DESIGN_LABELS, giveback: 'GiveBack Days (business)' }
+export const GENERATOR_DESIGN_LABELS: Record<GeneratorDesign, string> = { ...FLYER_DESIGN_LABELS, giveback: 'GiveBack Days v2 (business)', 'giveback-v3': 'GiveBack Days v3 (business)' }
 export const isGeneratorDesign = (value: unknown): value is GeneratorDesign => (GENERATOR_DESIGNS as readonly unknown[]).includes(value)
 /** The audiences a generator design can be made for. */
-export const designAudiences = (design: GeneratorDesign): FlyerAudience[] => design === GIVEBACK_DESIGN ? ['business'] : FLYER_AUDIENCES
+export const designAudiences = (design: GeneratorDesign): FlyerAudience[] => isGivebackDesign(design) ? ['business'] : FLYER_AUDIENCES
 
 // Library template ids of the approved artwork, in FLYER_DESIGNS order.
 // Booster outreach uses the school series, personalized to the club's identity.

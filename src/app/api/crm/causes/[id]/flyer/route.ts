@@ -8,7 +8,7 @@ import { prepareFlyerImage, renderCauseCampaignFlyer, renderCauseCampaignFlyerSv
 import { isHexColor } from '@/lib/brand-colors'
 import type { LandingRecord } from '@/lib/cause-landing-config'
 import { FLYER_ORG_WORD_SLOT, flyerEditsFor, storeFlyerEdits, type FlyerOverrides } from '@/lib/flyer-slots'
-import { designAudiences, flyerPhotoFor, GIVEBACK_DESIGN, isGeneratorDesign } from '@/lib/flyer-designs'
+import { designAudiences, flyerPhotoFor, isGeneratorDesign, isGivebackDesign, type GivebackDesign } from '@/lib/flyer-designs'
 import { flyerFonts, givebackFonts } from '@/lib/server/flyer-fonts'
 
 export const runtime = 'nodejs'
@@ -47,7 +47,7 @@ async function loadFlyerSource(id: string) {
 }
 type FlyerSource = Awaited<ReturnType<typeof loadFlyerSource>>
 // GiveBack Days leads with the wider-community photo, as the business Community Win does.
-const coverFor = (source: FlyerSource, audience: string, design: string) => flyerPhotoFor(audience as FlyerAudience, (design === GIVEBACK_DESIGN ? 'community' : design) as FlyerDesign, source.photos)
+const coverFor = (source: FlyerSource, audience: string, design: string) => flyerPhotoFor(audience as FlyerAudience, (isGivebackDesign(design) ? 'community' : design) as FlyerDesign, source.photos)
 /** The cause details GiveBack Days is worded from. */
 const givebackDetails = (source: FlyerSource) => ({
   name: source.cause.name, locality: [source.cause.city, source.cause.state].filter(Boolean).join(', '), category: source.cause.category,
@@ -62,8 +62,8 @@ const givebackDetails = (source: FlyerSource) => ({
  */
 async function slotsWithEdits(source: FlyerSource, audience: string, design: string, orgWord?: string) {
   const raw = flyerEditsFor(source.draft?.flyerEdits, design, audience)
-  const slots = design === GIVEBACK_DESIGN
-    ? getGivebackFlyerSlots({ ...givebackDetails(source), logoUrl: source.logoUrl, coverUrl: coverFor(source, audience, design) })
+  const slots = isGivebackDesign(design)
+    ? getGivebackFlyerSlots({ ...givebackDetails(source), design: design as GivebackDesign, logoUrl: source.logoUrl, coverUrl: coverFor(source, audience, design) })
     : await getFlyerSlots({ name: source.cause.name, audience: audience as FlyerAudience, design: design as FlyerDesign,
     category: source.cause.category, logoUrl: source.logoUrl, coverUrl: coverFor(source, audience, design),
     orgWord: orgWord ?? raw.text?.[FLYER_ORG_WORD_SLOT] })
@@ -152,10 +152,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const input = { name: cause.name, locality: [cause.city, cause.state].filter(Boolean).join(', '), logoUrl, coverUrl,
       joinUrl: `https://my.localvip.com/go/campaign/${encodeURIComponent(draft.slug)}/${body.audience}?ref=${encodeURIComponent(cause.referralCode)}`,
       audience: body.audience as FlyerAudience, design: body.design, category: cause.category, palette, colors: body.mode === 'logo' ? { gold: body.palette.accent } : undefined, overrides,
-      ...(body.design === GIVEBACK_DESIGN ? { parentOrganization: givebackDetails(source).parentOrganization, owner: givebackDetails(source).owner, qr: body.qr === true } : {}) }
+      ...(isGivebackDesign(body.design) ? { parentOrganization: givebackDetails(source).parentOrganization, owner: givebackDetails(source).owner, qr: body.qr === true } : {}) }
     if (output === 'svg') {
       // The browser draws this with the same font files resvg prints with.
-      const { faces, display, sans } = body.design === GIVEBACK_DESIGN ? givebackFonts() : flyerFonts()
+      const { faces, display, sans } = isGivebackDesign(body.design) ? givebackFonts() : flyerFonts()
       return NextResponse.json({ svg: await renderCauseCampaignFlyerSvg(input), overrides,
         fonts: { display, sans, faces: faces.map(({ key, family, weight }) => ({ url: `/api/flyer-fonts/${key}`, family, weight })) } },
       { headers: { 'cache-control': 'no-store' } })

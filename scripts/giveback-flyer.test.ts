@@ -26,6 +26,7 @@ test.before(async () => {
 test('GiveBack Days is a business-only generator design', () => {
   assert.ok(isGeneratorDesign('giveback'))
   assert.deepEqual(designAudiences('giveback'), ['business'])
+  assert.deepEqual(designAudiences('giveback-v3'), ['business'])
   assert.deepEqual(designAudiences('community'), ['business', 'families', 'schools', 'boosters'])
 })
 
@@ -82,4 +83,19 @@ test('the print PDF is one Letter page with embedded, vector type', async () => 
   const fonts = [...document.context.enumerateIndirectObjects()].filter(([, object]) => object instanceof PDFDict && object.get(PDFName.of('Type')) === PDFName.of('Font'))
   assert.ok(fonts.length >= 4, `embedded fonts: ${fonts.length}`)
   assert.ok(result.preview.length > 1000)
+})
+
+test('v3 prints every slot once, with one call to action and the photo under a gradient', async () => {
+  const v3 = { ...fathersClub, design: 'giveback-v3' as const }
+  const slots = getGivebackFlyerSlots(v3)
+  const ids = slots.text.map(slot => slot.id)
+  assert.equal(new Set(ids).size, ids.length)
+  assert.ok(!ids.includes('cta.2') && !ids.includes('cta-note.1') && !ids.includes('organizer.1'))
+  assert.equal(slots.text.find(slot => slot.id === 'cta.1')?.default, 'Let’s plan your first GiveBack Day')
+  const svg = await buildCauseCampaignFlyerSvg(v3)
+  for (const id of ids) assert.equal(svg.split(`data-slot="${id}"`).length - 1, 1, id)
+  assert.match(svg, /<clipPath id="heroWindow"><rect x="232"/)
+  const result = JSON.parse(Buffer.from(await renderCauseCampaignFlyer(v3, true)).toString('utf8'))
+  const page = (await PDFDocument.load(Buffer.from(result.pdf, 'base64'))).getPage(0)
+  assert.deepEqual([page.getWidth(), page.getHeight()], [612, 792])
 })

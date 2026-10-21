@@ -10,7 +10,7 @@ import { extractBrandColorsFromImage, isHexColor } from '@/lib/brand-colors'
 import { BrandColorPicker } from '@/components/ui/brand-color-picker'
 import { Button } from '@/components/ui/button'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
-import { FLYER_AUDIENCES, FLYER_DESIGNS, FLYER_DESIGN_LABELS, GENERATOR_DESIGNS, GENERATOR_DESIGN_LABELS, GIVEBACK_DESIGN, approvedFlyerTemplateId, designAudiences, flyerDesignForTemplate, isGeneratorDesign } from '@/lib/flyer-designs'
+import { FLYER_AUDIENCES, FLYER_DESIGNS, FLYER_DESIGN_LABELS, GENERATOR_DESIGNS, GENERATOR_DESIGN_LABELS, isGivebackDesign, approvedFlyerTemplateId, designAudiences, flyerDesignForTemplate, isGeneratorDesign } from '@/lib/flyer-designs'
 import type { LandingRecord } from '@/lib/cause-landing-config'
 import type { FlyerAudience, FlyerDesign, GeneratorDesign } from '@/lib/flyer-designs'
 import { compactFlyerOverrides, flyerEditKey, FLYER_ORG_WORD_SLOT, type FlyerImageSlotId, type FlyerOverrides, type FlyerSlots, type PreparedFlyerImage } from '@/lib/flyer-slots'
@@ -71,7 +71,7 @@ export default function FlyerGeneratorPage() {
   const [design, setDesign] = React.useState<string>(imported?.design || 'community')
   // GiveBack Days leaves its QR panel blank unless the booking QR is asked for.
   const [qr, setQr] = React.useState(false)
-  const giveback = design === GIVEBACK_DESIGN
+  const giveback = isGivebackDesign(design)
   React.useEffect(() => {
     if (imported) { setAudience(imported.audience); setDesign(imported.design) }
   }, [imported?.audience, imported?.design]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -273,7 +273,7 @@ export default function FlyerGeneratorPage() {
           {causeId && selectedStatus && !selectedStatus.ready && !selectedStatus.error && <Link className="block text-sm text-brand-700 underline" href={setupUrl(causeId, selectedStatus.missing)}>Complete {selectedStatus.missing.join(', ')} before generating →</Link>}
         </div>
         <label className="block space-y-2"><span className="font-medium">Audience</span><select value={audience} disabled={locked || giveback} onChange={event => setAudience(event.target.value)} className="h-11 w-full rounded-lg border border-surface-300 px-3">{designAudiences(isGeneratorDesign(design) ? design : 'community').map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
-        <label className="block space-y-2"><span className="font-medium">Design</span><select value={design} disabled={locked} onChange={event => { setDesign(event.target.value); if (event.target.value === GIVEBACK_DESIGN) setAudience('business') }} className="h-11 w-full rounded-lg border border-surface-300 px-3">{GENERATOR_DESIGNS.map(value => <option key={value} value={value}>{GENERATOR_DESIGN_LABELS[value]}</option>)}</select>{giveback && <span className="block text-xs text-surface-500">Business flyer. Filled from your cause name, city, photo, logo and contact; every line is editable in the preview.</span>}{templateId && <span className="block text-xs text-surface-500">Library template #{templateId}</span>}</label>
+        <label className="block space-y-2"><span className="font-medium">Design</span><select value={design} disabled={locked} onChange={event => { setDesign(event.target.value); if (isGivebackDesign(event.target.value)) setAudience('business') }} className="h-11 w-full rounded-lg border border-surface-300 px-3">{GENERATOR_DESIGNS.map(value => <option key={value} value={value}>{GENERATOR_DESIGN_LABELS[value]}</option>)}</select>{giveback && <span className="block text-xs text-surface-500">Business flyer. Filled from your cause name, city, photo, logo and contact; every line is editable in the preview.</span>}{templateId && <span className="block text-xs text-surface-500">Library template #{templateId}</span>}</label>
         {giveback && <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-surface-200 p-3"><input type="checkbox" checked={qr} disabled={locked} onChange={event => setQr(event.target.checked)} className="mt-1" /><span><span className="block text-sm font-medium">Print the booking QR code</span><span className="block text-xs text-surface-600">Off leaves the QR panel blank for your own code or sticker. On links it to the booking address on the flyer.</span></span></label>}
         {!giveback && <>
         <fieldset disabled={locked} className="space-y-2"><legend className="mb-2 font-medium">Colors</legend>{modes.map(item => <label key={item.value} className={`flex cursor-pointer gap-3 rounded-xl border p-3 ${mode === item.value ? 'border-brand-500 bg-brand-50' : 'border-surface-200'}`}><input type="radio" name="color-mode" value={item.value} checked={mode === item.value} onChange={() => void chooseMode(item.value)} className="mt-1" /><span><span className="block text-sm font-medium">{item.label}</span><span className="block text-xs text-surface-600">{item.hint}</span></span></label>)}</fieldset>
