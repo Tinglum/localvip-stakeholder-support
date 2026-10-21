@@ -108,9 +108,16 @@ test('no flyer prints the source library school name or the LocalVIP mark (bug r
         }
       }
     }
+    // A line that opens a sentence starts with a capital; one that continues a sentence does not.
+    for (const [audience, design] of [['business', 'community'], ['business', 'growth'], ['families', 'community']] as const) {
+      const lines = printedText(await buildCauseCampaignFlyerSvg({ ...input, audience, design })).split(' | ').map(line => line.trim())
+      assert.ok(!lines.some(line => /^our school (shares|receives|families)/.test(line)), `${audience}/${design}: ${lines.find(line => /^our school/.test(line))}`)
+    }
+    const families = printedText(await buildCauseCampaignFlyerSvg({ ...input, audience: 'families', design: 'growth' }))
+    assert.match(families, /support for\s+\|\s+our school without adding/)
     // The title from the report now names the organization.
-    const families = printedText(await buildCauseCampaignFlyerSvg({ ...input, name: 'Olathe School District Activity Fund', audience: 'families', design: 'comparison' }))
-    assert.match(families, /SUPPORT THIS[^|]*\|[^|]*SCHOOL’S PROGRAMS/)
+    const comparison = printedText(await buildCauseCampaignFlyerSvg({ ...input, name: 'Olathe School District Activity Fund', audience: 'families', design: 'comparison' }))
+    assert.match(comparison, /SUPPORT THIS[^|]*\|[^|]*SCHOOL’S PROGRAMS/)
   })
 })
 

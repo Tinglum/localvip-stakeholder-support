@@ -361,6 +361,8 @@ function localizeTemplateCopy(template: string, audience: FlyerAudience, kind: F
     .replace(/More Olathe West families discover/g, 'More local families discover')
     .replace(/OLATHE WEST GIVEBACK DAY/g, 'LOCAL GIVEBACK DAY')
     .replace(/Choose a day\. Olathe West/g, `Choose a day. Our ${subject}`)
+    // Lines that open a sentence keep a capital (the generic rule below is for mid-sentence).
+    .replace(/>Olathe West (families show up|receives benefits|shares it)/g, `>Our ${subject} $1`)
     .replace(/Olathe West/g, `our ${subject}`).replace(/OLATHE WEST/g, `OUR ${subject.toUpperCase()}`)
     .replace(/SUPPORT OLATHE/g, 'SUPPORT THIS').replace(/WEST TOGETHER\./g, `${subject.toUpperCase()} TOGETHER.`)
     .replace(/WEST PROGRAMS/g, `${subject.toUpperCase()}’S PROGRAMS`)

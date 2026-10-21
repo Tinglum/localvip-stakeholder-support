@@ -112,9 +112,9 @@ async function migrateLegacyShortVideo(landingPath: string, record: LandingRecor
   return { ...rest, ...migrated } as VideoFields
 }
 
-// Flyers from the approved library. v8 files are still valid flyers (only
-// regenerating moves a cause to v9), so status keeps counting them.
-const CURRENT_FLYER_VERSION = /^approved-library-v(?:8|9)\|/
+// Flyers from the approved library. v8 and v9 files are still valid flyers
+// (only regenerating moves a cause to v10), so status keeps counting them.
+const CURRENT_FLYER_VERSION = /^approved-library-v(?:8|9|10)\|/
 
 export async function getCauseLaunchStatus(causeId: number, request: typeof qaJson = qaJson) {
   const [landing, generated] = await Promise.all([
@@ -272,10 +272,10 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
       if (logoUrl && coverUrl) {
         for (const audience of audiences) {
           for (const design of FLYER_DESIGNS) {
-          // v9: no LocalVIP mark, fixed split titles, a photo per design, and the generator's edits.
+          // v10: no LocalVIP mark, fixed split titles and sentence capitals, a photo per design, and the generator's edits.
           const designCover = flyerPhotoFor(audience, design, photoUrls)
           const overrides = flyerEditsFor(flyerEdits, design, audience)
-          const version = `approved-library-v9|${cause.name}|${cause.city || ''}|${cause.state || ''}|${campaignSlug}|${logoUrl}|${designCover}|${cause.referralCode}|${cause.category || ''}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}|${JSON.stringify(overrides)}`
+          const version = `approved-library-v10|${cause.name}|${cause.city || ''}|${cause.state || ''}|${campaignSlug}|${logoUrl}|${designCover}|${cause.referralCode}|${cause.category || ''}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}|${JSON.stringify(overrides)}`
           const alreadySaved = existing?.items?.some(item => {
             const metadata = materialMetadata(item.metadata)
             return item.generatedFileUrl && metadata?.generator === 'cause-campaign-v1' && metadata?.audience === audience && metadata?.design === design && metadata?.version === version
