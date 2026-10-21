@@ -12,7 +12,7 @@ import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type Fl
 import { flyerFonts, givebackFonts } from '@/lib/server/flyer-fonts'
 import { buildGivebackFlyerSvg, buildGivebackPdf, givebackSlots, type GivebackCause, type GivebackVersion } from '@/lib/server/giveback-flyer'
 
-const givebackVersion = (design: unknown): GivebackVersion => design === 'giveback-v4' ? 'v4' : design === 'giveback-v3' ? 'v3' : 'v2'
+const givebackVersion = (design: unknown): GivebackVersion => design === 'giveback-v5' ? 'v5' : design === 'giveback-v4' ? 'v4' : design === 'giveback-v3' ? 'v3' : 'v2'
 import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, FLYER_ORG_WORD_SLOT, FLYER_ORG_WORDS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
 
 import { approvedFlyerTemplateId, isGivebackDesign, type FlyerAudience, type FlyerDesign, type GeneratorDesign, type GivebackDesign } from '@/lib/flyer-designs'

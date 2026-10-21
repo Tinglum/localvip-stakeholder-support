@@ -119,3 +119,15 @@ test('v4 keeps the original draft words and bands, with right-aligned header tex
   const page = (await PDFDocument.load(Buffer.from(result.pdf, 'base64'))).getPage(0)
   assert.deepEqual([page.getWidth(), page.getHeight()], [612, 792])
 })
+
+test('v5 adds a bold lead line, a gold cut edge and a framed scan target, and says each claim once', async () => {
+  const v5 = { ...fathersClub, design: 'giveback-v5' as const }
+  const slots = getGivebackFlyerSlots(v5)
+  const ids = slots.text.map(slot => slot.id)
+  assert.equal(new Set(ids).size, ids.length)
+  assert.equal(slots.text.find(slot => slot.id === 'lead.1')?.default, 'When Olathe families win, local businesses win.')
+  assert.equal(slots.text.filter(slot => /monthly fees/i.test(slot.default)).length, 1)
+  const svg = await buildCauseCampaignFlyerSvg(v5)
+  for (const id of ids) assert.equal(svg.split(`data-slot="${id}"`).length - 1, 1, id)
+  assert.match(svg, /<path d="M0 340L612 322" stroke="#EFB719"/)
+})
