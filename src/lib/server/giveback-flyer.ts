@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { School, Store, Users, type LucideIcon } from 'lucide-react'
 import { fitFlyerLine, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
 import type { FlyerSlots, FlyerTextSlot } from '@/lib/flyer-slots'
+import type { PDFFont } from 'pdf-lib'
 import { givebackFonts } from './flyer-fonts'
 
 /**
@@ -161,6 +162,46 @@ const lineLimit = (value: string) => Math.min(160, Math.max(24, Math.ceil(value.
 export function givebackSlots(cause: GivebackCause, logoUrl: string, coverUrl: string): FlyerSlots {
   const text: FlyerTextSlot[] = lines(cause).map(({ line, text, index }) => ({ id: line.id, group: line.group, line: index + 1, default: text, maxLength: lineLimit(text) }))
   return { text, images: [{ id: 'logo', label: 'Cause logo', default: logoUrl }, { id: 'photo', label: 'Hero photo', default: coverUrl }] }
+}
+
+const unesc = (value: string) => value.replace(/&(amp|lt|gt|quot|apos);/g, (_, entity: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })[entity]!)
+
+/**
+ * A print PDF whose type stays vector: the artwork (photo, logos, icons,
+ * panels) is a 300 dpi Letter background, and every <text> is redrawn on it as
+ * real, selectable text in the embedded faces. This reads only the SVG this
+ * module writes: one absolutely positioned line per <text>, hex fills, the
+ * display/sans classes and the bundled weights.
+ */
+export async function buildGivebackPdf(svg: string) {
+  const [{ readFile }, { PDFDocument, rgb }, { default: fontkit }, { Resvg }] = await Promise.all([
+    import('node:fs/promises'), import('pdf-lib'), import('@pdf-lib/fontkit'), import('@resvg/resvg-js')])
+  const pdf = await PDFDocument.create()
+  pdf.registerFontkit(fontkit)
+  pdf.setCreator('LocalVIP flyer generator')
+  const page = pdf.addPage([612, 792])
+  const { faces, sans } = givebackFonts()
+  const fonts = new Map<string, PDFFont>(await Promise.all(faces.map(async face =>
+    [`${face.family}:${face.weight}`, await pdf.embedFont(await readFile(face.file), { subset: true })] as const)))
+  const artwork = svg.replace(/<text\b[\s\S]*?<\/text>/g, '')
+  const png = new Resvg(artwork, { font: { fontFiles: faces.map(face => face.file), loadSystemFonts: false, defaultFontFamily: sans }, fitTo: { mode: 'width', value: 2550 } }).render().asPng()
+  page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 612, height: 792 })
+  for (const [, attrs, content] of svg.matchAll(/<text\b([^>]*)>([\s\S]*?)<\/text>/g)) {
+    const attr = (name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(attrs)?.[1]
+    const family = attr('class') === 'display' ? 'Montserrat' : 'Open Sans'
+    const font = fonts.get(`${family}:${attr('font-weight') || 400}`)
+    const fill = attr('fill') || INK
+    const value = unesc(content.replace(/<[^>]+>/g, ''))
+    if (!font || !/^#[\da-f]{6}$/i.test(fill)) throw new Error('Unsupported GiveBack flyer text style.')
+    if (!value) continue
+    let size = Number(attr('font-size'))
+    // A condensed line (textLength) prints at the size that fits its width.
+    const length = Number(attr('textLength'))
+    if (length) size = Math.min(size, size * length / font.widthOfTextAtSize(value, size))
+    page.drawText(value, { x: Number(attr('x')), y: 792 - Number(attr('y')), size, font,
+      color: rgb(parseInt(fill.slice(1, 3), 16) / 255, parseInt(fill.slice(3, 5), 16) / 255, parseInt(fill.slice(5, 7), 16) / 255) })
+  }
+  return pdf.save()
 }
 
 const esc = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!)

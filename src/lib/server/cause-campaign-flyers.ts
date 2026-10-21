@@ -10,7 +10,7 @@ import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { readableBrandText } from '@/lib/brand-colors'
 import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
 import { flyerFonts, givebackFonts } from '@/lib/server/flyer-fonts'
-import { buildGivebackFlyerSvg, givebackSlots, type GivebackCause } from '@/lib/server/giveback-flyer'
+import { buildGivebackFlyerSvg, buildGivebackPdf, givebackSlots, type GivebackCause } from '@/lib/server/giveback-flyer'
 import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, FLYER_ORG_WORD_SLOT, FLYER_ORG_WORDS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
 
 import { approvedFlyerTemplateId, GIVEBACK_DESIGN, type FlyerAudience, type FlyerDesign, type GeneratorDesign } from '@/lib/flyer-designs'
@@ -665,10 +665,14 @@ export async function renderCauseCampaignFlyer(input: CauseFlyerInput, preview: 
   const fonts = giveback ? { font: { fontFiles: givebackFonts().faces.map(face => face.file), loadSystemFonts: false, defaultFontFamily: givebackFonts().sans } } : resvgFonts()
   // 2550 × 3300 is 300 pixels per printed inch on Letter, which keeps type,
   // icons and QR modules crisp in print.
-  const png = new Resvg(svg, { ...fonts, fitTo: { mode: 'width', value: 2550 } }).render().asPng()
-  const pdf = await PDFDocument.create()
-  const page = pdf.addPage([612, 792])
-  page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 612, height: 792 })
-  const bytes = await pdf.save()
+  let bytes: Uint8Array
+  if (giveback) bytes = await buildGivebackPdf(svg) // vector type over a 300 dpi artwork layer
+  else {
+    const png = new Resvg(svg, { ...fonts, fitTo: { mode: 'width', value: 2550 } }).render().asPng()
+    const pdf = await PDFDocument.create()
+    const page = pdf.addPage([612, 792])
+    page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 612, height: 792 })
+    bytes = await pdf.save()
+  }
   return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { ...fonts, fitTo: { mode: 'width', value: 765 } }).render().asPng().toString('base64') })) : bytes
 }
