@@ -12,7 +12,7 @@ import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type Fl
 import { flyerFonts, givebackFonts } from '@/lib/server/flyer-fonts'
 import { buildGivebackFlyerSvg, buildGivebackPdf, givebackSlots, type GivebackCause, type GivebackVersion } from '@/lib/server/giveback-flyer'
 
-const givebackVersion = (design: unknown): GivebackVersion => design === 'giveback-v3' ? 'v3' : 'v2'
+const givebackVersion = (design: unknown): GivebackVersion => design === 'giveback-v4' ? 'v4' : design === 'giveback-v3' ? 'v3' : 'v2'
 import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, FLYER_ORG_WORD_SLOT, FLYER_ORG_WORDS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
 
 import { approvedFlyerTemplateId, isGivebackDesign, type FlyerAudience, type FlyerDesign, type GeneratorDesign, type GivebackDesign } from '@/lib/flyer-designs'
@@ -95,8 +95,8 @@ function brightenFlyerPixels(data: Uint8ClampedArray) {
   return true
 }
 
-async function brightenPhoto(dataUrl: string) {
-  const { width, height } = FLYER_PHOTO_SIZE
+async function brightenPhoto(dataUrl: string, keepAspect = false) {
+  let { width, height } = FLYER_PHOTO_SIZE
   let image
   try {
     image = await loadImage(Buffer.from(dataUrl.split(',')[1], 'base64'))
@@ -105,6 +105,12 @@ async function brightenPhoto(dataUrl: string) {
     // same renderer as the final template and normalizes them first.
     const normalized = new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image href="${dataUrl}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice"/></svg>`).render().asPng()
     image = await loadImage(normalized)
+  }
+  // GiveBack Days places the photo in wide heroes: keep the photo's own shape
+  // (no wider than 300 dpi across the page) so the hero box makes the only crop.
+  if (keepAspect && image.width && image.height) {
+    width = Math.min(2550, image.width)
+    height = Math.round(width * image.height / image.width)
   }
   const canvas = createCanvas(width, height)
   const ctx = canvas.getContext('2d')
@@ -162,10 +168,10 @@ async function trimLogo(dataUrl: string) {
 // A twelve-flyer set shares two uploads. Decode them once instead of repeating
 // native image allocations for every design; retain only the latest pair.
 let preparedAssets: { key: string; expires: number; value: Promise<[string, string]> } | undefined
-function prepareAssets(logoUrl: string, coverUrl: string) {
-  const key = JSON.stringify([logoUrl, coverUrl])
+function prepareAssets(logoUrl: string, coverUrl: string, keepAspect = false) {
+  const key = JSON.stringify([logoUrl, coverUrl, keepAspect])
   if (preparedAssets?.key === key && preparedAssets.expires > Date.now()) return preparedAssets.value
-  const value = Promise.all([imageData(logoUrl).then(trimLogo), imageData(coverUrl).then(brightenPhoto)])
+  const value = Promise.all([imageData(logoUrl).then(trimLogo), imageData(coverUrl).then(photo => brightenPhoto(photo, keepAspect))])
   preparedAssets = { key, expires: Date.now() + 10 * 60 * 1000, value }
   void value.catch(() => { if (preparedAssets?.value === value) preparedAssets = undefined })
   return value
@@ -402,7 +408,7 @@ export function getGivebackFlyerSlots(input: Pick<CauseFlyerInput, 'name' | 'loc
 }
 
 async function buildGivebackFlyer(input: CauseFlyerInput) {
-  const [logo, photo] = await prepareAssets(input.overrides?.images?.logo || input.logoUrl, input.overrides?.images?.photo || input.coverUrl)
+  const [logo, photo] = await prepareAssets(input.overrides?.images?.logo || input.logoUrl, input.overrides?.images?.photo || input.coverUrl, true)
   const text = input.overrides?.text || {}
   // The QR books the call the copy invites; it follows an edited booking address.
   const booking = (text['booking.1'] ?? 'calendly.com/30vip').trim()
@@ -649,10 +655,10 @@ async function runFlyerWorker(payload: unknown, mode: string) {
  * trimmed to its mark (with its box in the benefit circle), a photo is
  * cropped and brightened. The live preview swaps it in without a full render.
  */
-export async function prepareFlyerImage(slot: 'logo' | 'photo', url: string): Promise<PreparedFlyerImage> {
-  if (process.env.LOCALVIP_FLYER_WORKER !== '1') return JSON.parse(Buffer.from(await runFlyerWorker({ slot, url }, 'image')).toString('utf8'))
+export async function prepareFlyerImage(slot: 'logo' | 'photo', url: string, keepAspect = false): Promise<PreparedFlyerImage> {
+  if (process.env.LOCALVIP_FLYER_WORKER !== '1') return JSON.parse(Buffer.from(await runFlyerWorker({ slot, url, keepAspect }, 'image')).toString('utf8'))
   const data = await imageData(url)
-  if (slot === 'photo') return { href: await brightenPhoto(data) }
+  if (slot === 'photo') return { href: await brightenPhoto(data, keepAspect) }
   const href = await trimLogo(data)
   return { href, flowLogo: flowLogoBox(href) }
 }

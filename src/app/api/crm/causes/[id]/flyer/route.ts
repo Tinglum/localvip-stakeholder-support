@@ -107,7 +107,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const url = typeof body.url === 'string' && body.url.startsWith('/uploads/') ? `${QA_AUTH_CONFIG.baseUrl}${body.url}` : body.url
     if (!['logo', 'photo'].includes(body.slot) || !isFlyerImageUrl(url)) return NextResponse.json({ error: 'Choose an image uploaded to LocalVIP.' }, { status: 400 })
     try {
-      return NextResponse.json(await prepareFlyerImage(body.slot, url), { headers: { 'cache-control': 'private, max-age=600' } })
+      return NextResponse.json(await prepareFlyerImage(body.slot, url, isGivebackDesign(body.design)), { headers: { 'cache-control': 'private, max-age=600' } })
     } catch (error) {
       console.error('Flyer image preparation failed:', error instanceof Error ? error.message : 'Unknown error')
       return NextResponse.json({ error: 'Could not prepare this image. Try another one.' }, { status: 502 })

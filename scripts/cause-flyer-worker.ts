@@ -2,8 +2,8 @@ import { prepareFlyerImage, renderCauseCampaignFlyer } from '../src/lib/server/c
 
 async function main() {
   if (process.argv[3] === 'image') {
-    const { slot, url } = JSON.parse(process.argv[2]) as { slot: 'logo' | 'photo'; url: string }
-    process.stdout.write(JSON.stringify(await prepareFlyerImage(slot, url)), () => process.exit(0))
+    const { slot, url, keepAspect } = JSON.parse(process.argv[2]) as { slot: 'logo' | 'photo'; url: string; keepAspect?: boolean }
+    process.stdout.write(JSON.stringify(await prepareFlyerImage(slot, url, keepAspect === true)), () => process.exit(0))
     return
   }
   const input = JSON.parse(process.argv[2]) as Parameters<typeof renderCauseCampaignFlyer>[0]

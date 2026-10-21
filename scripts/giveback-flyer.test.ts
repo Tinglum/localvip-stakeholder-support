@@ -27,6 +27,7 @@ test('GiveBack Days is a business-only generator design', () => {
   assert.ok(isGeneratorDesign('giveback'))
   assert.deepEqual(designAudiences('giveback'), ['business'])
   assert.deepEqual(designAudiences('giveback-v3'), ['business'])
+  assert.deepEqual(designAudiences('giveback-v4'), ['business'])
   assert.deepEqual(designAudiences('community'), ['business', 'families', 'schools', 'boosters'])
 })
 
@@ -96,6 +97,25 @@ test('v3 prints every slot once, with one call to action and the photo under a g
   for (const id of ids) assert.equal(svg.split(`data-slot="${id}"`).length - 1, 1, id)
   assert.match(svg, /<clipPath id="heroWindow"><rect x="232"/)
   const result = JSON.parse(Buffer.from(await renderCauseCampaignFlyer(v3, true)).toString('utf8'))
+  const page = (await PDFDocument.load(Buffer.from(result.pdf, 'base64'))).getPage(0)
+  assert.deepEqual([page.getWidth(), page.getHeight()], [612, 792])
+})
+
+test('v4 keeps the original draft words and bands, with right-aligned header text and a full-bleed angled hero', async () => {
+  const v4 = { ...fathersClub, design: 'giveback-v4' as const }
+  const slots = getGivebackFlyerSlots(v4)
+  const ids = slots.text.map(slot => slot.id)
+  assert.equal(new Set(ids).size, ids.length)
+  const value = (id: string) => slots.text.find(slot => slot.id === id)?.default
+  assert.deepEqual([value('headline.1'), value('headline.2'), value('highlight.1')], ['YOUR BUSINESS.', 'OUR COMMUNITY.', 'LET’S WIN TOGETHER.'])
+  assert.equal(value('district.2'), 'OLATHE PUBLIC SCHOOLS')
+  assert.equal(value('cta.2'), 'OLATHE GIVEBACK DAY')
+  assert.match(String(value('intro.1')) + value('intro.2') + value('intro.3'), /Olathe Public Schools/)
+  const svg = await buildCauseCampaignFlyerSvg(v4)
+  for (const id of ids) assert.equal(svg.split(`data-slot="${id}"`).length - 1, 1, id)
+  assert.match(svg, /text-anchor="end"[^>]*><tspan data-slot="district\.1"/)
+  assert.match(svg, /<clipPath id="heroCut"><path d="M0 59H612V322L0 340z"\/>/)
+  const result = JSON.parse(Buffer.from(await renderCauseCampaignFlyer(v4, true)).toString('utf8'))
   const page = (await PDFDocument.load(Buffer.from(result.pdf, 'base64'))).getPage(0)
   assert.deepEqual([page.getWidth(), page.getHeight()], [612, 792])
 })

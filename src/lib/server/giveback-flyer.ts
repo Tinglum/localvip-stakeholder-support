@@ -2,7 +2,7 @@ import path from 'node:path'
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { CalendarCheck, DoorOpen, HeartHandshake, School, Store, Users, type LucideIcon } from 'lucide-react'
+import { CalendarCheck, CalendarDays, Check, ChevronRight, DoorOpen, HeartHandshake, Mail, MessageSquare, School, Store, Users, type LucideIcon } from 'lucide-react'
 import { fitFlyerLine, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
 import type { FlyerSlots, FlyerTextSlot } from '@/lib/flyer-slots'
 import type { PDFFont } from 'pdf-lib'
@@ -44,13 +44,18 @@ export type GivebackCause = {
   owner?: { name?: string | null; email?: string | null; phone?: string | null }
 }
 
-/** v2: the ported Codex redesign. v3: full-width hero, one type scale, a single QR-led call to action. */
-export type GivebackVersion = 'v2' | 'v3'
+/**
+ * v2: the ported Codex redesign. v3: full-width hero, one type scale, a
+ * single QR-led call to action. v4: the original draft's composition (V1)
+ * with an angled full-bleed hero, linked steps, icon cards and icon contacts.
+ */
+export type GivebackVersion = 'v2' | 'v3' | 'v4'
 
-type Line = { id: string; group: string; kind: FlyerFontKind; weight: number; size: number; x: number; y: number; width: number; fill: string }
+type Anchor = 'start' | 'middle' | 'end'
+type Line = { id: string; group: string; kind: FlyerFontKind; weight: number; size: number; x: number; y: number; width: number; fill: string; anchor: Anchor }
 
-// Blocks of printed lines: [slot prefix, group label, line count, font, size, weight, x, first baseline, line height, width, colour]
-type Block = [string, string, number, FlyerFontKind, number, number, number, number, number, number, string]
+// Blocks of printed lines: [slot prefix, group label, line count, font, size, weight, x, first baseline, line height, width, colour, anchor?]
+type Block = [string, string, number, FlyerFontKind, number, number, number, number, number, number, string, Anchor?]
 function blocks(hasDistrictLogo: boolean): Block[] {
   const districtX = hasDistrictLogo ? 394 : 434
   return [
@@ -135,6 +140,50 @@ function blocksV3(hasDistrictLogo: boolean): Block[] {
   ]
 }
 
+// v4 follows the original draft's bands: header, full-bleed hero, a steps
+// strip, "Everybody wins" cards, a black call to action and the partners.
+const V4 = { ink: '#0E1013', mute: '#59626B', line: '#CBD3DB', blue: '#5E7F9C', gold: '#EFB719', mist: '#EEF1F4', body: '#2E3841' }
+function blocksV4(): Block[] {
+  return [
+    ['org', 'Organization', 1, 'display', 15, 800, 110, 36, 0, 250, V4.ink],
+    ['district', 'Supporting line', 2, 'display', 7.5, 700, 534, 27, 10, 150, V4.mute, 'end'],
+    ['eyebrow', 'Banner', 1, 'display', 8, 700, 62, 97, 0, 400, V4.gold],
+    ['headline', 'Headline', 2, 'display', 42, 800, 36, 150, 41, 540, '#FFFFFF'],
+    ['highlight', 'Highlighted headline', 1, 'display', 42, 800, 36, 232, 0, 540, V4.gold],
+    ['intro', 'Introduction', 3, 'sans', 11, 400, 36, 266, 16, 470, '#D6DCE3'],
+    ...[0, 1, 2].flatMap(i => [
+      [`step${i + 1}-title`, `Step ${i + 1} title`, 1, 'display', 11.5, 800, 82 + i * 186, 373, 0, 128, V4.ink],
+      [`step${i + 1}-body`, `Step ${i + 1} description`, 1, 'sans', 8.5, 400, 82 + i * 186, 388, 0, 128, V4.mute],
+    ] as Block[]),
+    ['benefits', 'Benefits heading', 1, 'display', 13.5, 800, 36, 440, 0, 540, V4.ink],
+    ['business-title', 'Business card title', 1, 'display', 10.5, 800, 64, 476, 0, 134, '#FFFFFF'],
+    ['business', 'Business benefits', 3, 'sans', 9, 400, 58, 503, 20, 142, V4.body],
+    ['families-title', 'Families card title', 1, 'display', 10.5, 800, 248, 476, 0, 134, V4.ink],
+    ['families', 'Family benefits', 3, 'sans', 9, 400, 242, 503, 20, 142, V4.body],
+    ['third-title', 'Third card title', 1, 'display', 10.5, 800, 432, 476, 0, 134, V4.ink],
+    ['third', 'Third card benefits', 3, 'sans', 9, 400, 426, 503, 20, 142, V4.body],
+    ['scan', 'QR caption', 1, 'display', 7.5, 700, 78, 694, 0, 84, '#94A2AF', 'middle'],
+    ['cta', 'Call to action', 2, 'display', 15.5, 800, 142, 614, 18.5, 420, '#FFFFFF'],
+    ['email-label', 'Email label', 1, 'display', 7, 700, 157, 655, 0, 120, V4.gold],
+    ['phone-label', 'Phone label', 1, 'display', 7, 700, 300, 655, 0, 100, V4.gold],
+    ['booking-label', 'Booking label', 1, 'display', 7, 700, 425, 655, 0, 140, V4.gold],
+    ['email', 'Email', 1, 'sans', 11.5, 700, 142, 672, 0, 140, '#FFFFFF'],
+    ['phone', 'Phone', 1, 'sans', 11.5, 700, 285, 672, 0, 120, '#FFFFFF'],
+    ['booking', 'Booking address', 1, 'sans', 11.5, 700, 410, 672, 0, 166, '#FFFFFF'],
+    ['cta-note', 'Call to action note', 1, 'sans', 8.5, 400, 142, 692, 0, 434, '#A3B0BC'],
+    ['host-label', 'Host label', 1, 'display', 7, 700, 36, 722, 0, 240, V4.mute],
+    ['host-name', 'Host name', 1, 'display', 12, 800, 94, 739, 0, 180, '#282828'],
+    ['host-title', 'Host title', 1, 'sans', 8.5, 700, 94, 753, 0, 180, '#111111'],
+    ['host-org', 'Host organization', 1, 'sans', 8.5, 700, 94, 763, 0, 180, '#3D5A73'],
+    ['host-contact', 'Host contact', 1, 'sans', 8.5, 400, 94, 773, 0, 196, V4.mute],
+    ['presenter-label', 'Presenter label', 1, 'display', 7, 700, 312, 722, 0, 150, V4.mute],
+    ['presenter-name', 'Presenter name', 1, 'display', 12, 800, 312, 739, 0, 150, '#0A3F96'],
+    ['presenter-title', 'Presenter title', 1, 'sans', 8.5, 700, 312, 753, 0, 150, '#111111'],
+    ['presenter-org', 'Presenter organization', 1, 'sans', 8.5, 700, 312, 763, 0, 150, '#1E4B9B'],
+    ['tagline', 'Tagline', 1, 'sans', 8.5, 400, 576, 773, 0, 110, V4.mute, 'end'],
+  ]
+}
+
 /** Splits `text` into at most `count` lines of `width`; overflow stays on the last line for fitting. */
 function wrapInto(text: string, count: number, width: number, kind: FlyerFontKind, weight: number, size: number) {
   const lines: string[] = []
@@ -154,10 +203,45 @@ const titleCase = (value: string) => value.trim().replace(/\b\w/g, char => char.
 
 /** The copy each block starts from, worded for this cause. Blocks with several lines may be one string; it is wrapped. */
 function defaultCopy(cause: GivebackCause, version: GivebackVersion): Record<string, string | string[]> {
+  if (version === 'v4') return defaultCopyV4(cause)
   const copy = defaultCopyV2(cause)
   // v3 keeps one call to action: the QR books the call; contacts follow quietly.
   return version === 'v3' ? { ...copy, eyebrow: 'FOR LOCAL BUSINESSES', cta: 'Let’s plan your first GiveBack Day', scan: 'Scan the code to book a 15-minute call',
     phone: 'Text 480-463-4632', 'presenter-title': 'Founder & CEO, LocalVIP' } : copy
+}
+
+// The original draft's words, generalized for any cause; outcome claims are
+// softened ("helps fill", "qualifying sales") rather than promised.
+function defaultCopyV4(cause: GivebackCause): Record<string, string | string[]> {
+  const v2 = defaultCopyV2(cause)
+  const city = titleCase(cause.city)
+  const area = cause.city.trim() ? city : 'local'
+  const CITY = (cause.city.trim() ? city : 'Local').toUpperCase()
+  const parent = cause.parentOrganization?.trim()
+  const senders = parent ? `every school, booster club and PTO in ${parent}` : cause.schoolFocused ? 'local schools, booster clubs and PTOs' : cause.name.trim()
+  return {
+    ...v2,
+    org: cause.name.trim().toUpperCase(),
+    district: parent ? ['SUPPORTING EVERY SCHOOL IN', parent.toUpperCase()] : [`${CITY} GIVEBACK DAYS`, cause.schoolFocused ? 'SUPPORTING LOCAL SCHOOLS' : 'SUPPORTING OUR COMMUNITY'],
+    eyebrow: `${CITY} GIVEBACK DAYS · FOR LOCAL BUSINESSES`,
+    headline: ['YOUR BUSINESS.', 'OUR COMMUNITY.'],
+    highlight: 'LET’S WIN TOGETHER.',
+    intro: `When ${area} families win, local businesses win. Pick the days you want busier, and ${senders} can invite families to you. You give back like a spirit night, with no receipts to collect.`,
+    'step1-title': 'PICK YOUR DAY', 'step1-body': 'Weekly, monthly, your call',
+    'step2-title': 'WE INVITE FAMILIES', 'step2-body': `${city ? `${city} families` : 'Local families'} hear about it`,
+    'step3-title': 'IT ALL ADDS UP', 'step3-body': 'Tracked on qualifying sales',
+    benefits: 'EVERYBODY WINS.',
+    'business-title': 'Your Business', business: ['Helps fill your slower days', 'Local families, not coupon hunters', 'Zero upfront or monthly fees'],
+    'families-title': `${city || 'Local'} Families`, families: [cause.schoolFocused ? 'Support schools as they shop' : 'Support a cause as they shop', 'Cash back on Giveback Days', 'At places they already love'],
+    'third-title': cause.schoolFocused ? `${city || 'Local'} Schools` : 'Our Cause',
+    third: cause.schoolFocused ? [parent ? 'Every school, club and PTO' : 'Schools, clubs and PTOs', 'Giveback on qualifying sales', 'Year-round, not one night'] : ['Giveback on qualifying sales', 'Year-round, not one night', 'Real local impact'],
+    scan: 'SCAN TO BOOK 15 MIN',
+    cta: ['LET’S PLAN YOUR FIRST', `${CITY} GIVEBACK DAY`],
+    'email-label': 'EMAIL', 'phone-label': 'OR TEXT', 'booking-label': 'OR BOOK A CALL',
+    'cta-note': '15 minutes to see what it looks like for your business. Zero upfront costs. Zero monthly fees.',
+    'host-label': 'BROUGHT TO YOU BY', 'host-name': String(v2['host-name']).toUpperCase(),
+    'presenter-label': 'POWERED BY', 'presenter-name': 'RICK SWANSON',
+  }
 }
 
 function defaultCopyV2(cause: GivebackCause): Record<string, string | string[]> {
@@ -199,10 +283,11 @@ export const givebackDistrictLogo = (cause: GivebackCause) => /\bolathe public s
 
 function lines(cause: GivebackCause, version: GivebackVersion) {
   const copy = defaultCopy(cause, version)
-  return (version === 'v3' ? blocksV3 : blocks)(givebackDistrictLogo(cause)).flatMap(([key, group, count, kind, size, weight, x, y, step, width, fill]) => {
+  const table = version === 'v4' ? blocksV4() : (version === 'v3' ? blocksV3 : blocks)(givebackDistrictLogo(cause))
+  return table.flatMap(([key, group, count, kind, size, weight, x, y, step, width, fill, anchor = 'start']) => {
     const value = copy[key]
     const texts = Array.isArray(value) ? value : count > 1 ? wrapInto(value, count, width, kind, weight, size) : [value]
-    return texts.map((text, index) => ({ line: { id: `${key}.${index + 1}`, group, kind, weight, size, x, y: +(y + index * step).toFixed(2), width, fill } as Line, text, index }))
+    return texts.map((text, index) => ({ line: { id: `${key}.${index + 1}`, group, kind, weight, size, x, y: +(y + index * step).toFixed(2), width, fill, anchor } as Line, text, index }))
   })
 }
 
@@ -248,15 +333,17 @@ export async function buildGivebackPdf(svg: string) {
     // A condensed line (textLength) prints at the size that fits its width.
     const length = Number(attr('textLength'))
     if (length) size = Math.min(size, size * length / font.widthOfTextAtSize(value, size))
-    page.drawText(value, { x: Number(attr('x')), y: 792 - Number(attr('y')), size, font,
+    const anchor = attr('text-anchor')
+    const shift = anchor === 'end' ? font.widthOfTextAtSize(value, size) : anchor === 'middle' ? font.widthOfTextAtSize(value, size) / 2 : 0
+    page.drawText(value, { x: Number(attr('x')) - shift, y: 792 - Number(attr('y')), size, font,
       color: rgb(parseInt(fill.slice(1, 3), 16) / 255, parseInt(fill.slice(3, 5), 16) / 255, parseInt(fill.slice(5, 7), 16) / 255) })
   }
   return pdf.save()
 }
 
 const esc = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!)
-const icon = (component: LucideIcon, x: number, y: number, size = 18) =>
-  renderToStaticMarkup(createElement(component, { x, y, width: size, height: size, color: STEEL, strokeWidth: 1.5 }))
+const icon = (component: LucideIcon, x: number, y: number, size = 18, color = STEEL, strokeWidth = 1.5) =>
+  renderToStaticMarkup(createElement(component, { x, y, width: size, height: size, color, strokeWidth }))
 
 type Art = { logo: string; photo: string; qr?: string; district?: string; localvip: string; schoolFocused: boolean }
 
@@ -283,6 +370,53 @@ ${icon(Store, 36, 441)}${icon(Users, 306, 441)}${icon(schoolFocused ? School : H
 ${qr ? `<image href="${qr}" x="478" y="594" width="90" height="90"/>` : ''}
 <image data-slot="logo" href="${logo}" x="36" y="723" width="36" height="28" preserveAspectRatio="xMidYMid meet"/>
 <image href="${localvip}" x="324" y="724" width="130" height="26" preserveAspectRatio="xMinYMid meet"/>`
+}
+
+// v4: the draft's bands, sharpened. The photo runs full bleed under a
+// directional fade (ink behind the copy, the people left visible) and the
+// hero's lower edge is cut at an angle into the steps strip.
+function artworkV4({ logo, photo, qr, district, localvip, schoolFocused }: Art) {
+  const card = (i: number, symbol: LucideIcon, lead: boolean) => {
+    const x = 36 + i * 184
+    return `<rect x="${x}" y="458" width="172" height="108" rx="6" fill="#FFFFFF" stroke="${V4.line}" stroke-width=".75"/>`
+      + `<path d="M${x} 486V464a6 6 0 0 1 6-6h160a6 6 0 0 1 6 6v22z" fill="${lead ? V4.blue : '#E3E9EF'}"/>`
+      + icon(symbol, x + 10, 465, 14, lead ? '#FFFFFF' : V4.blue, 2)
+      + [0, 1, 2].map(row => icon(Check, x + 9, 495 + row * 20, 11, V4.blue, 2.5)).join('')
+  }
+  const step = (i: number) => {
+    const x = 46 + i * 186
+    return `<circle cx="${x + 14}" cy="377" r="14" fill="${V4.blue}"/><text class="display" x="${x + 14}" y="381.5" font-size="12" font-weight="800" fill="#FFFFFF" text-anchor="middle">0${i + 1}</text>`
+      + (i < 2 ? icon(ChevronRight, x + 170, 370, 14, V4.line, 2) : '')
+  }
+  return `<defs>
+  <style>.display{font-family:Montserrat}.sans{font-family:'Open Sans'}</style>
+  <linearGradient id="heroFade"><stop stop-color="${V4.ink}" stop-opacity=".94"/><stop offset=".45" stop-color="${V4.ink}" stop-opacity=".82"/><stop offset=".78" stop-color="${V4.ink}" stop-opacity=".38"/><stop offset="1" stop-color="${V4.ink}" stop-opacity=".22"/></linearGradient>
+  <linearGradient id="heroFloor" x1="0" y1="0" x2="0" y2="1"><stop offset=".6" stop-color="${V4.ink}" stop-opacity="0"/><stop offset="1" stop-color="${V4.ink}" stop-opacity=".55"/></linearGradient>
+  <clipPath id="heroCut"><path d="M0 59H612V322L0 340z"/></clipPath>
+</defs>
+<rect width="612" height="792" fill="#FFFFFF"/>
+<image data-slot="logo" href="${logo}" x="36" y="11" width="52" height="37" preserveAspectRatio="xMidYMid meet"/>
+<path d="M99 16v27" stroke="${V4.line}" stroke-width="1.5"/>
+${district ? `<image href="${district}" x="544" y="12" width="32" height="35" preserveAspectRatio="xMidYMid meet"/>` : ''}
+<rect y="56.5" width="612" height="2.5" fill="${V4.blue}"/>
+<g clip-path="url(#heroCut)">
+  <rect y="59" width="612" height="281" fill="${V4.ink}"/>
+  <image data-slot="photo" href="${photo}" x="0" y="59" width="612" height="281" preserveAspectRatio="xMidYMid slice"/>
+  <rect y="59" width="612" height="281" fill="url(#heroFade)"/><rect y="59" width="612" height="281" fill="url(#heroFloor)"/>
+</g>
+<rect x="36" y="93.5" width="18" height="2.5" fill="${V4.gold}"/>
+<rect y="340" width="11.5" height="72" fill="${V4.blue}"/><path d="M0 412.5h612" stroke="${V4.line}" stroke-width=".75"/>
+${[0, 1, 2].map(step).join('')}
+<rect y="413" width="612" height="167" fill="${V4.mist}"/><rect x="36" y="447" width="28" height="2.5" fill="${V4.gold}"/>
+${card(0, Store, true)}${card(1, Users, false)}${card(2, schoolFocused ? School : HeartHandshake, false)}
+<rect y="580" width="612" height="126" fill="${V4.ink}"/><rect y="580" width="612" height="3.5" fill="${V4.gold}"/>
+<rect x="36" y="598" width="84" height="84" rx="5" fill="#FFFFFF"/>
+${qr ? `<image href="${qr}" x="40" y="602" width="76" height="76"/>` : ''}
+${icon(Mail, 142, 646, 11, V4.gold, 2)}${icon(MessageSquare, 285, 646, 11, V4.gold, 2)}${icon(CalendarDays, 410, 646, 11, V4.gold, 2)}
+<image data-slot="logo" href="${logo}" x="36" y="729" width="46" height="42" preserveAspectRatio="xMidYMid meet"/>
+<path d="M87 730v42" stroke="${V4.ink}" stroke-width="1.5"/>
+<path d="M94 743.5h180" stroke="${V4.blue}" stroke-width=".75"/><path d="M312 743.5h150" stroke="#1A3E7E" stroke-width=".75"/>
+<image href="${localvip}" x="470" y="732" width="106" height="24" preserveAspectRatio="xMaxYMid meet"/>`
 }
 
 // v3: the photo fills the hero's right side under a navy gradient that stays
@@ -328,13 +462,13 @@ export async function buildGivebackFlyerSvg(input: { cause: GivebackCause; logo:
   const printed = lines(input.cause, version).map(({ line, text }) => {
     const value = (edits[line.id] ?? text).trim()
     const fit = fitFlyerLine(value, line.width, line.kind, line.weight, line.size, measureGiveback)
-    return `<text class="${line.kind}" x="${line.x}" y="${line.y}" font-size="${+fit.size.toFixed(2)}" font-weight="${line.weight}" fill="${line.fill}"`
+    return `<text class="${line.kind}" x="${line.x}" y="${line.y}" font-size="${+fit.size.toFixed(2)}" font-weight="${line.weight}" fill="${line.fill}"${line.anchor === 'start' ? '' : ` text-anchor="${line.anchor}"`}`
       + `${fit.textLength ? ` textLength="${fit.textLength}" lengthAdjust="spacingAndGlyphs"` : ''}`
       + ` data-kind="${line.kind}" data-weight="${line.weight}" data-size="${line.size}" data-fit="${line.width}"><tspan data-slot="${line.id}">${esc(value)}</tspan></text>`
   }).join('\n')
   const art = { logo: input.logo, photo: input.photo, qr: input.qr, localvip, schoolFocused: input.cause.schoolFocused, district: givebackDistrictLogo(input.cause) ? district : undefined }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="612" height="792" viewBox="0 0 612 792">
-${version === 'v3' ? artworkV3(art) : artworkV2(art)}
+${version === 'v4' ? artworkV4(art) : version === 'v3' ? artworkV3(art) : artworkV2(art)}
 ${printed}
 </svg>`
 }
