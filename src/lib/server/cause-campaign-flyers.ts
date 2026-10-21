@@ -9,10 +9,11 @@ import QRCode from 'qrcode'
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { readableBrandText } from '@/lib/brand-colors'
 import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
-import { flyerFonts } from '@/lib/server/flyer-fonts'
+import { flyerFonts, givebackFonts } from '@/lib/server/flyer-fonts'
+import { buildGivebackFlyerSvg, givebackSlots, type GivebackCause } from '@/lib/server/giveback-flyer'
 import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, FLYER_ORG_WORD_SLOT, FLYER_ORG_WORDS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
 
-import { approvedFlyerTemplateId, type FlyerAudience, type FlyerDesign } from '@/lib/flyer-designs'
+import { approvedFlyerTemplateId, GIVEBACK_DESIGN, type FlyerAudience, type FlyerDesign, type GeneratorDesign } from '@/lib/flyer-designs'
 
 // Exact artwork from the dashboard's Olathe library; ids live in flyer-designs.
 export { approvedFlyerTemplateId, FLYER_DESIGNS, type FlyerAudience, type FlyerDesign } from '@/lib/flyer-designs'
@@ -373,13 +374,42 @@ function localizeTemplateCopy(template: string, audience: FlyerAudience, kind: F
     .replace(/class="(sans|display) (?:white|navy)"([^>]*font-size="(?:19|23)")/g, 'class="$1 step-number"$2')
 }
 
-export async function buildCauseCampaignFlyerSvg(input: {
+export type CauseFlyerInput = {
   name: string; locality: string; logoUrl: string; coverUrl: string; joinUrl: string; audience: FlyerAudience
-  design?: FlyerDesign; category?: string | null; mission?: string; parentOrganization?: string; colors?: { navy?: string; gold?: string }
+  design?: GeneratorDesign; category?: string | null; mission?: string; parentOrganization?: string; colors?: { navy?: string; gold?: string }
   palette?: { background: string; highlight: string; accent: string }
   /** A cause's own edits to the generated copy and imagery. See getFlyerSlots. */
   overrides?: FlyerOverrides
-}) {
+  /** GiveBack Days only: the cause contact printed under "Brought to you by". */
+  owner?: GivebackCause['owner']
+  /** GiveBack Days only: print the booking QR. Its panel is left blank by default. */
+  qr?: boolean
+}
+
+/** The GiveBack Days view of a cause. */
+function givebackCause(input: Pick<CauseFlyerInput, 'name' | 'locality' | 'category' | 'parentOrganization' | 'owner'>): GivebackCause {
+  return {
+    name: input.name, city: input.locality.split(',')[0]?.trim() || '', parentOrganization: input.parentOrganization,
+    schoolFocused: flyerKind(input.category, input.name) !== 'cause' || !!input.parentOrganization?.trim(), owner: input.owner,
+  }
+}
+
+/** Every editable line and image on the GiveBack Days flyer for this cause. */
+export function getGivebackFlyerSlots(input: Pick<CauseFlyerInput, 'name' | 'locality' | 'category' | 'parentOrganization' | 'owner' | 'logoUrl' | 'coverUrl'>) {
+  return givebackSlots(givebackCause(input), input.logoUrl, input.coverUrl)
+}
+
+async function buildGivebackFlyer(input: CauseFlyerInput) {
+  const [logo, photo] = await prepareAssets(input.overrides?.images?.logo || input.logoUrl, input.overrides?.images?.photo || input.coverUrl)
+  const text = input.overrides?.text || {}
+  // The QR books the call the copy invites; it follows an edited booking address.
+  const booking = (text['booking.1'] ?? 'calendly.com/30vip').trim()
+  const qr = input.qr && booking ? await QRCode.toDataURL(/^https?:\/\//i.test(booking) ? booking : `https://${booking}`, { margin: 1, width: 360, errorCorrectionLevel: 'M' }) : undefined
+  return buildGivebackFlyerSvg({ cause: givebackCause(input), logo, photo, qr, text })
+}
+
+export async function buildCauseCampaignFlyerSvg(input: CauseFlyerInput) {
+  if (input.design === GIVEBACK_DESIGN) return buildGivebackFlyer(input)
   const text = input.overrides?.text || {}
   const name = (text['header.name']?.trim() || input.name).trim()
   if (!name) throw new Error('A cause name is required for flyer generation.')
@@ -625,16 +655,20 @@ export async function prepareFlyerImage(slot: 'logo' | 'photo', url: string): Pr
   return { href, flowLogo: flowLogoBox(href) }
 }
 
-export async function renderCauseCampaignFlyer(input: Parameters<typeof buildCauseCampaignFlyerSvg>[0], preview: boolean | 'svg' = false) {
+export async function renderCauseCampaignFlyer(input: CauseFlyerInput, preview: boolean | 'svg' = false) {
   if (process.env.LOCALVIP_FLYER_WORKER !== '1') return runFlyerWorker(input, preview === 'svg' ? 'svg' : preview ? 'preview' : 'pdf')
-  const svg = layoutForLetter(await buildCauseCampaignFlyerSvg(input))
+  // GiveBack Days is authored on Letter; the library artwork is laid out for it.
+  const giveback = input.design === GIVEBACK_DESIGN
+  const composed = await buildCauseCampaignFlyerSvg(input)
+  const svg = giveback ? composed : layoutForLetter(composed)
   if (preview === 'svg') return Buffer.from(svg)
+  const fonts = giveback ? { font: { fontFiles: givebackFonts().faces.map(face => face.file), loadSystemFonts: false, defaultFontFamily: givebackFonts().sans } } : resvgFonts()
   // 2550 × 3300 is 300 pixels per printed inch on Letter, which keeps type,
   // icons and QR modules crisp in print.
-  const png = new Resvg(svg, { ...resvgFonts(), fitTo: { mode: 'width', value: 2550 } }).render().asPng()
+  const png = new Resvg(svg, { ...fonts, fitTo: { mode: 'width', value: 2550 } }).render().asPng()
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([612, 792])
   page.drawImage(await pdf.embedPng(png), { x: 0, y: 0, width: 612, height: 792 })
   const bytes = await pdf.save()
-  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { ...resvgFonts(), fitTo: { mode: 'width', value: 765 } }).render().asPng().toString('base64') })) : bytes
+  return preview ? Buffer.from(JSON.stringify({ pdf: Buffer.from(bytes).toString('base64'), preview: new Resvg(svg, { ...fonts, fitTo: { mode: 'width', value: 765 } }).render().asPng().toString('base64') })) : bytes
 }
