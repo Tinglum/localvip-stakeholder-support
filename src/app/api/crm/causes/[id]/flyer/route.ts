@@ -7,7 +7,8 @@ import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { prepareFlyerImage, renderCauseCampaignFlyer, renderCauseCampaignFlyerSvg, getFlyerSlots, isFlyerImageUrl, validateFlyerOverrides, FLYER_DESIGNS, type FlyerAudience, type FlyerDesign } from '@/lib/server/cause-campaign-flyers'
 import { isHexColor } from '@/lib/brand-colors'
 import type { LandingRecord } from '@/lib/cause-landing-config'
-import { compactFlyerOverrides, flyerEditKey, type FlyerOverrides } from '@/lib/flyer-slots'
+import { FLYER_ORG_WORD_SLOT, flyerEditsFor, storeFlyerEdits, type FlyerOverrides } from '@/lib/flyer-slots'
+import { flyerPhotoFor } from '@/lib/flyer-designs'
 import { flyerFonts } from '@/lib/server/flyer-fonts'
 
 export const runtime = 'nodejs'
@@ -38,16 +39,25 @@ async function loadFlyerSource(id: string) {
   const draft = landing?.draft
   const asset = (value: string | null | undefined, folder: string) => !value ? '' : /^https:\/\//i.test(value) ? value : `${QA_AUTH_CONFIG.baseUrl}/uploads/${folder}/${encodeURIComponent(value)}`
   const logoUrl = draft?.assets?.mark?.src || asset(cause.imageUrl, 'logos')
-  const coverUrl = draft?.assets?.crowd?.src || asset(cause.coverPhotoUrl, 'covers')
-  return { cause, draft, logoUrl, coverUrl }
+  // The setup photos by slot; `crowd` is the account's original cover photo.
+  const photos: Record<string, string> = { crowd: draft?.assets?.crowd?.src || asset(cause.coverPhotoUrl, 'covers') }
+  for (const slot of ['team', 'people', 'community']) photos[slot] = draft?.assets?.[slot as 'team']?.src || ''
+  return { cause, draft, logoUrl, photos }
 }
 type FlyerSource = Awaited<ReturnType<typeof loadFlyerSource>>
+const coverFor = (source: FlyerSource, audience: string, design: string) => flyerPhotoFor(audience as FlyerAudience, design as FlyerDesign, source.photos)
 
-/** The design's slots and the cause's saved edits for it, dropping any that no longer apply. */
-async function slotsWithEdits(source: FlyerSource, audience: string, design: string) {
+/**
+ * The design's slots and the cause's saved edits for it, dropping any that no
+ * longer apply. `orgWord` is the organization word to describe the lines with
+ * (an unsaved edit); by default the saved one.
+ */
+async function slotsWithEdits(source: FlyerSource, audience: string, design: string, orgWord?: string) {
+  const raw = flyerEditsFor(source.draft?.flyerEdits, design, audience)
   const slots = await getFlyerSlots({ name: source.cause.name, audience: audience as FlyerAudience, design: design as FlyerDesign,
-    category: source.cause.category, logoUrl: source.logoUrl, coverUrl: source.coverUrl })
-  const checked = validateFlyerOverrides(source.draft?.flyerEdits?.[flyerEditKey(design, audience)], slots)
+    category: source.cause.category, logoUrl: source.logoUrl, coverUrl: coverFor(source, audience, design),
+    orgWord: orgWord ?? raw.text?.[FLYER_ORG_WORD_SLOT] })
+  const checked = validateFlyerOverrides(raw, slots)
   return { slots, saved: 'overrides' in checked ? checked.overrides : {} }
 }
 
@@ -62,8 +72,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
     try {
       const source = await loadFlyerSource(params.id)
       // The cause's existing photos and logo, offered as one-click image choices.
-      const assets = [...new Set([source.logoUrl, source.coverUrl, ...Object.values(source.draft?.assets || {}).map(item => item?.src)])].filter(isFlyerImageUrl)
-      return NextResponse.json({ ...await slotsWithEdits(source, audience!, design!), assets }, { headers: { 'cache-control': 'no-store' } })
+      const assets = [...new Set([source.logoUrl, ...Object.values(source.photos), ...Object.values(source.draft?.assets || {}).map(item => item?.src)])].filter(isFlyerImageUrl)
+      return NextResponse.json({ ...await slotsWithEdits(source, audience!, design!, search.get('orgWord') ?? undefined), assets }, { headers: { 'cache-control': 'no-store' } })
     } catch { return NextResponse.json({ error: 'Could not load this flyer’s editable text. Please retry.' }, { status: 502 }) }
   }
   try {
@@ -95,13 +105,18 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
   try {
     const source = await loadFlyerSource(params.id)
-    const { cause, draft, logoUrl, coverUrl } = source
+    const { cause, draft, logoUrl } = source
+    const coverUrl = coverFor(source, body.audience, body.design)
     if (!logoUrl || !coverUrl || !cause.referralCode || !draft?.slug) return NextResponse.json({ error: 'Finish your cause setup with a logo, community photo, and referral link first.' }, { status: 400 })
     // Without `overrides` the cause's saved edits apply. With them, they replace
     // the saved set; an empty object is "Reset all".
-    const { slots, saved } = await slotsWithEdits(source, body.audience, body.design)
+    const { saved } = await slotsWithEdits(source, body.audience, body.design)
     let overrides: FlyerOverrides = saved
     if (body.overrides !== undefined) {
+      // Describe the lines with the organization word being sent, so a line
+      // that matches its new default is not stored as an edit.
+      const word = typeof body.overrides?.text?.[FLYER_ORG_WORD_SLOT] === 'string' ? body.overrides.text[FLYER_ORG_WORD_SLOT] : ''
+      const { slots } = await slotsWithEdits(source, body.audience, body.design, word)
       const checked = validateFlyerOverrides(body.overrides, slots)
       if ('error' in checked) return NextResponse.json({ error: checked.error }, { status: 400 })
       overrides = checked.overrides
@@ -113,9 +128,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (output !== 'svg' && JSON.stringify(overrides) !== JSON.stringify(saved)) {
       // Edits live on the landing draft, the cause's one free-form JSON record.
       // Every other writer of the draft spreads it, so they survive those saves.
-      const key = flyerEditKey(body.design, body.audience)
-      const { [key]: _replaced, ...others } = draft.flyerEdits || {}
-      const flyerEdits = Object.keys(compactFlyerOverrides(overrides)).length ? { ...others, [key]: overrides } : others
+      // The organization word is kept once for the whole cause (see storeFlyerEdits).
+      const flyerEdits = storeFlyerEdits(draft.flyerEdits, body.design, body.audience, overrides)
       saveError = await fetchQaApi(`/api/dashboard/v1/Nonprofit/${params.id}/landing-page`, {
         method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: draft.slug, config: { ...draft, flyerEdits } }),
       }).then(response => parseQaResponse(response, 'Save failed.')).then(() => undefined, error => {

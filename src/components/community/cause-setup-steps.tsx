@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
-  CheckCircle2, Clock3, ExternalLink, FileText, ImageIcon, Loader2,
+  ArrowRight, CheckCircle2, Clock3, ExternalLink, FileText, ImageIcon, Loader2,
   Palette, QrCode, Rocket, Upload, Wand2,
   RotateCcw,
 } from 'lucide-react'
@@ -215,9 +215,10 @@ export function ImagesStep({ logoSrc, photoUrls, publishBlocked, busy, onUpload,
         <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4 text-sm leading-6 text-surface-600">
           <p className="font-semibold text-surface-900">Four photos, four different jobs</p>
           <p className="mt-1">
-            Your pages and your 60-second cause video are built from these four. One photo of supporters is enough to
-            get live; all four are needed the first time you publish a page, a flyer or a shareable link. Once you are
-            published you can keep updating your pages whether or not every photo is in.
+            Your flyers, pages and 60-second cause video are built from these four. Each flyer design uses a different
+            photo, and business flyers lead with your wider community. One photo of supporters is enough to get live and
+            make your flyers; any photo you skip is filled with that one. All four are needed the first time you
+            publish your landing page.
           </p>
           <p className="mt-2">Use real photos of your own community, and keep them different from each other.</p>
         </div>
@@ -405,29 +406,37 @@ export function LinkStep({ icon, done, doneText, todoText, actionHref, actionLab
   )
 }
 
-export function MaterialsStep({ count, busy, progress, error, onGenerate }: {
-  count: number; busy: boolean; progress: string | null; error: string | null; onGenerate: () => void
+export function MaterialsStep({ count, busy, generating, startedByUser, progress, error, onGenerate, onNext }: {
+  count: number; busy: boolean
+  /** A generation is running: after a click here, or started for the user when they saved their colors. */
+  generating: boolean
+  /** Only a run the user started here shows on the button; an automatic one shows in the status line. */
+  startedByUser: boolean
+  progress: string | null; error: string | null; onGenerate: () => void; onNext: () => void
 }) {
+  const spinning = generating && startedByUser
+  const status = generating
+    ? `Updating your flyers with your latest logo, photos and colors. This takes about a minute${count > 0 ? '; the flyers you have stay available until the new ones are ready' : ''}. You can go on to the next step.`
+    : count > 0
+      ? `${count} of 12 flyers are ready across four audiences and three designs. Regenerate after you change your logo, photo or colors.`
+      : 'Create your flyers for families and local businesses. They use your logo, your colors and your QR code.'
   return (
     <div className="space-y-5">
-      <div className={`flex items-start gap-4 rounded-2xl border px-5 py-5 ${count > 0 ? 'border-success-200 bg-success-50' : 'border-surface-200 bg-surface-50'}`}>
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${count > 0 ? 'bg-success-600 text-white' : 'bg-white text-brand-600 shadow-sm'}`}>
-          {count > 0 ? <CheckCircle2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+      <div className={`flex items-start gap-4 rounded-2xl border px-5 py-5 ${generating ? 'border-brand-200 bg-brand-50' : count > 0 ? 'border-success-200 bg-success-50' : 'border-surface-200 bg-surface-50'}`}>
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${generating ? 'bg-white text-brand-600 shadow-sm' : count > 0 ? 'bg-success-600 text-white' : 'bg-white text-brand-600 shadow-sm'}`}>
+          {generating ? <Loader2 className="h-5 w-5 animate-spin" /> : count > 0 ? <CheckCircle2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
         </span>
-        <p className={`text-sm ${count > 0 ? 'text-success-900' : 'text-surface-700'}`}>
-          {count > 0
-            ? `${count} of 12 flyers are ready across four audiences and three designs. Regenerate after you change your logo, photo or colors.`
-            : 'Create your flyers for families and local businesses. They use your logo, your colors and your QR code.'}
-        </p>
+        <p role="status" className={`text-sm ${generating ? 'text-brand-900' : count > 0 ? 'text-success-900' : 'text-surface-700'}`}>{status}</p>
       </div>
-      {progress ? <p role="status" className="text-sm text-surface-600">{progress}</p> : null}
+      {progress && !generating ? <p className="text-sm text-surface-600">{progress}</p> : null}
       {error ? <p role="alert" className="text-sm text-danger-600">{error}</p> : null}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-surface-100 pt-5">
         {count > 0 ? <Button asChild variant="outline"><Link href="/community/materials">See my materials</Link></Button> : null}
-        <Button onClick={onGenerate} disabled={busy}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-          {count > 0 ? 'Regenerate materials' : 'Generate my materials'}
+        <Button variant={count > 0 ? 'outline' : 'default'} onClick={onGenerate} disabled={busy || spinning}>
+          {spinning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+          {spinning ? 'Updating…' : count > 0 ? 'Regenerate materials' : 'Generate my materials'}
         </Button>
+        {count > 0 || generating ? <Button onClick={onNext} disabled={busy}>Next: Landing page<ArrowRight className="h-4 w-4" /></Button> : null}
       </div>
     </div>
   )

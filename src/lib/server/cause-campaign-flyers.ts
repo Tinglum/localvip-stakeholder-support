@@ -10,7 +10,7 @@ import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { readableBrandText } from '@/lib/brand-colors'
 import { fitFlyerHeader, fitFlyerLine, flyerHeaderMarkup, flyerLineText, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
 import { flyerFonts } from '@/lib/server/flyer-fonts'
-import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
+import { compactFlyerOverrides, FLYER_IMAGE_SLOT_LABELS, FLYER_ORG_WORD_SLOT, FLYER_ORG_WORDS, type FlyerOverrides, type FlyerSlots, type FlyerTextSlot, type PreparedFlyerImage } from '@/lib/flyer-slots'
 
 import { approvedFlyerTemplateId, type FlyerAudience, type FlyerDesign } from '@/lib/flyer-designs'
 
@@ -276,6 +276,8 @@ const lineLimit = (value: string) => Math.min(160, Math.max(16, Math.ceil(value.
 export async function getFlyerSlots(input: {
   name: string; audience: FlyerAudience; design?: FlyerDesign; category?: string | null
   parentOrganization?: string; logoUrl: string; coverUrl: string
+  /** The organization word in effect, so line defaults read as the flyer prints them. */
+  orgWord?: string
 }): Promise<FlyerSlots> {
   const kind = flyerKind(input.category, input.name)
   const template = await readFile(path.join(templateDir, `approved-${approvedFlyerTemplateId(input.audience, input.design)}.svg`), 'utf8')
@@ -283,11 +285,12 @@ export async function getFlyerSlots(input: {
   const parent = input.parentOrganization?.trim().toUpperCase()
   const label = parent && parent.length < 34 ? `${kindLabel} · ${parent}` : kindLabel
   const lines: TextLine[] = []
-  walkFlyerText(localizeTemplateCopy(template, input.audience, kind, '#efb719'), ({ lines: found }) => {
+  walkFlyerText(localizeTemplateCopy(template, input.audience, kind, '#efb719', input.orgWord), ({ lines: found }) => {
     for (const line of found) if (line) lines.push(line)
   })
   lines.sort((a, b) => a.rank - b.rank) // stable: lines keep their order within a block
   const text: FlyerTextSlot[] = [
+    { id: FLYER_ORG_WORD_SLOT, group: 'Call your organization a…', line: 1, default: defaultSubject(input.audience, kind), maxLength: 24, suggestions: FLYER_ORG_WORDS },
     { id: 'header.name', group: 'Cause name', line: 1, default: input.name.trim(), maxLength: 60 },
     { id: 'header.label', group: 'Cause label', line: 1, default: label, maxLength: 48 },
     ...lines.map(line => ({ id: line.id, group: line.group, line: line.line, default: line.text, maxLength: lineLimit(line.text) })),
@@ -335,16 +338,32 @@ export function validateFlyerOverrides(value: unknown, slots: FlyerSlots): { ove
   return { overrides: compactFlyerOverrides(result) }
 }
 
-function localizeTemplateCopy(template: string, audience: FlyerAudience, kind: FlyerKind, accent: string) {
-  const subject = audience === 'boosters' || kind === 'booster' ? 'club' : kind === 'school' ? 'school' : 'cause'
+/** The word the generated copy uses for the organization, before any edit. */
+function defaultSubject(audience: FlyerAudience, kind: FlyerKind) {
+  return audience === 'boosters' || kind === 'booster' ? 'club' : kind === 'school' ? 'school' : 'cause'
+}
+
+// The LocalVIP mark in the hero's top right. It crowds the cause's own header
+// and is not needed on a cause's flyer, so it is left out (bug report 278).
+const LOCALVIP_MARK = /(?:<!--[^>]*Local VIP logo[^>]*-->\s*)?<g\b[^>]*aria-label="Powered by Local VIP"[^>]*>[\s\S]*?<\/g>\s*/g
+
+function localizeTemplateCopy(template: string, audience: FlyerAudience, kind: FlyerKind, accent: string, orgWord?: string) {
+  // Letters, digits, spaces, dots and dashes only: the word goes into markup
+  // (and is upper-cased there, so it cannot carry entities) and into
+  // replacement strings, where `$` would be a pattern.
+  const subject = orgWord?.replace(/[^A-Za-z0-9À-ɏ .’-]+/g, '').trim() || defaultSubject(audience, kind)
   // Retain the library's artwork and copy. Generic organization references keep
   // body text within the original line lengths; the header carries the full name.
+  // "OLATHE WEST" is split over two lines in several titles ("SUPPORT OLATHE" /
+  // "WEST PROGRAMS"), so each second line needs its own rule.
   return template
+    .replace(LOCALVIP_MARK, '')
     .replace(/More Olathe West families discover/g, 'More local families discover')
     .replace(/OLATHE WEST GIVEBACK DAY/g, 'LOCAL GIVEBACK DAY')
     .replace(/Choose a day\. Olathe West/g, `Choose a day. Our ${subject}`)
     .replace(/Olathe West/g, `our ${subject}`).replace(/OLATHE WEST/g, `OUR ${subject.toUpperCase()}`)
     .replace(/SUPPORT OLATHE/g, 'SUPPORT THIS').replace(/WEST TOGETHER\./g, `${subject.toUpperCase()} TOGETHER.`)
+    .replace(/WEST PROGRAMS/g, `${subject.toUpperCase()}’S PROGRAMS`)
     .replace(/INVITE OLATHE/g, 'INVITE LOCAL').replace(/WEST FAMILIES/g, 'SUPPORTERS')
     .replace(/IN OLATHE\./g, 'LOCALLY.')
     .replace(/school/gi, value => value === value.toUpperCase() ? subject.toUpperCase() : subject)
@@ -379,7 +398,7 @@ export async function buildCauseCampaignFlyerSvg(input: {
   // The preview rebuilds this group with the same markup as the name is edited.
   const header = `<g data-slot-header="">${flyerHeaderMarkup(headerFit, identityLabel, measureFlyerText)}</g>`
   const replacements: Record<string, string> = { HEADER: header, PHOTO: photo, LOGO: logo, QR: qr }
-  const svg = applyFlyerTextOverrides(localizeTemplateCopy(template, input.audience, kind, accent), text)
+  const svg = applyFlyerTextOverrides(localizeTemplateCopy(template, input.audience, kind, accent, text[FLYER_ORG_WORD_SLOT]), text)
     .replace(/href="{{(LOGO|PHOTO)}}"/g, (tag, key: string) => `data-slot="${key.toLowerCase()}" ${tag}`)
     .replace(/{{([A-Z_]+)}}/g, (_, key: string) => replacements[key] ?? '')
     .replace('</defs>', `<style>.step-number{fill:${readableBrandText(accent)}}</style></defs>`)

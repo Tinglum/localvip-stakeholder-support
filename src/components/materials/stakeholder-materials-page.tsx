@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowRight, CheckCircle2, Download, Eye, FileText, Loader2, QrCode, Search, Sparkles } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Download, Eye, FileText, Loader2, PencilLine, QrCode, Search, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -51,7 +51,14 @@ function generatorTemplateId(material: Material) {
   return [material.id, generationId].map(id => String(id ?? '')).find(id => flyerDesignForTemplate(id)) || null
 }
 
-function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize, onPreview, showGenerator }: {
+/** The generator link for one of the cause's own audience flyers, or null for anything else. */
+function causeFlyerEditHref(material: Material) {
+  const meta = (material.metadata || {}) as Record<string, unknown>
+  if (meta.generator !== 'cause-campaign-v1' || typeof meta.audience !== 'string' || typeof meta.design !== 'string') return null
+  return `/community/materials/generator?audience=${encodeURIComponent(meta.audience)}&design=${encodeURIComponent(meta.design)}`
+}
+
+function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize, onPreview, showGenerator, canEdit }: {
   material: Material
   profile: ReturnType<typeof useAuth>['profile']
   actionLabel?: string
@@ -59,8 +66,10 @@ function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize,
   onCustomize?: () => void
   onPreview: () => void
   showGenerator?: boolean
+  canEdit?: boolean
 }) {
   const source = material.file_url || material.thumbnail_url
+  const editHref = canEdit ? causeFlyerEditHref(material) : null
   const generatorId = showGenerator ? generatorTemplateId(material) : null
   const generatorDesign = flyerDesignForTemplate(generatorId)
   return (
@@ -91,6 +100,9 @@ function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize,
           ) : material.file_url ? (
             <Button size="sm" asChild><a href={material.file_url} download><Download className="h-3.5 w-3.5" /> {actionLabel || 'Download'}</a></Button>
           ) : null}
+          {editHref && (
+            <Button size="sm" variant="outline" asChild><Link href={editHref}><PencilLine className="h-3.5 w-3.5" /> Edit text &amp; images</Link></Button>
+          )}
           {generatorId && (
             <Button size="sm" variant="outline" asChild><Link href={`/community/materials/generator?template=${encodeURIComponent(generatorId)}`}><Sparkles className="h-3.5 w-3.5" /> Open in flyer generator</Link></Button>
           )}
@@ -103,7 +115,7 @@ function MaterialCard({ material, profile, actionLabel, actionHref, onCustomize,
   )
 }
 
-function MaterialSection({ title, description, materials, profile, customize, empty, onPreview, onCustomize, showGenerator }: {
+function MaterialSection({ title, description, materials, profile, customize, empty, onPreview, onCustomize, showGenerator, canEdit }: {
   title: string
   description: string
   materials: Material[]
@@ -113,6 +125,7 @@ function MaterialSection({ title, description, materials, profile, customize, em
   onPreview: (material: Material) => void
   onCustomize?: (material: Material) => void
   showGenerator?: boolean
+  canEdit?: boolean
 }) {
   return (
     <section className="space-y-3" aria-label={title}>
@@ -127,6 +140,7 @@ function MaterialSection({ title, description, materials, profile, customize, em
               onCustomize={customize && onCustomize ? () => onCustomize(material) : undefined}
               actionLabel={customize ? 'Customize' : undefined}
               showGenerator={showGenerator}
+              canEdit={canEdit}
               actionHref={customize ? `/portal/materials?tab=templates&generateTemplate=${encodeURIComponent(String((material.metadata as Record<string, unknown> | null)?.generation_template_id || material.id))}` : undefined} />
           ))}
         </div>
@@ -322,6 +336,7 @@ export function StakeholderMaterialsPage({ embedded = false }: { embedded?: bool
           onPreview={setPreview}
           onCustomize={activeGroup.customize && shell === 'community' ? setCustomizing : undefined}
           showGenerator={activeGroup.customize && shell === 'community'}
+          canEdit={shell === 'community'}
         />
       )}
     </div>

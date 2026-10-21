@@ -22,6 +22,18 @@ export function approvedFlyerTemplateId(audience: FlyerAudience, design: FlyerDe
   return SERIES[audience][FLYER_DESIGNS.indexOf(design)]
 }
 
+// Each design gets a different one of the cause's four setup photos, so the
+// set does not repeat one picture twelve times. Business flyers lead with the
+// wider-community photo (a main street, a local shop). A missing photo falls
+// back to the supporters photo, which every cause has.
+const DESIGN_PHOTOS: Record<FlyerDesign, readonly string[]> = { community: ['crowd'], growth: ['people'], comparison: ['team'] }
+
+/** The cover photo a design uses, from the cause's photos by setup slot (crowd, team, people, community). */
+export function flyerPhotoFor(audience: FlyerAudience, design: FlyerDesign, photos: Partial<Record<string, string | null | undefined>>) {
+  const order = audience === 'business' && design === 'community' ? ['community', 'crowd'] : [...DESIGN_PHOTOS[design], 'crowd']
+  return order.map(slot => photos[slot]?.trim()).find(Boolean) || ''
+}
+
 /** The generator design for a library template id, or null if the generator cannot render it. */
 export function flyerDesignForTemplate(templateId: string | number | null | undefined): { audience: FlyerAudience; design: FlyerDesign } | null {
   const id = Number(templateId)

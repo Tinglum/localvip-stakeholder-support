@@ -2,6 +2,8 @@ import { createDetachedQaRequester, fetchQaApi, parseQaResponse } from '@/lib/au
 import { QA_AUTH_CONFIG } from '@/lib/auth/qa-auth'
 import { FLYER_DESIGNS, flyerKind, renderCauseCampaignFlyer, type FlyerAudience } from './cause-campaign-flyers'
 import { CAUSE_PHOTO_PROMPTS, type CausePhotoSlot } from '@/lib/cause-setup'
+import { flyerPhotoFor } from '@/lib/flyer-designs'
+import { flyerEditsFor, type FlyerOverrides } from '@/lib/flyer-slots'
 import {
   CAUSE_VIDEO_CUTS, causeVideoJobState, causeVideoVersion, requestCauseVideoRender,
   type CauseVideoCut, type CauseVideoProps,
@@ -110,6 +112,10 @@ async function migrateLegacyShortVideo(landingPath: string, record: LandingRecor
   return { ...rest, ...migrated } as VideoFields
 }
 
+// Flyers from the approved library. v8 files are still valid flyers (only
+// regenerating moves a cause to v9), so status keeps counting them.
+const CURRENT_FLYER_VERSION = /^approved-library-v(?:8|9)\|/
+
 export async function getCauseLaunchStatus(causeId: number, request: typeof qaJson = qaJson) {
   const [landing, generated] = await Promise.all([
     request<LandingRecord>(`/api/dashboard/v1/Nonprofit/${causeId}/landing-page`),
@@ -118,14 +124,14 @@ export async function getCauseLaunchStatus(causeId: number, request: typeof qaJs
   const flyerCount = generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed').length || 0
   const variantCount = new Set(generated?.items?.filter(item => item.generatedFileUrl && item.generationStatus !== 'failed')
     .map(item => materialMetadata(item.metadata))
-    .filter(metadata => metadata?.generator === 'cause-campaign-v1' && String(metadata.version || '').startsWith('approved-library-v8|'))
+    .filter(metadata => metadata?.generator === 'cause-campaign-v1' && CURRENT_FLYER_VERSION.test(String(metadata.version || '')))
     .map(metadata => `${metadata?.audience}:${metadata?.design}`)).size
   const flyerFiles = new Map<string, { name: string; url: string; audience: string; design: string }>()
   for (const item of generated?.items || []) {
     const metadata = materialMetadata(item.metadata)
     if (!item.generatedFileUrl || item.generationStatus === 'failed'
       || metadata?.generator !== 'cause-campaign-v1'
-      || !String(metadata.version || '').startsWith('approved-library-v8|')) continue
+      || !CURRENT_FLYER_VERSION.test(String(metadata.version || ''))) continue
     const audience = String(metadata.audience || '')
     const design = String(metadata.design || '')
     const key = `${audience}:${design}`
@@ -191,6 +197,8 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
   let flyerColors: { navy?: string; gold?: string } | undefined
   let flyerMission = cause.headline || ''
   let parentOrganization = ''
+  // Text and image edits made in the flyer generator, by design and audience.
+  let flyerEdits: Record<string, FlyerOverrides> | undefined
   try {
     const record = await request<LandingRecord>(landingPath)
     const publishedSlug = (record?.published as { slug?: string } | null)?.slug
@@ -200,6 +208,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
     flyerColors = (record?.draft as { colors?: { navy?: string; gold?: string } } | null)?.colors
     flyerMission = String((record?.draft as { mission?: string } | null)?.mission || cause.headline || '')
     parentOrganization = String((record?.draft as { parentOrganization?: string } | null)?.parentOrganization || '')
+    flyerEdits = (record?.draft as { flyerEdits?: Record<string, FlyerOverrides> } | null)?.flyerEdits
     logoUrl ||= draftAssets?.mark?.src || ''
     for (const slot of PHOTO_SLOTS) photoUrls[slot] ||= draftAssets?.[slot]?.src || ''
     if (!onlyFlyers && (record?.draft || record?.published)) {
@@ -248,7 +257,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
     steps.landingPages = { status: 'failed', detail: error instanceof Error ? error.message : String(error) }
   }
 
-  /** The flyers use the one wide supporters photo, as they always have. */
+  /** The supporters photo every cause has; each design may use another photo (flyerPhotoFor). */
   const coverUrl = photoUrls.crowd
   const missingPhotos = CAUSE_PHOTO_PROMPTS.filter((prompt) => !photoUrls[prompt.slot])
 
@@ -261,9 +270,12 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
       let customGenerated = 0
       const existing = await request<GeneratedList>(`/api/dashboard/v1/GeneratedMaterial?causeAccountId=${cause.id}&pageSize=100`)
       if (logoUrl && coverUrl) {
-        const version = `approved-library-v8|${cause.name}|${cause.city || ''}|${cause.state || ''}|${campaignSlug}|${logoUrl}|${coverUrl}|${cause.referralCode}|${cause.category || ''}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}`
         for (const audience of audiences) {
           for (const design of FLYER_DESIGNS) {
+          // v9: no LocalVIP mark, fixed split titles, a photo per design, and the generator's edits.
+          const designCover = flyerPhotoFor(audience, design, photoUrls)
+          const overrides = flyerEditsFor(flyerEdits, design, audience)
+          const version = `approved-library-v9|${cause.name}|${cause.city || ''}|${cause.state || ''}|${campaignSlug}|${logoUrl}|${designCover}|${cause.referralCode}|${cause.category || ''}|${flyerMission}|${parentOrganization}|${flyerColors?.navy || ''}|${flyerColors?.gold || ''}|${JSON.stringify(overrides)}`
           const alreadySaved = existing?.items?.some(item => {
             const metadata = materialMetadata(item.metadata)
             return item.generatedFileUrl && metadata?.generator === 'cause-campaign-v1' && metadata?.audience === audience && metadata?.design === design && metadata?.version === version
@@ -273,7 +285,7 @@ async function generateCauseLaunchMaterialsInner(cause: LaunchCause, request: ty
             const joinUrl = `https://my.localvip.com/go/campaign/${encodeURIComponent(campaignSlug)}/${audience}?ref=${encodeURIComponent(cause.referralCode)}`
             const bytes = await renderCauseCampaignFlyer({ name: cause.name,
               locality: [cause.city, cause.state].filter(Boolean).join(', ') || 'Your community',
-              logoUrl, coverUrl, joinUrl, audience, design, category: cause.category, mission: flyerMission, parentOrganization, colors: flyerColors })
+              logoUrl, coverUrl: designCover, joinUrl, audience, design, category: cause.category, mission: flyerMission, parentOrganization, colors: flyerColors, overrides })
             const filename = `${slugify(cause.name) || 'cause'}-${audience}-${design}-flyer.pdf`
             const form = new FormData()
             form.append('file', new File([new Uint8Array(bytes)], filename, { type: 'application/pdf' }))

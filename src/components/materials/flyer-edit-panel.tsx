@@ -94,17 +94,27 @@ function TextLineEditor({ slot, label, numbered, value, disabled, onChange }: {
 }) {
   const current = value ?? slot.default
   const nearLimit = current.length > slot.maxLength * .8
-  return <div className="flex items-center gap-2">
+  const choose = (next: string) => onChange(next === slot.default ? undefined : next)
+  return <div className="space-y-2">
+  {slot.suggestions && <>
+    <p className="text-xs text-surface-500">Changes the word on every line of this flyer and your other flyers, e.g. “our club” to “our school”.</p>
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label={`${label}: common choices`}>
+      {slot.suggestions.map(word => <button key={word} type="button" disabled={disabled} aria-pressed={current === word} onClick={() => choose(word)}
+        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 ${current === word ? 'border-brand-600 bg-brand-600 text-white' : 'border-surface-300 bg-white text-surface-700 hover:border-brand-300'}`}>{word}</button>)}
+    </div>
+  </>}
+  <div className="flex items-center gap-2">
     {numbered && <span aria-hidden className="w-4 shrink-0 text-right text-xs tabular-nums text-surface-400">{slot.line}</span>}
     <div className="relative min-w-0 flex-1">
       <input aria-label={label} value={current} maxLength={slot.maxLength} disabled={disabled}
-        onChange={event => onChange(event.target.value === slot.default ? undefined : event.target.value)}
+        onChange={event => choose(event.target.value)}
         className={`h-10 w-full rounded-lg border px-3 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60 ${value !== undefined ? 'border-brand-300 bg-brand-50/40' : 'border-surface-300'} ${nearLimit ? 'pr-14' : ''}`} />
       {nearLimit && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-surface-500">{current.length}/{slot.maxLength}</span>}
     </div>
     <Button variant="ghost" size="icon-sm" disabled={disabled || value === undefined} onClick={() => onChange(undefined)}
       aria-label={`Reset ${label} to default`} title={value === undefined ? 'Default text' : `Reset to “${slot.default}”`}
       className={value === undefined ? 'invisible' : ''}><RotateCcw className="h-3.5 w-3.5" /></Button>
+  </div>
   </div>
 }
 

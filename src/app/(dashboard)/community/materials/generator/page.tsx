@@ -13,10 +13,10 @@ import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
 import { FLYER_AUDIENCES, FLYER_DESIGNS, FLYER_DESIGN_LABELS, approvedFlyerTemplateId, flyerDesignForTemplate } from '@/lib/flyer-designs'
 import type { LandingRecord } from '@/lib/cause-landing-config'
 import type { FlyerAudience, FlyerDesign } from '@/lib/flyer-designs'
-import { compactFlyerOverrides, flyerEditKey, type FlyerImageSlotId, type FlyerOverrides, type FlyerSlots, type PreparedFlyerImage } from '@/lib/flyer-slots'
+import { compactFlyerOverrides, flyerEditKey, FLYER_ORG_WORD_SLOT, type FlyerImageSlotId, type FlyerOverrides, type FlyerSlots, type PreparedFlyerImage } from '@/lib/flyer-slots'
 import { FlyerEditPanel } from '@/components/materials/flyer-edit-panel'
 import { FlyerLivePreview, type FlyerPreviewFonts } from '@/components/materials/flyer-live-preview'
-import { Download, Loader2 } from 'lucide-react'
+import { Download, FileCode2, Loader2 } from 'lucide-react'
 
 const DEFAULT = { background: '#0B2349', highlight: '#EFB719', accent: '#EFB719' }
 const modes = [{ value: 'default', label: 'Default', hint: 'Dark blue, white, and gold.' }, { value: 'logo', label: 'Use colors of my logo', hint: 'Logo accents with the dark blue and gold theme.' }, { value: 'manual', label: 'Manual', hint: 'Choose each color yourself.' }] as const
@@ -62,7 +62,10 @@ export default function FlyerGeneratorPage() {
   }
   // ?template=<library id> imports that library design into the generator.
   const templateParam = search.get('template')
-  const imported = flyerDesignForTemplate(templateParam)
+  // ?audience=&design= opens one of the cause's own flyers (from Made for you).
+  const linked = (FLYER_AUDIENCES as string[]).includes(search.get('audience') || '') && (FLYER_DESIGNS as readonly string[]).includes(search.get('design') || '')
+    ? { audience: search.get('audience') as FlyerAudience, design: search.get('design') as FlyerDesign } : null
+  const imported = linked || flyerDesignForTemplate(templateParam)
   const [audience, setAudience] = React.useState<string>(imported?.audience || 'business')
   const [design, setDesign] = React.useState<string>(imported?.design || 'community')
   React.useEffect(() => {
@@ -78,12 +81,15 @@ export default function FlyerGeneratorPage() {
   const [extracting, setExtracting] = React.useState(false)
   const [error, setError] = React.useState('')
   const [result, setResult] = React.useState<{ pdf: string; key: string } | null>(null)
-  const settings = JSON.stringify({ causeId, audience, design, mode, palette })
   // Text and image edits. `editor.key` ties the slots to the cause, design and
   // audience they were loaded for.
   const [editor, setEditor] = React.useState<{ key: string; slots: FlyerSlots; assets: string[] } | null>(null)
   const [editorError, setEditorError] = React.useState('')
   const [edits, setEdits] = React.useState<FlyerOverrides>({})
+  // The organization word rewrites lines across the flyer, so a change to it
+  // reloads the preview and the line defaults from the server.
+  const orgWord = edits.text?.[FLYER_ORG_WORD_SLOT]?.trim() || ''
+  const settings = JSON.stringify({ causeId, audience, design, mode, palette, orgWord })
   const editsRef = React.useRef(edits)
   editsRef.current = edits
   const target = `${causeId}:${flyerEditKey(design, audience)}`
@@ -127,13 +133,13 @@ export default function FlyerGeneratorPage() {
     if (!ready) return
     const controller = new AbortController()
     setEditorError('')
-    void fetch(`/api/crm/causes/${causeId}/flyer?design=${design}&audience=${audience}`, { cache: 'no-store', signal: controller.signal }).then(async response => {
+    void fetch(`/api/crm/causes/${causeId}/flyer?design=${design}&audience=${audience}&orgWord=${encodeURIComponent(orgWord)}`, { cache: 'no-store', signal: controller.signal }).then(async response => {
       const body = await response.json()
       if (!response.ok) throw new Error(body.error || 'Could not load the editable text.')
       setEditor({ key: target, slots: body.slots, assets: body.assets || [] })
     }).catch(error => { if (error.name !== 'AbortError') setEditorError(error instanceof Error ? error.message : 'Could not load the editable text.') })
     return () => controller.abort()
-  }, [ready, causeId, design, audience, target])
+  }, [ready, causeId, design, audience, target, orgWord])
   // Fetch the composed SVG whenever the cause, design, audience or colors
   // change. Edits made so far carry over when only the colors changed.
   React.useEffect(() => {
@@ -185,6 +191,23 @@ export default function FlyerGeneratorPage() {
       download(body.pdf)
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not create the PDF.') }
     finally { setBusy(false) }
+  }
+  // The composed flyer as an editable SVG: real text and the embedded images,
+  // for Illustrator, Inkscape, Figma or Canva when a change is beyond the editor.
+  const [svgBusy, setSvgBusy] = React.useState(false)
+  async function downloadSvg() {
+    if (!ready) return
+    setSvgBusy(true); setError('')
+    try {
+      const response = await fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ audience, design, mode, palette, output: 'svg', overrides: JSON.parse(editKey) }) })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || 'Could not create the editable file.')
+      const url = URL.createObjectURL(new Blob([body.svg], { type: 'image/svg+xml' }))
+      const link = document.createElement('a'); link.href = url; link.download = `localvip-${causeId}-${audience}-${design}.svg`; link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not create the editable file.') }
+    finally { setSvgBusy(false) }
   }
   function resetAllEdits() {
     if (!window.confirm('Reset every text and image edit on this flyer to the generated defaults?')) return
@@ -270,6 +293,12 @@ export default function FlyerGeneratorPage() {
             ? <Button variant="outline" onClick={() => download()}><Download className="h-4 w-4" />Download PDF</Button>
             : <Button onClick={() => void generatePdf()} disabled={!showEditor || busy || liveLoading || !!headerError}>{busy ? <><Loader2 className="h-4 w-4 animate-spin" />Creating PDF…</> : 'Generate PDF'}</Button>}
         </div>
+        {showEditor && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2">
+          <p className="text-xs text-surface-600">Need a change the editor can’t make? Download the editable file and open it in Illustrator, Inkscape, Figma or Canva.</p>
+          <Button variant="outline" size="sm" disabled={svgBusy || liveLoading} onClick={() => void downloadSvg()}>
+            {svgBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileCode2 className="h-3.5 w-3.5" />}Editable file (SVG)
+          </Button>
+        </div>}
         {headerError && <p role="alert" className="text-sm text-error-700">{headerError}</p>}
         {showEditor
           ? <div className={`transition-opacity ${liveLoading ? 'opacity-60' : ''}`}><FlyerLivePreview svg={live.svg} fonts={live.fonts} slots={editor.slots} edits={edits} loadedImages={live.images}
