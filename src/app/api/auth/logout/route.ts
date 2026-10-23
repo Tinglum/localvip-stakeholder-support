@@ -8,6 +8,7 @@ import {
   isIdTokenUsableAsHint,
 } from '@/lib/auth/qa-auth'
 import { clearDemoSessionCookie } from '@/lib/auth/demo-auth'
+import { clearPinBrowserSession } from '@/lib/server/sysadmin-pin'
 
 export async function POST(request: NextRequest) {
   // allowExpired: an expired access token is a normal state at logout time. The
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ ok: true, redirectTo })
   clearQaSessionCookies(response)
+  clearPinBrowserSession(response)
   clearDemoSessionCookie(response)
 
   return response

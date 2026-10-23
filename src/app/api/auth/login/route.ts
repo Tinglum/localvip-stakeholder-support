@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loginWithPassword, setQaSessionCookies } from '@/lib/auth/qa-auth'
+import { beginSysadminPinLogin } from '@/lib/server/sysadmin-pin'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
     const session = await loginWithPassword(email, password)
     const response = NextResponse.json({ ok: true, persistent })
     setQaSessionCookies(response, session, { persistent })
+    await beginSysadminPinLogin(request, response, session)
     return response
   } catch (error) {
     return NextResponse.json(

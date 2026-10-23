@@ -30,6 +30,7 @@ import { FeaturedCarouselToggle } from '@/components/layout/featured-carousel-to
 import type { SystemStatusState } from '@/lib/system-status'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { isSuperAdminRole } from '@/lib/auth/display-name'
 
 const ROUTE_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -535,6 +536,13 @@ export function Topbar({
                 onClick={() => router.push('/account-review')}
               ><User className="h-4 w-4" /> Review account setup</DropdownMenu.Item>}
               <DropdownMenu.Separator className="my-1 h-px bg-surface-100" />
+              {isSuperAdminRole(profile.role, profile.role_subtype) && <DropdownMenu.Item
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-3 text-sm text-surface-600 outline-none hover:bg-surface-100"
+                onClick={async () => {
+                  const result = await fetch('/api/auth/sysadmin-pin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'lock' }) })
+                  if (result.ok) window.location.assign('/sysadmin-pin')
+                }}
+              >Lock dashboard</DropdownMenu.Item>}
               <DropdownMenu.Item
                 className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger-500 outline-none hover:bg-danger-50"
                 onClick={handleSignOut}

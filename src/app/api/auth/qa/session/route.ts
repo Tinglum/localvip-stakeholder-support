@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { beginSysadminPinLogin } from '@/lib/server/sysadmin-pin'
 import {
   buildQaSessionFromTokens,
   QA_COOKIE_NAMES,
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
 
     // Default on, as on the password form. Only an explicit false opts out.
     setQaSessionCookies(response, session, { persistent: body.keepLoggedIn !== false })
+    await beginSysadminPinLogin(request, response, session)
     response.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })
     response.cookies.set(QA_COOKIE_NAMES.verifier, '', { path: '/', maxAge: 0 })
     response.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })

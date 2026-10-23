@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { beginSysadminPinLogin } from '@/lib/server/sysadmin-pin'
 import {
   clearQaSessionCookies,
   exchangeCodeForSession,
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest) {
     })
 
     setQaSessionCookies(cleanResponse, session)
+    await beginSysadminPinLogin(request, cleanResponse, session)
     cleanResponse.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })
     cleanResponse.cookies.set(QA_COOKIE_NAMES.verifier, '', { path: '/', maxAge: 0 })
     cleanResponse.cookies.set(QA_COOKIE_NAMES.returnTo, '', { path: '/', maxAge: 0 })

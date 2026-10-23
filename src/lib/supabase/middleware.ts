@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { getRequestPublicOrigin, hasRefreshableQaSession } from '@/lib/auth/qa-auth'
+import { getQaSessionFromCookieStore, getRequestPublicOrigin, hasRefreshableQaSession } from '@/lib/auth/qa-auth'
+import { hasSysadminPinAccess, PIN_COOKIES } from '@/lib/auth/sysadmin-pin'
 import { hasDemoSession } from '@/lib/auth/demo-auth'
 
 export async function updateSession(request: NextRequest) {
@@ -8,6 +9,21 @@ export async function updateSession(request: NextRequest) {
   const hasOauthResponse = searchParams.has('code') || (searchParams.has('error') && searchParams.has('state'))
   const isQaCallbackRoute = pathname.startsWith('/api/auth/qa/callback')
   const isBrowserOidcRoute = pathname === '/' || pathname.startsWith('/login')
+
+  const session = getQaSessionFromCookieStore(request.cookies, { allowExpired: true })
+  const pinExempt = pathname === '/sysadmin-pin' || pathname === '/api/auth/sysadmin-pin' ||
+    pathname === '/api/auth/login' || pathname === '/api/auth/logout' || pathname.startsWith('/api/auth/qa/') ||
+    pathname === '/login' || pathname.startsWith('/_next/')
+  const remembered = /^[a-f0-9]{64}$/.test(request.cookies.get(PIN_COOKIES.device)?.value || '')
+  const needsPin = !await hasSysadminPinAccess(request.cookies, session)
+  const entry = pathname === '/' || pathname === '/login'
+  if (!hasOauthResponse && ((needsPin && !pinExempt) ||
+      (remembered && (!session || needsPin) && entry && !searchParams.has('manual') && !searchParams.has('signout')))) {
+    if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'Unlock your sysadmin session.', pinRequired: true }, { status: 403, headers: { 'Cache-Control': 'no-store' } })
+    const url = new URL('/sysadmin-pin', getRequestPublicOrigin(request))
+    url.searchParams.set('returnTo', entry ? '/dashboard' : `${pathname}${request.nextUrl.search}`)
+    return NextResponse.redirect(url)
+  }
 
   if (hasOauthResponse && !isQaCallbackRoute && !isBrowserOidcRoute) {
     const callbackUrl = new URL('/api/auth/qa/callback', getRequestPublicOrigin(request))
@@ -32,6 +48,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/forgot-password')
 
   const isPublicRoute = pathname === '/' ||
+    pathname === '/sysadmin-pin' || pathname === '/api/auth/sysadmin-pin' ||
     // Invite auto-login lands here before any session exists.
     pathname.startsWith('/welcome') ||
     pathname.startsWith('/demo') ||

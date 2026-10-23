@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { hasSysadminPinAccess } from '@/lib/auth/sysadmin-pin'
 import {
   buildFallbackQaProfile,
   getQaSessionFromCookieStore,
@@ -308,6 +309,7 @@ function buildQaSessionProfile(
 
 export async function getAuthenticatedSession(): Promise<ResolvedAuthSession | null> {
   const cookieStore = cookies()
+  if (!await hasSysadminPinAccess(cookieStore, getQaSessionFromCookieStore(cookieStore, { allowExpired: true }))) return null
   const demoSessionEmail = getDemoSessionEmailFromCookieStore(cookieStore)
   // Refresh an expired access token rather than treating it as "no session".
   // Previously an expired token logged the user straight out to QA even though a

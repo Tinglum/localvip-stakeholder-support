@@ -1083,7 +1083,10 @@ export function setQaSessionCookies(
   },
 ) {
   const secure = process.env.NODE_ENV === 'production'
-  const persistent = options?.persistent !== false
+  // Sysadmin remembers the opaque device, with its saved backend credentials
+  // encrypted on the server behind the PIN. Do not leave those credentials in
+  // year-long browser cookies after the browser closes.
+  const persistent = options?.persistent !== false && mapQaRole(session.claims).roleSubtype !== 'super'
   const cookieOptions = {
     httpOnly: true,
     sameSite: 'lax' as const,

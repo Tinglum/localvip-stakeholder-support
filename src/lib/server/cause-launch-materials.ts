@@ -33,7 +33,7 @@ const PHOTO_SLOTS = CAUSE_PHOTO_PROMPTS.map((prompt) => prompt.slot)
 const STALE_LIVE_NOTE = 'Your live page still shows the previous version. Open your landing page and press Publish to update it.'
 const isLandingLive = (status?: string) => status === 'published' || status === 'published_with_changes'
 
-type LaunchCause = {
+export type LaunchCause = {
   id: number
   name: string
   city?: string | null
