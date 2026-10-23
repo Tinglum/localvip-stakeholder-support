@@ -4,6 +4,10 @@ import { createCanvas } from '@napi-rs/canvas'
 import { PDFDict, PDFDocument, PDFName } from 'pdf-lib'
 import { buildCauseCampaignFlyerSvg, getGivebackFlyerSlots, renderCauseCampaignFlyer, validateFlyerOverrides } from '../src/lib/server/cause-campaign-flyers'
 import { designAudiences, isGeneratorDesign } from '../src/lib/flyer-designs'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { CalendarCheck, CalendarDays, Check, ChevronRight, DoorOpen, HeartHandshake, Mail, MessageSquare, School, Store, Users } from 'lucide-react'
+import { givebackIconSvg } from '../src/lib/server/giveback-flyer'
 
 // Run with LOCALVIP_FLYER_WORKER=1 so renders stay in this process and use the fetch stub.
 const base = {
@@ -152,4 +156,17 @@ test('v6 reproduces the original draft: its words, runs, fonts and measured posi
   const result = JSON.parse(Buffer.from(await renderCauseCampaignFlyer(v6, true)).toString('utf8'))
   const page = (await PDFDocument.load(Buffer.from(result.pdf, 'base64'))).getPage(0)
   assert.deepEqual([page.getWidth(), page.getHeight()], [612, 792])
+})
+
+// The flyer writes Lucide icons as SVG itself because Next.js will not build a
+// route that imports react-dom/server. It must stay identical to what
+// renderToStaticMarkup produced, or the approved artwork drifts.
+test('icon markup matches renderToStaticMarkup byte for byte', () => {
+  const icons = { CalendarCheck, CalendarDays, Check, ChevronRight, DoorOpen, HeartHandshake, Mail, MessageSquare, School, Store, Users }
+  for (const [name, component] of Object.entries(icons)) {
+    for (const [x, y, size, color, strokeWidth] of [[36, 441, 18, '#5B6B7F', 1.5], [9.5, 495.25, 11, '#FFFFFF', 2.5], [0, 0, 14, '#1A3E7E', 2]] as const) {
+      const expected = renderToStaticMarkup(createElement(component, { x, y, width: size, height: size, color, strokeWidth } as never))
+      assert.equal(givebackIconSvg(component, x, y, size, color, strokeWidth), expected, name)
+    }
+  }
 })

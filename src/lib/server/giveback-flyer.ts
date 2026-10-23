@@ -1,7 +1,5 @@
 import path from 'node:path'
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { CalendarCheck, CalendarDays, Check, ChevronRight, DoorOpen, HeartHandshake, Mail, MessageSquare, School, Store, Users, type LucideIcon } from 'lucide-react'
 import { fitFlyerLine, type FlyerFontKind, type FlyerMeasure } from '@/lib/flyer-fit'
 import type { FlyerSlots, FlyerTextSlot } from '@/lib/flyer-slots'
@@ -604,8 +602,26 @@ ${printed.map(item => item.markup).join('\n')}
 }
 
 const esc = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!)
-const icon = (component: LucideIcon, x: number, y: number, size = 18, color = STEEL, strokeWidth = 1.5) =>
-  renderToStaticMarkup(createElement(component, { x, y, width: size, height: size, color, strokeWidth }))
+// Lucide icons as SVG markup. Written by hand rather than with
+// react-dom/server's renderToStaticMarkup: Next.js refuses to build any route
+// that pulls react-dom/server into its server graph, and this module is reached
+// from the flyer API route. The output is byte-for-byte what
+// renderToStaticMarkup produced (scripts/giveback-flyer.test.ts checks it).
+type IconNode = Array<[string, Record<string, string | number>]>
+const iconNode = (component: LucideIcon): { node: IconNode; className: string } => {
+  // lucide-react icons are forwardRef components whose render returns the
+  // shared <Icon> element carrying the icon's path data as `iconNode`.
+  const element = (component as unknown as { render: (props: object, ref: null) => { props: { iconNode: IconNode; className: string } } }).render({}, null)
+  return { node: element.props.iconNode, className: element.props.className }
+}
+const icon = (component: LucideIcon, x: number, y: number, size = 18, color = STEEL, strokeWidth = 1.5) => {
+  const { node, className } = iconNode(component)
+  const children = node.map(([tag, attrs]) =>
+    `<${tag}${Object.entries(attrs).filter(([key]) => key !== 'key').map(([key, value]) => ` ${key}="${esc(String(value))}"`).join('')}></${tag}>`).join('')
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${esc(color)}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" class="lucide ${className}" x="${x}" y="${y}">${children}</svg>`
+}
+/** Exported for the byte-for-byte check against renderToStaticMarkup. */
+export { icon as givebackIconSvg }
 
 type Art = { logo: string; photo: string; qr?: string; district?: string; localvip: string; schoolFocused: boolean }
 
