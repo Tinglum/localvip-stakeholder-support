@@ -10,9 +10,9 @@ import { extractBrandColorsFromImage, isHexColor } from '@/lib/brand-colors'
 import { BrandColorPicker } from '@/components/ui/brand-color-picker'
 import { Button } from '@/components/ui/button'
 import { toProxiedMaterialUrl } from '@/lib/materials/proxy-url'
-import { FLYER_AUDIENCES, FLYER_DESIGNS, FLYER_DESIGN_LABELS, approvedFlyerTemplateId, flyerDesignForTemplate } from '@/lib/flyer-designs'
+import { FLYER_AUDIENCES, FLYER_DESIGNS, FLYER_DESIGN_LABELS, GENERATOR_DESIGNS, GENERATOR_DESIGN_LABELS, isGivebackDesign, approvedFlyerTemplateId, designAudiences, flyerDesignForTemplate, isGeneratorDesign } from '@/lib/flyer-designs'
 import type { LandingRecord } from '@/lib/cause-landing-config'
-import type { FlyerAudience, FlyerDesign } from '@/lib/flyer-designs'
+import type { FlyerAudience, FlyerDesign, GeneratorDesign } from '@/lib/flyer-designs'
 import { compactFlyerOverrides, flyerEditKey, FLYER_ORG_WORD_SLOT, type FlyerImageSlotId, type FlyerOverrides, type FlyerSlots, type PreparedFlyerImage } from '@/lib/flyer-slots'
 import { FlyerEditPanel } from '@/components/materials/flyer-edit-panel'
 import { FlyerLivePreview, type FlyerPreviewFonts } from '@/components/materials/flyer-live-preview'
@@ -63,11 +63,15 @@ export default function FlyerGeneratorPage() {
   // ?template=<library id> imports that library design into the generator.
   const templateParam = search.get('template')
   // ?audience=&design= opens one of the cause's own flyers (from Made for you).
-  const linked = (FLYER_AUDIENCES as string[]).includes(search.get('audience') || '') && (FLYER_DESIGNS as readonly string[]).includes(search.get('design') || '')
-    ? { audience: search.get('audience') as FlyerAudience, design: search.get('design') as FlyerDesign } : null
+  const linkedDesign = search.get('design')
+  const linked = isGeneratorDesign(linkedDesign) && (designAudiences(linkedDesign) as string[]).includes(search.get('audience') || '')
+    ? { audience: search.get('audience') as FlyerAudience, design: linkedDesign as GeneratorDesign } : null
   const imported = linked || flyerDesignForTemplate(templateParam)
   const [audience, setAudience] = React.useState<string>(imported?.audience || 'business')
   const [design, setDesign] = React.useState<string>(imported?.design || 'community')
+  // GiveBack Days leaves its QR panel blank unless the booking QR is asked for.
+  const [qr, setQr] = React.useState(false)
+  const giveback = isGivebackDesign(design)
   React.useEffect(() => {
     if (imported) { setAudience(imported.audience); setDesign(imported.design) }
   }, [imported?.audience, imported?.design]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -89,7 +93,7 @@ export default function FlyerGeneratorPage() {
   // The organization word rewrites lines across the flyer, so a change to it
   // reloads the preview and the line defaults from the server.
   const orgWord = edits.text?.[FLYER_ORG_WORD_SLOT]?.trim() || ''
-  const settings = JSON.stringify({ causeId, audience, design, mode, palette, orgWord })
+  const settings = JSON.stringify({ causeId, audience, design, mode, palette, orgWord, qr })
   const editsRef = React.useRef(edits)
   editsRef.current = edits
   const target = `${causeId}:${flyerEditKey(design, audience)}`
@@ -149,7 +153,7 @@ export default function FlyerGeneratorPage() {
       setLiveLoading(true); setError('')
       const sameTarget = live?.target === target
       void fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' }, signal: controller.signal,
-        body: JSON.stringify({ audience, design, mode, palette, output: 'svg', overrides: sameTarget ? editsRef.current : undefined }) })
+        body: JSON.stringify({ audience, design, mode, palette, qr, output: 'svg', overrides: sameTarget ? editsRef.current : undefined }) })
         .then(async response => {
           const body = await response.json()
           if (!response.ok) throw new Error(body.error || 'Could not load the flyer preview.')
@@ -167,7 +171,7 @@ export default function FlyerGeneratorPage() {
     const timer = setTimeout(() => {
       setSaveState('saving')
       void fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ audience, design, mode, palette, output: 'save', overrides: JSON.parse(editKey) }) })
+        body: JSON.stringify({ audience, design, mode, palette, qr, output: 'save', overrides: JSON.parse(editKey) }) })
         .then(async response => {
           const body = await response.json()
           if (!response.ok) throw new Error(body.error || body.saveError || 'Save failed.')
@@ -183,7 +187,7 @@ export default function FlyerGeneratorPage() {
     const key = `${settings}${editKey}`
     try {
       const response = await fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ audience, design, mode, palette, overrides: JSON.parse(editKey) }) })
+        body: JSON.stringify({ audience, design, mode, palette, qr, overrides: JSON.parse(editKey) }) })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error || 'Could not create the PDF.')
       if (!body.saveError) { savedEdits.current = editKey; setSaveState('saved') }
@@ -200,7 +204,7 @@ export default function FlyerGeneratorPage() {
     setSvgBusy(true); setError('')
     try {
       const response = await fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ audience, design, mode, palette, output: 'svg', overrides: JSON.parse(editKey) }) })
+        body: JSON.stringify({ audience, design, mode, palette, qr, output: 'svg', overrides: JSON.parse(editKey) }) })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error || 'Could not create the editable file.')
       const url = URL.createObjectURL(new Blob([body.svg], { type: 'image/svg+xml' }))
@@ -225,11 +229,11 @@ export default function FlyerGeneratorPage() {
   const showEditor = !!live && live.target === target && editor?.key === target
   const prepareImage = React.useCallback(async (slot: FlyerImageSlotId, url: string): Promise<PreparedFlyerImage> => {
     const response = await fetch(`/api/crm/causes/${causeId}/flyer`, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ audience, design, mode, palette, output: 'image', slot, url }) })
+      body: JSON.stringify({ audience, design, mode, palette, qr, output: 'image', slot, url }) })
     const body = await response.json()
     if (!response.ok) throw new Error(body.error || 'Could not prepare the image.')
     return body
-  }, [causeId, audience, design, mode, palette])
+  }, [causeId, audience, design, mode, palette, qr])
   const locked = busy || extracting
   return <div className="space-y-6">
     <Link href="/community/materials" className="text-sm text-brand-700">← Campaign materials</Link>
@@ -238,7 +242,7 @@ export default function FlyerGeneratorPage() {
       <Link href="/community/materials?tab=templates" className="inline-flex h-10 items-center rounded-lg border border-surface-300 bg-white px-4 text-sm font-medium text-surface-700 transition-colors hover:border-brand-300 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Browse templates →</Link>
     </div>
     {templateParam && (imported
-      ? <p role="status" className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-surface-700">Imported library template #{templateParam}: <strong>{FLYER_DESIGN_LABELS[imported.design]}</strong> design for {imported.audience}. Personalize it below.</p>
+      ? <p role="status" className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-surface-700">Imported library template #{templateParam}: <strong>{GENERATOR_DESIGN_LABELS[imported.design]}</strong> design for {imported.audience}. Personalize it below.</p>
       : <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Library template #{templateParam} can’t be generated here yet. The generator renders the approved Community Win, Growth and Comparison designs; choose one below, or customize that template from the <Link href="/community/materials?tab=templates" className="underline">template library</Link>.</p>)}
     <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
       <div className="min-w-0 space-y-6">
@@ -268,11 +272,14 @@ export default function FlyerGeneratorPage() {
           </>}
           {causeId && selectedStatus && !selectedStatus.ready && !selectedStatus.error && <Link className="block text-sm text-brand-700 underline" href={setupUrl(causeId, selectedStatus.missing)}>Complete {selectedStatus.missing.join(', ')} before generating →</Link>}
         </div>
-        <label className="block space-y-2"><span className="font-medium">Audience</span><select value={audience} disabled={locked} onChange={event => setAudience(event.target.value)} className="h-11 w-full rounded-lg border border-surface-300 px-3">{['business', 'families', 'schools', 'boosters'].map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
-        <label className="block space-y-2"><span className="font-medium">Design</span><select value={design} disabled={locked} onChange={event => setDesign(event.target.value)} className="h-11 w-full rounded-lg border border-surface-300 px-3">{FLYER_DESIGNS.map(value => <option key={value} value={value}>{FLYER_DESIGN_LABELS[value]}</option>)}</select>{templateId && <span className="block text-xs text-surface-500">Library template #{templateId}</span>}</label>
+        <label className="block space-y-2"><span className="font-medium">Audience</span><select value={audience} disabled={locked || giveback} onChange={event => setAudience(event.target.value)} className="h-11 w-full rounded-lg border border-surface-300 px-3">{designAudiences(isGeneratorDesign(design) ? design : 'community').map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
+        <label className="block space-y-2"><span className="font-medium">Design</span><select value={design} disabled={locked} onChange={event => { setDesign(event.target.value); if (isGivebackDesign(event.target.value)) setAudience('business') }} className="h-11 w-full rounded-lg border border-surface-300 px-3">{GENERATOR_DESIGNS.map(value => <option key={value} value={value}>{GENERATOR_DESIGN_LABELS[value]}</option>)}</select>{giveback && <span className="block text-xs text-surface-500">Business flyer. Filled from your cause name, city, photo, logo and contact; every line is editable in the preview.</span>}{templateId && <span className="block text-xs text-surface-500">Library template #{templateId}</span>}</label>
+        {giveback && <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-surface-200 p-3"><input type="checkbox" checked={qr} disabled={locked} onChange={event => setQr(event.target.checked)} className="mt-1" /><span><span className="block text-sm font-medium">Print the booking QR code</span><span className="block text-xs text-surface-600">Off leaves the QR panel blank for your own code or sticker. On links it to the booking address on the flyer.</span></span></label>}
+        {!giveback && <>
         <fieldset disabled={locked} className="space-y-2"><legend className="mb-2 font-medium">Colors</legend>{modes.map(item => <label key={item.value} className={`flex cursor-pointer gap-3 rounded-xl border p-3 ${mode === item.value ? 'border-brand-500 bg-brand-50' : 'border-surface-200'}`}><input type="radio" name="color-mode" value={item.value} checked={mode === item.value} onChange={() => void chooseMode(item.value)} className="mt-1" /><span><span className="block text-sm font-medium">{item.label}</span><span className="block text-xs text-surface-600">{item.hint}</span></span></label>)}</fieldset>
         {extracting && <p role="status">Reading logo colors…</p>}
         {mode === 'manual' ? (Object.keys(DEFAULT) as Array<keyof typeof DEFAULT>).map(key => <div key={key} className="space-y-2"><p className="text-sm font-medium capitalize">{key}</p><BrandColorPicker label={key} value={palette[key]} swatches={[...Object.values(DEFAULT), ...logoColors]} disabled={locked} onChange={value => setPalette(current => ({ ...current, [key]: value }))} /></div>) : <div className="flex gap-2" aria-label="Selected palette">{Object.entries(palette).map(([key, value]) => <span key={key} title={`${key}: ${value}`} className="h-8 w-8 rounded-full border border-surface-300" style={{ backgroundColor: value }} />)}</div>}
+        </>}
         {(error || causesError) && <p role="alert" className="text-sm text-error-700">{error || String(causesError)}</p>}
         {!loading && !causeId && !scoped && <p className="text-sm text-surface-600">Select a cause to begin. <Link href="/community/setup" className="text-brand-700 underline">Open cause setup</Link></p>}
       </div>

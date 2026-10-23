@@ -59,4 +59,19 @@ export function flyerFonts() {
   return resolved
 }
 
-export const flyerFontFace = (key: string) => flyerFonts().faces.find(face => face.key === key)
+// The GiveBack Days design ships its own faces (SIL OFL, licences alongside),
+// so it sets identically on every server and in every browser.
+const GIVEBACK_DIR = path.join(process.cwd(), 'src/lib/server/flyer-templates/giveback')
+const GIVEBACK_FONTS = {
+  display: 'Montserrat',
+  sans: 'Open Sans',
+  faces: [
+    { key: 'montserrat-700', family: 'Montserrat', weight: 700, file: path.join(GIVEBACK_DIR, 'Montserrat-700.ttf') },
+    { key: 'montserrat-800', family: 'Montserrat', weight: 800, file: path.join(GIVEBACK_DIR, 'Montserrat-800.ttf') },
+    { key: 'open-sans-400', family: 'Open Sans', weight: 400, file: path.join(GIVEBACK_DIR, 'OpenSans-400.ttf') },
+    { key: 'open-sans-700', family: 'Open Sans', weight: 700, file: path.join(GIVEBACK_DIR, 'OpenSans-700.ttf') },
+  ] as FlyerFontFace[],
+}
+export const givebackFonts = () => GIVEBACK_FONTS
+
+export const flyerFontFace = (key: string) => [...flyerFonts().faces, ...GIVEBACK_FONTS.faces].find(face => face.key === key)
