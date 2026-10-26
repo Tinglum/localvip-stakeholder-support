@@ -26,6 +26,7 @@ import { BusinessExecutionOverview } from '@/components/crm/business-execution-o
 import { LogInAsButton } from '@/components/crm/log-in-as-button'
 import { RealLogInAsButton } from '@/components/crm/real-log-in-as-button'
 import { OpenInWebappButton } from '@/components/crm/open-in-webapp-button'
+import { BusinessEmployeesPanel } from '@/components/business/business-employees-panel'
 import { QaImportedFieldsPanel, QaUniversalBacklogTable, type QaImportedFact } from '@/components/crm/qa-linking-panels'
 import { Input } from '@/components/ui/input'
 import {
@@ -132,7 +133,7 @@ export default function BusinessDetailPage() {
   }, [searchParams])
   const { profile, isAdmin } = useAuth()
   const localProfileId = asUuid(profile.id)
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'activity' | 'tasks' | 'notes' | 'qr' | 'materials'>('overview')
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'activity' | 'tasks' | 'notes' | 'qr' | 'materials' | 'employees'>('overview')
 
   // ── Data hooks ──
   const { data: businessResponse, loading: bizLoading, error: bizError, refetch: refetchBusiness } = useCrmBusiness(id, qaBusinessId)
@@ -426,6 +427,8 @@ export default function BusinessDetailPage() {
         { key: 'notes' as const, label: 'Notes' },
         { key: 'qr' as const, label: 'QR Codes' },
         { key: 'materials' as const, label: 'Materials' },
+        // Employees live on the QA Account, so the tab needs a linked QA business.
+        ...(qaLinkedBusinessId ? [{ key: 'employees' as const, label: 'Employees' }] : []),
       ]
   const qrGeneratorHref = qaLinkedBusinessId
     ? `/qr/generator?businessId=${qaLinkedBusinessId}&returnTo=${encodeURIComponent(`/crm/businesses/${id}${qaBusinessId ? `?qaId=${qaBusinessId}` : ''}`)}`
@@ -938,6 +941,23 @@ export default function BusinessDetailPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {activeTab === 'employees' && qaLinkedBusinessId && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Employees</CardTitle>
+            <p className="text-sm text-surface-500">
+              Staff see this business&apos;s transactions in the webapp. Admins can also sign in to the dashboard for it. Stripe and payouts stay with the owner.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <BusinessEmployeesPanel
+              businessId={qaLinkedBusinessId}
+              frame={(content) => content}
+            />
+          </CardContent>
+        </Card>
       )}
 
       {activeTab === 'materials' && (

@@ -505,8 +505,26 @@ export function buildQaSessionFromTokens(tokens: {
   } satisfies QaSession
 }
 
+/**
+ * QA issues "BusinessStaff" to a business's read-only employees. It grants the
+ * webapp transactions view and nothing in the dashboard, so it must never be
+ * read as a business role (the `includes('business')` check below would).
+ */
+const WEBAPP_ONLY_ROLE = 'businessstaff'
+
+/** True when the token's only dashboard-relevant role is BusinessStaff: sign-in is refused. */
+export function isWebappOnlyStaff(roles: string[]): boolean {
+  const normalized = roles.map((role) => role.toLowerCase())
+  return normalized.includes(WEBAPP_ONLY_ROLE) && normalized.every((role) => role === WEBAPP_ONLY_ROLE)
+}
+
+export const WEBAPP_ONLY_STAFF_MESSAGE =
+  'Your employee access is for the LocalVIP app. Sign in at my.localvip.com to see transactions.'
+
 function mapQaRole(claims: QaAuthClaims): { role: UserRole; roleSubtype?: UserRoleSubtype } {
-  const normalizedRoles = claims.roles.map((role) => role.toLowerCase())
+  const normalizedRoles = claims.roles
+    .map((role) => role.toLowerCase())
+    .filter((role) => role !== WEBAPP_ONLY_ROLE)
 
   // Super-admin check first (most specific)
   if (normalizedRoles.some(matchesSysadminSignal) || normalizedRoles.some((role) => role.includes('super') && role.includes('admin'))) {
