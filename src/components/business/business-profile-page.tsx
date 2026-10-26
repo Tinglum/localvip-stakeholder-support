@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { DealManager } from '@/components/crm/deal-manager'
+import { BusinessEmployeesPanel } from '@/components/business/business-employees-panel'
 import { ActionSection, InfoSection, SurfaceLegend } from '@/components/business/business-surfaces'
 import {
   BrandingFields,
@@ -174,6 +175,19 @@ export function BusinessProfilePage() {
       >
         <StripeFields editor={editor} />
       </ActionSection>
+
+      <BusinessEmployeesPanel
+        businessId={business.id}
+        frame={(content) => (
+          <ActionSection
+            id="employees"
+            title="Employees"
+            description="Give staff read-only access to your transactions in the LocalVIP app, or make them an admin of this dashboard."
+          >
+            {content}
+          </ActionSection>
+        )}
+      />
 
       {!setupState.steps.find((item) => item.key === 'activate')?.complete ? (
         <ActionSection

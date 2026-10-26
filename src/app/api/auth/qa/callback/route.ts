@@ -4,7 +4,9 @@ import {
   exchangeCodeForSession,
   getQaRedirectUri,
   getRequestPublicOrigin,
+  isWebappOnlyStaff,
   QA_COOKIE_NAMES,
+  WEBAPP_ONLY_STAFF_MESSAGE,
   readSignedQaOauthState,
   sanitizeReturnTo,
   setQaSessionCookies,
@@ -94,6 +96,14 @@ export async function GET(request: NextRequest) {
       verifier: chosenVerifier,
       redirectUri: authorizationRedirectUri,
     })
+
+    if (isWebappOnlyStaff(session.claims.roles)) {
+      const refused = NextResponse.redirect(
+        new URL(`/login?error=${encodeURIComponent(WEBAPP_ONLY_STAFF_MESSAGE)}`, publicOrigin),
+      )
+      clearQaSessionCookies(refused)
+      return refused
+    }
 
     setQaSessionCookies(cleanResponse, session)
     cleanResponse.cookies.set(QA_COOKIE_NAMES.state, '', { path: '/', maxAge: 0 })
